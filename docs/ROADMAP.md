@@ -113,6 +113,10 @@ First shippable unit is local-only `categories` migration and typed read API (en
 
 ## Public taxonomy search (local-only), 2026-10-27
 
-- [ ] Add safely bounded bilingual, active-only public category search with deterministic pagination, Unicode normalization, injection/literal-wildcard tests and failure redaction; mark done only after PR/main green CI.
+- [x] Bounded bilingual, active-only public category search with deterministic pagination, Unicode NFC, injection/literal-wildcard tests and error redaction. [PR #18](https://github.com/rekixo-lab/jodlo/pull/18) merged as `36c9d83ad8f720d4eb7244364e789f5fc4bd7879`; [main GitHub Actions #40484455029](https://github.com/rekixo-lab/jodlo/actions/runs/40484455029) **SUCCESS** on the exact main head (55/55 Node tests, local D1 migrations, documentation/design guards, strict TypeScript, local and normal Worker dry-run builds).
 - [ ] **M-005 UPCOMING:** Founder chooses actual pilot categories, trust labels and request workflow before any public worker listing or real category seeding; **M-003 UPCOMING:** Founder locality/consent/retention decision before location storage.
 - [ ] Android design still M-004; no remote Cloudflare or Google OAuth service until separately approved gates.
+
+## Catalog discovery CI milestone (2026-10-27)
+
+[PR #18](https://github.com/rekixo-lab/jodlo/pull/18) merged as `36c9d83ad8f720d4eb7244364e789f5fc4bd7879`; [main GitHub Actions #40484455029](https://github.com/rekixo-lab/jodlo/actions/runs/40484455029) **SUCCESS** on the exact main head (55/55 Node tests, local D1 migrations, documentation/design guards, strict TypeScript, local and normal Worker dry-run builds). Next: domain-neutral pure validation/state-machine contract tests only until founder approves M-003 location/privacy and M-005 actual pilot categories, worker listing publication/trust and matching lifecycle; M-004 visual UI, M-008 Google OAuth and M-007 production gates still pending. No worker/area tables added or real users seeded by this slice.
