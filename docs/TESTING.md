@@ -92,3 +92,9 @@ Local synthetic DB and fake trusted-auth tests assert one customer account + opt
 - Pure bounded analyzer + local SQLite/Worker integration: `मुझे प्लंबिंग का काम चाहिए`, `मैं प्लंबिंग का काम करता हूँ`, `main plumbing ka kaam karta hu`, `I need painting`, no hallucinated synonym for `plumber`, unknown multiple trades/only generic speech produce no artificial match.
 - Preserve existing literal catalog queries including `%`, `_`, SQL punctuation; prepared term predicates, cap at 6 content terms and existing 25/page; prevent drafts, phone/GPS/workers leaking.
 - No real voice capture, speech transcription, curated vocabulary or published worker search tested. Await exact PR/main CI proof.
+
+## Mandatory founder language-only test matrix — 2026-10-27
+
+- Positive: natural search `मुझे प्लंबिंग चाहिए`, `मैं प्लंबिंग का काम करता हूँ`, `I need plumbing`, `I need painting service`; keep `lang=hi|en` output labels and bounded SQL active-only filtering.
+- Negative: `mujhe plumbing chahiye`, `main plumbing ka kaam karta hu`, `मुझे plumbing चाहिए`, `I need प्लंबिंग`; no transliteration, mixed-script or third language matching. No unsupported language UI/copy.
+- All other existing catalog injection, privacy and pagination tests still must pass. Use actual exact PR/main GitHub Actions evidence; no voice/audio or real workers claimed. [ADR-0008](decisions/0008-hindi-english-only.md).

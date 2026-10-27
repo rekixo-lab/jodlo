@@ -23,14 +23,18 @@ async function query(env, text, extras = "") {
   return (await response.json()).data;
 }
 
-test("pure text analyzer discards only simple Hindi/Hinglish search grammar", () => {
+test("pure text analyzer supports Devanagari Hindi and English search grammar only", () => {
   assert.deepEqual(categoryIntentTerms("मुझे प्लंबिंग का काम चाहिए"), ["प्लंबिंग"]);
   assert.deepEqual(categoryIntentTerms("मैं प्लंबिंग का काम करता हूँ"), ["प्लंबिंग"]);
-  assert.deepEqual(categoryIntentTerms("main plumbing ka kaam karta hu"), ["plumbing"]);
-  assert.deepEqual(categoryIntentTerms("mujhe painting chahiye"), ["painting"]);
+  assert.equal(categoryIntentTerms("main plumbing ka kaam karta hu"), null);
+  assert.equal(categoryIntentTerms("mujhe painting chahiye"), null);
   assert.deepEqual(categoryIntentTerms("I need plumbing work"), ["plumbing"]);
   assert.deepEqual(categoryIntentTerms("painting or plumbing please"), ["painting","or","plumbing"]);
   assert.deepEqual(categoryIntentTerms("काम चाहिए"), []);
+  assert.deepEqual(categoryIntentTerms("मुझे plumbing चाहिए"), []);
+  assert.deepEqual(categoryIntentTerms("I need प्लंबिंग"), []);
+  assert.deepEqual(categoryIntentTerms("需要 plumbing"), []);
+  assert.deepEqual(categoryIntentTerms("I need painting"), ["painting"]);
   assert.equal(categoryIntentTerms("प्लंबिंग"), null);
   assert.equal(categoryIntentTerms("plumbing"), null);
   assert.equal(categoryIntentTerms("plumb% please"), null);
@@ -53,13 +57,14 @@ test("Hindi user intent locates published category using original Hindi name", a
   } finally { db.close(); }
 });
 
-test("Roman Hindi and English service-need sentences match without inventing translations", async () => {
+test("English natural searches work, while Romanized Hindi has no supported fallback", async () => {
   const { db, env } = fixture();
   try {
-    assert.deepEqual((await query(env, "mujhe painting chahiye")).categories, [
+    assert.deepEqual((await query(env, "mujhe painting chahiye")).categories, []);
+    assert.deepEqual((await query(env, "main plumbing ka kaam karta hu")).categories, []);
+    assert.deepEqual((await query(env, "I need painting service")).categories, [
       { id:"cat-paint", slug:"painting", name:"Painting" }
     ]);
-    assert.equal((await query(env, "main plumbing ka kaam karta hu")).categories.length, 2);
     assert.equal((await query(env, "I need painting service")).categories.length, 1);
     // Missing curated synonyms remain unmatched; do NOT hallucinate a service.
     assert.deepEqual((await query(env, "mujhe plumber chahiye")).categories, []);
@@ -81,10 +86,10 @@ test("multiple trade terms use intersection instead of assigning an uncertain oc
 test("natural phrase pages remain stable and active-only, and yield no private fields", async () => {
   const { db, env } = fixture();
   try {
-    const first = await query(env, "mujhe plumbing chahiye", "&limit=1");
+    const first = await query(env, "I need plumbing", "&limit=1");
     assert.deepEqual(first.categories, [{ id:"cat-plumb", slug:"plumbing", name:"Plumbing" }]);
     assert.equal(first.nextOffset, 1);
-    const second = await query(env, "mujhe plumbing chahiye", "&limit=1&offset=1");
+    const second = await query(env, "I need plumbing", "&limit=1&offset=1");
     assert.deepEqual(second.categories, [{ id:"cat-water", slug:"water-plumbing", name:"Water plumbing" }]);
     assert.equal(second.nextOffset, null);
     for(const forbidden of ["phone","lat","lng","google_sub","worker_profiles","verified","secret-plumbing"]) {
@@ -116,5 +121,25 @@ test("no locality, real worker, contact or request API is exposed by natural sea
       assert.equal((await worker.fetch(new Request("https://jodlo.rekixo.com"+path), env)).status,404);
     }
     assert.deepEqual((await query(env, "मुझे unknown-category चाहिए", "&lang=hi")).categories,[]);
+  } finally { db.close(); }
+});
+
+test("founder rule: no Hinglish or mixed-script discovery despite English/Hindi output labels", async () => {
+  const { db, env } = fixture();
+  try {
+    for (const unsupported of [
+      "mujhe plumbing chahiye",
+      "main plumbing ka kaam karta hu",
+      "मुझे plumbing चाहिए",
+      "I need प्लंबिंग",
+      "please प्लंबिंग",
+      "需要 plumbing",
+    ]) {
+      assert.deepEqual((await query(env, unsupported)).categories, [], unsupported);
+    }
+    // lang changes display language; it does not enable transliteration.
+    assert.equal((await query(env, "I need plumbing", "&lang=hi")).categories[0].name, "प्लंबिंग");
+    assert.equal((await query(env, "मुझे प्लंबिंग चाहिए", "&lang=en")).categories[0].name, "Plumbing");
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM categories").get().n, 5);
   } finally { db.close(); }
 });

@@ -24,7 +24,7 @@
 
 ## हमारा मकसद
 
-भारत में लोगों को आसपास के सही वर्कर या सर्विस देने वाले व्यक्ति को आसानी से खोजने में मदद करना, और काम करने वालों को अपनी वास्तविक सेवा दिखाने का सुविधाजनक माध्यम देना। हिंदी/हिंग्लिश और कम क्षमता वाले Android फ़ोन का ध्यान रखा जाएगा। सुरक्षा, भरोसा, जवाब देने की विश्वसनीयता और वास्तविक काम मिलने के परिणाम डाउनलोड की संख्या से ज़्यादा महत्वपूर्ण हैं।
+भारत में लोगों को आसपास के सही वर्कर या सर्विस देने वाले व्यक्ति को आसानी से खोजने में मदद करना, और काम करने वालों को अपनी वास्तविक सेवा दिखाने का सुविधाजनक माध्यम देना। सिर्फ हिंदी और English तथा कम क्षमता वाले Android फ़ोन का ध्यान रखा जाएगा। सुरक्षा, भरोसा, जवाब देने की विश्वसनीयता और वास्तविक काम मिलने के परिणाम डाउनलोड की संख्या से ज़्यादा महत्वपूर्ण हैं।
 
 JODLO को **हल्का, तेज़, सुचारु, कम खर्च वाला, सुरक्षित और भविष्य में आसानी से बदलने योग्य** बनाना है। अनावश्यक कोड, फीचर, डिपेंडेंसी, background jobs और architectural complexity को नए प्रोजेक्ट में नहीं लाएँगे।
 
@@ -84,7 +84,7 @@ Android native Kotlin (com.rekixo.jodlo)        Approved web site (future)
 
 ### What old Finworkar taught us: keep / rebuild / drop
 
-- **Keep rules as design inputs:** privacy-protecting profiles/locations, server-side payment and call event reconciliation, Hindi/Hinglish vocabulary, bounded search/pagination, reports and account deletion.
+- **Keep rules as design inputs:** privacy-protecting profiles/locations, server-side payment and call event reconciliation, Hindi and English vocabulary only, bounded search/pagination, reports and account deletion.
 - **Rebuild:** Firebase Auth/Firestore/Functions calls become explicit Worker API + D1; multi-Activity Java/Firebase screens become Kotlin feature layers; old Firestore geo queries become indexed and bounded D1 queries; Agora is only one RTC candidate, not assumed; wallet is newly designed, with independent ledger.
 - **Drop by default:** old Razorpay implementation, Firebase-coupled client, oversized multi-purpose Activities and 2,000-line call logic, unnecessary ads/rewards/stories/premium boosts, excessive always-on maintenance cron and premature platform dependencies. **Never remove safety-critical cleanup, refunds, deletion or reconciliation.**
 - **Read only:** all three old GitHub repositories; never change the live Finworkar code/data or claim that its production metrics were audited.
@@ -251,6 +251,8 @@ JODLO uses an independent modular codebase. Founder requested careful read-only 
 
 **Legacy behavior continuity CI verified:** [PR #22](https://github.com/rekixo-lab/jodlo/pull/22) merged as `24ed69e735e136cc95b6ac43f74d83f08d019e6a`; [main GitHub Actions #40489994251](https://github.com/rekixo-lab/jodlo/actions/runs/40489994251) **SUCCESS** on the same commit (76/76 Node tests, local D1, docs/design guards, strict TypeScript, both Wrangler dry-run builds). Old Finworkar flow analyzed read-only; JODLO contact guard independently implemented and tested. See [Legacy behavior map](docs/LEGACY_FINWORKAR_BEHAVIOR.md).
 
-## Hindi/Hinglish category intent — local read-only catalog only
+## Hindi and English category intent only — local public catalog
 
-New incremental phrase search will support natural text such as `मुझे प्लंबिंग का काम चाहिए` or `main plumbing ka kaam karta hu` via a tiny original stopword analyzer and the existing parameterized `/api/v1/catalog/search` endpoint. It **does not** assume old Finworkar voice/audio UX, copy matcher vocabulary, invent service aliases, publish workers or store spoken text. User-facing Google/Android UI and actual category/pilot inventory remain founder-gated. Check [Status](docs/STATUS.md) and CI evidence.
+New incremental phrase search will support natural text such as `मुझे प्लंबिंग का काम चाहिए` or `I need plumbing` via separate Hindi and English grammar parsing (no Hinglish or transliteration) and the existing parameterized `/api/v1/catalog/search` endpoint. It **does not** assume old Finworkar voice/audio UX, copy matcher vocabulary, invent service aliases, publish workers or store spoken text. User-facing Google/Android UI and actual category/pilot inventory remain founder-gated. Check [Status](docs/STATUS.md) and CI evidence.
+
+**Hard language decision (2026-10-27): ONLY Hindi in Devanagari and English are supported.** No Hinglish, Romanized Hindi or mixed-script natural-language matching, regardless of old Finworkar support or prior drafts. See [ADR-0008](docs/decisions/0008-hindi-english-only.md).
