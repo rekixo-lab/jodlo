@@ -79,10 +79,15 @@ export async function handleRequest(
     if (methodError) return methodError;
     const params = url.searchParams;
     const language = params.get("lang") ?? "en";
+    const availableOnly = params.get("availableOnly");
     let hasUnknownParameter = false;
-    params.forEach((_value, key) => { if (key !== "lang") hasUnknownParameter = true; });
+    params.forEach((_value, key) => {
+      if (key !== "lang" && key !== "availableOnly") hasUnknownParameter = true;
+    });
     if (hasUnknownParameter ||
         params.getAll("lang").length > 1 ||
+        params.getAll("availableOnly").length > 1 ||
+        (availableOnly !== null && availableOnly !== "1") ||
         (language !== "en" && language !== "hi")) {
       return json({ ok: false, error: { code: "INVALID_QUERY", message: "Invalid catalog query" } }, 400);
     }
@@ -90,7 +95,7 @@ export async function handleRequest(
       return json({ ok: false, error: { code: "SERVICE_UNAVAILABLE", message: "Catalog unavailable" } }, 503);
     }
     try {
-      const categories = await listPublicCategories(env.DB, language as CatalogLanguage);
+      const categories = await listPublicCategories(env.DB, language as CatalogLanguage, availableOnly === "1");
       return json({ ok: true, data: { language, categories } });
     } catch {
       // Do not expose SQL, binding details, tokens, or database configuration.

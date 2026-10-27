@@ -18,13 +18,18 @@ export const OWN_LISTING_QUERY =
   "JOIN accounts AS a ON a.id=wl.worker_account_id JOIN categories AS c ON c.id=wl.category_id " +
   "WHERE wl.worker_account_id=? AND a.status='active' AND wl.category_id=? LIMIT 1";
 
+/** The same CURRENT DB eligibility controls both public listing rows and
+ * the optional category-availability facet. Never count private/hidden items. */
+export const PUBLIC_LISTING_ELIGIBILITY =
+  "wl.status='published' AND wl.moderation_status='allowed' " +
+  "AND a.status='active' AND wp.status='draft' AND c.is_active=1";
+
 export const PUBLIC_LISTINGS_QUERY =
   "SELECT wl.id,wl.category_id AS categoryId,wl.worker_account_id AS workerId " +
   "FROM worker_listings AS wl JOIN accounts AS a ON a.id=wl.worker_account_id " +
   "JOIN worker_profiles AS wp ON wp.account_id=a.id JOIN categories AS c ON c.id=wl.category_id " +
-  "WHERE wl.category_id=? AND wl.status='published' AND wl.moderation_status='allowed' " +
-  "AND a.status='active' AND wp.status='draft' AND c.is_active=1 " +
-  "ORDER BY wl.created_at,wl.id LIMIT 25";
+  "WHERE wl.category_id=? AND " + PUBLIC_LISTING_ELIGIBILITY +
+  " ORDER BY wl.created_at,wl.id LIMIT 25";
 
 export const MY_LISTINGS_QUERY =
   "SELECT wl.id,wl.category_id AS categoryId, " +

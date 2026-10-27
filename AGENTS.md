@@ -156,3 +156,7 @@ Full legacy bilingual export inspected (28/206/889/7,267). **New issue: 4,928/7,
 ## Latest historical source review — 2026-10-27 (READ ONLY)
 
 Before proposing changes to catalog visibility or four-step posting, read [legacy Guided Add Post + Home/Search audit](docs/reference/LEGACY_GUIDED_POST_HOME_SEARCH_CODE_REVIEW_2026-10-27.md). Old GitHub SHAs and line-linked source evidence; absolutely no old code imported. The founder requested this review before further product discussion. Do not treat findings as UI approval or M-005 category authorization. Still only Hindi+English and no deployment.
+
+## 2026-10-27 — Safe Smart Discovery implementation boundary
+
+Read [availability facet design and limitations](docs/reference/JODLO_SMART_DISCOVERY_FOUNDATION_2026-10-27.md) before future worker/customer browse/search changes. The founder's latest broad go-ahead starts backend work but does **not** authorize unconditional 889-category seed, personal-area data, visual UI or remote deployment. Existing public Catalog APIs may now optionally limit results to categories that have **actually eligible** published listings; worker/full active-catalog Search still finds empty categories. Shared listing eligibility must remain authoritative and server-checked. Old 100-row browse cap and reviewed synonym mapping are future work, never claim complete smart semantic search. Exact CI proof before green claims.
