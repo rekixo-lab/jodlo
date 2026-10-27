@@ -55,7 +55,7 @@ Android native Kotlin (com.rekixo.jodlo)        Approved web site (future)
           Google Pay India/merchant PSP OR Google Play Billing
 ```
 
-**Only implemented API today:** local `GET /api/v1/health`. The database, R2/Queues, cloud deployment, native Android app, UI, calls and payment checkout are NOT implemented. No new cloud resource or live DNS was created.
+**Implemented locally:** `GET /api/v1/health` and a binding-gated, read-only `GET /api/v1/catalog?lang=en|hi` backed by a first versioned public-category D1 migration. The catalog is empty until approved taxonomy entries exist; without a configured local D1 binding it returns 503. **No live D1 database exists.** R2/Queues, cloud deployment, Android app, UI, calls and payment checkout remain unimplemented. No cloud resource or DNS created.
 
 ### Android Activity/class design — proposed, not a built app
 
@@ -202,3 +202,7 @@ After code/product readiness, obtain **explicit founder approval** for a control
 **Automated guard:** `npm run design:check` plus fixture tests in GitHub CI, supplemented by future Android Lint/Detekt/on-device benchmarks. They catch common hardcodes and byte-identical media, but not every semantic duplicate or frame-jank bug.
 
 [ADR-0005](docs/decisions/0005-reuse-tokens-premium-motion.md) · [Reuse policy](docs/REUSE_ASSET_POLICY.md) · [Design tokens and premium palette brief](docs/DESIGN_SYSTEM.md) · [Motion/3D standards](docs/MOTION_3D.md).
+
+## First database development slice (2026-10-27; local code, not deployed)
+
+`infra/migrations/0001_public_catalog.sql` and `apps/api/wrangler.local.jsonc` enable a local-only category catalog. Run `npm install`, `npm run db:migrate:local`, `npm test`, `npm run typecheck` and `npm run db:build:local`. `GET /api/v1/catalog?lang=hi` is public and read-only; only approved/active categories appear and Hindi labels fall back to English. No seed city/categories, identities, user records or production bindings exist. Future D1 tables require founder-approved roles, auth and locality/privacy model. No Cloudflare staging or production deployment.

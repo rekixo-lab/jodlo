@@ -21,7 +21,8 @@
 - [ ] Founder UI review & approval before UI work.
 
 ## Phase 2 — Complete locally testable Cloudflare-compatible backend
-- [ ] D1 relational schema, local database/migration tests, indexes and recovery plan; no deployed Worker/D1 or live resources.
+- [x] First local-only public categories D1 migration, indexed bounded read-only API and synthetic migration tests added in catalog PR (CI success must be verified before completion claim); zero live resources.
+- [ ] Full accounts/workers/areas/listings D1 relational schema, migrations, privacy lifecycle/backup-recovery tests; founder identity/area model decisions pending.
 - [ ] Auth/session implementation, identity provider decision; abuse and rate limits.
 - [ ] Private R2 media validation; approved Queue workflows and idempotency as needed.
 - [ ] Automated tests: unit, integration, authorization, privacy, data recovery, latency and cost.
@@ -68,3 +69,7 @@
 ## Payment policy alignment — 2026-10-27
 
 JODLO prefers **Google Pay** for eligible merchant India UPI transactions, never the legacy Razorpay connector. **Google Play Billing** is the default Play-distributed digital-goods channel unless legally eligible exception or enrolled alternative billing permits otherwise. No money movement is enabled until bank/PSP verification, idempotent ledger, refund tests and owner approval. See [PAYMENTS](PAYMENTS.md).
+
+## 2026-10-27 incremental backend milestone — catalog foundation
+
+First shippable unit is local-only `categories` migration and typed read API (en/hi, active records only, capped 100, no PII). Validate with Node SQLite and Wrangler local D1 migration/build in GitHub Actions. Completion evidence requires green PR CI. The next slice is account/worker/area authorization model, **only after** product roles, external auth/provider and selected-area/privacy behavior are defined. No visual UI work or Cloudflare deployment here.
