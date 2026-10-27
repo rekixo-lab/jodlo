@@ -29,3 +29,5 @@ References: [Manual Actions](../MANUAL_ACTIONS.md), [Status](../STATUS.md), [And
 ## Later local-only security-hardening implementation note (2026-10-27)
 
 Reuse `auth_sessions` and `idx_auth_sessions_expiry`: cap six simultaneous unexpired sessions per active account with conditional atomic SQL; when full, send HTTP 429 with retry delay rather than issuing more secrets. On verified sign-in, opportunistically purge at most 100 expired session hashes, no background cron or new tracking table. Add owner-scoped `POST /api/v1/auth/logout-all`. These are safe backend implementation constraints, **not** comprehensive HTTP/edge rate-limiting or a final retention/deletion policy. M-003/M-008 founder gates unchanged.
+
+**Local security-hardening implementation proof:** [PR #14](https://github.com/rekixo-lab/jodlo/pull/14) squash-merged as `c234961204c0c2586748c52bcd1976a8611c7197`, and [main Actions #40481385874](https://github.com/rekixo-lab/jodlo/actions/runs/40481385874) completed **SUCCESS** (41 automated tests, docs/design guard, local D1 migrations, TypeScript and both Wrangler dry-runs). No further founder decision was assumed.
