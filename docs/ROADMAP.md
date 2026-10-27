@@ -165,5 +165,9 @@ First shippable unit is local-only `categories` migration and typed read API (en
 
 ## Automated no-dependency founder gate regression safety — 2026-10-27
 
-- [ ] Add pre-install CI source audit and adversarial fixtures for allowed HTTP API routes, D1 tables/worker draft privacy, two approved languages and local-only Wrangler deployment. Mark complete only after green PR and separate main CI. This is a narrow tripwire, not a full security or code-review replacement.
+- [x] Add no-dependency pre-install CI source audit and 9 adversarial tests for approved routes/tables, worker draft-only privacy, Hindi+English and no-deploy safety. [PR #31](https://github.com/rekixo-lab/jodlo/pull/31) merged as `812ec39f51b70ce10564c4396cd7824b8caf78e5`; [main GitHub Actions #40501136670](https://github.com/rekixo-lab/jodlo/actions/runs/40501136670) **SUCCESS** on the exact commit (111/111 Node tests, docs/design/founder no-dependency checks, local D1 migrations, TypeScript strict and both Wrangler dry-run bundles). Static check is not a complete security proof.
 - [ ] Later M-003 area/privacy and M-005 real worker/request schema, M-007 production require explicit founder decisions and deliberately reviewed guard changes; M-004 UI and M-008 real OAuth remain separately gated.
+
+## Latest Green CI regression gate proof — 2026-10-27
+
+[PR #31](https://github.com/rekixo-lab/jodlo/pull/31) merged as `812ec39f51b70ce10564c4396cd7824b8caf78e5`; [main GitHub Actions #40501136670](https://github.com/rekixo-lab/jodlo/actions/runs/40501136670) **SUCCESS** on the exact commit (111/111 Node tests, docs/design/founder no-dependency checks, local D1 migrations, TypeScript strict and both Wrangler dry-run bundles). New safety check blocks accidental founder-unapproved changes during local development. Future production D1 auth, permissions and founder business decisions require independent work after recorded M-003/M-005/M-007 approvals. M-004 UI, M-008 real Google remain deferred; no third language.
