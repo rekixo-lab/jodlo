@@ -123,5 +123,9 @@ First shippable unit is local-only `categories` migration and typed read API (en
 
 ## Request/matching contract foundation — 2026-10-27
 
-- [ ] Add pure test-only owner-checked request-state decision with injected transition graph, fake replay/idempotency/CAS policy and abstract privacy-safe matching candidate filter (no real production transitions). Require actual PR+main GREEN before marking done.
+- [x] Implement and locally verify owner-checked **pure** request decisions, injected graph, synthetic receipt/replay/CAS and abstract candidate selection. [PR #20](https://github.com/rekixo-lab/jodlo/pull/20) merged as `31839e4c5eca44251db85e3d4c220ea1be3bd296`, and [main GitHub Actions #40486525096](https://github.com/rekixo-lab/jodlo/actions/runs/40486525096) **SUCCESS** on this exact commit: 68/68 Node tests, local D1 migrations, docs/design checks, strict TypeScript, both Worker dry-run bundles. No real D1/booking transitions.
 - [ ] M-003 founder approval BEFORE location/retention/deletion schema, M-005 founder approval BEFORE worker publication, request lifecycle and real matching eligibility/trust. No public request route or writeable listing tables now.
+
+## Request/matching pre-policy contract CI proof (2026-10-27)
+
+[PR #20](https://github.com/rekixo-lab/jodlo/pull/20) merged as `31839e4c5eca44251db85e3d4c220ea1be3bd296`, and [main GitHub Actions #40486525096](https://github.com/rekixo-lab/jodlo/actions/runs/40486525096) **SUCCESS** on this exact commit: 68/68 Node tests, local D1 migrations, docs/design checks, strict TypeScript, both Worker dry-run bundles. Next gates: founder M-005 defines actual pilot worker approval/publication/trust/request lifecycle; M-003 governs locality/PII and data deletion/retention. Only afterwards implement real listing, request state machine, authorization + atomic transactional D1/response tests. M-004 UI, M-008 real Google credential/device and M-007 final production remain deferred. No deployment.
