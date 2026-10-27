@@ -256,3 +256,7 @@ JODLO uses an independent modular codebase. Founder requested careful read-only 
 New incremental phrase search will support natural text such as `मुझे प्लंबिंग का काम चाहिए` or `I need plumbing` via separate Hindi and English grammar parsing (no Hinglish or transliteration) and the existing parameterized `/api/v1/catalog/search` endpoint. It **does not** assume old Finworkar voice/audio UX, copy matcher vocabulary, invent service aliases, publish workers or store spoken text. User-facing Google/Android UI and actual category/pilot inventory remain founder-gated. Check [Status](docs/STATUS.md) and CI evidence.
 
 **Hard language decision (2026-10-27): ONLY Hindi in Devanagari and English are supported.** No Hinglish, Romanized Hindi or mixed-script natural-language matching, regardless of old Finworkar support or prior drafts. See [ADR-0008](docs/decisions/0008-hindi-english-only.md).
+
+## Safe request transaction rehearsal (backend tests only, 2026-10-27)
+
+An ephemeral two-connection SQLite test journal rehearses optimistic revision control, request retry receipt uniqueness, rollback and owner revalidation using **synthetic requests**. The pure request contract rejects stale/future receipts. This is not a new booking/worker API, not a D1 migration, not production-grade distributed concurrency, nor a founder-approved request lifecycle. Hindi and English only (ADR-0008); see [Status](docs/STATUS.md) for CI.

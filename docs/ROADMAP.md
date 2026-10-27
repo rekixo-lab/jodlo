@@ -144,3 +144,8 @@ First shippable unit is local-only `categories` migration and typed read API (en
 
 - [x] Enforce founder's **Hindi + English ONLY** policy (no Hinglish, Romanized Hindi or mixed-script natural-language match), test and verify source. [PR #25](https://github.com/rekixo-lab/jodlo/pull/25) merged as `e0ce6d04a56f9c8aaa27c24d50f821ace5201ae3`; [main GitHub Actions #40493262734](https://github.com/rekixo-lab/jodlo/actions/runs/40493262734) **SUCCESS** on that exact SHA (84/84 Node tests, local D1 migrations, strict TypeScript, docs/design guards and both Worker dry-run bundles). [ADR-0008](decisions/0008-hindi-english-only.md).
 - [ ] Do not build UI before M-004; avoid actual service listing/location/call writes before M-003/M-005. No cloud deployment before M-007.
+
+## Request consistency before real request storage (2026-10-27)
+
+- [ ] Synthetic SQLite two-connection BEGIN IMMEDIATE/CAS + composite-key receipt, failed transaction rollback and stale-owner replay tests; add pure receipt integrity check. Mark done only after exact PR and main GitHub CI Green. This is local-only, not actual Cloudflare D1 concurrency proof.
+- [ ] Real durable request table/API still blocked by M-005 owner workflow choices; real location or personal-data retention by M-003; Hindi+English only ADR-0008, UI M-004, OAuth M-008, deployment M-007 still enforced.
