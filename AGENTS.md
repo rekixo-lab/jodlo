@@ -3,7 +3,7 @@
 > **MOST RECENT OWNER INSTRUCTION (2026-10-27): No staging, no deployment while building JODLO.** Finish all code with local Worker/D1/R2/Queue simulations, fake payment/RTC/FCM adapters and green GitHub CI. No Cloudflare tokens or DNS work until final approved production release. Previous staging workflow has been deleted. See [ADR-0004](docs/decisions/0004-local-first-no-staging-until-production.md), [Release Readiness](docs/RELEASE_READINESS.md).
 
 
-**Confirmed implementation evidence:** [PR #5](https://github.com/rekixo-lab/jodlo/pull/5) merged; [main CI 40470523692](https://github.com/rekixo-lab/jodlo/actions/runs/40470523692) GREEN. This only verifies present docs/guards/API tests, **not** Android UI design or animation performance. Recheck newest head before subsequent merge.
+**Confirmed current implementation evidence:** **Merged catalog milestone:** [PR #7](https://github.com/rekixo-lab/jodlo/pull/7) squash-merged as `dd16db9`, verified [green main GitHub Actions #40473524328](https://github.com/rekixo-lab/jodlo/actions/runs/40473524328) on `dd16db92a1e04b2e40237bc440ab0a062039f5ea` (19 Node tests, local-only Wrangler D1 migration, local and normal Worker dry-run builds, strict TS, docs/design checks). No Cloudflare/Android deployment. This does **not** verify Android UI, animation performance, real DB, billing or live integrations. Recheck newest head before each merge.
 
 **NEW MANDATORY OWNER RULE (2026-10-27):** Reuse existing tested code/components/contracts/assets; do not write repeated logic or duplicate media. User-facing text MUST be localized; colors, radius, strokes, typography, spacing and motion MUST be driven by centralized founder-approved design tokens, not hardcoded per screen. Deliver polished animated tabs/navigation/actions and **selective** immersive 3D/2.5D without sacrificing reduced-motion, accessibility, low-end Android FPS/memory/battery. Before ANY UI/theme/screen/visual implementation, show founder proposed design and obtain approval. Run `npm run design:check` and PR review checklist. Read [ADR-0005](docs/decisions/0005-reuse-tokens-premium-motion.md), [Reuse Policy](docs/REUSE_ASSET_POLICY.md), [Design](docs/DESIGN_SYSTEM.md), [Motion](docs/MOTION_3D.md).
 
@@ -41,7 +41,7 @@
 ## Exact safe resumption (unless updated STATUS says otherwise)
 1. Open `rekixo-lab/jodlo` **main**, confirm status and latest CI. Foundation PR #1 merged 2026-10-27 with green main run 40466265299.
 2. Foundation PRs #1/#2 merged; latest earlier confirmed green `main` run 40466624240. Founder revoked the staging plan; PR #3 removed staging workflow/config and merged successfully after green checks. Check **latest** CI before every merge. No Cloudflare resources are provisioned.
-3. **Do not configure Cloudflare account or deployment** now. Move on to locally testable D1 schema, typed API/auth contracts and worker discovery; get founder feedback before visible Android/web UI code.
+3. **Do not configure Cloudflare or deploy.** The first D1 public-category migration and typed catalog read API are now merged and green. Before any identity, worker, locality or private-data schema, confirm MVP customer/worker roles, external authentication/OTP choice, manual area/privacy and deletion model; then add local-only D1 authorization-tested migrations. Get founder feedback before visible Android/web UI code.
 4. Confirm MVP product roles and auth/area model before D1 schema. **No UI without founder sign-off.**
 ## Mandatory future UI/feature PR review
 
