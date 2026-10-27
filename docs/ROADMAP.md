@@ -171,3 +171,8 @@ First shippable unit is local-only `categories` migration and typed read API (en
 ## Latest Green CI regression gate proof — 2026-10-27
 
 [PR #31](https://github.com/rekixo-lab/jodlo/pull/31) merged as `812ec39f51b70ce10564c4396cd7824b8caf78e5`; [main GitHub Actions #40501136670](https://github.com/rekixo-lab/jodlo/actions/runs/40501136670) **SUCCESS** on the exact commit (111/111 Node tests, docs/design/founder no-dependency checks, local D1 migrations, TypeScript strict and both Wrangler dry-run bundles). New safety check blocks accidental founder-unapproved changes during local development. Future production D1 auth, permissions and founder business decisions require independent work after recorded M-003/M-005/M-007 approvals. M-004 UI, M-008 real Google remain deferred; no third language.
+
+## Security milestone and M-005 decision path — 2026-10-27
+
+- [ ] Rework existing session logout/logout-all from read-before-delete to indexed conditional single-statement DELETE, with synthetic simultaneous retry/owner isolation/expiry/disabled tests. Verify PR+main GitHub CI and mark only after Green.
+- [ ] Present [M-005 safe pilot decision proposal](M005_DECISION_PROPOSAL.md) and record explicit manual-vs-auto worker publication answer; then collect actual pilot area/categories and contact/request choice separately. General encouragement to continue is not approval of product details or personal data retention (M-003).

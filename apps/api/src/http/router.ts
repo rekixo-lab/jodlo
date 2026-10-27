@@ -1,4 +1,5 @@
 import type { Env } from "../data/d1.ts";
+import { validOpaqueId } from "../modules/shared/identifiers.ts";
 import { listPublicCategories, parseCatalogSearch, searchPublicCategories, type CatalogLanguage } from "../modules/catalog/catalog.ts";
 import { healthData } from "../modules/system/health.ts";
 import { optInAsWorker, ownWorkerDraft } from "../modules/workers/profile.ts";
@@ -172,7 +173,7 @@ export async function handleRequest(
     try {
       // Production resolves server-issued revocable sessions; old AUTH seam is only a trusted fake in tests.
       const actor = await (env.AUTH ?? makeSessionVerifier(env.DB)).verify(token);
-      if (!actor || !/^[-_a-zA-Z0-9]{8,128}$/.test(actor.accountId)) {
+      if (!actor || !validOpaqueId(actor.accountId)) {
         return json({ ok: false, error: { code: "UNAUTHORIZED", message: "Authentication required" } }, 401);
       }
       const profile = request.method === "POST"
