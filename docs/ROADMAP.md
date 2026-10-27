@@ -103,6 +103,10 @@ First shippable unit is local-only `categories` migration and typed read API (en
 
 ## Login admission and disposable account-lifecycle tests — 2026-10-27
 
-- [ ] Approximate Cloudflare local rate-limit bindings (100/10s anonymous burst; 20/60s hashed verified sub), fail-closed 503 on binding outage, 429 on deny; require PR/main CI before checking done.
-- [ ] Synthetic account deletion FK cascade and rollback tests. **Not** public account-deletion API or approved real-user retention/deletion. M-003 UPCOMING.
+- [x] Approximate Cloudflare local rate-limit bindings (100/10s anonymous burst; 20/60s hashed verified sub), fail-closed 503 on binding outage, 429 on deny; [PR #16](https://github.com/rekixo-lab/jodlo/pull/16) merged as `17ea0b882977ad0bd3a695e49b0112dde64fc9d6`; [main Actions #40482955589](https://github.com/rekixo-lab/jodlo/actions/runs/40482955589) completed **SUCCESS** on that exact commit (49/49 Node tests, docs/design checks, local D1 migrations, TypeScript and both Wrangler dry-run builds).
+- [x] Synthetic account deletion FK cascade and rollback tests, [PR #16](https://github.com/rekixo-lab/jodlo/pull/16) merged as `17ea0b882977ad0bd3a695e49b0112dde64fc9d6`; [main Actions #40482955589](https://github.com/rekixo-lab/jodlo/actions/runs/40482955589) completed **SUCCESS** on that exact commit (49/49 Node tests, docs/design checks, local D1 migrations, TypeScript and both Wrangler dry-run builds). **Not** public account-deletion API or approved real-user retention/deletion. M-003 UPCOMING.
 - [ ] Prior to final production launch: founder M-007 review of approximate PoP counter limitations, appropriate WAF/bot policy, rate-limit quotas and false-positive UX; real OAuth M-008 and UI M-004 remain separate.
+
+## Latest green admission checkpoint — 2026-10-27
+
+[PR #16](https://github.com/rekixo-lab/jodlo/pull/16) merged as `17ea0b882977ad0bd3a695e49b0112dde64fc9d6`; [main Actions #40482955589](https://github.com/rekixo-lab/jodlo/actions/runs/40482955589) completed **SUCCESS** on that exact commit (49/49 Node tests, docs/design checks, local D1 migrations, TypeScript and both Wrangler dry-run builds). All login admission is local simulated and Cloudflare limits are approximate per PoP. Next safe development: typed discovery and request state-machine contracts, local fake ownership/moderation tests. **Never create user locality/PII or final categories** before M-003/M-005 explicit founder choices; no UI before M-004, no Google live setup before M-008, no production Cloudflare before M-007.
