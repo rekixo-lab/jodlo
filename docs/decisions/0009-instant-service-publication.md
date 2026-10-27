@@ -22,3 +22,7 @@ Only **Hindi (Devanagari) and English**, no Hinglish (ADR-0008). Old Finworkar r
 ## Verification checkpoint
 
 [PR #35](https://github.com/rekixo-lab/jodlo/pull/35) merged as `2668fc2a6e59c0b8e87871c4def1c4e2dc847a06`; [main GitHub Actions #40514179945](https://github.com/rekixo-lab/jodlo/actions/runs/40514179945) completed **SUCCESS** on that exact main SHA (128/128 Node tests, docs/design/founder gate checks, local D1 migrations 0001–0004, strict TypeScript and both Wrangler dry-run Worker bundles). This is local-only API and D1 migration proof. It does **not** assert real production moderation, privacy retention, staff access controls, real listing content handling, OAuth/device or Cloudflare deployment are ready.
+
+## Subsequent M-005 city-name selection (2026-10-27)
+
+After this publication decision, the founder selected **Bilaspur and Raipur** as the two pilot city names; see [ADR-0010](0010-bilaspur-raipur-pilot-city-names.md). This updates the historical 'city pending' note above but does not approve categories, location data/precise areas, reporting/contact, verification badges, UI or remote deployment.

@@ -1,3 +1,7 @@
+## LATEST BINDING M-005 FOUNDER DECISION — 2026-10-27
+
+Founder selected **both Bilaspur / बिलासपुर and Raipur / रायपुर** as pilot city *names* (ADR-0010). Never ask founder to pick a single city again. These public names do NOT approve precise service areas, user GPS, personal location retention, any catalog category enablement, active rollout or production. The 10-item candidate taxonomy remains unapproved. Read `docs/reference/data/jodlo-pilot-cities-2026-10-27.json`, `docs/MANUAL_ACTIONS.md`, `docs/STATUS.md` and ADR-0010. Continue safe CI work only; no Cloudflare staging/deploy and no UI without M-004.
+
 ## HARD language rule — founder decision, 2026-10-27
 
 JODLO supports **exactly two languages: Hindi (Devanagari script) and English**. **NO Hinglish, Romanized Hindi, mixed-script natural sentences, transliteration layer, or Hinglish UI/copy/content.** The founder explicitly corrected an earlier unauthorized Hinglish implementation. The Hindi/English catalog text parser, tests and future UI/copy must follow this rule, without treating previous Finworkar behavior or old project notes as approval for a third language. For language decision evidence read [ADR-0008](docs/decisions/0008-hindi-english-only.md). UI still must wait for M-004. This is a founder-approved rule, not a pending question.

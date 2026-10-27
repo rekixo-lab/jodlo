@@ -75,4 +75,25 @@ assert.equal(groupMap.get("education-advisory").status, "disabled_needs_populati
 assert.equal(own(groupMap.get("environment-utilities"), "status"), false);
 assert.ok(categoryMap.has("farmer-helper-मजदूर"),
   "Do not silently rename original invalid category ID");
+
+// Founder selected exactly two **city names**, not city boundaries, personal location
+// consent, active catalog categories or permission to deploy.
+const cityScope = JSON.parse(readFileSync(join(root,
+  "docs/reference/data/jodlo-pilot-cities-2026-10-27.json"), "utf8"));
+assert.deepEqual(Object.keys(cityScope), ["kind", "decision", "languages", "cities"],
+  "City scope must not carry coordinates, personal-data or rollout settings");
+assert.equal(cityScope.kind, "JODLO_FOUNDER_SELECTED_PILOT_CITIES_REFERENCE_ONLY");
+assert.equal(cityScope.decision,
+  "FOUNDER_APPROVED_CITY_NAMES_ONLY_NOT_CATEGORIES_OR_AREAS");
+assert.deepEqual(cityScope.languages, ["en", "hi"]);
+assert.ok(Array.isArray(cityScope.cities));
+assert.deepEqual(cityScope.cities.map(city => city.id), ["bilaspur", "raipur"]);
+for (const city of cityScope.cities) {
+  assert.deepEqual(Object.keys(city), ["id", "name_en", "name_hi"],
+    "No coordinates, phone, address, ward, third locale or rollout details allowed");
+  assert.match(city.name_en, /^[A-Za-z]+$/);
+  assert.match(city.name_hi, /^[\u0900-\u097F]+$/);
+}
+console.log("JODLO founder-selected city names verified: Bilaspur and Raipur; no geography/PII/active categories.");
+
 console.log("JODLO taxonomy proposal checked: 10 unapproved candidates; 4928/7267 Hindi service names have Latin letters in 616 categories; no D1 seed.");
