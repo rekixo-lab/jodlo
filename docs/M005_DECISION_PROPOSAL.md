@@ -21,3 +21,7 @@ Already shipped: public bilingual category read/search; private worker draft, pu
 ### One decision to raise when the user responds
 
 **M-005:** Should each worker's service require **manual review before it is publicly visible**, or is automatic publication desired? Recommended default is **manual review, with no automatic "verified" badge**. Record founder's actual answer in `docs/MANUAL_ACTIONS.md`, then continue separately deciding pilot area/categories and request channel. Do not treat this proposal as consent for location/PII collection.
+
+## Implementation evidence (separate from pilot approvals)
+
+[PR #33](https://github.com/rekixo-lab/jodlo/pull/33) merged as `5d7906e96cd71d7f104fcb58098ea5547b6b098b`; [main GitHub Actions #40504504583](https://github.com/rekixo-lab/jodlo/actions/runs/40504504583) completed **SUCCESS** on that exact commit (119/119 Node tests, docs/design/founder checks, local D1 migrations, strict TypeScript and both Wrangler dry-run Worker builds). This milestone only hardens existing identity logout; **none** of the proposed manual-review/contact/pilot choices are made by the code or confirmed by the founder. General proceed authorization should not be mistaken for exact product decisions.

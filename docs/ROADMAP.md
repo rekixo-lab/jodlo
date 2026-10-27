@@ -174,5 +174,9 @@ First shippable unit is local-only `categories` migration and typed read API (en
 
 ## Security milestone and M-005 decision path — 2026-10-27
 
-- [ ] Rework existing session logout/logout-all from read-before-delete to indexed conditional single-statement DELETE, with synthetic simultaneous retry/owner isolation/expiry/disabled tests. Verify PR+main GitHub CI and mark only after Green.
+- [x] Existing logout/logout-all replaced with atomic conditional DELETE statements; concurrency, owner isolation, expired/disabled and HTTP regression tests. [PR #33](https://github.com/rekixo-lab/jodlo/pull/33) merged as `5d7906e96cd71d7f104fcb58098ea5547b6b098b`; [main GitHub Actions #40504504583](https://github.com/rekixo-lab/jodlo/actions/runs/40504504583) completed **SUCCESS** on that exact commit (119/119 Node tests, docs/design/founder checks, local D1 migrations, strict TypeScript and both Wrangler dry-run Worker builds).
 - [ ] Present [M-005 safe pilot decision proposal](M005_DECISION_PROPOSAL.md) and record explicit manual-vs-auto worker publication answer; then collect actual pilot area/categories and contact/request choice separately. General encouragement to continue is not approval of product details or personal data retention (M-003).
+
+## Verified logout + next owner decision (2026-10-27)
+
+[PR #33](https://github.com/rekixo-lab/jodlo/pull/33) merged as `5d7906e96cd71d7f104fcb58098ea5547b6b098b`; [main GitHub Actions #40504504583](https://github.com/rekixo-lab/jodlo/actions/runs/40504504583) completed **SUCCESS** on that exact commit (119/119 Node tests, docs/design/founder checks, local D1 migrations, strict TypeScript and both Wrangler dry-run Worker builds). **Next**: get explicit M-005 choice for manual-review-before-publication vs auto-publish, then actual pilot city/categories and customer contact stages; M-003 locality/retention separately. These are not automatically approved by general engineering go-ahead. M-004 design, M-008 real OAuth, M-007 production continue gated. No Hinglish.
