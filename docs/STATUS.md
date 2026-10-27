@@ -23,7 +23,8 @@
 
 ## Development pending (no external deployment/blocker)
 - [x] Initial local-only D1 public category catalog migration, indexed read query, typed binding, synthetic SQLite tests and Wrangler local migration CI verified in catalog foundation PR: 19 tests + migration/types/build passed on code head `0b44bf8`, [run 40473268574](https://github.com/rekixo-lab/jodlo/actions/runs/40473268574). This is **not** a complete D1 database or production deployment.
-- [ ] User/account, worker, area, listing D1 schema, migrations, delete/retention and authorization tests pending product/auth/privacy decisions.
+- [x] Provider-neutral local account + one-to-one worker private draft D1 migration and owner-only opt-in/API authorization tests verified; see [PR #10](https://github.com/rekixo-lab/jodlo/pull/10), main [CI #40476898497](https://github.com/rekixo-lab/jodlo/actions/runs/40476898497). No real identity provider or public worker activation.
+- [ ] External auth, real PII, area/listing migrations, account deletion/retention and full authorization/integration tests remain pending.
 - [ ] Typed API/auth, worker profiles, service listings, category search and customer request workflows.
 - [ ] Local R2 media, image validation/moderation, Queue processing, mock FCM/RTC/payment adapters.
 - [ ] Native Kotlin `com.rekixo.jodlo` project and approved screens, network/offline tests, real Android device performance.
@@ -55,5 +56,10 @@
 
 - **Decision DONE:** founder explicitly selected one JODLO account for customer and opt-in worker access in current chat. Persisted in [ADR-0006](decisions/0006-shared-account-opt-in-worker.md) and [Manual Actions](MANUAL_ACTIONS.md); no repeated M-001 question.
 - **New implementation:** local-only D1 migration `0002_shared_accounts_worker_drafts.sql`, provider-neutral trusted AUTH contract, internal account provisioning service (not exposed as public API), idempotent private worker-draft opt-in and owner-only GET/POST route. No self-declared account ID or verified/published profile; no real provider/PII/location.
-- **Evidence:** new changes require actual GitHub PR Actions and merged-main success. Prior main GREEN [40475496269](https://github.com/rekixo-lab/jodlo/actions/runs/40475496269) only covers previous commit, not this slice. Do not mark new CI GREEN until observed.
-- **Pending/Blocked:** M-002 real login/OTP selection before collecting identities; M-003 area/consent before location schema; M-004 founder UI design sign-off; account deletion/retention decisions. **Manual now:** no account/cloud credentials needed. **Next:** pass fresh PR CI, merge + verify main; then real identity/PII gate M-002 as needed while continuing safe provider-independent work.
+- **Evidence:** [PR #10](https://github.com/rekixo-lab/jodlo/pull/10) merged as `e01dbde44cbe46aadf3d563c66f411a8c9d96818`; [main GitHub Actions #40476898497](https://github.com/rekixo-lab/jodlo/actions/runs/40476898497) SUCCESS on that commit (27 Node tests, docs/design guard, both dry-run builds, local D1 migration 0001+0002 and strict TypeScript). Prior failed PR runs were corrected and are not evidence of success; this merged main run is.
+- **Pending/Blocked:** M-002 real login/OTP selection before collecting identities; M-003 area/consent before location schema; M-004 founder UI design sign-off; account deletion/retention decisions. **Manual now:** no account/cloud credentials needed. **Next:** evaluate M-002 real identity/OTP approach with founder before implementing external login/user identity; meanwhile continue provider-neutral authorization, privacy and fake-adapter tests.
+
+### Latest verified milestone: M-001 shared account, 2026-10-27
+
+- **Done:** [PR #10](https://github.com/rekixo-lab/jodlo/pull/10) merged as `e01dbde44cbe46aadf3d563c66f411a8c9d96818`; [main GitHub Actions #40476898497](https://github.com/rekixo-lab/jodlo/actions/runs/40476898497) SUCCESS on that commit (27 Node tests, docs/design guard, both dry-run builds, local D1 migration 0001+0002 and strict TypeScript).
+- **Pending:** M-002 real provider/OTP, M-003 area/retention, M-004 UI review. **Manual:** do not provide account passwords, tokens or OTP in chat. **Next:** seek founder direction on real login method before provider integration; do not deploy.
