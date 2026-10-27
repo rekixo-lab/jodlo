@@ -45,3 +45,5 @@ Local synthetic DB and fake trusted-auth tests assert one customer account + opt
 - **Green CI must be independently observed** before claiming this change verified. Full real Google integration, mobile Credential Manager, callback/revocation policies, quota/rate-limiting, WAF and Play device tests remain release gates.
 
 - Concurrent first-time Google sign-in requests also must yield exactly one account/identity row and distinct revocable sessions; fake D1 `batch` wraps operations in a SQLite transaction. These are synthetic checks, not a distributed/concurrency load benchmark.
+
+**Verified source checkpoint:** [PR #12](https://github.com/rekixo-lab/jodlo/pull/12) merged as `494fc1ee3a41757d4099df40532759526afa5e66` with actual [green main GitHub Actions #40479368370](https://github.com/rekixo-lab/jodlo/actions/runs/40479368370) (37/37 tests, D1 migrations 0001–0003 locally, docs/design checks, strict TypeScript, both Wrangler dry-run builds). Do not interpret synthetic JWT/D1 tests as a live Google/provider or low-end Android device test.
