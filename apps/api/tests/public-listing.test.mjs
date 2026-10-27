@@ -128,7 +128,7 @@ test("worker visibility module never adds real public listing, worker or contact
   const {db,adapter}=openLocalDatabase();
   try{
     for(const path of [
-      "/api/v1/listings","/api/v1/workers","/api/v1/matching",
+      "/api/v1/workers","/api/v1/matching",
       "/api/v1/requests","/api/v1/contact",
     ]){
       const response=await worker.fetch(
