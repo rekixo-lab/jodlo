@@ -217,6 +217,7 @@ test("disabled account cannot issue new session, and failed D1 cleanup fails clo
     db.prepare("UPDATE accounts SET status = 'disabled'").run();
     assert.equal((await postLogin(env, fakeGoogle)).status, 403);
     assert.equal(db.prepare("SELECT COUNT(*) AS n FROM auth_sessions").get().n, 1);
+    db.prepare("UPDATE accounts SET status = 'active'").run();
     const failing = { ...env, DB: { ...env.DB, prepare(query) {
       if (query === PRUNE_EXPIRED_QUERY) return { bind() { return { run: async () => { throw new Error("SECRET_SQL_INTERNAL"); } }; } };
       return env.DB.prepare(query);
