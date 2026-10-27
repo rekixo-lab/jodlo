@@ -189,3 +189,8 @@ First shippable unit is local-only `categories` migration and typed read API (en
 ## Founder M-005 partial approval milestone Green — 2026-10-27
 
 [PR #35](https://github.com/rekixo-lab/jodlo/pull/35) merged as `2668fc2a6e59c0b8e87871c4def1c4e2dc847a06`; [main GitHub Actions #40514179945](https://github.com/rekixo-lab/jodlo/actions/runs/40514179945) completed **SUCCESS** on that exact main SHA (128/128 Node tests, docs/design/founder gate checks, local D1 migrations 0001–0004, strict TypeScript and both Wrangler dry-run Worker bundles). Publication can now happen immediately in the backend for a pre-approved active category, not via profile verification or manual review. **Next** owner decisions still needed for pilot city/area, actual curated category rows, review/report moderation operations, worker verified label criteria and customer request/contact channel. M-003 consent/retention/privacy and M-004 UI/M-008 OAuth/M-007 Cloudflare production gate remain separately controlled. No actual user/category seed or deployment. Hindi/English only.
+
+## 2026-10-27 — Founder historic public catalog source delivered
+
+- [x] Founder export of **all 8,390 legacy catalog records** received; persist complete original in private Library, bilingual safe full projection in GitHub; audit counts, ancestry, en/hi names, status conflicts, unsafe legacy category ID, and service sections. [Source audit](reference/FINWORKAR_CATALOG_AUDIT_2026-10-27.md).
+- [ ] Use verified source to propose a **curated Hindi/English JODLO pilot taxonomy**, review risk tiers, explicit exception mapping and service hierarchy; get founder's actual pilot area/categories before real active D1 seed. No "enable everything" shortcut.
