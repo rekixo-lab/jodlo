@@ -9,3 +9,5 @@
 - M-003 locality selection, GPS consent, deletion/retention; M-004 app UI; M-008 live Google; M-007 production-only launch.
 
 The new backend uses **category + opaque listing ID only**, private worker profile remains draft, moderator can hide via trusted internal DB operation; this does not authorize personal/geo/contact data. Hindi and English only, no Hinglish; old Finworkar read-only.
+
+**Implemented and CI-verified narrow M-005 publication slice:** [PR #35](https://github.com/rekixo-lab/jodlo/pull/35) merged as `2668fc2a6e59c0b8e87871c4def1c4e2dc847a06`; [main GitHub Actions #40514179945](https://github.com/rekixo-lab/jodlo/actions/runs/40514179945) completed **SUCCESS** on that exact main SHA (128/128 Node tests, docs/design/founder gate checks, local D1 migrations 0001–0004, strict TypeScript and both Wrangler dry-run Worker bundles). Previous unapproved manual review proposal is superseded. Further pilot/category/contact/trust specifications remain independent.

@@ -18,3 +18,7 @@ The founder explicitly approved: a worker may **publish a service listing immedi
 M-005 is **partially** decided only: actual first pilot city/area, curated active service categories, extra listing details, trust/verification process, customer request vs direct calling, reporting/appeal workflow, moderation staff authentication and abuse limits still need decisions. M-003 privacy/area selection/consent/retention/deletion before real personal location; M-004 visuals before UI; M-008 real Google OAuth/device; M-006 calling/payments providers. The general business goal and this publication approval do **not** approve those details.
 
 Only **Hindi (Devanagari) and English**, no Hinglish (ADR-0008). Old Finworkar repos remain READ ONLY.
+
+## Verification checkpoint
+
+[PR #35](https://github.com/rekixo-lab/jodlo/pull/35) merged as `2668fc2a6e59c0b8e87871c4def1c4e2dc847a06`; [main GitHub Actions #40514179945](https://github.com/rekixo-lab/jodlo/actions/runs/40514179945) completed **SUCCESS** on that exact main SHA (128/128 Node tests, docs/design/founder gate checks, local D1 migrations 0001–0004, strict TypeScript and both Wrangler dry-run Worker bundles). This is local-only API and D1 migration proof. It does **not** assert real production moderation, privacy retention, staff access controls, real listing content handling, OAuth/device or Cloudflare deployment are ready.
