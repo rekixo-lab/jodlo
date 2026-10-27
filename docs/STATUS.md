@@ -22,7 +22,8 @@
 - [x] Initial design/duplicate-asset guard and six fixture tests merged via [PR #5](https://github.com/rekixo-lab/jodlo/pull/5). [Green main CI 40470523692](https://github.com/rekixo-lab/jodlo/actions/runs/40470523692) on commit `e6982c49d94522abdb257e1bc0b5c8f0ec4b75e1`: documentation, static design/asset guard, 13 total tests, TypeScript and Wrangler dry-run passed. Actual UI performance/semantic duplication reviews remain pending.
 
 ## Development pending (no external deployment/blocker)
-- [ ] Local D1 relational schema/migrations, indexes, delete/retention and authorization tests.
+- [x] Initial local-only D1 public category catalog migration, indexed read query, typed binding, synthetic SQLite tests and Wrangler local migration CI verified in catalog foundation PR: 19 tests + migration/types/build passed on code head `0b44bf8`, [run 40473268574](https://github.com/rekixo-lab/jodlo/actions/runs/40473268574). This is **not** a complete D1 database or production deployment.
+- [ ] User/account, worker, area, listing D1 schema, migrations, delete/retention and authorization tests pending product/auth/privacy decisions.
 - [ ] Typed API/auth, worker profiles, service listings, category search and customer request workflows.
 - [ ] Local R2 media, image validation/moderation, Queue processing, mock FCM/RTC/payment adapters.
 - [ ] Native Kotlin `com.rekixo.jodlo` project and approved screens, network/offline tests, real Android device performance.
@@ -34,8 +35,13 @@
 **None for Cloudflare right now.** Do not request API token, account ID, DNS or staging setup. Founder feedback is required only when proposing visible UI and major product choices. Merchant/provider onboarding and Cloudflare production access wait until final launch gate.
 
 ## Next exact engineering action
-1. **Start local-only D1 schema + typed API contract implementation** in the next new PR. Use synthetic fixtures/workerd and write tests; no remote Cloudflare or staging required.
+1. **PR #7 code tests/Actions GREEN** (run 40473268574); merge only after latest changed-head PR Actions success, then verify post-merge main CI. Then define MVP actor roles, auth/provider, locality model and privacy/deletion before account/worker/listing migrations; no staging/deployment.
 2. Keep README/AGENTS/AI_HANDOFF/STATUS in sync with actual GitHub Actions for each new head.
 3. Do not claim a feature deployed or validated against real providers without direct proof.
 
 [README](../README.md) · [AGENTS](../AGENTS.md) · [AI Handoff](AI_HANDOFF.md) · [Roadmap](ROADMAP.md) · [Release Readiness](RELEASE_READINESS.md) · [ADR-0004](decisions/0004-local-first-no-staging-until-production.md) · [Manual Actions](MANUAL_ACTIONS.md).
+
+## 2026-10-27 — Catalog foundation implementation (work in PR)
+- **Done in code:** first no-PII category migration, indexed and bounded bilingual read-only catalog query, typed optional D1 binding, local-only Wrangler configuration and synthetic database/API tests. Existing health API preserved.
+- **Evidence:** [green PR CI #40473268574](https://github.com/rekixo-lab/jodlo/actions/runs/40473268574) on code commit `0b44bf8` (19 tests, local D1 migration, both Wrangler dry-run bundles, TypeScript, docs and design checks). Earlier failed runs were fixed (test async row comparison, URLSearchParams TypeScript). Reverify latest changed head and post-merge main separately. Pre-change main was green [40470852195](https://github.com/rekixo-lab/jodlo/actions/runs/40470852195).
+- **Pending:** full role/auth/area schemas, worker profiles, data lifecycle, all remaining Android/backend integrations, load testing. **Manual:** none for catalog; founder UI approval before UI and decisions needed for user/location data. **Next:** pass actual PR CI, then role/area/auth decision and next D1 migration.

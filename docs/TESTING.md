@@ -27,3 +27,9 @@ No staged Cloudflare deployment or remote resource tests during normal developme
 - Semantic duplicate business rules, visually near-identical assets and needless abstraction cannot be fully caught by static checks—mandatory PR code review remains necessary.
 - After founder approval and UI implementation, add Android Lint/Detekt, snapshot/accessibility tests, release-mode Macrobenchmark/frame/jank, touch responsiveness, low-end phone battery and memory analysis, reduced-motion static fallback validation, 3D SDK asset size budget.
 - Specific palette/layouts/3D design NOT YET APPROVED. See [Reuse](REUSE_ASSET_POLICY.md) · [Design](DESIGN_SYSTEM.md) · [Motion](MOTION_3D.md) · [ADR-0005](decisions/0005-reuse-tokens-premium-motion.md).
+
+## Catalog D1 slice (2026-10-27)
+
+- `npm test` runs Node 22 built-in SQLite schema/constraint/index/explain-plan tests plus synthetic fake-D1 API tests for bilingual catalog, rejected writes/query validation, lack of binding and non-leaking DB errors.
+- `npm run db:migrate:local` applies only to the disposable local D1 database named `jodlo_catalog_local`; never remote. CI runs this command after installing Wrangler and builds `apps/api/wrangler.local.jsonc` with `--dry-run`.
+- No seeded localities, user identifiers, payments, Android screens or live infrastructure; future auth/ownership/migration/restore tests remain pending.

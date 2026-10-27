@@ -14,7 +14,9 @@
     "test": "node --experimental-strip-types --test apps/api/tests/*.test.mjs scripts/verify-design-guards.test.mjs",
     "typecheck": "tsc --noEmit -p apps/api/tsconfig.json",
     "check": "npm run docs:check && npm run design:check && npm run test && npm run typecheck",
-    "dev:api": "wrangler dev --config apps/api/wrangler.jsonc --local",
+    "dev:api": "wrangler dev --config apps/api/wrangler.local.jsonc --local",
+    "db:migrate:local": "wrangler d1 migrations apply jodlo_catalog_local --local --config apps/api/wrangler.local.jsonc",
+    "db:build:local": "wrangler deploy --dry-run --config apps/api/wrangler.local.jsonc",
     "docs:check": "node scripts/verify-documentation.mjs",
     "build:api": "wrangler deploy --dry-run --config apps/api/wrangler.jsonc",
     "design:check": "node scripts/verify-design-guards.mjs"

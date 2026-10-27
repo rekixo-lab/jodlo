@@ -1,0 +1,16 @@
+{
+  // LOCAL ONLY. Placeholder UUID is not a Cloudflare resource: never deploy this config.
+  "name": "jodlo-api-local",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-27",
+  "workers_dev": false,
+  "send_metrics": false,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "jodlo_catalog_local",
+      "database_id": "00000000-0000-0000-0000-000000000001",
+      "migrations_dir": "../../infra/migrations"
+    }
+  ]
+}

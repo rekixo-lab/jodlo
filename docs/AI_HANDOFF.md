@@ -52,7 +52,7 @@ A new, independent, responsive local-work/services platform **JODLO**, focused o
                     External adapters: FCM, RTC media provider,
                          Google Pay India/PSP or Play Billing
 ```
-The only currently implemented API route is `GET /api/v1/health`, which is a local scaffold, not production monitoring.
+The currently implemented local API includes `GET /api/v1/health` and a public read-only D1-backed `GET /api/v1/catalog` behind an optional local D1 binding. Without D1 the catalog fails closed with HTTP 503. Neither endpoint is deployed.
 
 ## Explicit code/module design
 - Backend: [`CLOUDFLARE_INFRASTRUCTURE.md`](CLOUDFLARE_INFRASTRUCTURE.md), [`MODULE_BOUNDARIES.md`](MODULE_BOUNDARIES.md).
@@ -72,7 +72,7 @@ The only currently implemented API route is `GET /api/v1/health`, which is a loc
 These snapshots do NOT prove deployed version, spend or traffic. This evidence and why it informs JODLO live in [`ARCHITECTURE_RESEARCH_20261027.md`](ARCHITECTURE_RESEARCH_20261027.md).
 
 ## Initial known implementation status
-- Local scaffold includes `apps/api/src/index.ts`, HTTP router, system health module and tests. No login, profiles, listings, payments, database, Cloudflare binding or deploy code exists yet.
+- Local scaffold includes `apps/api/src/index.ts`, HTTP router, system health module and tests. No login, profiles, listings, payments, *live* database or remote deployment exists; the first local-only public-category D1 migration and binding-backed catalog reader now exist.
 - Latest local run on 2026-10-27: `npm run check` passed (**20 required docs, 90 local Markdown links, 7/7 Node unit tests, strict TypeScript check**). This does NOT establish GitHub green CI or Cloudflare deploy; new sessions must rerun against their actual checkout.
 - **Resolved on 2026-10-27:** GitHub connector read/write works. Foundation PR #1 **merged into main** with 38 files. Main CI [run 40466265299](https://github.com/rekixo-lab/jodlo/actions/runs/40466265299) = SUCCESS. This supersedes the previous 403/empty local-archive findings.
 - Existing `jodlo.rekixo.com` is a planned address; not confirmed routed/live. No Cloudflare provisioning has been executed.
@@ -99,3 +99,6 @@ These snapshots do NOT prove deployed version, spend or traffic. This evidence a
 - [`ARCHITECTURE_RESEARCH_20261027.md`](ARCHITECTURE_RESEARCH_20261027.md) — evidence-rich source-to-target audit.
 - [`PAYMENTS.md`](PAYMENTS.md), [`decisions/0002-google-pay-and-play-billing.md`](decisions/0002-google-pay-and-play-billing.md) — payment policy and decision.
 - [`ROADMAP.md`](ROADMAP.md), [`MANUAL_ACTIONS.md`](MANUAL_ACTIONS.md), [`STATUS.md`](STATUS.md), [`TESTING.md`](TESTING.md) — execution and evidence.
+## Current PR work: local catalog database foundation (2026-10-27)
+
+The first independently reviewable database change adds `infra/migrations/0001_public_catalog.sql`, `GET /api/v1/catalog?lang=en|hi`, a local-only D1 Wrangler binding (placeholder UUID, never deploy), index/constraints and Node SQLite/fake D1 tests plus a CI local migration step. It intentionally does **not** assume final user roles, OTP/auth provider, service taxonomy, city boundaries or personal-location policy. **New code validation:** [green PR CI #40473268574](https://github.com/rekixo-lab/jodlo/actions/runs/40473268574) on code commit `0b44bf8` (19 tests, local D1 migration, both Wrangler dry-run bundles, TypeScript, docs and design checks). Reverify final docs-head PR checks and main after merging; prior main run does not cover this work. Next: approve actor/auth/area/deletion contract then implement D1 accounts/workers/listings and authorization tests. No UI or remote deployment.
