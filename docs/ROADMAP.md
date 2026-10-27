@@ -89,5 +89,9 @@ First shippable unit is local-only `categories` migration and typed read API (en
 ## M-002 Google Sign-In backend milestone — 2026-10-27
 
 - [x] Founder **approved Google Sign-In** first, no phone OTP; [ADR-0007](decisions/0007-google-signin-verified-session.md).
-- [ ] Sign-in service using Google rotating JWKS, strict RS256/issuer/audience/expiry, stable `sub` mapping, D1 transactional account link, hash-at-rest short-lived revocable sessions and logout; mark implemented only with PR/main green CI evidence.
+- [x] Locally tested Google JWKS sign-in, stable `sub` account mapping, D1 transaction, hashed expiring sessions and logout; [PR #12](https://github.com/rekixo-lab/jodlo/pull/12) merged as `494fc1ee3a41757d4099df40532759526afa5e66` with actual [green main GitHub Actions #40479368370](https://github.com/rekixo-lab/jodlo/actions/runs/40479368370) (37/37 tests, D1 migrations 0001–0003 locally, docs/design checks, strict TypeScript, both Wrangler dry-run builds). Still NOT a verified real Google/device integration.
 - [ ] M-008 (future): founder configures Google OAuth consent, Android + server client IDs and signing SHA for real-device tests. **No setup or secrets required now**. M-003 area/privacy and M-004 visual UI still need approval at their gates.
+
+## Verified authentication milestone, 2026-10-27
+
+[PR #12](https://github.com/rekixo-lab/jodlo/pull/12) merged as `494fc1ee3a41757d4099df40532759526afa5e66` with actual [green main GitHub Actions #40479368370](https://github.com/rekixo-lab/jodlo/actions/runs/40479368370) (37/37 tests, D1 migrations 0001–0003 locally, docs/design checks, strict TypeScript, both Wrangler dry-run builds). Upcoming: rate-limiting, account retention/deletion/session cleanup, owner-approved M-008 real OAuth configuration, M-003 locality/privacy, M-004 visible UI approval. No Cloudflare staging or deployment during development.

@@ -64,12 +64,17 @@
 - **Done:** [PR #10](https://github.com/rekixo-lab/jodlo/pull/10) merged as `e01dbde44cbe46aadf3d563c66f411a8c9d96818`; [main GitHub Actions #40476898497](https://github.com/rekixo-lab/jodlo/actions/runs/40476898497) SUCCESS on that commit (27 Node tests, docs/design guard, both dry-run builds, local D1 migration 0001+0002 and strict TypeScript).
 - **Pending:** M-002 real provider/OTP, M-003 area/retention, M-004 UI review. **Manual:** do not provide account passwords, tokens or OTP in chat. **Next:** seek founder direction on real login method before provider integration; do not deploy.
 
-## 2026-10-27 — M-002 Google Sign-In chosen; backend implementation PR in progress
+## 2026-10-27 — M-002 Google Sign-In backend implemented locally and verified
 
 - **Founder decision DONE:** Google Sign-In is the sole initial login; phone OTP is not selected. [ADR-0007](decisions/0007-google-signin-verified-session.md). Do not re-ask M-002.
 - **Code under review:** `0003_google_identity_sessions.sql`, server-verified Google ID token using rotating JWKS and trusted client audience; Google `sub`→opaque account mapping with D1 transactional batch, hash-only expiring session storage, owner authorization and logout revocation. One small audited `jose` cryptographic dependency; reusable local DB test adapter.
-- **Pending evidence:** hosted GitHub Actions and PR/main CI for this new implementation; **do not label implementation GREEN until latest actual run succeeds**. Tests use synthetic RSA tokens, no provider production integration.
+- **Actual evidence:** [PR #12](https://github.com/rekixo-lab/jodlo/pull/12) merged as `494fc1ee3a41757d4099df40532759526afa5e66` with actual [green main GitHub Actions #40479368370](https://github.com/rekixo-lab/jodlo/actions/runs/40479368370) (37/37 tests, D1 migrations 0001–0003 locally, docs/design checks, strict TypeScript, both Wrangler dry-run builds). Synthetic local verification does not prove real Google provider/device behavior.
 - **Manual:** M-002 DONE. **M-008 UPCOMING** Google Cloud OAuth public client IDs/Android signing setup only when real-device integration is ready. No passwords/secrets should be shared here. M-003 area/privacy, M-004 UI approval, M-007 production release pending.
-- **Next exact task:** pass crypto/account/session/migration regressions, PR review and hosted CI; then merge, verify main, record evidence. No staging or deployment.
+- **Next exact task:** implement independent backend security hardening (request rate limits, session expiry cleanup/retention and account deletion design) locally; request M-008 OAuth client configuration **when** Android provider integration needs it. No staging or deployment.
 
 - **Privacy boundary:** Google `sub` is a persistent pseudonymous personal identifier, *not anonymous data*. Real-user data retention, deletion/export and provider-configuration review remain pre-launch gates; [ADR-0007](decisions/0007-google-signin-verified-session.md).
+
+### Latest stable JODLO main checkpoint, M-002 — 2026-10-27
+
+**Done/Evidence:** [PR #12](https://github.com/rekixo-lab/jodlo/pull/12) merged as `494fc1ee3a41757d4099df40532759526afa5e66` with actual [green main GitHub Actions #40479368370](https://github.com/rekixo-lab/jodlo/actions/runs/40479368370) (37/37 tests, D1 migrations 0001–0003 locally, docs/design checks, strict TypeScript, both Wrangler dry-run builds).
+**Pending:** real Google OAuth/Android device verification (M-008 UPCOMING), area/privacy and user-data lifecycle (M-003), founder UI sign-off (M-004), login abuse throttling/operational protections. **Blocked manual now:** none; do not request credentials or OAuth secrets. **Next:** non-UI backend security/integration slice, then owner-approved Google console configuration when needed. No remote deployment and legacy Finworkar unchanged.
