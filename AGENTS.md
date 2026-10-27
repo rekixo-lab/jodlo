@@ -168,3 +168,7 @@ New explicit `/api/v1/catalog?limit=1..25&after=sort_order:category_id` keyset b
 ## Conservative intent alias fallback — 2026-10-27
 
 The Category Search's `intent-aliases.ts` is intentionally **narrow and test-backed**: four historical routine-trade identifiers, 12 hand-authored single-language intent examples, no legacy service bulk import, no activation of unapproved categories. The existing literal/grammatical Search executes first; one unambiguous alias may be offered only after **server checking an existing ACTIVE category** and any requested available-only facet. Mixed-script/romanized-Hindi and ambiguous intents never auto-choose. Never mistake this for broadly competent semantic search or a permission to seed the other 889 records. M-003/M-004/M-005/M-007 remain gated; no visual UI or remote deployment.
+
+## 2026-10-27 — Scalable alias safety contract
+
+Read [matcher QA continuation](docs/reference/JODLO_SMART_DISCOVERY_FOUNDATION_2026-10-27.md). The `validateWorkAliasRegistry` gate must remain for future approved Hindi/English examples, refusing duplicate/conflicting phrases, mixed scripts, unsafe IDs or over-budget lists. Ten candidate IDs / 24 examples are not activated categories or translation-certification; the **actual D1 active gate** remains mandatory. No UI M-004, personal location M-003, real categories M-005 or remote deploy M-007 approved by this engineering PR.

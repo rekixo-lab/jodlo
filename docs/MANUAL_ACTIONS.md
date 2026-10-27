@@ -128,3 +128,7 @@ The founder asked JODLO work to start and delegated the preferred low-friction S
 ### 2026-10-27 — Conservative search fallback engineering (no new manual gate)
 
 Founder said to continue. Only four **synthetic/tested** routine-work phrase mappings may be considered by the existing Category Search when its original matching fails, and then only when that Category was already independently activated in D1; manual choice remains. No old 889 Category or 7,267 Service bulk activation and no automatic verification. [Code boundary and tests](reference/JODLO_SMART_DISCOVERY_FOUNDATION_2026-10-27.md). Founder M-005 full safe-category rollout, M-003 location, M-004 UI, M-007 release remain unapproved and still separate. No manual credentials needed now.
+
+### 2026-10-27 — Work-intent alias editorial guard (no new manual setup now)
+
+The founder requested continued engineering. Safe code/test-only widening to the ten **proposed** routine trade IDs and 24 engineering examples does **NOT** grant category activation or approval for native-language service imports. See [matcher QA scope](reference/JODLO_SMART_DISCOVERY_FOUNDATION_2026-10-27.md). M-005 still needs explicit broad-category safety/activation policy and editorial workflow; M-003 user-area/privacy, M-004 visual UI and M-007 production remain separately gated. No cloud/API credentials required for this nonvisual change.

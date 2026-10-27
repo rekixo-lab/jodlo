@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import worker from "../src/index.ts";
 import { openLocalDatabase } from "./helpers/local-db.mjs";
-import { resolveConservativeWorkIntent } from "../src/modules/catalog/intent-aliases.ts";
+import {
+  resolveConservativeWorkIntent, validateWorkAliasRegistry, WORK_INTENT_ALIASES,
+} from "../src/modules/catalog/intent-aliases.ts";
 
 const url="https://jodlo.rekixo.com/api/v1/catalog/search";
 function setup() {
@@ -132,4 +134,95 @@ test("SQL or missing D1 never escapes; alias lookup rejects inactive and unknown
     f.db.prepare("DELETE FROM categories WHERE id='plumber'").run();
     assert.deepEqual((await f.get("नल टपक रहा है")).data.data.categories,[]);
   } finally {f.db.close();}
+});
+
+
+test("registry quality gate rejects duplicate, cross-trade overlap, malformed ID and unsupported scripts",()=>{
+  assert.equal(WORK_INTENT_ALIASES.length,24);
+  assert.deepEqual(validateWorkAliasRegistry(WORK_INTENT_ALIASES),[]);
+  const sample={categoryId:"plumber",locale:"en",phrase:"tap repair"};
+  assert.ok(validateWorkAliasRegistry([sample,sample]).some(x=>x.includes("Duplicate")));
+  const overlap=[
+    sample,
+    {categoryId:"carpenter",locale:"en",phrase:"urgent tap repair"},
+  ];
+  assert.ok(validateWorkAliasRegistry(overlap).some(x=>x.includes("Conflicting")));
+  const noOverlap=[
+    sample,
+    {categoryId:"carpenter",locale:"en",phrase:"wooden furniture"},
+  ];
+  assert.deepEqual(validateWorkAliasRegistry(noOverlap),[]);
+  for(const bad of [
+    {categoryId:"../electrician",locale:"en",phrase:"wiring repair"},
+    {categoryId:"plumber",locale:"hi",phrase:"nal tap repair"},
+    {categoryId:"plumber",locale:"hi",phrase:"नल tap repair"},
+    {categoryId:"plumber",locale:"en",phrase:"mujhe tap repair"},
+    {categoryId:"plumber",locale:"en",phrase:"Tap Repair"},
+    {categoryId:"plumber",locale:"en",phrase:"tap  repair"},
+    {categoryId:"plumber",locale:"en",phrase:"tap repair; drop"},
+    {categoryId:"plumber",locale:"en",phrase:"x".repeat(70)+" repair"},
+  ]) {
+    assert.ok(validateWorkAliasRegistry([bad]).length>0,JSON.stringify(bad));
+    if (bad.phrase==="mujhe tap repair") {
+      assert.deepEqual(resolveConservativeWorkIntent(bad.phrase),{kind:"none"});
+    }
+  }
+  assert.ok(validateWorkAliasRegistry([]).length>0);
+  assert.ok(validateWorkAliasRegistry(Array(513).fill(sample)).length>0);
+});
+test("ten proposed routine trade IDs have a tested Hindi and English phrase; no activation",()=>{
+  for(const [hi,en,expected] of [
+    ["दीवार की पुताई","wall painting","house-painter"],
+    ["घर की सफाई","house cleaning","house-cleaner-maid"],
+    ["सोफे की सफाई","sofa cleaning","sofa-carpet-cleaner"],
+    ["बगीचे की देखभाल","garden maintenance","gardener"],
+    ["घड़ी की मरम्मत","watch repair","watch-repairer"],
+    ["टायर का पंचर","tyre puncture","tyre-puncture-technician"],
+  ]) {
+    assert.deepEqual(resolveConservativeWorkIntent("मुझे "+hi+" चाहिए"),
+      {kind:"unique",categoryId:expected});
+    assert.deepEqual(resolveConservativeWorkIntent("I need "+en),
+      {kind:"unique",categoryId:expected});
+  }
+});
+test("ten-trade ambiguous and unrelated work stays fail-closed",()=>{
+  for(const phrase of [
+    "दीवार की पुताई और घर की सफाई",
+    "sofa cleaning and house cleaning",
+    "watch repair and tyre puncture",
+    "घड़ी की मरम्मत और टायर का पंचर",
+  ]) assert.deepEqual(resolveConservativeWorkIntent(phrase),{kind:"ambiguous"},phrase);
+  for(const phrase of [
+    "बिजली की मरम्मत","दवाइयों की सलाह",
+    "I need medical advice","I need tyre puncture in Bilaspur",
+    "mujhe watch repair chahiye","मुझे house cleaning चाहिए",
+    "watch repair; DROP TABLE categories",
+    "I need watch repair for car brakes",
+  ]) assert.deepEqual(resolveConservativeWorkIntent(phrase),{kind:"none"},phrase);
+});
+test("new phrases require an actual active category in D1 and honor existing availability check",async()=>{
+  const f=setup();
+  try {
+    const aliases=[
+      ["house-painter","house-painter","House Painter","घर पेंटर","दीवार की पुताई","wall painting"],
+      ["house-cleaner-maid","house-cleaner-maid","House Cleaner","घरेलू सफाईकर्मी","घर की सफाई","house cleaning"],
+      ["sofa-carpet-cleaner","sofa-carpet-cleaner","Sofa Cleaner","सोफा क्लीनर","सोफे की सफाई","sofa cleaning"],
+      ["gardener","gardener","Gardener","माली","बगीचे की देखभाल","garden maintenance"],
+      ["watch-repairer","watch-repairer","Watch Repairer","घड़ी मरम्मतकर्ता","घड़ी की मरम्मत","watch repair"],
+      ["tyre-puncture-technician","tyre-puncture-technician","Tyre Puncture Technician","टायर पंचर तकनीशियन","टायर का पंचर","tyre puncture"],
+    ];
+    const add=f.db.prepare("INSERT INTO categories(id,slug,name_en,name_hi,is_active) VALUES(?,?,?,?,1)");
+    // No API/data seeding by this test: disposable local database only.
+    for(const [id,slug,en,hi,hindi,english] of aliases) {
+      assert.deepEqual((await f.get(hindi,"&lang=hi")).data.data.categories,[]);
+      add.run(id,slug,en,hi);
+      for(const [q,display] of [[hindi,hi],["I need "+english,hi]]) {
+        const found=(await f.get(q,"&lang=hi")).data.data.categories;
+        assert.deepEqual(found,[{id,slug,name:display}],q);
+      }
+      assert.deepEqual((await f.get(hindi,"&availableOnly=1")).data.data.categories,[]);
+      f.db.prepare("UPDATE categories SET is_active=0 WHERE id=?").run(id);
+      assert.deepEqual((await f.get(hindi)).data.data.categories,[]);
+    }
+  } finally { f.db.close(); }
 });

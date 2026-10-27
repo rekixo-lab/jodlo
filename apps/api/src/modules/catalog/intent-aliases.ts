@@ -13,7 +13,7 @@ type IntentAlias = Readonly<{
   phrase: string;
 }>;
 
-const ALIASES: readonly IntentAlias[] = Object.freeze([
+export const WORK_INTENT_ALIASES: readonly IntentAlias[] = Object.freeze([
   { categoryId: "plumber", locale: "hi", phrase: "नल टपक रहा है" },
   { categoryId: "plumber", locale: "hi", phrase: "नल ठीक करना" },
   { categoryId: "plumber", locale: "en", phrase: "tap repair" },
@@ -29,6 +29,21 @@ const ALIASES: readonly IntentAlias[] = Object.freeze([
 
   { categoryId: "bicycle-repairer", locale: "hi", phrase: "साइकिल की मरम्मत" },
   { categoryId: "bicycle-repairer", locale: "en", phrase: "bicycle repair" },
+
+  // Additional explicit engineering examples for six historical candidate IDs.
+  // These do NOT seed or activate a catalog category in JODLO.
+  { categoryId: "house-painter", locale: "hi", phrase: "दीवार की पुताई" },
+  { categoryId: "house-painter", locale: "en", phrase: "wall painting" },
+  { categoryId: "house-cleaner-maid", locale: "hi", phrase: "घर की सफाई" },
+  { categoryId: "house-cleaner-maid", locale: "en", phrase: "house cleaning" },
+  { categoryId: "sofa-carpet-cleaner", locale: "hi", phrase: "सोफे की सफाई" },
+  { categoryId: "sofa-carpet-cleaner", locale: "en", phrase: "sofa cleaning" },
+  { categoryId: "gardener", locale: "hi", phrase: "बगीचे की देखभाल" },
+  { categoryId: "gardener", locale: "en", phrase: "garden maintenance" },
+  { categoryId: "watch-repairer", locale: "hi", phrase: "घड़ी की मरम्मत" },
+  { categoryId: "watch-repairer", locale: "en", phrase: "watch repair" },
+  { categoryId: "tyre-puncture-technician", locale: "hi", phrase: "टायर का पंचर" },
+  { categoryId: "tyre-puncture-technician", locale: "en", phrase: "tyre puncture" },
 ]);
 
 // Non-alias words may be ONLY ordinary single-language sentence framing.
@@ -80,11 +95,72 @@ function phraseOffset(words: string[], phrase: string): number {
   return -1;
 }
 
+
+/** Static registry quality gate for future large-scale, editor-reviewed aliases.
+ * No bulk import and no activation; 512 entries is an intentional review cap.
+ * Errors are aggregated for reviewer feedback; the live matcher fails closed.
+ */
+export function validateWorkAliasRegistry(rows: readonly IntentAlias[]): string[] {
+  if (!Array.isArray(rows) || rows.length < 1 || rows.length > 512) {
+    return ["Missing or over-budget alias registry"];
+  }
+  const problems: string[] = [];
+  const phrases = new Set<string>();
+  const perTrade = new Map<string, number>();
+  const valid: IntentAlias[] = [];
+  for (const [index, alias] of rows.entries()) {
+    if (!alias || typeof alias !== "object" || !validCategoryId(alias.categoryId) ||
+        (alias.locale !== "hi" && alias.locale !== "en") ||
+        typeof alias.phrase !== "string") {
+      problems.push("Invalid category/locale/phrase at " + index);
+      continue;
+    }
+    const name=alias.phrase;
+    if ([...name].length < 6 || [...name].length > 64 ||
+        name !== name.trim() || name !== name.normalize("NFKC") ||
+        name.includes("  ")) {
+      problems.push("Unnormalized, unbounded or padded phrase at " + index);
+      continue;
+    }
+    const matchesScript=alias.locale === "en"
+      ? /^[a-z]+(?: [a-z]+){1,5}$/u.test(name)
+      : /^[\p{Script=Devanagari}\p{Mark}]+(?: [\p{Script=Devanagari}\p{Mark}]+){1,5}$/u.test(name)
+        && /\p{Script=Devanagari}/u.test(name);
+    if (!matchesScript || (alias.locale === "en" &&
+        /\b(?:mujhe|chahiye|kaam|karta|karti|mere|meri|mera|main)\b/u.test(name))) {
+      problems.push("Non-canonical script, Romanized-Hindi words or punctuation at " + index);
+      continue;
+    }
+    const phraseKey=alias.locale+"\u0000"+name;
+    if (phrases.has(phraseKey)) problems.push("Duplicate alias at " + index);
+    phrases.add(phraseKey);
+    const tradeKey=alias.locale+"\u0000"+alias.categoryId;
+    const count=(perTrade.get(tradeKey)??0)+1;
+    perTrade.set(tradeKey,count);
+    if (count > 24) problems.push("Too many aliases for one trade");
+    valid.push(alias);
+  }
+  // Cross-category containment is disallowed even when the shorter phrase
+  // would otherwise be matched first. Reviewers must resolve that collision.
+  for (let i=0;i<valid.length;i++) for (let j=i+1;j<valid.length;j++) {
+    const a=valid[i],b=valid[j];
+    if (a.locale!==b.locale || a.categoryId===b.categoryId) continue;
+    if (phraseOffset(a.phrase.split(" "),b.phrase)>=0 ||
+        phraseOffset(b.phrase.split(" "),a.phrase)>=0) {
+      problems.push("Conflicting cross-category aliases: "+i+" / "+j);
+    }
+  }
+  return problems;
+}
+
+const REGISTRY_ERRORS=validateWorkAliasRegistry(WORK_INTENT_ALIASES);
+if (REGISTRY_ERRORS.length) throw new Error("Invalid JODLO category alias registry");
+
 /** Suggestion evidence only. Never automatic posting or claim of qualification. */
 export function resolveConservativeWorkIntent(raw: string): WorkIntent {
   const parsed = tokenize(raw);
   if (!parsed) return NONE;
-  const hits = ALIASES
+  const hits = WORK_INTENT_ALIASES
     .filter(a => a.locale === parsed.locale && validCategoryId(a.categoryId))
     .map(a => ({ alias: a, at: phraseOffset(parsed.words, a.phrase) }))
     .filter(hit => hit.at >= 0);
