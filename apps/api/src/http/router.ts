@@ -36,7 +36,9 @@ export async function handleRequest(request: Request, env: Env = {}): Promise<Re
     if (methodError) return methodError;
     const params = url.searchParams;
     const language = params.get("lang") ?? "en";
-    if ([...params.keys()].some(key => key !== "lang") ||
+    let hasUnknownParameter = false;
+    params.forEach((_value, key) => { if (key !== "lang") hasUnknownParameter = true; });
+    if (hasUnknownParameter ||
         params.getAll("lang").length > 1 ||
         (language !== "en" && language !== "hi")) {
       return json({ ok: false, error: { code: "INVALID_QUERY", message: "Invalid catalog query" } }, 400);
