@@ -42,3 +42,7 @@ No Firebase/Firestore schema, no legacy auth/OTP, no legacy Razorpay, no automat
 ## 2026-10-27 — Original JODLO spoken-query prototype (non-migrated)
 
 The legacy matcher treated Hindi voice grammar and Roman Hindi intent words as low-signal while emphasizing the work/category term. JODLO builds **its own** tiny safe phrase analyzer (no copied legacy vocabulary) for public category search in `catalog/search-phrases.ts`, matching all remaining category terms and returning nothing for unspecific or unresolved multi-trade phrases. No actual microphone, speech recognition, offline model, worker discovery or old data migrated. CI verification pending; M-005 founder policy still controls future synonym/category/voice experience.
+
+## IMPORTANT founder-approved language correction (2026-10-27)
+
+The old Finworkar indeed had Hindi/Hinglish speech or text matching, and that fact remains part of its **read-only historical behavior study**. **Do NOT transfer Hinglish support to JODLO.** JODLO has *exactly two* approved languages: Hindi in Devanagari and English; no Romanized Hindi/mixed-script parsing, Hinglish UI strings or transliteration. The prior JODLO prototype's Hinglish code is superseded. See [ADR-0008](decisions/0008-hindi-english-only.md).

@@ -137,5 +137,10 @@ First shippable unit is local-only `categories` migration and typed read API (en
 
 ## Safe pre-M-005 speech/typing discovery (2026-10-27)
 
-- [ ] Implement original lightweight Hindi/Hinglish/English natural-sentence category term extraction and conservative all-term matching using existing public catalog only; no alias guess, multilingual ML, or real worker matching. Verify PR + exact resulting main green CI before completion claim.
+- [x] Historical PR #24 implemented natural category phrase matching; the subsequent founder correction **forbids Hinglish**. Replace former Roman-Hindi grammar with **Hindi (Devanagari) + English only**, and cover unsupported mixed-script queries in tests. Track actual corrective PR/main green CI separately.
 - [ ] Later founder M-005 decides actual service category inventory/synonyms, phrase ambiguity UX and whether voice input is desired; M-004 required before client UI, M-003 before location data.
+
+## APPROVED language scope correction — 2026-10-27
+
+- [ ] Complete founder's **Hindi + English only** restriction, prohibit Hinglish/Romanized Hindi/mixed-script intent and UI copy, replace older test assertions and confirm exact PR/main CI. [ADR-0008](decisions/0008-hindi-english-only.md). No owner question needed.
+- [ ] Do not build UI before M-004; avoid actual service listing/location/call writes before M-003/M-005. No cloud deployment before M-007.

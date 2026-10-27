@@ -1,3 +1,7 @@
+## HARD language rule — founder decision, 2026-10-27
+
+JODLO supports **exactly two languages: Hindi (Devanagari script) and English**. **NO Hinglish, Romanized Hindi, mixed-script natural sentences, transliteration layer, or Hinglish UI/copy/content.** The founder explicitly corrected an earlier unauthorized Hinglish implementation. The Hindi/English catalog text parser, tests and future UI/copy must follow this rule, without treating previous Finworkar behavior or old project notes as approval for a third language. For language decision evidence read [ADR-0008](docs/decisions/0008-hindi-english-only.md). UI still must wait for M-004. This is a founder-approved rule, not a pending question.
+
 # JODLO — instructions for any new AI/engineer session
 
 > **MOST RECENT OWNER INSTRUCTION (2026-10-27): No staging, no deployment while building JODLO.** Finish all code with local Worker/D1/R2/Queue simulations, fake payment/RTC/FCM adapters and green GitHub CI. No Cloudflare tokens or DNS work until final approved production release. Previous staging workflow has been deleted. See [ADR-0004](docs/decisions/0004-local-first-no-staging-until-production.md), [Release Readiness](docs/RELEASE_READINESS.md).
