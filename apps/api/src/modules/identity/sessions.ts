@@ -65,7 +65,7 @@ export async function issueSession(db: D1Database, accountId: string): Promise<I
   await db.prepare(PRUNE_EXPIRED_QUERY).bind(now, CLEANUP_BATCH_SIZE).run();
   const token = newOpaqueSecret();
   const result = await db.prepare(INSERT_BOUNDED_SESSION_QUERY)
-    .bind(await sessionHash(token), accountId, now + SESSION_TTL_SECONDS, now, MAX_ACTIVE_SESSIONS)
+    .bind(await sessionHash(token), now + SESSION_TTL_SECONDS, accountId, now, MAX_ACTIVE_SESSIONS)
     .run();
   if (result.meta.changes !== 1) return null;
   return { accessToken: token, tokenType: "Bearer", expiresInSeconds: SESSION_TTL_SECONDS };
