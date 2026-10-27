@@ -4,6 +4,7 @@ import type { D1Database, IdentityVerifier } from "../../data/d1.ts";
 export const SESSION_TTL_SECONDS = 60 * 60;
 export const MAX_ACTIVE_SESSIONS = 6;
 const CLEANUP_BATCH_SIZE = 100;
+const VALID_SESSION_TOKEN = /^[A-Za-z0-9_-]{43}$/;
 
 export const OWN_SESSION_QUERY =
   "SELECT a.id AS accountId FROM auth_sessions AS s " +
@@ -39,7 +40,7 @@ export async function sessionHash(token: string): Promise<string> {
 }
 
 export async function findSessionAccount(db: D1Database, token: string): Promise<string | null> {
-  if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return null;
+  if (!VALID_SESSION_TOKEN.test(token)) return null;
   const { results } = await db.prepare(OWN_SESSION_QUERY)
     .bind(await sessionHash(token), Math.floor(Date.now() / 1000))
     .all<{ accountId: string }>();
@@ -71,19 +72,39 @@ export async function issueSession(db: D1Database, accountId: string): Promise<I
   return { accessToken: token, tokenType: "Bearer", expiresInSeconds: SESSION_TTL_SECONDS };
 }
 
+/**
+ * Single-statement conditional revoke: no read-then-delete TOCTOU window.
+ * SQLite/D1 decides eligibility and row changes in the SAME write statement,
+ * so an already-revoked/expired/disabled session can never report success.
+ */
+export const REVOKE_SESSION_QUERY =
+  "DELETE FROM auth_sessions WHERE token_hash = ? AND expires_at > ? " +
+  "AND account_id IN (SELECT id FROM accounts WHERE status = 'active')";
+
+/**
+ * Resolve the caller's account using its own LIVE bearer-hash in a subquery
+ * inside the DELETE. No account ID supplied by headers/body or earlier reads.
+ * Other accounts' sessions never match; the caller token is deleted too.
+ */
+export const REVOKE_ALL_SESSIONS_QUERY =
+  "DELETE FROM auth_sessions WHERE account_id = (" +
+  "SELECT s.account_id FROM auth_sessions AS s " +
+  "JOIN accounts AS a ON a.id = s.account_id " +
+  "WHERE s.token_hash = ? AND s.expires_at > ? AND a.status = 'active' LIMIT 1)";
+
 export async function revokeSession(db: D1Database, token: string): Promise<boolean> {
-  if (!await findSessionAccount(db, token)) return false;
-  await db.prepare("DELETE FROM auth_sessions WHERE token_hash = ?")
-    .bind(await sessionHash(token)).run();
-  return true;
+  if (!VALID_SESSION_TOKEN.test(token)) return false;
+  const now = Math.floor(Date.now() / 1000);
+  const { meta } = await db.prepare(REVOKE_SESSION_QUERY)
+    .bind(await sessionHash(token), now).run();
+  return meta.changes === 1;
 }
 
-/** Revoke only sessions belonging to the currently authenticated actor.
- * No client-selected account, subject, or device ID is accepted.
- */
+/** Revoke all devices using a single owner-scoped database statement. */
 export async function revokeAllSessions(db: D1Database, token: string): Promise<boolean> {
-  const accountId = await findSessionAccount(db, token);
-  if (!accountId) return false;
-  await db.prepare("DELETE FROM auth_sessions WHERE account_id = ?").bind(accountId).run();
-  return true;
+  if (!VALID_SESSION_TOKEN.test(token)) return false;
+  const now = Math.floor(Date.now() / 1000);
+  const { meta } = await db.prepare(REVOKE_ALL_SESSIONS_QUERY)
+    .bind(await sessionHash(token), now).run();
+  return meta.changes > 0;
 }
