@@ -180,3 +180,8 @@ First shippable unit is local-only `categories` migration and typed read API (en
 ## Verified logout + next owner decision (2026-10-27)
 
 [PR #33](https://github.com/rekixo-lab/jodlo/pull/33) merged as `5d7906e96cd71d7f104fcb58098ea5547b6b098b`; [main GitHub Actions #40504504583](https://github.com/rekixo-lab/jodlo/actions/runs/40504504583) completed **SUCCESS** on that exact commit (119/119 Node tests, docs/design/founder checks, local D1 migrations, strict TypeScript and both Wrangler dry-run Worker builds). **Next**: get explicit M-005 choice for manual-review-before-publication vs auto-publish, then actual pilot city/categories and customer contact stages; M-003 locality/retention separately. These are not automatically approved by general engineering go-ahead. M-004 design, M-008 real OAuth, M-007 production continue gated. No Hinglish.
+
+## 2026-10-27 — Founder approved immediate self-publication (specific M-005 choice)
+
+- [ ] Ship minimal safe category-only worker listings: 0004 D1, immediate owner publish/unpublish, live active category/worker and moderation guard, no badge/PII, new strict HTTP routes and local integration tests. Complete only after PR+exact merged main CI GREEN. [ADR-0009](decisions/0009-instant-service-publication.md).
+- [ ] M-005 remaining actual pilot city/categories, moderation admin/reporting, trusted verification criteria, customer request/contact choices; M-003 area/privacy/retention, M-004 visual signoff, M-008 live Google and M-007 production still gated. Older manual-review proposal superseded.

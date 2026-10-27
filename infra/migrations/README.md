@@ -23,3 +23,7 @@
 **Account lifecycle rehearsal:** synthetic SQLite tests will delete only disposable accounts to confirm existing `ON DELETE CASCADE` relationships and transaction rollback on failure; no new migration or public deletion API is added without founder M-003 retention/deletion approval.
 
 **Verified synthetic account cascade and rollback:** [PR #16](https://github.com/rekixo-lab/jodlo/pull/16) merged as `17ea0b882977ad0bd3a695e49b0112dde64fc9d6`; [main Actions #40482955589](https://github.com/rekixo-lab/jodlo/actions/runs/40482955589) completed **SUCCESS** on that exact commit (49/49 Node tests, docs/design checks, local D1 migrations, TypeScript and both Wrangler dry-run builds). Existing D1 migrations 0001–0003 were applied locally; **no remote migration or approved public delete API** exists.
+
+## 0004 — Immediate minimal worker service publication, local only
+
+D1 `worker_listings` records **only category and opaque owner/listing IDs**; owner remains `worker_profiles.status='draft'`. Unique owner/category, worker unpublish and moderator `hidden` guard public category lookup. No personal GPS/contact/price/media or automatic verification. No actual pilot category seeds or remote migrations until M-007. [ADR-0009](../../docs/decisions/0009-instant-service-publication.md).
