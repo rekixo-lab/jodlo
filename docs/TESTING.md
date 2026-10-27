@@ -64,3 +64,8 @@ Local synthetic DB and fake trusted-auth tests assert one customer account + opt
 - Production edge/WAF/dynamic rate-limit behavior, distributed concurrency, anti-bot protections and IP-based limits are **NOT validated by these tests**. Approximate Cloudflare per-location limits may be exceeded and shared pre-auth bucket can cause false positives. No remote bindings/deployment.
 
 **Verified local admission/cascade milestone:** [PR #16](https://github.com/rekixo-lab/jodlo/pull/16) merged as `17ea0b882977ad0bd3a695e49b0112dde64fc9d6`; [main Actions #40482955589](https://github.com/rekixo-lab/jodlo/actions/runs/40482955589) completed **SUCCESS** on that exact commit (49/49 Node tests, docs/design checks, local D1 migrations, TypeScript and both Wrangler dry-run builds). This proves mocked counter behavior, strict module types and local migration builds, not strict production PoP rate limits or privacy compliance.
+
+## Privacy-safe public taxonomy search (2026-10-27)
+
+- Synthetic SQLite seeded *only in tests* to verify `GET /api/v1/catalog/search`: English/Hindi and fallback, active-only draft exclusion, id/slug/name projection, ordered page navigation (limit ≤25, offset ≤100), Unicode NFC, literal `instr` behavior for `%`/`_`/SQL injection, strict parameter rejection and no private worker/area/contact routes.
+- Reuse catalog D1/SQLite adapter, no migration/dependency or actual service inventory. Require latest PR and main CI confirmation; **not** worker discovery, location search, production scale/performance evaluation or founder-approved pilot data.

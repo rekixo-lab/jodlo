@@ -43,3 +43,7 @@ Founder expressly chose **Google Sign-In only initially** (not phone OTP) in thi
 ## Current manual checkpoint after PR #16 (2026-10-27)
 
 [PR #16](https://github.com/rekixo-lab/jodlo/pull/16) merged as `17ea0b882977ad0bd3a695e49b0112dde64fc9d6`; [main Actions #40482955589](https://github.com/rekixo-lab/jodlo/actions/runs/40482955589) completed **SUCCESS** on that exact commit (49/49 Node tests, docs/design checks, local D1 migrations, TypeScript and both Wrangler dry-run builds). This backend admission and synthetic lifecycle work needed no new founder approval. **M-003 still UPCOMING** for area/retention/deletion, **M-005 UPCOMING** pilot locality/categories/contact lifecycle; M-004 UI review before screen code and M-008 Google OAuth setup before real-device validation. No manual Google Console, Cloudflare or merchant tasks at this milestone. Never infer a privacy decision from test-only cascades.
+
+## Safe catalog search development checkpoint — 2026-10-27
+
+A new public read-only category-name search does not select pilot categories, request lifecycle, trust labels or locality; it uses only previously gated `is_active` category data and is tested with synthetic rows. **No new manual action now.** M-003 must be decided before real user location/retention, M-005 before populating pilot taxonomy and public worker discovery, M-004 before visual UI, M-008 before live Google integration, M-007 before first production-only Cloudflare release. Do not interpret search API tests as an approved location model.

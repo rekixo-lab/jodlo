@@ -1,5 +1,5 @@
 import type { Env } from "../data/d1.ts";
-import { listPublicCategories, type CatalogLanguage } from "../modules/catalog/catalog.ts";
+import { listPublicCategories, parseCatalogSearch, searchPublicCategories, type CatalogLanguage } from "../modules/catalog/catalog.ts";
 import { healthData } from "../modules/system/health.ts";
 import { optInAsWorker, ownWorkerDraft } from "../modules/workers/profile.ts";
 import { validGoogleClientId, verifyGoogleIdToken } from "../modules/identity/google.ts";
@@ -52,6 +52,24 @@ export async function handleRequest(
   const url = new URL(request.url);
   if (url.pathname === "/api/v1/health") {
     return getOnly(request) ?? json({ ok: true, data: healthData() });
+  }
+  if (url.pathname === "/api/v1/catalog/search") {
+    const methodError = getOnly(request);
+    if (methodError) return methodError;
+    const options = parseCatalogSearch(url.searchParams);
+    if (!options) {
+      return json({ ok: false, error: { code: "INVALID_QUERY", message: "Invalid catalog search query" } }, 400);
+    }
+    if (!env.DB) {
+      return json({ ok: false, error: { code: "SERVICE_UNAVAILABLE", message: "Catalog unavailable" } }, 503);
+    }
+    try {
+      const page = await searchPublicCategories(env.DB, options);
+      return json({ ok: true, data: { language: options.language, query: options.query, ...page } });
+    } catch {
+      // Neither SQL errors nor data/credentials are returned to anonymous callers.
+      return json({ ok: false, error: { code: "SERVICE_UNAVAILABLE", message: "Catalog unavailable" } }, 503);
+    }
   }
   if (url.pathname === "/api/v1/catalog") {
     const methodError = getOnly(request);
