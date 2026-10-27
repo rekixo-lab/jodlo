@@ -86,3 +86,9 @@ Local synthetic DB and fake trusted-auth tests assert one customer account + opt
 - No real user data, personal GPS/contact, public worker endpoint, D1 mutable-request transaction, call provider, production login or Firebase/Android code. Test-only pure guard is NOT proof of authorized transactional contact creation. Confirm latest PR + main green CI before claiming done.
 
 **Verified read-only behavior-based contact guard:** [PR #22](https://github.com/rekixo-lab/jodlo/pull/22) merged as `24ed69e735e136cc95b6ac43f74d83f08d019e6a`; [main GitHub Actions #40489994251](https://github.com/rekixo-lab/jodlo/actions/runs/40489994251) **SUCCESS** on the same commit (76/76 Node tests, local D1, docs/design guards, strict TypeScript, both Wrangler dry-run builds). This tests only pure synthetic rules, not an actual authenticated, transactional contact request or live service.
+
+## Natural spoken-language service intent tests (2026-10-27)
+
+- Pure bounded analyzer + local SQLite/Worker integration: `मुझे प्लंबिंग का काम चाहिए`, `मैं प्लंबिंग का काम करता हूँ`, `main plumbing ka kaam karta hu`, `I need painting`, no hallucinated synonym for `plumber`, unknown multiple trades/only generic speech produce no artificial match.
+- Preserve existing literal catalog queries including `%`, `_`, SQL punctuation; prepared term predicates, cap at 6 content terms and existing 25/page; prevent drafts, phone/GPS/workers leaking.
+- No real voice capture, speech transcription, curated vocabulary or published worker search tested. Await exact PR/main CI proof.

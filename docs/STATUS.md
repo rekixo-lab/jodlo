@@ -145,3 +145,9 @@
 **Pending:** real location consent, retention/deletion; pilot worker visibility, trust, category and request lifecycle; atomic D1 rechecks, notifications/calls, Android UI, real Google OAuth/devices, production readiness.
 **Manual NOW:** none for this slice. **M-003 and M-005 UPCOMING** when moving from pure contracts to operational marketplace; M-004 UI, M-008 OAuth, M-007 production still gated.
 **Next:** founder-led privacy/location and real worker/contact workflow decisions when implementation needs them; otherwise continue safe reusable mock integration tests. No Cloudflare deployment.
+
+## 2026-10-27 — Natural Hindi/Hinglish catalog text search (pending PR CI)
+
+- Continue the READ-ONLY legacy Finworkar speech/category intent study without porting its proprietary matcher vocabulary, Firebase categories or UI. New **small original** `catalog/search-phrases.ts` strips only explicit Hindi/Hinglish/English grammatical search words; preserves existing literal query behavior when no sentence signal is present. The existing read-only public category search reuses one bound SQL term expression to match **every meaningful trade word** (conservative intersection), never invents synonyms, trust labels or workers. Category output/limits/public projection unchanged; zero meaningful words returns no results.
+- Synthetic local D1/Worker tests cover Hindi spoken-worker/customer phrasing, Roman Hindi, English, ambiguity/no-trade cases, active-only/category privacy, bounded pagination and SQL metacharacter injection defense. No real worker discovery, locations, category seeding, personal user data, new tables, UI or providers.
+- **PR/main GitHub CI pending** for this slice; record actual evidence only after GREEN. M-003 area/privacy/retention and M-005 pilot category/worker workflows still owner-controlled; no Cloudflare deployment.

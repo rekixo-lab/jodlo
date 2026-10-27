@@ -134,3 +134,8 @@ First shippable unit is local-only `categories` migration and typed read API (en
 
 - [x] Read-only legacy worker/customer behavior study plus independent pure JODLO contact guard, tests and CI. [PR #22](https://github.com/rekixo-lab/jodlo/pull/22) merged as `24ed69e735e136cc95b6ac43f74d83f08d019e6a`; [main GitHub Actions #40489994251](https://github.com/rekixo-lab/jodlo/actions/runs/40489994251) **SUCCESS** on the same commit (76/76 Node tests, local D1, docs/design guards, strict TypeScript, both Wrangler dry-run builds). No actual requests/listings.
 - [ ] After founder M-003 and M-005 decisions: implement final worker listings, area-first search, contact/request stages and true atomic authorization/rechecks in D1; later device/RTC/Google integrations only at approved gates. No Firebase, Razorpay or existing UI copying.
+
+## Safe pre-M-005 speech/typing discovery (2026-10-27)
+
+- [ ] Implement original lightweight Hindi/Hinglish/English natural-sentence category term extraction and conservative all-term matching using existing public catalog only; no alias guess, multilingual ML, or real worker matching. Verify PR + exact resulting main green CI before completion claim.
+- [ ] Later founder M-005 decides actual service category inventory/synonyms, phrase ambiguity UX and whether voice input is desired; M-004 required before client UI, M-003 before location data.
