@@ -260,3 +260,5 @@ New incremental phrase search will support natural text such as `मुझे �
 ## Safe request transaction rehearsal (backend tests only, 2026-10-27)
 
 An ephemeral two-connection SQLite test journal rehearses optimistic revision control, request retry receipt uniqueness, rollback and owner revalidation using **synthetic requests**. The pure request contract rejects stale/future receipts. This is not a new booking/worker API, not a D1 migration, not production-grade distributed concurrency, nor a founder-approved request lifecycle. Hindi and English only (ADR-0008); see [Status](docs/STATUS.md) for CI.
+
+**Verified request-safety tests:** [PR #27](https://github.com/rekixo-lab/jodlo/pull/27) merged as `68d89e593fa34760aec1af9a04c8c64f11360590`; [main GitHub Actions #40495912363](https://github.com/rekixo-lab/jodlo/actions/runs/40495912363) **SUCCESS** on the exact commit (93/93 Node tests, local D1 migrations, docs/design guards, strict TypeScript and both Wrangler dry-run bundles). This is local disposable SQLite atomicity rehearsal, not production Cloudflare D1 request storage or an approved booking workflow.

@@ -147,5 +147,9 @@ First shippable unit is local-only `categories` migration and typed read API (en
 
 ## Request consistency before real request storage (2026-10-27)
 
-- [ ] Synthetic SQLite two-connection BEGIN IMMEDIATE/CAS + composite-key receipt, failed transaction rollback and stale-owner replay tests; add pure receipt integrity check. Mark done only after exact PR and main GitHub CI Green. This is local-only, not actual Cloudflare D1 concurrency proof.
+- [x] Disposable two-connection SQLite CAS/composite-key retry journal, rollback and stale-owner/revision tests plus pure integrity hardening. [PR #27](https://github.com/rekixo-lab/jodlo/pull/27) merged as `68d89e593fa34760aec1af9a04c8c64f11360590`; [main GitHub Actions #40495912363](https://github.com/rekixo-lab/jodlo/actions/runs/40495912363) **SUCCESS** on the exact commit (93/93 Node tests, local D1 migrations, docs/design guards, strict TypeScript and both Wrangler dry-run bundles). Local only, no real D1 implementation.
 - [ ] Real durable request table/API still blocked by M-005 owner workflow choices; real location or personal-data retention by M-003; Hindi+English only ADR-0008, UI M-004, OAuth M-008, deployment M-007 still enforced.
+
+## Verified request consistency rehearsal — 2026-10-27
+
+[PR #27](https://github.com/rekixo-lab/jodlo/pull/27) merged as `68d89e593fa34760aec1af9a04c8c64f11360590`; [main GitHub Actions #40495912363](https://github.com/rekixo-lab/jodlo/actions/runs/40495912363) **SUCCESS** on the exact commit (93/93 Node tests, local D1 migrations, docs/design guards, strict TypeScript and both Wrangler dry-run bundles). Next real-request/storage/worker publication needs M-005 founder workflow signoff and M-003 privacy/locality decisions. Continue using test-only contracts until then; UI M-004, OAuth M-008, production M-007 gated. No Hinglish; Hindi/English only.
