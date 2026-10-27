@@ -7,7 +7,7 @@ import { auditFounderGates } from "./verify-founder-gates.mjs";
 const routes=[
   "/api/v1/health", "/api/v1/catalog", "/api/v1/catalog/search",
   "/api/v1/auth/google", "/api/v1/auth/logout", "/api/v1/auth/logout-all",
-  "/api/v1/me/worker-profile",
+  "/api/v1/me/worker-profile", "/api/v1/me/listings", "/api/v1/listings",
 ];
 function baseline() {
   return {
@@ -18,6 +18,7 @@ function baseline() {
     "infra/migrations/0001_public_catalog.sql":"CREATE TABLE categories (id TEXT);",
     "infra/migrations/0002_shared_accounts_worker_drafts.sql":
       "CREATE TABLE accounts (id TEXT); CREATE TABLE worker_profiles (status TEXT NOT NULL DEFAULT 'draft' CHECK(status = 'draft'));",
+    "infra/migrations/0004_worker_service_listings.sql":"CREATE TABLE worker_listings (id TEXT);",
     "infra/migrations/0003_google_identity_sessions.sql":
       "CREATE TABLE google_identities (id TEXT); CREATE TABLE auth_sessions (id TEXT);",
     "docs/decisions/0008-hindi-english-only.md":"Hinglish is NOT a supported language",
@@ -41,11 +42,11 @@ async function fixture(mutate,action=auditFounderGates) {
 test("approved routes, tables, draft state and languages pass",async()=>{
   const result=await fixture();
   assert.deepEqual(result.errors,[]);
-  assert.equal(result.routes.length,7);
-  assert.equal(result.tables.length,5);
+  assert.equal(result.routes.length,9);
+  assert.equal(result.tables.length,6);
 });
 test("unapproved workers, requests, area and listing routes fail",async()=>{
-  for(const p of ["/api/v1/workers","/api/v1/requests","/api/v1/areas","/api/v1/listings"]){
+  for(const p of ["/api/v1/workers","/api/v1/requests","/api/v1/areas","/api/v1/contact"]){
     const result=await fixture(f=>{f["apps/api/src/http/router.ts"]+='\nif(url.pathname==="'+p+'")return;';});
     assert.ok(result.errors.some(e=>e.includes("Unapproved API route: "+p)),p);
   }
@@ -69,12 +70,12 @@ test("worker SQL draft-only CHECK cannot be relaxed",async()=>{
 test("new operational table or alteration of worker schema fails",async()=>{
   const result=await fixture(f=>{
     f["infra/migrations/0004_unapproved.sql"]=
-      "CREATE TABLE service_requests (id TEXT); CREATE TABLE worker_listings (id TEXT); "+
+      "CREATE TABLE service_requests (id TEXT); CREATE TABLE contact_records (id TEXT); "+
       "ALTER TABLE worker_profiles ADD COLUMN is_public INTEGER;";
   });
   const errors=result.errors.join(" ");
   assert.match(errors,/Unapproved D1 table: service_requests/);
-  assert.match(errors,/Unapproved D1 table: worker_listings/);
+  assert.match(errors,/Unapproved D1 table: contact_records/);
   assert.match(errors,/Unauthorized worker_profiles schema mutation/);
 });
 test("third locale and Roman Hindi grammar fail",async()=>{

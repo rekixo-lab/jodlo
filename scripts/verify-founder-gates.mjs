@@ -6,10 +6,10 @@ const rootDefault = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const allowedRoutes = new Set([
   "/api/v1/health", "/api/v1/catalog", "/api/v1/catalog/search",
   "/api/v1/auth/google", "/api/v1/auth/logout", "/api/v1/auth/logout-all",
-  "/api/v1/me/worker-profile",
+  "/api/v1/me/worker-profile", "/api/v1/me/listings", "/api/v1/listings",
 ]);
 const allowedTables = new Set([
-  "categories", "accounts", "worker_profiles", "google_identities", "auth_sessions",
+  "categories", "accounts", "worker_profiles", "google_identities", "auth_sessions", "worker_listings",
 ]);
 async function required(root, path, errors) {
   try { return await readFile(join(root, path), "utf8"); }

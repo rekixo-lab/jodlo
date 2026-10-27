@@ -116,7 +116,7 @@ test("literal wildcard/quote/SQL-like payloads and oversized input remain safely
 test("no locality, real worker, contact or request API is exposed by natural search", async () => {
   const { db, env } = fixture();
   try {
-    for(const path of ["/api/v1/workers","/api/v1/listings",
+    for(const path of ["/api/v1/workers",
       "/api/v1/areas","/api/v1/requests","/api/v1/noknok"]) {
       assert.equal((await worker.fetch(new Request("https://jodlo.rekixo.com"+path), env)).status,404);
     }

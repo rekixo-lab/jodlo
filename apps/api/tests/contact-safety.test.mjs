@@ -99,7 +99,7 @@ test("safety decision exposes no contacts, precise location or internal metadata
 
 test("no public contact, Nok-Nok, direct-call, listing or worker routes were added", async () => {
   for (const route of ["/api/v1/contact","/api/v1/noknok","/api/v1/calls",
-      "/api/v1/listings","/api/v1/workers","/api/v1/requests"]) {
+      "/api/v1/workers","/api/v1/requests"]) {
     const response=await worker.fetch(new Request("https://jodlo.rekixo.com"+route));
     assert.equal(response.status,404,route);
   }
