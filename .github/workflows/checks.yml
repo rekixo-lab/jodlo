@@ -16,7 +16,9 @@ jobs:
           node-version: '22'
       - name: Validate linked docs (no deps)
         run: npm run docs:check
-      - name: Native Node API tests (no deps)
+      - name: Enforce design token and asset deduplication rules (no deps)
+        run: npm run design:check
+      - name: Node API and design-guard fixture tests (no deps)
         run: npm test
       - name: Install TypeScript and Wrangler (no deployment)
         run: npm install --no-audit --no-fund
