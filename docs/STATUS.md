@@ -71,3 +71,5 @@
 - **Pending evidence:** hosted GitHub Actions and PR/main CI for this new implementation; **do not label implementation GREEN until latest actual run succeeds**. Tests use synthetic RSA tokens, no provider production integration.
 - **Manual:** M-002 DONE. **M-008 UPCOMING** Google Cloud OAuth public client IDs/Android signing setup only when real-device integration is ready. No passwords/secrets should be shared here. M-003 area/privacy, M-004 UI approval, M-007 production release pending.
 - **Next exact task:** pass crypto/account/session/migration regressions, PR review and hosted CI; then merge, verify main, record evidence. No staging or deployment.
+
+- **Privacy boundary:** Google `sub` is a persistent pseudonymous personal identifier, *not anonymous data*. Real-user data retention, deletion/export and provider-configuration review remain pre-launch gates; [ADR-0007](decisions/0007-google-signin-verified-session.md).

@@ -15,3 +15,5 @@
 ## Migration 0003 — Google subject and revocable sessions
 
 `0003_google_identity_sessions.sql` links only Google OIDC `sub` (stable, verified server-side) to the internal account and stores only SHA-256 hashes of random 32-byte sessions with expiry and `ON DELETE CASCADE`. No email, phone, passwords, raw Google ID token or session secret stored. Versioned local Wrangler D1 migration and synthetic SQLite tests must pass before PR merge; no migration is ever applied remotely during normal development. Production session cleanup/retention and provider configuration are release gates, not completed features.
+
+**Data classification:** Google `sub` is a persistent pseudonymous personal identifier. Real retention/deletion/export policy must include `google_identities` and `auth_sessions`; test cascade alone is not sufficient legal compliance.

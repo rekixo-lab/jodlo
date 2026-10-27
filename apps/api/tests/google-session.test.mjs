@@ -63,6 +63,19 @@ test("Google sign-in binds stable subject exactly once and returns random one-ho
   } finally { db.close(); }
 });
 
+test("two simultaneous first Google logins link to one stable account without orphan rows", async()=>{
+  const {db,env,fakeGoogle}=fixture();
+  try {
+    const responses=await Promise.all([postLogin(env,fakeGoogle),postLogin(env,fakeGoogle)]);
+    assert.deepEqual(responses.map(r=>r.status),[200,200]);
+    const sessions=await Promise.all(responses.map(r=>r.json()));
+    assert.notEqual(sessions[0].data.accessToken,sessions[1].data.accessToken);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM accounts").get().n,1);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM google_identities").get().n,1);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM auth_sessions").get().n,2);
+  } finally {db.close();}
+});
+
 test("login denied without configuration, malformed/unknown credentials and unsolicited fields", async()=>{
   const {db,env,fakeGoogle,getVerified}=fixture();
   try{
