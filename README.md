@@ -272,3 +272,5 @@ JODLO rehearses how to avoid unintentionally disclosing draft/unpublished/inacti
 ## CI founder gate audit (backend, local only)
 
 `npm run founder:check` rejects accidental expansion of public worker/request routes, new operational D1 tables, worker draft publishing, extra language locales and remote Wrangler deployment commands while founder decisions M-003/M-005/M-007 are not approved. It is a lightweight static tripwire and not a comprehensive security audit. Synthetic fixtures run in `npm test`. See [Status](docs/STATUS.md) and [Manual Actions](docs/MANUAL_ACTIONS.md). No new user-facing features or deployment.
+
+**Verified no-dependency founder gate checks:** [PR #31](https://github.com/rekixo-lab/jodlo/pull/31) merged as `812ec39f51b70ce10564c4396cd7824b8caf78e5`; [main GitHub Actions #40501136670](https://github.com/rekixo-lab/jodlo/actions/runs/40501136670) **SUCCESS** on the exact commit (111/111 Node tests, docs/design/founder no-dependency checks, local D1 migrations, TypeScript strict and both Wrangler dry-run bundles). It is defense-in-depth against accidental source expansion, not complete security, owner approval or deployed service.
