@@ -1,0 +1,32 @@
+# JODLO — Read-only availability-aware category discovery foundation (2026-10-27)
+
+**Founder direction:** avoid leaving legitimate workers out solely because of a ten-item pilot shortlist; let them find work by typing/speaking, while customers should see real relevant available listings rather than empty category walls. This is a technical **first slice**, not a completed intelligent matcher or approval to seed/activate the 889 historical categories.
+
+## Implemented contract, no new route or table
+
+The **existing** public endpoints now support an opt-in `availableOnly=1` query facet:
+
+- `GET /api/v1/catalog?lang=hi` — unchanged response; all currently **active/approved** category entries, maximum 100 (existing limit).
+- `GET /api/v1/catalog?lang=hi&availableOnly=1` — same projection (`id,slug,name`), but only active categories with at least one currently publicly eligible worker listing. Suitable as a *non-geographic* candidate set for the future customer's Home; **NOT** proof that any worker is within a particular city or available at a requested time.
+- `GET /api/v1/catalog/search?lang=hi&q=<encoded Hindi>&availableOnly=1` — same bounded, paginated, bilingual text search but limited to categories with a live eligible listing.
+- `GET /api/v1/catalog/search?lang=hi&q=<encoded Hindi>` — unchanged search over the whole **active category** inventory (including empty categories), so a first worker can find a trade; future customer could also discover an empty category and get an explicit no-results state.
+
+Only an exact `availableOnly=1` is supported, and duplicate/unknown query keys are rejected. No `availableOnly=0` or fake public `isAvailable` flag; do not infer an unapproved area or viewer identity from this read. The `categories` arrays retain their original API shape. Public listing eligibility is a **single shared SQL predicate** used by the existing `GET /api/v1/listings` path and these two optional facets: published status, moderator allowed, active worker account, existing opted-in private worker draft, active category. Correlated `EXISTS` prevents duplicate categories with multiple workers. This reflects current D1 state when queried; no cached counter drift. Tests cover publish/unpublish, moderation, disabled accounts, opt-in removal, category shutdown, many listings, input injection and no personal projection.
+
+## Crucial remaining limitations, not hidden claims
+
+1. **Catalog content:** No legacy catalog seed, no 889 activated, no 7,267 unreviewed service leaves indexed. All current public queries operate on **existing active JODLO rows only**; inactive/restricted catalog entries remain unselectable/publish-blocked. The ten proposals remain unapproved. Broad permission to *work* does not silently overwrite the recorded safety review or founder M-005 category IDs.
+2. **Smart semantic resolution:** Existing `categoryIntentTerms` supports only approved Hindi/English grammar and public names. It does not yet match `नल टपक रहा है` to `plumber` or `लकड़ी का फर्नीचर` to `बढ़ई` without **reviewed service synonym/index data**. No fake 'AI understands everything' claim or unsupported transliteration/Hinglish. Prepare reviewable category-scoped aliases/fixtures, then test ambiguous and zero-match cases before extending matching.
+3. **Browse scale:** `GET /catalog` has a prior 100-row cap; manual navigation across all 889 (if approved and imported) requires separate **cursor pagination / hierarchical navigation** (not implemented here). Search scans currently active categories, not all legacy references. Future UI needs founder M-004 approval.
+4. **City/locality:** Today `availableOnly` is a **global, non-geographic existence check**, not a Bilaspur/Raipur availability or distance promise. Do not advertise it as local until founder approves M-003 personal area/consent/delete and precise pilot areas. Do not collect coordinates or addresses.
+5. **Worker posting:** Existing ADR-0009 instant self-publication in an approved active category and no automatic verification remains untouched. No worker images, service descriptions, price, personal contact, request/call flow, moderator portal, personal data, chat or paywall introduced.
+
+## Next exact implementation stages (separately gated)
+
+- **Engineering safe:** test cursor-pagination/no-gap browse for an approved 889-entry synthetic dataset; design (but do not seed) a strictly reviewed per-category Hindi/English alias/index contract with source/provenance and tests for ambiguity, typo, no match and mixed-script rejection. Reuse existing Catalog + server-authoritative publishing contracts, not legacy code. Add synthetic workload latency tests.
+- **M-005 decision:** how to safely enable the real nonrestricted categories beyond the ten earlier suggestions; review quality/safety flags, valid IDs and lineage. The founder's latest goal is broad coverage, but this commit does **not** assert all categories passed safety review.
+- **M-003:** consent, city/area choice, optional GPS and retention/deletion before personal location data or 'nearby' promises.
+- **M-004:** actual worker/customer Guided Post, Home, Group/Category screens and animation storyboard before UI code.
+- **M-007:** no staging/remote deployments before separately approved production release. M-008 real Google OAuth still future.
+
+Old Finworkar Android/backend source study is [here](LEGACY_GUIDED_POST_HOME_SEARCH_CODE_REVIEW_2026-10-27.md), purely READ ONLY. Language only Hindi (Devanagari) and English; no Hinglish. All tests currently synthetic/local; actual results must be confirmed by PR and merged-main CI before recording verification.
