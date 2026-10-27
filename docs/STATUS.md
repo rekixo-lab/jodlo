@@ -11,6 +11,7 @@
 ## Verified code and CI baseline
 - [x] GitHub foundation and documentation merged through PR #1 and #2; earlier green main Actions [run 40466624240](https://github.com/rekixo-lab/jodlo/actions/runs/40466624240) on commit `17e3ab16d9a7376000b22cd8aea2cea61ab6f7d1`.
 - [x] Working minimal TypeScript API `GET /api/v1/health`, docs/AI handoff and 7 existing tests. These **do not** constitute a complete backend or Android app.
+- [x] **No payment API, checkout, ledger**, calling integration, bank/PSP, or live Google Play Billing flows have been implemented or deployed. Mock-first engineering is pending.
 - [ ] **This decision PR current-head GitHub CI** must pass before merging. Green on a previous SHA does not carry forward.
 
 ## Development pending (no external deployment/blocker)
