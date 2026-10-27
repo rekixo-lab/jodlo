@@ -1,12 +1,31 @@
 import type { D1Database, IdentityVerifier } from "../../data/d1.ts";
 
-const HOUR_SECONDS = 60 * 60;
-export const SESSION_TTL_SECONDS = HOUR_SECONDS;
+/** Bound active sessions prevent unbounded logins for one verified Google subject. */
+export const SESSION_TTL_SECONDS = 60 * 60;
+export const MAX_ACTIVE_SESSIONS = 6;
+const CLEANUP_BATCH_SIZE = 100;
 
 export const OWN_SESSION_QUERY =
   "SELECT a.id AS accountId FROM auth_sessions AS s " +
   "JOIN accounts AS a ON a.id = s.account_id " +
   "WHERE s.token_hash = ? AND s.expires_at > ? AND a.status = 'active' LIMIT 1";
+
+/** SQLite performs count + conditional insert as one atomic write statement.
+ * No read-before-write race and no separate rate-limit tracking data is stored.
+ */
+export const INSERT_BOUNDED_SESSION_QUERY =
+  "INSERT INTO auth_sessions(token_hash, account_id, expires_at) " +
+  "SELECT ?, a.id, ? FROM accounts AS a " +
+  "WHERE a.id = ? AND a.status = 'active' " +
+  "AND (SELECT COUNT(*) FROM auth_sessions AS s " +
+  "WHERE s.account_id = a.id AND s.expires_at > ?) < ?";
+
+/** Index-backed bounded opportunistic cleanup: no cron or global table scan.
+ * This is hygiene, NOT an approved personal-data retention/deletion policy.
+ */
+export const PRUNE_EXPIRED_QUERY =
+  "DELETE FROM auth_sessions WHERE token_hash IN (" +
+  "SELECT token_hash FROM auth_sessions WHERE expires_at <= ? LIMIT ?)";
 
 function newOpaqueSecret(): string {
   const bytes = new Uint8Array(32);
@@ -34,13 +53,21 @@ export function makeSessionVerifier(db: D1Database): IdentityVerifier {
   } };
 }
 
-export async function issueSession(db: D1Database, accountId: string): Promise<{
+export type IssuedSession = {
   accessToken: string; tokenType: "Bearer"; expiresInSeconds: number;
-}> {
+};
+
+/** Returns null if active account/session-cap gate rejects the new session.
+ * A 429 response is only a per-account *session issuance cap*, not an IP/WAF rate limit.
+ */
+export async function issueSession(db: D1Database, accountId: string): Promise<IssuedSession | null> {
+  const now = Math.floor(Date.now() / 1000);
+  await db.prepare(PRUNE_EXPIRED_QUERY).bind(now, CLEANUP_BATCH_SIZE).run();
   const token = newOpaqueSecret();
-  const expiration = Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS;
-  await db.prepare("INSERT INTO auth_sessions(token_hash, account_id, expires_at) VALUES (?, ?, ?)")
-    .bind(await sessionHash(token), accountId, expiration).run();
+  const result = await db.prepare(INSERT_BOUNDED_SESSION_QUERY)
+    .bind(await sessionHash(token), now + SESSION_TTL_SECONDS, accountId, now, MAX_ACTIVE_SESSIONS)
+    .run();
+  if (result.meta.changes !== 1) return null;
   return { accessToken: token, tokenType: "Bearer", expiresInSeconds: SESSION_TTL_SECONDS };
 }
 
@@ -48,5 +75,15 @@ export async function revokeSession(db: D1Database, token: string): Promise<bool
   if (!await findSessionAccount(db, token)) return false;
   await db.prepare("DELETE FROM auth_sessions WHERE token_hash = ?")
     .bind(await sessionHash(token)).run();
+  return true;
+}
+
+/** Revoke only sessions belonging to the currently authenticated actor.
+ * No client-selected account, subject, or device ID is accepted.
+ */
+export async function revokeAllSessions(db: D1Database, token: string): Promise<boolean> {
+  const accountId = await findSessionAccount(db, token);
+  if (!accountId) return false;
+  await db.prepare("DELETE FROM auth_sessions WHERE account_id = ?").bind(accountId).run();
   return true;
 }

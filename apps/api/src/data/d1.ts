@@ -4,7 +4,8 @@ export type DbScalar = string | number | null;
 export interface DbStatement {
   bind(...values: DbScalar[]): DbStatement;
   all<Row>(): Promise<{ results: Row[] }>;
-  run(): Promise<unknown>;
+  /** D1 meta.changes reports whether a conditional insert actually succeeded. */
+  run(): Promise<{ meta: { changes: number } }>;
 }
 export interface D1Database {
   prepare(query: string): DbStatement;

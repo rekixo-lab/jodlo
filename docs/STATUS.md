@@ -78,3 +78,9 @@
 
 **Done/Evidence:** [PR #12](https://github.com/rekixo-lab/jodlo/pull/12) merged as `494fc1ee3a41757d4099df40532759526afa5e66` with actual [green main GitHub Actions #40479368370](https://github.com/rekixo-lab/jodlo/actions/runs/40479368370) (37/37 tests, D1 migrations 0001–0003 locally, docs/design checks, strict TypeScript, both Wrangler dry-run builds).
 **Pending:** real Google OAuth/Android device verification (M-008 UPCOMING), area/privacy and user-data lifecycle (M-003), founder UI sign-off (M-004), login abuse throttling/operational protections. **Blocked manual now:** none; do not request credentials or OAuth secrets. **Next:** non-UI backend security/integration slice, then owner-approved Google console configuration when needed. No remote deployment and legacy Finworkar unchanged.
+
+## 2026-10-27 — Authentication hardening in development (PR pending)
+
+- Scope: bound active sessions per verified account to **six**, with single-statement atomic conditional insert and `429 Retry-After` after cap; prune **at most 100 expired** sessions per successful sign-in using indexed D1 SQL (no cron); add authenticated `POST /api/v1/auth/logout-all` for account-owned multi-device revocation. All built on existing D1 tables and shared bearer parser, no new migration or dependency.
+- Pending: verify PR and merge/main GitHub Actions **before** calling this milestone Green; test concurrency, expired cleanup, account isolation, forbidden/disabled, SQL outage redaction. This is **not** IP/WAF throttling, anti-bot verification, user-data retention policy or real provider integration.
+- Manual: **none required now**; M-003 privacy/deletion/area, M-004 design and M-008 Google OAuth setup remain gated. Next: CI evidence, green merge, then independent abuse controls and user data lifecycle proposals. No cloud deployment.

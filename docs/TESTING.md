@@ -47,3 +47,10 @@ Local synthetic DB and fake trusted-auth tests assert one customer account + opt
 - Concurrent first-time Google sign-in requests also must yield exactly one account/identity row and distinct revocable sessions; fake D1 `batch` wraps operations in a SQLite transaction. These are synthetic checks, not a distributed/concurrency load benchmark.
 
 **Verified source checkpoint:** [PR #12](https://github.com/rekixo-lab/jodlo/pull/12) merged as `494fc1ee3a41757d4099df40532759526afa5e66` with actual [green main GitHub Actions #40479368370](https://github.com/rekixo-lab/jodlo/actions/runs/40479368370) (37/37 tests, D1 migrations 0001–0003 locally, docs/design checks, strict TypeScript, both Wrangler dry-run builds). Do not interpret synthetic JWT/D1 tests as a live Google/provider or low-end Android device test.
+
+## Next authentication-hardening tests (2026-10-27)
+
+- Assert concurrent verified Google sign-ins cannot exceed six active sessions, receive HTTP 429 and Retry-After when capped; invalid/disabled accounts create no new sessions, logout frees a slot.
+- Insert 105 expired records and verify each subsequent sign-in prunes only 100 using indexed bounded D1 SQL; expired bearer remains unusable even before cleanup.
+- Test logout-all revokes only the authenticated account's own sessions; rejects missing, expired and reused tokens, incorrect methods and claimed `X-Account-ID` header. D1 cleanup failures return sanitized 503.
+- This is an atomic **per-account session cap**, NOT an IP/global login rate limit, WAF or complete data retention program. Require actual green GitHub PR/main Actions.

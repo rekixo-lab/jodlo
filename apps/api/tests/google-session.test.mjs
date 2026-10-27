@@ -3,7 +3,7 @@ import test from "node:test";
 import { handleRequest } from "../src/http/router.ts";
 import worker from "../src/index.ts";
 import { openLocalDatabase } from "./helpers/local-db.mjs";
-import { findSessionAccount, sessionHash } from "../src/modules/identity/sessions.ts";
+import { findSessionAccount, sessionHash, MAX_ACTIVE_SESSIONS, PRUNE_EXPIRED_QUERY, INSERT_BOUNDED_SESSION_QUERY } from "../src/modules/identity/sessions.ts";
 
 const client="12345678901-sandbox.apps.googleusercontent.com";
 const origin="https://jodlo.rekixo.com";
@@ -138,4 +138,92 @@ test("strict JSON size, logout method and duplicate/unknown bearer tokens reject
     assert.equal((await worker.fetch(raw,env)).status,400);
     assert.equal(db.prepare("SELECT COUNT(*) AS n FROM accounts").get().n,0);
   }finally{db.close();}
+});
+
+test("session issuance is atomically capped even under concurrent Google logins", async () => {
+  const { db, env, fakeGoogle } = fixture();
+  try {
+    const attempts = await Promise.all(Array.from({ length: MAX_ACTIVE_SESSIONS + 4 },
+      () => postLogin(env, fakeGoogle)));
+    assert.equal(attempts.filter(r => r.status === 200).length, MAX_ACTIVE_SESSIONS);
+    assert.equal(attempts.filter(r => r.status === 429).length, 4);
+    assert.ok(attempts.filter(r => r.status === 429).every(r => r.headers.get("Retry-After") === "3600"));
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM auth_sessions").get().n, MAX_ACTIVE_SESSIONS);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM accounts").get().n, 1);
+    const payloads = await Promise.all(attempts.filter(r => r.status === 200).map(r => r.json()));
+    assert.equal(new Set(payloads.map(x => x.data.accessToken)).size, MAX_ACTIVE_SESSIONS);
+    const before = await postLogin(env, fakeGoogle);
+    assert.equal(before.status, 429);
+    const logout = await worker.fetch(req("/api/v1/auth/logout", "POST", payloads[0].data.accessToken), env);
+    assert.equal(logout.status, 200);
+    assert.equal((await postLogin(env, fakeGoogle)).status, 200);
+  } finally { db.close(); }
+});
+
+test("expiry cleanup is bounded, index-backed, and no longer blocks new valid sessions", async () => {
+  const { db, env, fakeGoogle } = fixture();
+  try {
+    const plan = db.prepare("EXPLAIN QUERY PLAN " + PRUNE_EXPIRED_QUERY).all(100, 100);
+    assert.ok(plan.some(p => String(p.detail).includes("idx_auth_sessions_expiry")), JSON.stringify(plan));
+    const insertPlan = db.prepare("EXPLAIN QUERY PLAN " + INSERT_BOUNDED_SESSION_QUERY)
+      .all("a".repeat(64), "account-owner1", 9999999999, 100, MAX_ACTIVE_SESSIONS);
+    assert.ok(insertPlan.length > 0);
+    const first = await postLogin(env, fakeGoogle);
+    assert.equal(first.status, 200);
+    const firstBody = await first.json();
+    db.prepare("UPDATE auth_sessions SET expires_at = 1").run();
+    for (let i=0; i<105; i++) {
+      db.prepare("INSERT INTO auth_sessions(token_hash, account_id, expires_at) VALUES (?, ?, 1)")
+        .run(i.toString(16).padStart(64, "0"), db.prepare("SELECT id FROM accounts").get().id);
+    }
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM auth_sessions").get().n, 106);
+    assert.equal((await postLogin(env, fakeGoogle)).status, 200);
+    // Only 100 expired rows pruned per successful sign-in, no global background job.
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM auth_sessions WHERE expires_at <= 1").get().n, 6);
+    assert.equal(await findSessionAccount(env.DB, firstBody.data.accessToken), null);
+    assert.equal((await postLogin(env, fakeGoogle)).status, 200);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM auth_sessions WHERE expires_at <= 1").get().n, 0);
+  } finally { db.close(); }
+});
+
+test("logout-all revokes only the authenticated account across all sessions", async () => {
+  const { db, env, fakeGoogle } = fixture();
+  try {
+    const first = (await (await postLogin(env, fakeGoogle)).json()).data.accessToken;
+    const second = (await (await postLogin(env, fakeGoogle)).json()).data.accessToken;
+    const other = (await (await handleRequest(req(loginPath, "POST", undefined, { idToken: "other" }),
+      env, async () => "456789012345678901")).json()).data.accessToken;
+    const noToken = await worker.fetch(req("/api/v1/auth/logout-all", "POST"), env);
+    assert.equal(noToken.status, 401);
+    const wrongMethod = await worker.fetch(req("/api/v1/auth/logout-all", "GET", first), env);
+    assert.equal(wrongMethod.status, 405);
+    const forged = await worker.fetch(new Request(origin + "/api/v1/auth/logout-all", {
+      method: "POST", headers: { Authorization: "Bearer " + first, "X-Account-ID": "account-other2" }
+    }), env);
+    assert.deepEqual(await forged.json(), { ok: true, data: { revoked: true, allDevices: true } });
+    assert.equal(await findSessionAccount(env.DB, first), null);
+    assert.equal(await findSessionAccount(env.DB, second), null);
+    assert.notEqual(await findSessionAccount(env.DB, other), null);
+    assert.equal((await worker.fetch(req("/api/v1/me/worker-profile", "GET", second), env)).status, 401);
+    assert.equal((await worker.fetch(req("/api/v1/auth/logout-all", "POST", first), env)).status, 401);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM auth_sessions").get().n, 1);
+  } finally { db.close(); }
+});
+
+test("disabled account cannot issue new session, and failed D1 cleanup fails closed", async () => {
+  const { db, env, fakeGoogle } = fixture();
+  try {
+    await postLogin(env, fakeGoogle);
+    db.prepare("UPDATE accounts SET status = 'disabled'").run();
+    assert.equal((await postLogin(env, fakeGoogle)).status, 403);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM auth_sessions").get().n, 1);
+    db.prepare("UPDATE accounts SET status = 'active'").run();
+    const failing = { ...env, DB: { ...env.DB, prepare(query) {
+      if (query === PRUNE_EXPIRED_QUERY) return { bind() { return { run: async () => { throw new Error("SECRET_SQL_INTERNAL"); } }; } };
+      return env.DB.prepare(query);
+    } } };
+    const error = await postLogin(failing, fakeGoogle);
+    assert.equal(error.status, 503);
+    assert.ok(!(await error.text()).includes("SECRET_SQL_INTERNAL"));
+  } finally { db.close(); }
 });

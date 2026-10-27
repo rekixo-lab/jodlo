@@ -95,3 +95,8 @@ First shippable unit is local-only `categories` migration and typed read API (en
 ## Verified authentication milestone, 2026-10-27
 
 [PR #12](https://github.com/rekixo-lab/jodlo/pull/12) merged as `494fc1ee3a41757d4099df40532759526afa5e66` with actual [green main GitHub Actions #40479368370](https://github.com/rekixo-lab/jodlo/actions/runs/40479368370) (37/37 tests, D1 migrations 0001–0003 locally, docs/design checks, strict TypeScript, both Wrangler dry-run builds). Upcoming: rate-limiting, account retention/deletion/session cleanup, owner-approved M-008 real OAuth configuration, M-003 locality/privacy, M-004 visible UI approval. No Cloudflare staging or deployment during development.
+
+## Security hardening: session lifecycle (2026-10-27)
+
+- [ ] Enforce six-active-session cap atomically, index-backed bounded expiry cleanup, account-only logout-all endpoint and synthetic concurrency/isolation/expiry SQL tests; mark complete only after **latest PR and merged main CI** confirm success.
+- [ ] Future: Cloudflare WAF/admission rate limiting and abuse controls, legally reviewed personal-data retention/deletion (M-003), Android safe credential storage and real Google OAuth client/device testing (M-008). No staging or deployment.
