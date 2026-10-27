@@ -4,7 +4,7 @@ import { healthData } from "../modules/system/health.ts";
 import { optInAsWorker, ownWorkerDraft } from "../modules/workers/profile.ts";
 import { validGoogleClientId, verifyGoogleIdToken } from "../modules/identity/google.ts";
 import { resolveGoogleAccount } from "../modules/identity/google-accounts.ts";
-import { findSessionAccount, issueSession, makeSessionVerifier, revokeSession } from "../modules/identity/sessions.ts";
+import { issueSession, makeSessionVerifier, revokeSession } from "../modules/identity/sessions.ts";
 import { readGoogleLoginBody } from "./body.ts";
 
 type ApiErrorCode = "NOT_FOUND" | "METHOD_NOT_ALLOWED" | "INVALID_QUERY" | "SERVICE_UNAVAILABLE" | "UNAUTHORIZED" | "FORBIDDEN";
@@ -121,8 +121,8 @@ export async function handleRequest(
     if (!env.DB) {
       return json({ ok: false, error: { code: "SERVICE_UNAVAILABLE", message: "Identity unavailable" } }, 503);
     }
-    const credential = request.headers.get("Authorization");
-    if (!credential || !/^Bearer [^\s]{1,2048}$/.test(credential)) {
+    const token = bearerToken(request);
+    if (!token) {
       return json({ ok: false, error: { code: "UNAUTHORIZED", message: "Authentication required" } }, 401);
     }
     try {
