@@ -112,3 +112,8 @@ Use disposable local tempfile to validate owner-read and policy decision within 
 - Existing Hindi/English-only tests remain; no Hinglish. Await exact PR/main CI confirmation before claiming green.
 
 **Verified worker privacy guard milestone:** [PR #29](https://github.com/rekixo-lab/jodlo/pull/29) merged as `f4009f3b207d3ab828b4b0a1738163233bd81f7c`; [main GitHub Actions #40497728947](https://github.com/rekixo-lab/jodlo/actions/runs/40497728947) **SUCCESS** on that exact commit (102/102 Node tests, local D1 migrations, docs/design guards, strict TypeScript and both Worker dry-run builds). Nine tests added; synthetic all-approved projection is **not** an approved business listing or actual publication. Real local D1 schema still blocks a status change away from private `draft`; no cloud/runtime proof beyond CI dry-run bundle.
+
+## 2026-10-27 — CI founder gate checker regression fixtures
+
+- `npm run founder:check` reads current route/table/worker-draft-language/deploy configuration and runs *before* package installation; `scripts/verify-founder-gates.test.mjs` covers a valid fixture, unapproved routes, missing route, loosening draft CHECK, operational tables/worker mutation, third locale/Roman Hindi, invalid deployment and positive `--dry-run` configuration, unsupported Android resource locale, and actual source tree smoke test.
+- **Limits:** tests guard accidental text-level regressions only, not arbitrary dynamically built routes, false-positive-free production schema analysis, trusted permissions, actual privacy rules or Cloudflare D1 behavior. Require founder authorization and reviewed semantic tests for policy change. Pending exact PR/main evidence.

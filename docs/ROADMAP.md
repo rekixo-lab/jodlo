@@ -162,3 +162,8 @@ First shippable unit is local-only `categories` migration and typed read API (en
 ## Verified worker draft vs public listing separation — 2026-10-27
 
 [PR #29](https://github.com/rekixo-lab/jodlo/pull/29) merged as `f4009f3b207d3ab828b4b0a1738163233bd81f7c`; [main GitHub Actions #40497728947](https://github.com/rekixo-lab/jodlo/actions/runs/40497728947) **SUCCESS** on that exact commit (102/102 Node tests, local D1 migrations, docs/design guards, strict TypeScript and both Worker dry-run builds). Next **M-005** founder choice required to define real worker publication/review lifecycle, permitted public fields, pilot taxonomy and contact flow; **M-003** consent/retention for locality. No published workers or public listing data created; M-004 UI, M-008 OAuth and M-007 Cloudflare production remain deferred. Hindi and English only.
+
+## Automated no-dependency founder gate regression safety — 2026-10-27
+
+- [ ] Add pre-install CI source audit and adversarial fixtures for allowed HTTP API routes, D1 tables/worker draft privacy, two approved languages and local-only Wrangler deployment. Mark complete only after green PR and separate main CI. This is a narrow tripwire, not a full security or code-review replacement.
+- [ ] Later M-003 area/privacy and M-005 real worker/request schema, M-007 production require explicit founder decisions and deliberately reviewed guard changes; M-004 UI and M-008 real OAuth remain separately gated.
