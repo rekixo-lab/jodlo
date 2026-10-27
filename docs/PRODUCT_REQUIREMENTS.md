@@ -27,3 +27,7 @@ See [PROJECT](PROJECT.md), [MODULE BOUNDARIES](MODULE_BOUNDARIES.md), [PAYMENTS]
 ## Accepted account model (2026-10-27)
 
 **M-001 founder-approved:** one JODLO login/account supports customer use and optional worker enrollment; enrolling must not itself prove identity or make a public worker profile. The current backend implementation is private draft-only. Identity/OTP provider M-002, locality/privacy M-003 and specific UI M-004 remain undecided; see [ADR-0006](decisions/0006-shared-account-opt-in-worker.md) and [Manual Actions](MANUAL_ACTIONS.md).
+
+## Accepted sign-in choice (2026-10-27)
+
+**M-002 founder-approved: Google Sign-In first**, no mobile OTP for MVP. Backend must verify Google-issued JWT on server and use stable verified `sub`, not email or client-declared ID. Sessions are short lived, hashed and revocable; worker opt-in still uses shared account and private draft only. Real Google OAuth setup remains future owner action M-008 and visible Android implementation requires M-004 design approval. [ADR-0007](decisions/0007-google-signin-verified-session.md).
