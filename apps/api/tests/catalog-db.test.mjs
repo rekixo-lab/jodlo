@@ -31,7 +31,7 @@ test("read query hides drafts, uses stable ordering and Hindi fallback", () => {
     insert(db, "c2", "painting", "Painting", null, 1, 20);
     insert(db, "c3", "private-service", "Private", "निजी", 0, 0);
     insert(db, "c1", "plumbing", "Plumbing", "प्लंबिंग", 1, 10);
-    assert.deepEqual(db.prepare(PUBLIC_CATEGORIES_QUERY).all("hi"), [
+    assert.deepEqual(db.prepare(PUBLIC_CATEGORIES_QUERY).all("hi").map(row => ({ ...row })), [
       { id: "c1", slug: "plumbing", name: "प्लंबिंग" },
       { id: "c2", slug: "painting", name: "Painting" },
     ]);

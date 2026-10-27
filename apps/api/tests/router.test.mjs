@@ -16,7 +16,7 @@ test("response is uncached with minimal security headers",async()=>{
   assert.equal(r.headers.get("Access-Control-Allow-Origin"),null);
 });
 test("does not expose private bindings",async()=>{
-  const s=await worker.fetch(request("/api/v1/health")).text();
+  const s=await (await worker.fetch(request("/api/v1/health"))).text();
   for(const k of ["database_id","secret","versionCode","firebase","cloudflare_token"])assert.equal(s.includes(k),false);
 });
 test("unknown APIs and root return sanitized 404",async()=>{
