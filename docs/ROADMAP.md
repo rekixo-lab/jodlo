@@ -7,8 +7,8 @@
 - [x] Write mission, team agreement, legacy-reference boundaries, architecture ADR.
 - [x] Develop minimal Cloudflare Worker API scaffold and local tests (verify test results before accepting).
 - [x] GitHub App write access now works; files committed to feature branch. Inspect checks and PR after import.
-- [ ] Confirm CI green on GitHub (blocked until GitHub Actions billing/runner permission is healthy).
-- [ ] Founder provision/approve Cloudflare account and `rekixo.com` DNS zone; record environments without exposing IDs/tokens.
+- [x] GitHub Actions green for initial foundation commit [40465566596](https://github.com/rekixo-lab/jodlo/actions/runs/40465566596); **reverify current head on every commit**.
+- [ ] Founder provision/approve Cloudflare account and secure GitHub Environment `jodlo-staging` secrets; avoid unrelated `rekixo.com` DNS and all legacy systems.
 - [ ] Decide staging/production resource naming, budgets, logging retention and alerts.
 
 ## Phase 1 — Product/legacy behavior specification

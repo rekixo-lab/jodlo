@@ -178,3 +178,6 @@ Read the [October 2026 infrastructure and structure research](docs/ARCHITECTURE_
 See [docs/ROADMAP.md](docs/ROADMAP.md) for next actions and [docs/MANUAL_ACTIONS.md](docs/MANUAL_ACTIONS.md) for the actions that only the founder can perform.
 
 **Public repository warning:** do not commit secrets, signing keys, customer records, exported user data, raw GPS coordinates, vendor invoices or payment information.
+## Staging Cloudflare deployment (requires founder-managed credentials)
+
+The documented foundation can be deployed **only after GitHub CI is green** and the founder adds limited `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` in protected GitHub Environment `jodlo-staging`. The manual [Deploy JODLO staging](.github/workflows/deploy-staging.yml) workflow tests and deploys an isolated `jodlo-api-staging` Worker with `workers.dev` enabled. The production website `jodlo.rekixo.com` remains unconfigured; no DNS or production resources change. See [Manual Actions](docs/MANUAL_ACTIONS.md) and [Status](docs/STATUS.md).

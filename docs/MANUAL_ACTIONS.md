@@ -11,7 +11,7 @@ This is the smallest set of external account actions required; never give the AI
 1. Open [Cloudflare Dashboard](https://dash.cloudflare.com/), log into an account where `rekixo.com` DNS is managed, or confirm whose zone it is.
 2. Do not edit unrelated DNS or legacy `finworkar.rekixo.com`. Verify `jodlo.rekixo.com` has no existing record/service first.
 3. Create a **scoped Cloudflare Workers API token** with only the required Worker deployment rights, and obtain Cloudflare account ID privately. Do not paste token/account ID into chat.
-4. In GitHub `rekixo-lab/jodlo` repository Settings → Secrets and variables → Actions, set `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. Prefer GitHub Environment protection (staging/prod separation). Restrict token permissions and rotate after bootstrap.
+4. In GitHub `rekixo-lab/jodlo` repository Settings → Environments → create `jodlo-staging`, set *environment secrets* `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. Use minimal Cloudflare Workers Scripts permissions; do not expose tokens in chat/public issue. Keep `jodlo-prod` separate if created.
 5. Allow a first **separate staging Worker** (no production DNS). Only after health verification and explicit owner approval add the reviewed `jodlo.rekixo.com` custom domain; verify TLS and DNS.
 6. Review account usage alerts/costs and environment segregation; create D1/R2 only when schema/privacy and backup plans are approved.
 

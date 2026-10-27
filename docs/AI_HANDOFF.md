@@ -75,7 +75,7 @@ These snapshots do NOT prove deployed version, spend or traffic. This evidence a
 7. Write back decisions in ADRs; append concise progress to [`STATUS.md`](STATUS.md). If repository push is blocked, deliver an updated ZIP and say so.
 
 ## Exact first blockers / next tasks
-**Blocked:** GitHub connector authorization for `rekixo-lab/jodlo` (write attempts 403), plus unverified account Actions runner availability. **Manual founder:** reauthorize GitHub App's repository access or push the archive; provision separate Cloudflare dev/stage/prod resources when needed, without disturbing legacy DNS. **Next engineering action once access is possible:** push and verify source + docs with lockfile and actual green CI, then draft reviewed D1 schema for first MVP, not UI.
+**Status updated 2026-10-27:** GitHub read/write is authorized; 36 foundation files were committed in branch `feature/cloudflare-foundation-20261027`; PR #1 is open. GitHub Actions [run 40465566596](https://github.com/rekixo-lab/jodlo/actions/runs/40465566596) was GREEN for its exact commit. Subsequent changes require new CI checks. **Not deployed to Cloudflare**: a Cloudflare account connection and scoped secret configuration are required before staging. **Next:** verify PR CI after staging workflow/config documentation changes, then founder provides credentials securely via GitHub environment secrets, and launch staging health endpoint. No UI before owner approval.
 
 ## Living documents checklist
 - [`PROJECT.md`](PROJECT.md) — mission, founder operational agreement.

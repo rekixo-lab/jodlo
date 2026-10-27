@@ -28,11 +28,11 @@
 - Maintain strict module boundaries, stable versioned `/api/v1` contracts, safe logging, server-authoritative authorization/prices, idempotency, tests, performance budgets, rollback.
 - Founder handles manual GitHub integration authorization, Cloudflare zone/billing, Play Console, payment onboarding, design decisions, worker/customer interviews and final release. Never request passwords, API tokens, signing keys, OTPs or raw customer data.
 - At session end write dated **Done / Evidence / Pending / Blocked / Manual / Next exact action** to `docs/STATUS.md`, update roadmap/ADRs if decisions changed, run `npm run docs:check` + applicable code tests.
-- If GitHub write integration is blocked, keep an updated verified ZIP ready. Explicitly state "not committed"; do not claim another AI can see local files unless linked/shared.
+- If repository write access regresses, keep an updated verified ZIP ready. Explicitly state "not committed"; do not claim another AI can see local files unless linked/shared.
 - Old findings are from static source inspection; production costs, source-vs-deployed versions, live cloud traffic and app behavior were **not measured**.
 
 ## Exact safe resumption (unless updated STATUS says otherwise)
-1. Verify whether `rekixo-lab/jodlo` is still empty and whether connected GitHub can write; prior attempts returned 403.
-2. If authorized, push/review the existing scaffold and documents; obtain **actual green GitHub Actions checks** and lockfile; never falsely infer green from local tests.
+1. Confirm `rekixo-lab/jodlo` feature branch, PR #1 and the latest GitHub Actions check; GitHub read/write has been restored (2026-10-27).
+2. The foundation was uploaded to the feature branch with 36 files; CI run 40465566596 passed before subsequent deployment-preparation changes. Verify current SHA and new checks before merging. No Cloudflare account connection yet.
 3. Verify Cloudflare account/zone and environments without changing existing `rekixo.com` production DNS; plan local/stage/prod separation.
 4. Confirm MVP product roles and auth/area model before D1 schema. **No UI without founder sign-off.**
