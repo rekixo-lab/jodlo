@@ -56,3 +56,9 @@ Local synthetic DB and fake trusted-auth tests assert one customer account + opt
 - This is an atomic **per-account session cap**, NOT an IP/global login rate limit, WAF or complete data retention program. Require actual green GitHub PR/main Actions.
 
 **Actual completed verification for security-hardening:** [PR #14](https://github.com/rekixo-lab/jodlo/pull/14) squash-merged as `c234961204c0c2586748c52bcd1976a8611c7197`, and [main Actions #40481385874](https://github.com/rekixo-lab/jodlo/actions/runs/40481385874) completed **SUCCESS** (41 automated tests, docs/design guard, local D1 migrations, TypeScript and both Wrangler dry-runs). These synthetic tests establish the local adapter and strict worker build only, not real Cloudflare edge throttling, real Google/device login, distributed concurrency load or legal account deletion controls.
+
+## Abuse-admission and deletion rehearsal (local-only; 2026-10-27)
+
+- Simulate Cloudflare `LOGIN_BURST_LIMITER` and `ACCOUNT_LOGIN_LIMITER` with fake local binding responses; verify check order before JWT vs after verified `sub`, hash-only subject keys, ignored spoofed IP headers, 429 `Retry-After`, malformed/missing/outage fail-closed 503 and no denied-account D1 writes.
+- SQLite D1 migrations 0001–0003 retained; synthetic account cascade and rollback tests verify private draft, Google-sub mapping and session hashes removed together, while unaffected accounts remain. Real delete endpoint stays unimplemented pending M-003 retention/consent.
+- Production edge/WAF/dynamic rate-limit behavior, distributed concurrency, anti-bot protections and IP-based limits are **NOT validated by these tests**. Approximate Cloudflare per-location limits may be exceeded and shared pre-auth bucket can cause false positives. No remote bindings/deployment.

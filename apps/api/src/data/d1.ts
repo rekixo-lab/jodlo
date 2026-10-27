@@ -17,8 +17,15 @@ export interface D1Database {
 export interface IdentityVerifier {
   verify(token: string): Promise<{ accountId: string } | null>;
 }
+/** Cloudflare's approximate per-location rate-limit binding; locally simulated in CI. */
+export interface RateLimitBinding {
+  limit(options: { key: string }): Promise<{ success: boolean }>;
+}
+
 export interface Env {
   DB?: D1Database;
+  LOGIN_BURST_LIMITER?: RateLimitBinding;
+  ACCOUNT_LOGIN_LIMITER?: RateLimitBinding;
   /** Public OAuth web/server client ID. Set only after owner-controlled Google configuration. */
   GOOGLE_CLIENT_ID?: string;
   /** Existing fake test port; production Worker uses the D1-backed session verifier. */

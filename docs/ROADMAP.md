@@ -100,3 +100,9 @@ First shippable unit is local-only `categories` migration and typed read API (en
 
 - [x] Six-active-session atomic cap, indexed expiry cleanup and authenticated logout-all with synthetic concurrency/isolation tests, [PR #14](https://github.com/rekixo-lab/jodlo/pull/14) squash-merged as `c234961204c0c2586748c52bcd1976a8611c7197`, and [main Actions #40481385874](https://github.com/rekixo-lab/jodlo/actions/runs/40481385874) completed **SUCCESS** (41 automated tests, docs/design guard, local D1 migrations, TypeScript and both Wrangler dry-runs).
 - [ ] Future: Cloudflare WAF/admission rate limiting and abuse controls, legally reviewed personal-data retention/deletion (M-003), Android safe credential storage and real Google OAuth client/device testing (M-008). No staging or deployment.
+
+## Login admission and disposable account-lifecycle tests — 2026-10-27
+
+- [ ] Approximate Cloudflare local rate-limit bindings (100/10s anonymous burst; 20/60s hashed verified sub), fail-closed 503 on binding outage, 429 on deny; require PR/main CI before checking done.
+- [ ] Synthetic account deletion FK cascade and rollback tests. **Not** public account-deletion API or approved real-user retention/deletion. M-003 UPCOMING.
+- [ ] Prior to final production launch: founder M-007 review of approximate PoP counter limitations, appropriate WAF/bot policy, rate-limit quotas and false-positive UX; real OAuth M-008 and UI M-004 remain separate.

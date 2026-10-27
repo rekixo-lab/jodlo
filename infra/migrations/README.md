@@ -19,3 +19,5 @@
 **Data classification:** Google `sub` is a persistent pseudonymous personal identifier. Real retention/deletion/export policy must include `google_identities` and `auth_sessions`; test cascade alone is not sufficient legal compliance.
 
 **0003 local migration verification:** [PR #12](https://github.com/rekixo-lab/jodlo/pull/12) merged as `494fc1ee3a41757d4099df40532759526afa5e66` with actual [green main GitHub Actions #40479368370](https://github.com/rekixo-lab/jodlo/actions/runs/40479368370) (37/37 tests, D1 migrations 0001–0003 locally, docs/design checks, strict TypeScript, both Wrangler dry-run builds). No migration applied remotely.
+
+**Account lifecycle rehearsal:** synthetic SQLite tests will delete only disposable accounts to confirm existing `ON DELETE CASCADE` relationships and transaction rollback on failure; no new migration or public deletion API is added without founder M-003 retention/deletion approval.

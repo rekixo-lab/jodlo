@@ -12,7 +12,9 @@ const token="synthetic-google-id-token";
 const googleSubject="123456789012345678901";
 function fixture() {
   const { db, adapter }=openLocalDatabase();
-  const env={ DB: adapter, GOOGLE_CLIENT_ID: client };
+  const allow = { async limit() { return { success: true }; } };
+  const env={ DB: adapter, GOOGLE_CLIENT_ID: client,
+    LOGIN_BURST_LIMITER: allow, ACCOUNT_LOGIN_LIMITER: allow };
   let verified=0;
   async function fakeGoogle(value,aud) {
     verified++;
@@ -225,5 +227,98 @@ test("disabled account cannot issue new session, and failed D1 cleanup fails clo
     const error = await postLogin(failing, fakeGoogle);
     assert.equal(error.status, 503);
     assert.ok(!(await error.text()).includes("SECRET_SQL_INTERNAL"));
+  } finally { db.close(); }
+});
+
+
+test("missing admission bindings fail closed without checking Google or creating identities", async () => {
+  const { db, env, fakeGoogle, getVerified } = fixture();
+  try {
+    const missingBurst = await postLogin({ ...env, LOGIN_BURST_LIMITER: undefined }, fakeGoogle);
+    const missingAccount = await postLogin({ ...env, ACCOUNT_LOGIN_LIMITER: undefined }, fakeGoogle);
+    assert.equal(missingBurst.status, 503);
+    assert.equal(missingAccount.status, 503);
+    assert.equal(getVerified(), 0);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM google_identities").get().n, 0);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM auth_sessions").get().n, 0);
+  } finally { db.close(); }
+});
+
+test("coarse pre-verification gate returns 429 before Google signature work and D1 access", async () => {
+  const { db, env, fakeGoogle, getVerified } = fixture();
+  try {
+    const keys = [];
+    const limitedEnv = { ...env, LOGIN_BURST_LIMITER: {
+      async limit({ key }) { keys.push(key); return { success: false }; },
+    } };
+    const response = await postLogin(limitedEnv, fakeGoogle);
+    assert.equal(response.status, 429);
+    assert.equal(response.headers.get("Retry-After"), "10");
+    assert.equal((await response.json()).error.code, "RATE_LIMITED");
+    assert.equal(getVerified(), 0);
+    assert.deepEqual(keys, ["google:login:unverified"]);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM accounts").get().n, 0);
+  } finally { db.close(); }
+});
+
+test("verified subject gate uses hashed server-resolved key and never stores rejected account", async () => {
+  const { db, env, fakeGoogle, getVerified } = fixture();
+  try {
+    const seen = [];
+    const limitedEnv = { ...env, ACCOUNT_LOGIN_LIMITER: {
+      async limit({ key }) { seen.push(key); return { success: false }; },
+    } };
+    const one = await postLogin(limitedEnv, fakeGoogle);
+    const two = await postLogin(limitedEnv, fakeGoogle);
+    assert.equal(one.status, 429);
+    assert.equal(one.headers.get("Retry-After"), "60");
+    assert.equal((await two.json()).error.code, "RATE_LIMITED");
+    assert.equal(getVerified(), 2);
+    assert.deepEqual(seen.length, 2);
+    assert.equal(seen[0], seen[1]);
+    assert.match(seen[0], /^google:verified:[a-f0-9]{64}$/);
+    assert.equal(seen[0].includes(googleSubject), false);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM accounts").get().n, 0);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM auth_sessions").get().n, 0);
+  } finally { db.close(); }
+});
+
+test("rate-limiter errors or malformed decisions yield sanitized 503 without fallback", async () => {
+  const { db, env, fakeGoogle, getVerified } = fixture();
+  try {
+    const failing = { async limit() { throw new Error("RAW_LIMITER_SECRET"); } };
+    const malformed = { async limit() { return {}; } };
+    for (const overrides of [
+      { LOGIN_BURST_LIMITER: failing },
+      { LOGIN_BURST_LIMITER: malformed },
+      { ACCOUNT_LOGIN_LIMITER: failing },
+      { ACCOUNT_LOGIN_LIMITER: malformed },
+    ]) {
+      const response = await postLogin({ ...env, ...overrides }, fakeGoogle);
+      assert.equal(response.status, 503);
+      assert.equal((await response.text()).includes("RAW_LIMITER_SECRET"), false);
+    }
+    assert.equal(getVerified(), 2);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM accounts").get().n, 0);
+  } finally { db.close(); }
+});
+
+test("admission controls use two distinct keys without depending on IP or spoofed headers", async () => {
+  const { db, env, fakeGoogle } = fixture();
+  try {
+    const before = [], after = [];
+    const observed = { ...env,
+      LOGIN_BURST_LIMITER: { async limit({ key }) { before.push(key); return { success: true }; } },
+      ACCOUNT_LOGIN_LIMITER: { async limit({ key }) { after.push(key); return { success: true }; } },
+    };
+    const crafted = req(loginPath, "POST", undefined, { idToken: token });
+    crafted.headers.set("CF-Connecting-IP", "1.2.3.4");
+    crafted.headers.set("X-Forwarded-For", "5.6.7.8");
+    const result = await handleRequest(crafted, observed, fakeGoogle);
+    assert.equal(result.status, 200);
+    assert.deepEqual(before, ["google:login:unverified"]);
+    assert.match(after[0], /^google:verified:[0-9a-f]{64}$/);
+    assert.ok(!after[0].includes("1.2.3.4") && !after[0].includes("5.6.7.8"));
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM auth_sessions").get().n, 1);
   } finally { db.close(); }
 });
