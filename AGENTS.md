@@ -36,6 +36,6 @@
 
 ## Exact safe resumption (unless updated STATUS says otherwise)
 1. Open `rekixo-lab/jodlo` **main**, confirm status and latest CI. Foundation PR #1 merged 2026-10-27 with green main run 40466265299.
-2. Foundation PRs #1/#2 merged; latest earlier confirmed green `main` run 40466624240. Owner revoked staging plan, so staging workflow/config are removed in this new decision PR. Check **latest** CI before every merge. No Cloudflare resources are provisioned.
+2. Foundation PRs #1/#2 merged; latest earlier confirmed green `main` run 40466624240. Founder revoked the staging plan; PR #3 removed staging workflow/config and merged successfully after green checks. Check **latest** CI before every merge. No Cloudflare resources are provisioned.
 3. **Do not configure Cloudflare account or deployment** now. Move on to locally testable D1 schema, typed API/auth contracts and worker discovery; get founder feedback before visible Android/web UI code.
 4. Confirm MVP product roles and auth/area model before D1 schema. **No UI without founder sign-off.**

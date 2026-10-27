@@ -78,7 +78,7 @@ These snapshots do NOT prove deployed version, spend or traffic. This evidence a
 7. Write back decisions in ADRs; append concise progress to [`STATUS.md`](STATUS.md). If repository push is blocked, deliver an updated ZIP and say so.
 
 ## Exact first blockers / next tasks
-**Current status 2026-10-27:** Foundation PRs #1/#2 merged to GitHub main; latest earlier green run [40466624240](https://github.com/rekixo-lab/jodlo/actions/runs/40466624240). The owner now **forbids early deployment and does not want staging**; staging config/workflow have been removed in this new PR. Only local health API exists yet, no Android UI, live D1/R2, payments or RTC, and `jodlo.rekixo.com` remains unconfigured. Next: local D1 schema/migrations and typed backend, then Android implementation with UI approval; all external Cloudflare/merchant setup deferred until final production launch.
+**Current status 2026-10-27:** Foundation PRs #1/#2 merged to GitHub main; latest earlier green run [40466624240](https://github.com/rekixo-lab/jodlo/actions/runs/40466624240). The owner now **forbids early deployment and does not want staging**; staging config/workflow were removed by merged PR #3; [green main run 40468562575](https://github.com/rekixo-lab/jodlo/actions/runs/40468562575) verified. Only local health API exists yet, no Android UI, live D1/R2, payments or RTC, and `jodlo.rekixo.com` remains unconfigured. Next: local D1 schema/migrations and typed backend, then Android implementation with UI approval; all external Cloudflare/merchant setup deferred until final production launch.
 
 ## Living documents checklist
 - [`PROJECT.md`](PROJECT.md) — mission, founder operational agreement.
