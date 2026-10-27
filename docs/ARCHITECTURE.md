@@ -91,3 +91,8 @@ A **single modular Worker** keeps deploys, latency, cost and debugging simple at
 - R2 with Worker bindings: https://developers.cloudflare.com/r2/get-started/workers-api/
 - Queues at-least-once/idempotency: https://developers.cloudflare.com/queues/reference/delivery-guarantees/
 - Cloudflare Worker Custom Domain for website host: https://developers.cloudflare.com/workers/configuration/routing/custom-domains/
+## Payment integration invariant (ADR-0002)
+
+Founder preference is **Google Pay India UPI** for eligible real-world payments; **Google Play Billing** governs in-app digital purchases unless a valid policy exception or approved/enrolled alternative program applies. The previous **Razorpay** integration is not copied. JODLO's backend must verify payments authoritatively, keep a separate immutable/idempotent transaction ledger and refund/reconciliation processing, and never release paid entitlements solely from client callbacks. **No payment provider or checkout is implemented.**
+
+Read [payment strategy](PAYMENTS.md) and [ADR-0002](decisions/0002-google-pay-and-play-billing.md).
