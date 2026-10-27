@@ -55,3 +55,6 @@
 - GitHub repository exists and is public but GitHub connector returned `403 Resource not accessible by integration` on both file and issue writes; new GitHub App repository access likely requires founder authorization. Do not state files are in GitHub until verified.
 - Legacy GitHub Actions account had pre-run failures in previous project; GitHub runner/billing permission may require owner attention if reproduced here.
 - No Cloudflare credentials, DNS zone permission, database, deployed Worker or production data yet. These require founder or connected account access.
+## Payment policy alignment — 2026-10-27
+
+JODLO prefers **Google Pay** for eligible merchant India UPI transactions, never the legacy Razorpay connector. **Google Play Billing** is the default Play-distributed digital-goods channel unless legally eligible exception or enrolled alternative billing permits otherwise. No money movement is enabled until bank/PSP verification, idempotent ledger, refund tests and owner approval. See [PAYMENTS](PAYMENTS.md).
