@@ -18,6 +18,8 @@ jobs:
         run: npm run docs:check
       - name: Enforce design token and asset deduplication rules (no deps)
         run: npm run design:check
+      - name: Enforce founder privacy, route, language and no-deploy safety (no deps)
+        run: npm run founder:check
       - name: Install dependencies (jose verified JWT library; no deployment)
         run: npm install --no-audit --no-fund
       - name: Node API and design-guard fixture tests
