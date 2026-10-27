@@ -266,3 +266,5 @@ An ephemeral two-connection SQLite test journal rehearses optimistic revision co
 ## Worker visibility guard (pure local test only, 2026-10-27)
 
 JODLO rehearses how to avoid unintentionally disclosing draft/unpublished/inactive/moderated worker services via a new tiny internal allowlist projection. Existing worker opt-in stays a private `draft` enforced by D1 CHECK constraint; no public worker/listing API or real workflow is created. See [Status](docs/STATUS.md), founder M-003/M-005 and only Hindi+English ADR-0008.
+
+**Verified worker draft privacy tests:** [PR #29](https://github.com/rekixo-lab/jodlo/pull/29) merged as `f4009f3b207d3ab828b4b0a1738163233bd81f7c`; [main GitHub Actions #40497728947](https://github.com/rekixo-lab/jodlo/actions/runs/40497728947) **SUCCESS** on that exact commit (102/102 Node tests, local D1 migrations, docs/design guards, strict TypeScript and both Worker dry-run builds). No public listing route or worker status beyond `draft`. See [Status](docs/STATUS.md) and [source behavior reference](docs/LEGACY_FINWORKAR_BEHAVIOR.md).

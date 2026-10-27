@@ -156,5 +156,9 @@ First shippable unit is local-only `categories` migration and typed read API (en
 
 ## Worker publication privacy contract (2026-10-27)
 
-- [ ] Add internal fail-closed visibility/projection function for hypothetical published listing and test that **real current worker opt-in stays private D1 draft**; validate owner active, category active, publication, moderation and explicit future approval; no PII, real listing schema/route. Mark green only after PR/main CI verification.
+- [x] Internal fail-closed synthetic visibility/allowlist projection, real D1 draft-only constraint and 9 privacy/integrity tests. [PR #29](https://github.com/rekixo-lab/jodlo/pull/29) merged as `f4009f3b207d3ab828b4b0a1738163233bd81f7c`; [main GitHub Actions #40497728947](https://github.com/rekixo-lab/jodlo/actions/runs/40497728947) **SUCCESS** on that exact commit (102/102 Node tests, local D1 migrations, docs/design guards, strict TypeScript and both Worker dry-run builds). Not approved worker publication or public endpoint.
 - [ ] M-005 founder decides actual worker listing publication, moderation/trust labels and pilot service categories BEFORE any operational availability/search; M-003 before locality or deletion/retention; M-004 UI, M-008 Google and M-007 cloud release later.
+
+## Verified worker draft vs public listing separation — 2026-10-27
+
+[PR #29](https://github.com/rekixo-lab/jodlo/pull/29) merged as `f4009f3b207d3ab828b4b0a1738163233bd81f7c`; [main GitHub Actions #40497728947](https://github.com/rekixo-lab/jodlo/actions/runs/40497728947) **SUCCESS** on that exact commit (102/102 Node tests, local D1 migrations, docs/design guards, strict TypeScript and both Worker dry-run builds). Next **M-005** founder choice required to define real worker publication/review lifecycle, permitted public fields, pilot taxonomy and contact flow; **M-003** consent/retention for locality. No published workers or public listing data created; M-004 UI, M-008 OAuth and M-007 Cloudflare production remain deferred. Hindi and English only.
