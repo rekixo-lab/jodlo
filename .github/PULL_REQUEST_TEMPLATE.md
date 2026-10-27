@@ -10,6 +10,7 @@
 - [ ] Purposeful smooth transitions/action feedback and selective 3D/2.5D, reduced-motion/static fallback, accessibility, interruptibility and measured low-end APK/memory/frame/thermal metrics when UI exists.
 - [ ] `npm run docs:check`, `npm run design:check`, `npm test`, TypeScript/Android checks and actual green hosted CI. Status/handoff updates and PR source reviewed.
 - [ ] No live/legacy infrastructure, payments, Cloudflare staging or production deployment was changed.
+- [ ] Checked [manual owner-action register](../docs/MANUAL_ACTIONS.md): proactively told founder about any NOW blocking manual gate, did not silently assume approval, recorded any decisions with evidence; future-only tasks remain deferred.
 
 ### Evidence
 Existing code/assets reused:
@@ -19,6 +20,8 @@ New shared APIs/components/resources and justification:
 Tests/metrics and any unverified device performance:
 
 UI design approval link (if applicable):
+
+Manual owner-action IDs / state / founder conversation evidence (or none required):
 
 Remaining gates:
 
