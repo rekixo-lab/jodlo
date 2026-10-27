@@ -2,6 +2,7 @@ import type { D1Database } from "../../data/d1.ts";
 import { categoryIntentTerms } from "./search-phrases.ts";
 import { PUBLIC_LISTING_ELIGIBILITY } from "../workers/listings.ts";
 import { validCategoryId } from "../shared/identifiers.ts";
+import { resolveConservativeWorkIntent } from "./intent-aliases.ts";
 
 export type CatalogLanguage = "en" | "hi";
 export type PublicCategory = { id: string; slug: string; name: string };
@@ -177,6 +178,15 @@ function searchQuery(termCount: number, availableOnly = false): string {
 export const SEARCH_PUBLIC_CATEGORIES_QUERY = searchQuery(1);
 export const SEARCH_AVAILABLE_PUBLIC_CATEGORIES_QUERY = searchQuery(1, true);
 
+/** Alias resolution may only return an already active, backend-approved
+ * category; optional listing availability uses the same public eligibility.
+ */
+function curatedAliasQuery(availableOnly: boolean): string {
+  return PUBLIC_CATEGORY_FIELDS + "FROM categories WHERE is_active = 1 AND id = ? " +
+    (availableOnly ? "AND " + ELIGIBLE_LISTING_EXISTS + " " : "") +
+    "ORDER BY sort_order ASC, id ASC LIMIT ? OFFSET ?";
+}
+
 export async function searchPublicCategories(
   db: D1Database, opts: CatalogSearchOptions,
 ): Promise<CatalogSearchPage> {
@@ -184,6 +194,9 @@ export async function searchPublicCategories(
   // A generic sentence such as "मुझे काम चाहिए" must not reveal the first
   // category as a false-positive best match.
   if (intent?.length === 0) return { categories: [], nextOffset: null };
+  const alias = resolveConservativeWorkIntent(opts.query);
+  // Two distinct trades are not automatically collapsed to one category.
+  if (alias.kind === "ambiguous") return { categories: [], nextOffset: null };
   const terms = intent ?? [opts.query];
   const values = terms.flatMap(term => [term, term, term]);
   const sql = terms.length === 1
@@ -192,6 +205,16 @@ export async function searchPublicCategories(
   const { results } = await db.prepare(sql)
     .bind(opts.language, ...values, opts.limit + 1, opts.offset)
     .all<PublicCategory>();
+  // Preserve the pre-existing name/grammar search and its pagination.
+  // Only on an actual miss try one conservative category-specific alias.
+  if (results.length === 0 && alias.kind === "unique") {
+    const { results: alternate } = await db.prepare(curatedAliasQuery(opts.availableOnly))
+      .bind(opts.language, alias.categoryId, opts.limit + 1, opts.offset)
+      .all<PublicCategory>();
+    const suggested = alternate.slice(0, opts.limit)
+      .map(({ id, slug, name }) => ({ id, slug, name }));
+    return { categories: suggested, nextOffset: null };
+  }
   const categories = results.slice(0, opts.limit)
     .map(({ id, slug, name }) => ({ id, slug, name }));
   return { categories, nextOffset: results.length > opts.limit ? opts.offset + opts.limit : null };

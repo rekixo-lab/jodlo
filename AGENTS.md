@@ -164,3 +164,7 @@ Read [availability facet design and limitations](docs/reference/JODLO_SMART_DISC
 ## Latest nonvisual catalog paging rule — 2026-10-27
 
 New explicit `/api/v1/catalog?limit=1..25&after=sort_order:category_id` keyset browsing supports future approved full-catalog scale without showing a giant grid. Default no-limit catalog read remains identical. The future manual Category Picker must reuse the server cursor and check `nextCursor`; **no JODLO UI until M-004**. The fixture's 889 active rows are synthetic, not real approved seeds; `availableOnly` is global/public/non-locality-specific until M-003. Read [exact scope](docs/reference/JODLO_SMART_DISCOVERY_FOUNDATION_2026-10-27.md). No Finworkar writes or cloud deploy.
+
+## Conservative intent alias fallback — 2026-10-27
+
+The Category Search's `intent-aliases.ts` is intentionally **narrow and test-backed**: four historical routine-trade identifiers, 12 hand-authored single-language intent examples, no legacy service bulk import, no activation of unapproved categories. The existing literal/grammatical Search executes first; one unambiguous alias may be offered only after **server checking an existing ACTIVE category** and any requested available-only facet. Mixed-script/romanized-Hindi and ambiguous intents never auto-choose. Never mistake this for broadly competent semantic search or a permission to seed the other 889 records. M-003/M-004/M-005/M-007 remain gated; no visual UI or remote deployment.
