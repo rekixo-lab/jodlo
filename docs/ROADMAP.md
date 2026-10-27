@@ -153,3 +153,8 @@ First shippable unit is local-only `categories` migration and typed read API (en
 ## Verified request consistency rehearsal — 2026-10-27
 
 [PR #27](https://github.com/rekixo-lab/jodlo/pull/27) merged as `68d89e593fa34760aec1af9a04c8c64f11360590`; [main GitHub Actions #40495912363](https://github.com/rekixo-lab/jodlo/actions/runs/40495912363) **SUCCESS** on the exact commit (93/93 Node tests, local D1 migrations, docs/design guards, strict TypeScript and both Wrangler dry-run bundles). Next real-request/storage/worker publication needs M-005 founder workflow signoff and M-003 privacy/locality decisions. Continue using test-only contracts until then; UI M-004, OAuth M-008, production M-007 gated. No Hinglish; Hindi/English only.
+
+## Worker publication privacy contract (2026-10-27)
+
+- [ ] Add internal fail-closed visibility/projection function for hypothetical published listing and test that **real current worker opt-in stays private D1 draft**; validate owner active, category active, publication, moderation and explicit future approval; no PII, real listing schema/route. Mark green only after PR/main CI verification.
+- [ ] M-005 founder decides actual worker listing publication, moderation/trust labels and pilot service categories BEFORE any operational availability/search; M-003 before locality or deletion/retention; M-004 UI, M-008 Google and M-007 cloud release later.

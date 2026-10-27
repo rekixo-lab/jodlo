@@ -46,3 +46,7 @@ The legacy matcher treated Hindi voice grammar and Roman Hindi intent words as l
 ## IMPORTANT founder-approved language correction (2026-10-27)
 
 The old Finworkar indeed had Hindi/Hinglish speech or text matching, and that fact remains part of its **read-only historical behavior study**. **Do NOT transfer Hinglish support to JODLO.** JODLO has *exactly two* approved languages: Hindi in Devanagari and English; no Romanized Hindi/mixed-script parsing, Hinglish UI strings or transliteration. The prior JODLO prototype's Hinglish code is superseded. See [ADR-0008](decisions/0008-hindi-english-only.md).
+
+## JODLO synthetic visibility lesson, 2026-10-27
+
+Old Finworkar read-only service visibility checks are a **design reminder** (active owner, available post, moderation), not an approved JODLO listing schema. JODLO adds new independent internal `discovery/public-listing.ts` with explicit **draft exclusion, active category and mandatory future disclosure policy**. Existing D1 worker opt-in remains entirely private `draft`. No copy of old Firestore/Android paths, no real worker listing or trust labels, and no third language (ADR-0008).
