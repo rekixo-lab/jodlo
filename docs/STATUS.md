@@ -35,13 +35,16 @@
 **None for Cloudflare right now.** Do not request API token, account ID, DNS or staging setup. Founder feedback is required only when proposing visible UI and major product choices. Merchant/provider onboarding and Cloudflare production access wait until final launch gate.
 
 ## Next exact engineering action
-1. **PR #7 code tests/Actions GREEN** (run 40473268574); merge only after latest changed-head PR Actions success, then verify post-merge main CI. Then define MVP actor roles, auth/provider, locality model and privacy/deletion before account/worker/listing migrations; no staging/deployment.
+1. **Catalog PR #7 merged and main Actions GREEN** (run 40473524328). Next: define MVP actor roles, auth/provider, locality model and privacy/deletion before account/worker/listing migrations; no staging/deployment.
 2. Keep README/AGENTS/AI_HANDOFF/STATUS in sync with actual GitHub Actions for each new head.
 3. Do not claim a feature deployed or validated against real providers without direct proof.
 
 [README](../README.md) · [AGENTS](../AGENTS.md) · [AI Handoff](AI_HANDOFF.md) · [Roadmap](ROADMAP.md) · [Release Readiness](RELEASE_READINESS.md) · [ADR-0004](decisions/0004-local-first-no-staging-until-production.md) · [Manual Actions](MANUAL_ACTIONS.md).
 
-## 2026-10-27 — Catalog foundation implementation (work in PR)
+## 2026-10-27 — Catalog foundation merged and verified
 - **Done in code:** first no-PII category migration, indexed and bounded bilingual read-only catalog query, typed optional D1 binding, local-only Wrangler configuration and synthetic database/API tests. Existing health API preserved.
-- **Evidence:** [green PR CI #40473268574](https://github.com/rekixo-lab/jodlo/actions/runs/40473268574) on code commit `0b44bf8` (19 tests, local D1 migration, both Wrangler dry-run bundles, TypeScript, docs and design checks). Earlier failed runs were fixed (test async row comparison, URLSearchParams TypeScript). Reverify latest changed head and post-merge main separately. Pre-change main was green [40470852195](https://github.com/rekixo-lab/jodlo/actions/runs/40470852195).
+- **Evidence:** **Merged catalog milestone:** [PR #7](https://github.com/rekixo-lab/jodlo/pull/7) squash-merged as `dd16db9`, verified [green main GitHub Actions #40473524328](https://github.com/rekixo-lab/jodlo/actions/runs/40473524328) on `dd16db92a1e04b2e40237bc440ab0a062039f5ea` (19 Node tests, local-only Wrangler D1 migration, local and normal Worker dry-run builds, strict TS, docs/design checks). No Cloudflare/Android deployment. Earlier failed PR attempts were fixed; final docs-head PR run [40473455818](https://github.com/rekixo-lab/jodlo/actions/runs/40473455818) was GREEN.
 - **Pending:** full role/auth/area schemas, worker profiles, data lifecycle, all remaining Android/backend integrations, load testing. **Manual:** none for catalog; founder UI approval before UI and decisions needed for user/location data. **Next:** pass actual PR CI, then role/area/auth decision and next D1 migration.
+
+### Latest stable main checkpoint
+**Merged catalog milestone:** [PR #7](https://github.com/rekixo-lab/jodlo/pull/7) squash-merged as `dd16db9`, verified [green main GitHub Actions #40473524328](https://github.com/rekixo-lab/jodlo/actions/runs/40473524328) on `dd16db92a1e04b2e40237bc440ab0a062039f5ea` (19 Node tests, local-only Wrangler D1 migration, local and normal Worker dry-run builds, strict TS, docs/design checks). No Cloudflare/Android deployment.
