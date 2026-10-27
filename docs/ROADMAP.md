@@ -98,5 +98,5 @@ First shippable unit is local-only `categories` migration and typed read API (en
 
 ## Security hardening: session lifecycle (2026-10-27)
 
-- [ ] Enforce six-active-session cap atomically, index-backed bounded expiry cleanup, account-only logout-all endpoint and synthetic concurrency/isolation/expiry SQL tests; mark complete only after **latest PR and merged main CI** confirm success.
+- [x] Six-active-session atomic cap, indexed expiry cleanup and authenticated logout-all with synthetic concurrency/isolation tests, [PR #14](https://github.com/rekixo-lab/jodlo/pull/14) squash-merged as `c234961204c0c2586748c52bcd1976a8611c7197`, and [main Actions #40481385874](https://github.com/rekixo-lab/jodlo/actions/runs/40481385874) completed **SUCCESS** (41 automated tests, docs/design guard, local D1 migrations, TypeScript and both Wrangler dry-runs).
 - [ ] Future: Cloudflare WAF/admission rate limiting and abuse controls, legally reviewed personal-data retention/deletion (M-003), Android safe credential storage and real Google OAuth client/device testing (M-008). No staging or deployment.
