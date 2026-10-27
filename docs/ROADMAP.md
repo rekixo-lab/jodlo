@@ -129,3 +129,8 @@ First shippable unit is local-only `categories` migration and typed read API (en
 ## Request/matching pre-policy contract CI proof (2026-10-27)
 
 [PR #20](https://github.com/rekixo-lab/jodlo/pull/20) merged as `31839e4c5eca44251db85e3d4c220ea1be3bd296`, and [main GitHub Actions #40486525096](https://github.com/rekixo-lab/jodlo/actions/runs/40486525096) **SUCCESS** on this exact commit: 68/68 Node tests, local D1 migrations, docs/design checks, strict TypeScript, both Worker dry-run bundles. Next gates: founder M-005 defines actual pilot worker approval/publication/trust/request lifecycle; M-003 governs locality/PII and data deletion/retention. Only afterwards implement real listing, request state machine, authorization + atomic transactional D1/response tests. M-004 UI, M-008 real Google credential/device and M-007 final production remain deferred. No deployment.
+
+## Legacy behavior preservation without legacy code migration — 2026-10-27
+
+- [ ] Read-only inspect old Finworkar worker/customer flow and preserve source-backed differences in [Legacy behavior study](LEGACY_FINWORKAR_BEHAVIOR.md); implement a new pure deny-by-default contact guard (two-way block, active/publication/moderation/listing owner, channel approval), synthetic tests, verify PR/main CI before checking complete.
+- [ ] After founder M-003 and M-005 decisions: implement final worker listings, area-first search, contact/request stages and true atomic authorization/rechecks in D1; later device/RTC/Google integrations only at approved gates. No Firebase, Razorpay or existing UI copying.

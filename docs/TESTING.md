@@ -79,3 +79,8 @@ Local synthetic DB and fake trusted-auth tests assert one customer account + opt
 - These unit/fake integration tests **do not** prove distributed D1 unique-key/CAS atomicity or a founder-approved M-005 request lifecycle; verify hosted GitHub PR/main CI for actual implementation evidence.
 
 **Verified request/matching contract CI:** [PR #20](https://github.com/rekixo-lab/jodlo/pull/20) merged as `31839e4c5eca44251db85e3d4c220ea1be3bd296`, and [main GitHub Actions #40486525096](https://github.com/rekixo-lab/jodlo/actions/runs/40486525096) **SUCCESS** on this exact commit: 68/68 Node tests, local D1 migrations, docs/design checks, strict TypeScript, both Worker dry-run bundles. Node tests are pure/synthetic, not an integration test for a request persistence DB, distributed CAS, real matching, device or provider behavior.
+
+## Legacy behavior safety regression foundation — 2026-10-27
+
+- Read-only source map in [Legacy behavior study](LEGACY_FINWORKAR_BEHAVIOR.md), with separate JODLO clean-room pure contact-safety decision tests for active requester/worker, owner/listing match, worker opt-in **versus** publication, moderation/status, two-way blocking, self-contact, missing required facts, stale discovery eligibility and non-leaking output.
+- No real user data, personal GPS/contact, public worker endpoint, D1 mutable-request transaction, call provider, production login or Firebase/Android code. Test-only pure guard is NOT proof of authorized transactional contact creation. Confirm latest PR + main green CI before claiming done.
