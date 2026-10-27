@@ -1,5 +1,8 @@
 # JODLO — instructions for any new AI/engineer session
 
+> **MOST RECENT OWNER INSTRUCTION (2026-10-27): No staging, no deployment while building JODLO.** Finish all code with local Worker/D1/R2/Queue simulations, fake payment/RTC/FCM adapters and green GitHub CI. No Cloudflare tokens or DNS work until final approved production release. Previous staging workflow has been deleted. See [ADR-0004](docs/decisions/0004-local-first-no-staging-until-production.md), [Release Readiness](docs/RELEASE_READINESS.md).
+
+
 **Start here, every time.** This file is a repository-resident handoff, NOT a claim that the chat has durable Memory. A new assistant must be given this repository/ZIP, or have GitHub access, to read it.
 
 ## Required read order
@@ -33,6 +36,6 @@
 
 ## Exact safe resumption (unless updated STATUS says otherwise)
 1. Open `rekixo-lab/jodlo` **main**, confirm status and latest CI. Foundation PR #1 merged 2026-10-27 with green main run 40466265299.
-2. Main contains 38 initial files including staging-only GitHub Actions deployment workflow. GitHub CI GREEN for main commit `2b447de586e0c9d655edc188203acf843e4dc66f` (run 40466265299); any subsequent commit needs new tests. No Cloudflare account/deployment has been connected.
-3. Verify Cloudflare account/zone and environments without changing existing `rekixo.com` production DNS; plan local/stage/prod separation.
+2. Foundation PRs #1/#2 merged; latest earlier confirmed green `main` run 40466624240. Owner revoked staging plan, so staging workflow/config are removed in this new decision PR. Check **latest** CI before every merge. No Cloudflare resources are provisioned.
+3. **Do not configure Cloudflare account or deployment** now. Move on to locally testable D1 schema, typed API/auth contracts and worker discovery; get founder feedback before visible Android/web UI code.
 4. Confirm MVP product roles and auth/area model before D1 schema. **No UI without founder sign-off.**

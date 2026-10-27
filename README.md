@@ -1,5 +1,8 @@
 # JODLO
 
+> **NEW FOUNDER DECISION — 2026-10-27: CODE FIRST, NO STAGING.** Develop Android, backend, database and external-provider adapter code using Wrangler local simulation, mock integrations and GitHub CI. **Do not deploy or request Cloudflare credentials now.** First cloud deployment is a founder-approved controlled production launch after product readiness. Former staging directions are superseded. See [ADR-0004](docs/decisions/0004-local-first-no-staging-until-production.md) and [Release Readiness](docs/RELEASE_READINESS.md).
+
+
 **Fast, native Android experience. Cloudflare-first infrastructure. Clean-slate build.**
 
 > JODLO is a new, independent local work and services platform for India, designed to connect customers with nearby, relevant workers through a simple, trustworthy and privacy-first experience.
@@ -88,7 +91,7 @@ Android native Kotlin (com.rekixo.jodlo)        Approved web site (future)
 2. D1 schema/permissions and product requirements before user data collection.
 3. Founder design review **before UI implementation or promotional artwork**; founder can suggest anything, and final design requires agreement.
 4. SKU/payment channel eligibility before Google Pay/Play Billing checkout. Do not port Razorpay and do not activate money movement early.
-5. Manual founder permissions/Cloudflare/DNS/provider provisioning and explicit staging/production release approval.
+5. Manual founder UI approval during implementation; Cloudflare/DNS/provider provisioning and **production-only** launch approval only after feature completion.
 
 The project is long-term; 30/60/90 days are not a fixed finishing deadline. **Never drop a checklist item merely to finish early.**
 
@@ -178,8 +181,10 @@ Read the [October 2026 infrastructure and structure research](docs/ARCHITECTURE_
 See [docs/ROADMAP.md](docs/ROADMAP.md) for next actions and [docs/MANUAL_ACTIONS.md](docs/MANUAL_ACTIONS.md) for the actions that only the founder can perform.
 
 **Public repository warning:** do not commit secrets, signing keys, customer records, exported user data, raw GPS coordinates, vendor invoices or payment information.
-## Staging Cloudflare deployment (requires founder-managed credentials)
+## Code-first local development and one eventual production release
 
-The documented foundation can be deployed **only after GitHub CI is green** and the founder adds limited `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` in protected GitHub Environment `jodlo-staging`. The manual [Deploy JODLO staging](.github/workflows/deploy-staging.yml) workflow tests and deploys an isolated `jodlo-api-staging` Worker with `workers.dev` enabled. The production website `jodlo.rekixo.com` remains unconfigured; no DNS or production resources change. See [Manual Actions](docs/MANUAL_ACTIONS.md) and [Status](docs/STATUS.md).
+**No staging deployment is required or planned.** Implement the complete product (native Android, Cloudflare Worker, D1/R2/Queues adapters, calling/payments, search, privacy/security), test against Wrangler/workerd local simulations and mocked provider callbacks and require real green GitHub CI. Do not create `jodlo-staging`, remote databases or any Cloudflare API tokens during development.
 
-> **Current definitive status:** GitHub README/AGENTS/docs exist in `main`, CI green (run 40466265299). Cloudflare staging and custom domain are NOT deployed yet; owner must securely configure environment secrets. Read [STATUS](docs/STATUS.md).
+After code/product readiness, obtain **explicit founder approval** for a controlled first **production** deployment to `jodlo.rekixo.com`, with secure production provider credentials, backups/recovery, migration plan, live smoke tests and rollback. Real RTC, payment/Play callbacks, DNS/TLS and Cloudflare policy behavior cannot be fully proven offline; mark those UNVERIFIED until safe live testing.
+
+[Local-only ADR](docs/decisions/0004-local-first-no-staging-until-production.md) · [Release Readiness](docs/RELEASE_READINESS.md) · [Current Status](docs/STATUS.md).

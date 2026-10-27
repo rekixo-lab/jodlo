@@ -1,3 +1,5 @@
+> **Current founder directive, 2026-10-27:** finish the whole JODLO source **locally and in green CI first**; **no Cloudflare staging or other deployment** until product-ready. Eventual *direct, controlled production* release requires separate approval. [ADR-0004](decisions/0004-local-first-no-staging-until-production.md) · [Release gates](RELEASE_READINESS.md).
+
 # JODLO — Living delivery roadmap
 
 **Status 2026-10-27: GitHub Foundation merged with GREEN CI; Cloudflare NOT YET DEPLOYED.** No fixed deadline, no dropped tasks.
@@ -8,8 +10,8 @@
 - [x] Develop minimal Cloudflare Worker API scaffold and local tests (verify test results before accepting).
 - [x] GitHub App write access works; 38 Foundation files committed to `main` via PR #1.
 - [x] GitHub Actions green for final merged `main` commit [40466265299](https://github.com/rekixo-lab/jodlo/actions/runs/40466265299); **reverify each new head**.
-- [ ] Founder provision/approve Cloudflare account and secure GitHub Environment `jodlo-staging` secrets; avoid unrelated `rekixo.com` DNS and all legacy systems.
-- [ ] Decide staging/production resource naming, budgets, logging retention and alerts.
+- [x] New founder decision: no need for Cloudflare account, secrets, staging or DNS now. All postponed until final production release.
+- [ ] Design (not provision) future production secrets, budgets, data retention, observability, migration/backup and rollback before final release.
 
 ## Phase 1 — Product/legacy behavior specification
 - [ ] Read-only audit of old Android/Backend/Web capabilities and feature state.
@@ -18,8 +20,8 @@
 - [ ] Record privacy/identity/verification, payments, push and calling requirements.
 - [ ] Founder UI review & approval before UI work.
 
-## Phase 2 — Secure cloud infrastructure
-- [ ] Cloudflare Worker staging deployed, Cloudflare D1 + migrations with tested rollback; choose residency/security requirements.
+## Phase 2 — Complete locally testable Cloudflare-compatible backend
+- [ ] D1 relational schema, local database/migration tests, indexes and recovery plan; no deployed Worker/D1 or live resources.
 - [ ] Auth/session implementation, identity provider decision; abuse and rate limits.
 - [ ] Private R2 media validation; approved Queue workflows and idempotency as needed.
 - [ ] Automated tests: unit, integration, authorization, privacy, data recovery, latency and cost.
@@ -53,8 +55,8 @@
 
 ## Known blockers as of 2026-10-27
 - RESOLVED: GitHub read/write works, Foundation present on main; actual green main CI run 40466265299.
-- Legacy GitHub Actions account had pre-run failures in previous project; GitHub runner/billing permission may require owner attention if reproduced here.
-- No Cloudflare credentials, DNS zone permission, database, deployed Worker or production data yet. These require founder or connected account access.
+- Previous Finworkar GitHub Actions failures were in another repository; JODLO Foundation GitHub Actions have actually passed. Recheck current PR and main green.
+- Cloudflare credentials/DNS/live resources intentionally deferred to final approved production release, not development blockers.
 ## Payment policy alignment — 2026-10-27
 
 JODLO prefers **Google Pay** for eligible merchant India UPI transactions, never the legacy Razorpay connector. **Google Play Billing** is the default Play-distributed digital-goods channel unless legally eligible exception or enrolled alternative billing permits otherwise. No money movement is enabled until bank/PSP verification, idempotent ledger, refund tests and owner approval. See [PAYMENTS](PAYMENTS.md).

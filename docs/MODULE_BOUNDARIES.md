@@ -52,7 +52,7 @@ Do not convert illustrative paths into live product claims. Define API contracts
 - Data deletion covers profile, records, R2 objects, events and applicable legal/financial retention exceptions.
 
 ## Test standards for each module
-Unit state/policy, invalid payload, missing identity/role, conflicting status, pagination caps, retry/idempotency, cross-user data access, queue duplicates, latency and cost; staging/API integration + real device tests when relevant. Keep tests independent of live old Finworkar.
+Unit state/policy, invalid payload, missing identity/role, conflicting status, pagination caps, retry/idempotency, cross-user data access, queue duplicates, latency and cost; local workerd/D1/API integration with mock providers + real device tests when relevant. Keep tests independent of live old Finworkar.
 
 ## Splitting criterion
 Split Worker runtime (or Gradle module) only if independently deployable scaling/security/fault domain, ownership, or build size creates measured benefit; module structure itself does not require microservice deployment.

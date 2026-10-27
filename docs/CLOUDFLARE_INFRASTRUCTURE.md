@@ -35,7 +35,7 @@ The Android app is a native installed binary and talks to the API over HTTPS; a 
 | **Durable Objects** | ONLY if realtime signaling coordination needs it | Per-session state/ordering; not replacement for native voice media. Benchmark alternatives first. |
 | **KV/Cache API** | Only measured public read bottleneck | Cache safe public catalogs/search facets with clear TTL/invalidation. Don't cache private identities, tokens, wallet or location data. |
 | **WAF/rate limits/Turnstile where appropriate** | Before public launch | Shield abused public endpoints; app auth/authorization and business limits still implemented at Worker. |
-| **Workers Observability/logging** | From staging | Request IDs, non-PII errors, p95, CPU time, DB rows read/write, R2/Queue outcomes and budget alert coverage. |
+| **Workers Observability/logging** | From approved first production launch | Request IDs, non-PII errors, p95, CPU time, DB rows read/write, R2/Queue outcomes and budget alert coverage. |
 | **Cloudflare Access** | Privileged admin later | Protect admin frontend/service. Not a consumer Android auth replacement. |
 | **Cloudflare website assets/Pages** | After design review | Landing, legal/deletion, actual share previews, SEO + Android App Links. Custom domain DNS/TLS must be confirmed without changing live old site. |
 
@@ -48,12 +48,16 @@ Core tables when approved: `users`, `identities`, `worker_profiles`, `categories
 - Use prepared SQL, transactionally enforce ownership and status, and benchmark D1 `EXPLAIN QUERY PLAN` under realistic test data and concurrency.
 - Design an escape hatch for growth: partition by region/tenant or adopt more capable database based on **measured** volume/consistency requirements. D1 does not mean unlimited write scaling or automatic global strong-consistent replicas; follow current limits and Sessions API documentation before using read replication.
 
-## Env and deploy pattern (planned)
+## Owner-approved local development → one production launch (2026-10-27)
 ```text
-local/dev:    wrangler dev / fake data / separate bindings
-staging:      jodlo API staging Worker + own D1/R2, tests, manual reviewer
-production:   separate Worker + own D1/R2/secrets, explicit founder launch approval
+LOCAL:     Wrangler/workerd + simulated D1/R2/Queues; synthetic fixtures/mocks
+GITHUB CI: docs, types, tests, Android build when written, Wrangler --dry-run; never deploy
+STAGING:   Not required; no staging Worker/account/secrets or staging DNS
+PRODUCTION: Provision Worker + D1/R2/Queues + scoped secrets only after
+            code/product readiness and explicit founder approval. Controlled
+            live integration smoke tests, backups, abort/rollback and metrics.
 ```
+No external Cloudflare account action is required for code development. Local simulation cannot certify real payment/RTC/FCM callbacks or DNS/TLS. See [ADR-0004](decisions/0004-local-first-no-staging-until-production.md) and [Release Readiness](RELEASE_READINESS.md).
 Maintain least-privilege Worker bindings, typed env interfaces, no secrets committed to Git, no client DB credentials, no prod identifier in tests, and narrow origin/CORS policy (native Android is not subject to browser CORS in the same way as web). Migrations must be reviewed, versioned and applied by a controlled deploy job, never lazily by user traffic.
 
 ## Reliability and operations

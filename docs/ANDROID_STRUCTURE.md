@@ -89,4 +89,4 @@ Before writing Compose screens, XML layouts, themes, colors, wireframes, screens
 - Accessibility, RTL/locale where appropriate, permission denial and no-network handling.
 - Emulator + physical budget phone smoke tests and performance baseline.
 - No forced background GPS or public exposure of private contact details.
-- Founder-approved UI and staging release; never auto-publish to Play.
+- Founder-approved UI before implementation and a single controlled final production release (no staging); never auto-publish to Play.

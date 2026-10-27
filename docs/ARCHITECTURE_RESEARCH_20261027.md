@@ -1,4 +1,6 @@
 # JODLO — Finworkar Infrastructure Audit and Greenfield Architecture Blueprint
+
+> **2026-10-27 superseding founder policy:** This document is historical source/research evidence; any instructions below to deploy staging, create dev/stage/prod Cloudflare environments or treat GitHub as inaccessible are now **obsolete**. JODLO will be fully coded/tested locally first, **no staging**, with one controlled approved production launch later. Current authoritative docs: [ADR-0004](decisions/0004-local-first-no-staging-until-production.md), [Release Readiness](RELEASE_READINESS.md), [Status](STATUS.md).
 **Date:** 2026-10-27 (India) | **Status:** Proposed architecture based on verified source and current vendor documentation; not production deployment | **Android:** `com.rekixo.jodlo` | **Domain:** `jodlo.rekixo.com`
 
 ## 1. What was actually inspected and what was not

@@ -1,31 +1,34 @@
-# JODLO — current project status (2026-10-27)
+# JODLO — current state, 2026-10-27
 
-Project identity: Android package `com.rekixo.jodlo`; planned domain `jodlo.rekixo.com` (not deployed).
+**Identity:** JODLO; Android `com.rekixo.jodlo`; future production domain `jodlo.rekixo.com`. Entirely independent from live Finworkar (read-only reference).
 
-## Verified, committed to GitHub
-- [x] New repo `rekixo-lab/jodlo` initialized and authenticated write access verified.
-- [x] 36 initial files imported into `feature/cloudflare-foundation-20261027`, including README, AGENTS, AI_HANDOFF, Android/Cloudflare infrastructure and module boundaries, legacy comparison, payment ADR, status/roadmap and TypeScript Cloudflare Worker starter.
-- [x] [PR #1](https://github.com/rekixo-lab/jodlo/pull/1) merged into `main`; **38 source/documentation files**. Latest confirmed green `main` commit `2b447de586e0c9d655edc188203acf843e4dc66f` — [Actions run 40466265299](https://github.com/rekixo-lab/jodlo/actions/runs/40466265299): documentation, 7/7 Node tests, strict TypeScript, base/staging Wrangler dry-runs passed.
-- [x] Old Finworkar Android, backend and website remain unmodified; their production data stays where it is.
-- [x] Foundation has no customer data, storage, auth, payments, voice provider, or UI source. Only `GET /api/v1/health` is implemented, local test only.
+## Founder-approved development/release method
+- [x] **NO staging Cloudflare environment. NO remote deployment until product code is ready.** Complete Cloudflare Worker, D1/R2/Queues, all API modules, native Android, real-provider adapters and full tests with local cloud simulations/mock adapters and GitHub CI.
+- [x] First cloud deployment is a separately **founder-approved production-only** launch, after tests, backups, migration rehearsals, policies, credentials and rollback. Live provider callbacks, domain routing and Cloudflare account behavior remain `UNVERIFIED` until then.
+- [x] UI navigation/layouts require founder review before UI implementation. Old Finworkar repos and live data remain untouched. Product Google Pay India preferred; Google Play Billing for eligible digital purchases, no legacy Razorpay.
+- [x] Previous JODLO staging workflow and staging Wrangler config removed in decision PR; no GitHub push workflow deploys to Cloudflare.
 
-## Payments — product direction (not implemented)
-- Founder prefers **Google Pay** India/UPI for eligible merchant sales, not old **Razorpay**. **Google Play Billing** remains the route for Play digital SKUs unless enrolled compliant alternative or exception is applicable.
-- **No payment API, checkout, ledger, real charging or refunds have been implemented.**
+## Verified code and CI baseline
+- [x] GitHub foundation and documentation merged through PR #1 and #2; earlier green main Actions [run 40466624240](https://github.com/rekixo-lab/jodlo/actions/runs/40466624240) on commit `17e3ab16d9a7376000b22cd8aea2cea61ab6f7d1`.
+- [x] Working minimal TypeScript API `GET /api/v1/health`, docs/AI handoff and 7 existing tests. These **do not** constitute a complete backend or Android app.
+- [x] **No payment API, checkout, ledger**, calling integration, bank/PSP, or live Google Play Billing flows have been implemented or deployed. Mock-first engineering is pending.
+- [ ] **This decision PR current-head GitHub CI** must pass before merging. Green on a previous SHA does not carry forward.
 
-## Open and blocked
-- [x] Staging workflow/config are committed, **both Wrangler dry-runs green on main** (40466265299); all future commits require fresh checks.
-- [x] PR #1 merged after green PR CI. New work goes via review branch and independent CI.
-- [ ] Cloudflare access/account for JODLO not connected to ChatGPT; neither staging nor production Worker deployed. Founder must place **CLOUDFLARE_API_TOKEN** and **CLOUDFLARE_ACCOUNT_ID** in JODLO's GitHub Actions Environment `jodlo-staging`, or connect a supported Cloudflare deployment tool. **Never paste credentials in chat**.
-- [ ] Deploy staging health endpoint and verify actual publicly reachable response; only then consider reviewed production domain routing. `jodlo.rekixo.com` and DNS NOT changed.
-- [ ] Lockfile/reproducible dependency installation and staging dry-run verified after workflow update; prepare D1 schema only after founder MVP data decisions.
-- [ ] Native Android Kotlin UI and web layouts not implemented: founder approval required before design/UI work.
-- [ ] Google Pay merchant onboarding and Play policy eligibility remain owner/manual tasks.
+## Development pending (no external deployment/blocker)
+- [ ] Local D1 relational schema/migrations, indexes, delete/retention and authorization tests.
+- [ ] Typed API/auth, worker profiles, service listings, category search and customer request workflows.
+- [ ] Local R2 media, image validation/moderation, Queue processing, mock FCM/RTC/payment adapters.
+- [ ] Native Kotlin `com.rekixo.jodlo` project and approved screens, network/offline tests, real Android device performance.
+- [ ] Server-verified idempotent payment ledger, Google Pay India/Google Play Billing policy gating, refunds and callback reconciliation.
+- [ ] Security, abuse throttling, integration, mock provider, migration, load and device tests; green release candidate CI.
+- [ ] Production release checklist reviewed only when code is feature-complete; no arbitrary deadline.
 
-## Next action and working agreement
-1. Staging-only deployment workflow is already committed at `.github/workflows/deploy-staging.yml`, tested by CI, and merged to main. Founder must configure Cloudflare credentials securely; then trigger the manual deployment.
-2. Founder securely adds scoped Cloudflare deployment token and account ID as GitHub Secrets (never in chat) and triggers staging deploy.
-3. Verify staging Worker URL and actual `GET /api/v1/health` response; no user data/payment until approved.
-4. Continue new product requirements, indexed D1 schema and real pilot validation, asking founder before any UI.
+## Manual owner tasks
+**None for Cloudflare right now.** Do not request API token, account ID, DNS or staging setup. Founder feedback is required only when proposing visible UI and major product choices. Merchant/provider onboarding and Cloudflare production access wait until final launch gate.
 
-**Always consult [AGENTS](../AGENTS.md), [AI HANDOFF](AI_HANDOFF.md), [README](../README.md), [Roadmap](ROADMAP.md), [Cloudflare infrastructure](CLOUDFLARE_INFRASTRUCTURE.md). Do not overstate CI/deployment.**
+## Next exact engineering action
+1. Merge this policy decision with actual green GitHub checks.
+2. Begin **local-only D1 schema + typed API contract implementation** in a new PR; update `docs/STATUS.md` and `docs/AI_HANDOFF.md` as source of truth.
+3. Don't claim deployment/live validation without direct proof.
+
+[README](../README.md) · [AGENTS](../AGENTS.md) · [AI Handoff](AI_HANDOFF.md) · [Roadmap](ROADMAP.md) · [Release Readiness](RELEASE_READINESS.md) · [ADR-0004](decisions/0004-local-first-no-staging-until-production.md) · [Manual Actions](MANUAL_ACTIONS.md).
