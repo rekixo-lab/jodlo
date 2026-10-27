@@ -89,3 +89,10 @@
 
 **Done and evidence:** [PR #14](https://github.com/rekixo-lab/jodlo/pull/14) squash-merged as `c234961204c0c2586748c52bcd1976a8611c7197`, and [main Actions #40481385874](https://github.com/rekixo-lab/jodlo/actions/runs/40481385874) completed **SUCCESS** (41 automated tests, docs/design guard, local D1 migrations, TypeScript and both Wrangler dry-runs).
 **Still pending:** full Cloudflare WAF/IP admission rate-limits, owner-approved privacy retention/deletion, nonvisual account recovery and load tests, real Google/device verification, Android UI and production release. **Manual now:** none for this code slice. **Next:** independent backend abuse-safety and retention design/tests without touching real users, Cloudflare or legacy Finworkar.
+
+## 2026-10-27 — Local admission/abuse-control slice (under CI review)
+
+- Added two **local-only, simulated** Cloudflare Rate Limiting bindings for Google sign-in: coarse pre-verification 100 requests/10 sec per PoP; post-verification 20 requests/60 sec per **hashed Google `sub`** (not raw subject/IP). A missing binding or limiter outage denies sign-in (503); an exhausted limiter returns 429 with 10/60-second Retry-After. No new D1 table, raw IP, user email, external personal data or remote infrastructure.
+- Provider Rate Limiting limits are **approximate per Cloudflare location** (not a guaranteed worldwide security guarantee), and the shared pre-auth bucket may delay legitimate users under bursts. Actual production cost, quotas, Cloudflare bot/WAF rules and provider behavior still require readiness review.
+- Synthetic account deletion cascade + transactional rollback tests protect worker profiles, Google subject and session cleanup, **without exposing any public account-deletion endpoint**. Real deletion/export notice, data retention/consent remains founder gate M-003.
+- CI/evidence pending: require green PR + green merged-main Actions before marking these features verified. No staging, remote deploy, Android UI or Finworkar mutation.

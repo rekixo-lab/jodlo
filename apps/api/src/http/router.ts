@@ -6,6 +6,10 @@ import { validGoogleClientId, verifyGoogleIdToken } from "../modules/identity/go
 import { resolveGoogleAccount } from "../modules/identity/google-accounts.ts";
 import { issueSession, makeSessionVerifier, revokeAllSessions, revokeSession, SESSION_TTL_SECONDS } from "../modules/identity/sessions.ts";
 import { readGoogleLoginBody } from "./body.ts";
+import {
+  allowGoogleAccountLogin, allowLoginBurst,
+  LOGIN_BURST_RETRY_SECONDS, ACCOUNT_LOGIN_RETRY_SECONDS,
+} from "../modules/identity/admission.ts";
 
 type ApiErrorCode = "NOT_FOUND" | "METHOD_NOT_ALLOWED" | "INVALID_QUERY" | "SERVICE_UNAVAILABLE" | "UNAUTHORIZED" | "FORBIDDEN" | "RATE_LIMITED";
 type ApiResponse = { ok: true; data: unknown } | { ok: false; error: { code: ApiErrorCode; message: string } };
@@ -77,14 +81,27 @@ export async function handleRequest(
       return json({ ok: false, error: { code: "METHOD_NOT_ALLOWED", message: "Method not allowed" } }, 405, { Allow: "POST" });
     }
     if (url.search) return json({ ok: false, error: { code: "INVALID_QUERY", message: "Unexpected query" } }, 400);
-    if (!env.DB || !validGoogleClientId(env.GOOGLE_CLIENT_ID)) {
+    // Fail closed if the owner hasn't configured both Cloudflare admission limits.
+    // The normal Wrangler config has no live bindings during development.
+    if (!env.DB || !validGoogleClientId(env.GOOGLE_CLIENT_ID) ||
+        !env.LOGIN_BURST_LIMITER || !env.ACCOUNT_LOGIN_LIMITER) {
       return json({ ok: false, error: { code: "SERVICE_UNAVAILABLE", message: "Sign-in unavailable" } }, 503);
     }
     const idToken = await readGoogleLoginBody(request);
     if (!idToken) return json({ ok: false, error: { code: "INVALID_QUERY", message: "Invalid sign-in request" } }, 400);
     try {
+      // Stage 1: protects expensive signature/JWKS processing from bursts.
+      if (!await allowLoginBurst(env.LOGIN_BURST_LIMITER)) {
+        return json({ ok: false, error: { code: "RATE_LIMITED", message: "Sign-in temporarily limited" } },
+          429, { "Retry-After": String(LOGIN_BURST_RETRY_SECONDS) });
+      }
       const subject = await verifyGoogle(idToken, env.GOOGLE_CLIENT_ID);
       if (!subject) return json({ ok: false, error: { code: "UNAUTHORIZED", message: "Invalid sign-in" } }, 401);
+      // Stage 2: stops repeat valid Google proofs from overwhelming account/session D1 writes.
+      if (!await allowGoogleAccountLogin(env.ACCOUNT_LOGIN_LIMITER, subject)) {
+        return json({ ok: false, error: { code: "RATE_LIMITED", message: "Sign-in temporarily limited" } },
+          429, { "Retry-After": String(ACCOUNT_LOGIN_RETRY_SECONDS) });
+      }
       const accountId = await resolveGoogleAccount(env.DB, subject);
       if (!accountId) return json({ ok: false, error: { code: "FORBIDDEN", message: "Account unavailable" } }, 403);
       const session = await issueSession(env.DB, accountId);
