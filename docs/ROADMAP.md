@@ -142,5 +142,5 @@ First shippable unit is local-only `categories` migration and typed read API (en
 
 ## APPROVED language scope correction — 2026-10-27
 
-- [ ] Complete founder's **Hindi + English only** restriction, prohibit Hinglish/Romanized Hindi/mixed-script intent and UI copy, replace older test assertions and confirm exact PR/main CI. [ADR-0008](decisions/0008-hindi-english-only.md). No owner question needed.
+- [x] Enforce founder's **Hindi + English ONLY** policy (no Hinglish, Romanized Hindi or mixed-script natural-language match), test and verify source. [PR #25](https://github.com/rekixo-lab/jodlo/pull/25) merged as `e0ce6d04a56f9c8aaa27c24d50f821ace5201ae3`; [main GitHub Actions #40493262734](https://github.com/rekixo-lab/jodlo/actions/runs/40493262734) **SUCCESS** on that exact SHA (84/84 Node tests, local D1 migrations, strict TypeScript, docs/design guards and both Worker dry-run bundles). [ADR-0008](decisions/0008-hindi-english-only.md).
 - [ ] Do not build UI before M-004; avoid actual service listing/location/call writes before M-003/M-005. No cloud deployment before M-007.
