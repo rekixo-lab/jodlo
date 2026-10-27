@@ -79,6 +79,8 @@ These snapshots do NOT prove deployed version, spend or traffic. This evidence a
 - Follow [`STATUS.md`](STATUS.md) for current status (this handoff may become older).
 
 ## Read / act protocol for the next AI
+**MANUAL-GATE mandatory reminder:** Before any new JODLO work, consult [Manual Actions](MANUAL_ACTIONS.md) for stable M-IDs, trigger, blocker, owner decision and next independent task. When genuinely required, directly tell founder in the *active* chat exactly what is needed, why, and what's blocked; do not silently wait or assume unspoken approval. Persist completed decisions and proof in repo after tests/PR/CI. A normal chat does not send spontaneous background messages. Current **M-001** needs founder choice on single/shared customer-worker account vs separate account model; no auth/worker PII schema until decided. No Cloudflare or UI approval request until appropriate trigger.
+
 1. Open [`AGENTS.md`](../AGENTS.md) then this handoff; also read the [`README.md`](../README.md), [`STATUS.md`](STATUS.md) and [`ROADMAP.md`](ROADMAP.md).
 2. Confirm current repo branch, files, latest code and GitHub Actions before editing. If source differs, record what changed.
 3. Work in smallest reviewable step. Document the technical reason and compatibility consequences. Keep old Finworkar untouched.

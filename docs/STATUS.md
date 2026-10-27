@@ -32,6 +32,8 @@
 - [ ] Production release checklist reviewed only when code is feature-complete; no arbitrary deadline.
 
 ## Manual owner tasks
+**Owner-action checkpoint — 2026-10-27:** Hard requirement to proactively ask for any genuinely needed founder/manual task in the active JODLO conversation is tracked in [Manual Actions](MANUAL_ACTIONS.md). Current **M-001 NEEDS_DECISION_NOW:** single account with both customer/opt-in worker roles vs separate customer and worker accounts; decision **not yet approved**. M-002 auth provider, M-003 area/privacy and M-004 UI sign-off are upcoming at their respective gates. M-006/M-007 provider/production provisioning remain deferred. AI should keep building safe non-blocked backend/test components; no cloud activity now.
+
 **None for Cloudflare right now.** Do not request API token, account ID, DNS or staging setup. Founder feedback is required only when proposing visible UI and major product choices. Merchant/provider onboarding and Cloudflare production access wait until final launch gate.
 
 ## Next exact engineering action

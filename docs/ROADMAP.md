@@ -21,6 +21,8 @@
 - [ ] Founder UI review & approval before UI work.
 
 ## Phase 2 — Complete locally testable Cloudflare-compatible backend
+- [ ] **M-001 founder manual decision (now):** one account with customer and optional worker roles vs separate accounts; see [manual-action register](MANUAL_ACTIONS.md). Do not treat architecture proposal as approval.
+- [ ] **M-002/M-003 later product gates:** auth/OTP provider and manual area/PII consent model before related D1 identity/location implementations; non-blocked typed contracts and fake auth tests may proceed.
 - [x] First local-only public categories D1 migration, indexed bounded read-only API and synthetic migration tests added in catalog PR; [green PR CI #40473268574](https://github.com/rekixo-lab/jodlo/actions/runs/40473268574) on code commit `0b44bf8` (19 tests, local D1 migration, both Wrangler dry-run bundles, TypeScript, docs and design checks); zero live resources.
 - [ ] Full accounts/workers/areas/listings D1 relational schema, migrations, privacy lifecycle/backup-recovery tests; founder identity/area model decisions pending.
 - [ ] Auth/session implementation, identity provider decision; abuse and rate limits.

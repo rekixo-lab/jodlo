@@ -9,6 +9,16 @@
 
 **Start here, every time.** This file is a repository-resident handoff, NOT a claim that the chat has durable Memory. A new assistant must be given this repository/ZIP, or have GitHub access, to read it.
 
+## MANUAL-GATE — mandatory founder-action notification protocol (2026-10-27)
+
+At **every JODLO session**, read [`docs/MANUAL_ACTIONS.md`](docs/MANUAL_ACTIONS.md) with `docs/STATUS.md` **before starting dependent tasks**. The AI/engineer owns routine code, local simulations, tests, commits, PRs, CI fixes and truthful docs. **Do not silently wait for the founder or delegate automatable engineering.**
+
+**When a genuine founder/manual decision, permission, approval, account/onboarding action or external operation becomes necessary, tell the founder directly in the active conversation at that point**, in simple Hindi: action ID, what exactly to choose/do, why it is required, what becomes blocked, whether it is needed now or only later, and what autonomous work can still proceed. Prefer one blocking question at a time; never demand credentials, tokens, signing keys, OTPs or private customer data in chat. Do not repeatedly ask for answered decisions.
+
+Record the gate in `docs/MANUAL_ACTIONS.md` (stable ID, state, trigger, owner, resolution evidence); mirror only the **currently blocking** items in `docs/STATUS.md` and the next roadmap/handoff step. Owner proposals are **not approvals**. Once the founder answers, record the approved decision and resume its gated work via PR and real CI. **A chat assistant cannot independently send unscheduled future alerts**; check/notify on every active project session, not by promising background monitoring.
+
+**Current first founder gate:** `M-001` account/role model for identity/worker database schemas; see the action register. No Cloudflare staging, production credentials, UI implementation or old Finworkar mutation.
+
 ## Required read order
 1. [`README.md`](README.md): mission, fixed product identity and the architecture at a glance.
 2. [`docs/AI_HANDOFF.md`](docs/AI_HANDOFF.md): source-of-truth facts, decisions vs hypotheses, last known status and exact next task.

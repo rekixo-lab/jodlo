@@ -10,6 +10,19 @@ async function walk(dir){let all=[];for(const item of await readdir(dir,{withFil
 async function main(){for(const p of required)assert.equal((await stat(join(root,p))).isFile(),true,"Missing "+p);
 for(const path of ["README.md","AGENTS.md","docs/AI_HANDOFF.md","docs/STATUS.md"]){let t=await readFile(join(root,path),"utf8");for(const id of ["JODLO","com.rekixo.jodlo","jodlo.rekixo.com"])assert.ok(t.includes(id),path+" missing "+id);}
 for(const path of ["README.md","AGENTS.md","docs/AI_HANDOFF.md"]){let t=await readFile(join(root,path),"utf8");assert.ok(t.includes("Google Pay")&&t.includes("Razorpay")&&/UI/.test(t)&&/approval|approve|consent|सहमति/.test(t),path+" missing owner gates");}
+// Prevent future handoffs from silently dropping founder-action escalation rules.
+for (const [path, mandatory] of Object.entries({
+  "AGENTS.md": ["MANUAL-GATE", "docs/MANUAL_ACTIONS.md"],
+  "docs/MANUAL_ACTIONS.md": ["## Owner-action communication protocol", "## Action register", "M-001", "M-007", "NEEDS_DECISION_NOW", "DEFERRED"],
+  "docs/STATUS.md": ["Owner-action checkpoint", "M-001"],
+  "docs/AI_HANDOFF.md": ["MANUAL-GATE", "Manual Actions"],
+  "docs/ROADMAP.md": ["M-001", "MANUAL_ACTIONS.md"],
+})) {
+  const doc = await readFile(join(root, path), "utf8");
+  for (const phrase of mandatory) {
+    assert.ok(doc.includes(phrase), path + " missing required manual-action policy: " + phrase);
+  }
+}
 let links=0;for(const file of await walk(root)){const raw=await readFile(file,"utf8");const text=raw.replace(/^```[^\n]*\n[\s\S]*?^```\s*$/gm,"");for(const match of text.matchAll(/!?\[[^\]]*\]\(([^)]+)\)/g)){let href=match[1].trim().replace(/^<|>$/g,"").split("#")[0].split("?")[0];if(!href||/^(https?:\/\/|mailto:|tel:|data:)/i.test(href))continue;assert.ok(!href.startsWith("/"),"Absolute link "+href);const dest=resolve(dirname(file),decodeURIComponent(href));assert.ok(dest===root||dest.startsWith(root+"/"),"Link escapes repo: "+href);try{await stat(dest);}catch{throw Error("Broken relative link "+file+" => "+href)}links++;}}
 process.stdout.write("JODLO docs: "+required.length+" required, "+links+" relative links valid.\n");}
 main().catch(e=>{console.error(e.message);process.exitCode=1});

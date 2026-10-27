@@ -35,6 +35,8 @@ JODLO को **हल्का, तेज़, सुचारु, कम खर�
 
 **Read in this order:** [AGENTS.md](AGENTS.md) → [AI HANDOFF](docs/AI_HANDOFF.md) → [CURRENT STATUS](docs/STATUS.md) → [Roadmap](docs/ROADMAP.md) → [Architecture](docs/ARCHITECTURE.md). Every session must update the status with Done / Pending / Blocked / Next and links/tests, and never invent production/CI success.
 
+**Founder-action rule:** The assistant proactively identifies and explains each actually needed manual decision/action **during an active JODLO conversation**; non-blocked development proceeds automatically. Permanent task IDs, trigger dates/states, actionable instructions and deferred tasks are in [Manual Actions](docs/MANUAL_ACTIONS.md), and current blockers in [Status](docs/STATUS.md). No chat promise of background notifications. No Cloudflare deployment/account tasks now; current first choice is the customer/worker account-role model (`M-001`).
+
 ### End-to-end proposed design at a glance
 
 ```text
