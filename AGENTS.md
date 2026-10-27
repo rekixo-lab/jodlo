@@ -172,3 +172,7 @@ The Category Search's `intent-aliases.ts` is intentionally **narrow and test-bac
 ## 2026-10-27 — Scalable alias safety contract
 
 Read [matcher QA continuation](docs/reference/JODLO_SMART_DISCOVERY_FOUNDATION_2026-10-27.md). The `validateWorkAliasRegistry` gate must remain for future approved Hindi/English examples, refusing duplicate/conflicting phrases, mixed scripts, unsafe IDs or over-budget lists. Ten candidate IDs / 24 examples are not activated categories or translation-certification; the **actual D1 active gate** remains mandatory. No UI M-004, personal location M-003, real categories M-005 or remote deploy M-007 approved by this engineering PR.
+
+## Source-locked catalog review tooling — 2026-10-27
+
+Before making any 889-category search/seeding policy, run `npm run reference:check`, optionally inspect `npm run reference:review` and read [per-category review evidence](docs/reference/JODLO_LEGACY_889_CATEGORY_REVIEW_2026-10-27.md). All review rows are unapproved; duplicated service names across different categories are NOT aliases for automatic matching; source Safety Tiers are NOT enforcement rules. No live D1 seed or Worker/UI asset. Existing ADR-0009 immediate publish **only in approved-active categories** persists, along with M-003/M-004/M-005/M-007 gates and Hindi/English-only ADR-0008.
