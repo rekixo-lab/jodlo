@@ -16,3 +16,7 @@ Previous repositories must NEVER be mutated: `rekixo-lab/finworkar-android`, `re
 | Website static old version info and Firebase hosting | New JODLO website only after founder-approved UI; new domain `jodlo.rekixo.com`. |
 
 See [read-only research](../ARCHITECTURE_RESEARCH_20261027.md) and [Cloudflare infrastructure](../CLOUDFLARE_INFRASTRUCTURE.md).
+
+## Complete historical catalog read-only snapshot (founder export 2026-10-27)
+
+See [verified audit](FINWORKAR_CATALOG_AUDIT_2026-10-27.md). Original full 7.4 MB JSON is in founder's private ChatGPT Library `/JODLO/Reference/finworkar-catalog-2026-10-27.json`; GitHub [full bilingual compressed reference](data/finworkar-catalog-bilingual-2026-10-27.json.gz) captures 28 groups, 206 families, 889 categories and 7,267 services without unsupported extra languages/assets. Not a migration authorization or live worker category seed.
