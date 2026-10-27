@@ -11,6 +11,8 @@
 
 **Required premium visuals:** subtle professional depth, beautiful highly responsive animated tabs, navigation transitions, press/gesture feedback, state changes and selected high-value 3D/2.5D. Use light draw/layer animations, support reduced-motion/static fallback, TalkBack and low-end performance/battery. Real 3D engine only if founder approves and benchmarks support it. **UI design/palette/animation specifics still require founder review BEFORE implementation.** No Android UI has been built yet.
 
+**Verified quality milestone:** mandatory reuse/theme/motion requirements and preventive guard merged via [PR #5](https://github.com/rekixo-lab/jodlo/pull/5), with [GREEN main CI 40470523692](https://github.com/rekixo-lab/jodlo/actions/runs/40470523692) on commit `e6982c49d94522abdb257e1bc0b5c8f0ec4b75e1`. All current tests green; no Android UI yet. Current-head CI must be rechecked with any new commit.
+
 **Read/obey:** [ADR-0005](decisions/0005-reuse-tokens-premium-motion.md), [Reuse Assets](REUSE_ASSET_POLICY.md), [Design System](DESIGN_SYSTEM.md), [Motion 3D](MOTION_3D.md). CI will include `design:check` and synthetic tests; future device performance gates remain pending. Cloudflare deployment remains delayed until finished code.
 
 ## What we are building
