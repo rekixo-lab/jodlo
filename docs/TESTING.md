@@ -71,3 +71,9 @@ Local synthetic DB and fake trusted-auth tests assert one customer account + opt
 - Reuse catalog D1/SQLite adapter, no migration/dependency or actual service inventory. Require latest PR and main CI confirmation; **not** worker discovery, location search, production scale/performance evaluation or founder-approved pilot data.
 
 **Actual verified CI:** [PR #18](https://github.com/rekixo-lab/jodlo/pull/18) merged as `36c9d83ad8f720d4eb7244364e789f5fc4bd7879`; [main GitHub Actions #40484455029](https://github.com/rekixo-lab/jodlo/actions/runs/40484455029) **SUCCESS** on the exact main head (55/55 Node tests, local D1 migrations, documentation/design guards, strict TypeScript, local and normal Worker dry-run builds). Native SQLite cases are local only; performance/load tests, real worker discovery, pilot category inventory and live end-user/device behavior remain unverified.
+
+## Pure request/matching decisions — test-only (2026-10-27)
+
+- Generic synthetic request states (not product defaults): owner-first authorization, immutable decision/receipt, replay after current state advances, idempotency-key conflicts, optimistic revision, unapproved transition denial, malformed IDs/keys and fake in-memory transaction journal.
+- Matching synthetic candidate IDs: no assumed verification, no implicit eligible candidates, approved-policy callback, category match, self-exclusion, deduplication, strict batch/result cap, non-PII projection and invalid policy failure. No new public routes, real worker/customer data, D1 request storage or external services.
+- These unit/fake integration tests **do not** prove distributed D1 unique-key/CAS atomicity or a founder-approved M-005 request lifecycle; verify hosted GitHub PR/main CI for actual implementation evidence.
