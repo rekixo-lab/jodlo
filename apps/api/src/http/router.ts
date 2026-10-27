@@ -6,7 +6,9 @@ import { optInAsWorker, ownWorkerDraft } from "../modules/workers/profile.ts";
 import { validGoogleClientId, verifyGoogleIdToken } from "../modules/identity/google.ts";
 import { resolveGoogleAccount } from "../modules/identity/google-accounts.ts";
 import { issueSession, makeSessionVerifier, revokeAllSessions, revokeSession, SESSION_TTL_SECONDS } from "../modules/identity/sessions.ts";
-import { readGoogleLoginBody } from "./body.ts";
+import { readGoogleLoginBody, readServiceListingBody } from "./body.ts";
+import { validCategoryId } from "../modules/shared/identifiers.ts";
+import { publishListing, myListings, publicListings, unpublishListing } from "../modules/workers/listings.ts";
 import {
   allowGoogleAccountLogin, allowLoginBurst,
   LOGIN_BURST_RETRY_SECONDS, ACCOUNT_LOGIN_RETRY_SECONDS,
@@ -188,6 +190,60 @@ export async function handleRequest(
     } catch {
       // Fail closed; never reflect SQL errors or credential/provider details.
       return json({ ok: false, error: { code: "SERVICE_UNAVAILABLE", message: "Identity unavailable" } }, 503);
+    }
+  }
+  if (url.pathname === "/api/v1/listings") {
+    const methodError=getOnly(request);
+    if(methodError)return methodError;
+    if(url.searchParams.size!==1||url.searchParams.getAll("categoryId").length!==1||
+        !validCategoryId(url.searchParams.get("categoryId"))) {
+      return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid category query"}},400);
+    }
+    if(!env.DB)return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Listings unavailable"}},503);
+    try {
+      const listings=await publicListings(env.DB,url.searchParams.get("categoryId")!);
+      return json({ok:true,data:{listings}});
+    } catch {
+      return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Listings unavailable"}},503);
+    }
+  }
+  if (url.pathname === "/api/v1/me/listings") {
+    if(!["GET","POST","DELETE"].includes(request.method)) {
+      return json({ok:false,error:{code:"METHOD_NOT_ALLOWED",message:"Method not allowed"}},405,
+        {Allow:"GET, POST, DELETE"});
+    }
+    if(!env.DB)return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Listings unavailable"}},503);
+    const token=bearerToken(request);
+    if(!token)return json({ok:false,error:{code:"UNAUTHORIZED",message:"Authentication required"}},401);
+    try {
+      const actor=await (env.AUTH??makeSessionVerifier(env.DB)).verify(token);
+      if(!actor||!validOpaqueId(actor.accountId)) {
+        return json({ok:false,error:{code:"UNAUTHORIZED",message:"Authentication required"}},401);
+      }
+      if(request.method==="GET") {
+        if(url.search||request.body!==null)
+          return json({ok:false,error:{code:"INVALID_QUERY",message:"Unexpected input"}},400);
+        return json({ok:true,data:{listings:await myListings(env.DB,actor.accountId)}});
+      }
+      if(request.method==="POST") {
+        if(url.search)return json({ok:false,error:{code:"INVALID_QUERY",message:"Unexpected query"}},400);
+        const categoryId=await readServiceListingBody(request);
+        if(!validCategoryId(categoryId))
+          return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid listing input"}},400);
+        const listing=await publishListing(env.DB,actor.accountId,categoryId);
+        if(!listing)return json({ok:false,error:{code:"FORBIDDEN",message:"Listing not eligible"}},403);
+        return json({ok:true,data:{listing}});
+      }
+      if(request.body!==null||url.searchParams.size!==1||
+          url.searchParams.getAll("id").length!==1||
+          !validOpaqueId(url.searchParams.get("id"))) {
+        return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid listing ID"}},400);
+      }
+      const changed=await unpublishListing(env.DB,actor.accountId,url.searchParams.get("id")!);
+      if(!changed)return json({ok:false,error:{code:"NOT_FOUND",message:"Listing not found"}},404);
+      return json({ok:true,data:{unpublished:true}});
+    } catch {
+      return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Listings unavailable"}},503);
     }
   }
   return json({ ok: false, error: { code: "NOT_FOUND", message: "Endpoint not found" } }, 404);

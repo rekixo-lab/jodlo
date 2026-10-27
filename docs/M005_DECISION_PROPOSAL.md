@@ -1,27 +1,11 @@
-# M-005 founder decision proposal — safe worker/customer pilot
+# M-005 — publication decision recorded, remaining pilot choices
 
-**Status: PROPOSED, NOT APPROVED AS PRODUCT SPEC** (2026-10-27).
+**FOUNDER APPROVED on 2026-10-27:** workers **immediately self-publish** a minimal service listing. **No automatic verification badge.** The earlier proposed manual pre-publication review is **superseded**; do not ask it again. See [ADR-0009](decisions/0009-instant-service-publication.md).
 
-The founder stated "अगर मेरी मंजूरी चाहिए कुछ चीज में तो approved" — permission to continue sensible engineering. This does not identify the pilot location, actual service categories, verified-worker publication policy or initial customer contact process. Do **not** claim these exact choices are decided merely because development was authorized.
+## Still unapproved
+- First actual pilot city/area and the real service categories to activate (none are seeded).
+- Verification/trust definitions and whether additional public service details should be shown.
+- Customer first sends an availability request vs direct calling, moderation report/appeal admin workflow, spam rules.
+- M-003 locality selection, GPS consent, deletion/retention; M-004 app UI; M-008 live Google; M-007 production-only launch.
 
-## Proposed conservative first pilot workflow (awaiting founder's choices)
-
-1. A customer has one Google-linked JODLO account and may privately opt in as a worker (M-001/M-002 **already DONE**); the opt-in `worker_profiles.status='draft'` is *never* a public listing.
-2. **Suggested**, not approved: worker prepares a service description and chooses only categories from a subsequently owner-approved active bilingual catalog. No trust badge or "verified" label merely for signing in or opting in.
-3. **Suggested**, not approved: manual review of the service before publication, with ability to unpublish/disable; require worker active, listing available, category active and moderation approval on every public read. Never infer trust from old Finworkar calls/ratings.
-4. **Suggested**, not approved: a customer first sends a bounded **request for availability**, and worker can accept or decline. Contact details are not exposed from search. Direct calling and notifications are separately reviewed, not an assumed automatic first-run capability.
-5. **Suggested**, not approved: an area-first optional location policy with no required precise GPS; any real user location collection, consent, retention and deletion require separate M-003 approval.
-6. **Required remaining owner specifications:** actual first city/area, service category shortlist, manual-vs-automatic publication, public fields/trust terminology, and first request vs calling choice. Pricing, fees and RTC/payments require later M-006 review. Hindi (Devanagari) and English only, no Hinglish (ADR-0008).
-7. **No production deployments or staging** until M-007, no Android/web UI until M-004, no Google real-device OAuth setup until M-008. Old Finworkar code is READ-ONLY behavioral reference.
-
-## Implementation status
-
-Already shipped: public bilingual category read/search; private worker draft, pure deny-by-default listing/contact eligibility, generic request CAS/idempotency contract with test-only SQLite rehearsal and founder-gate CI. **No real service listing/public search, request persistence or calls yet.** The present change instead hardens already approved login/logout.
-
-### One decision to raise when the user responds
-
-**M-005:** Should each worker's service require **manual review before it is publicly visible**, or is automatic publication desired? Recommended default is **manual review, with no automatic "verified" badge**. Record founder's actual answer in `docs/MANUAL_ACTIONS.md`, then continue separately deciding pilot area/categories and request channel. Do not treat this proposal as consent for location/PII collection.
-
-## Implementation evidence (separate from pilot approvals)
-
-[PR #33](https://github.com/rekixo-lab/jodlo/pull/33) merged as `5d7906e96cd71d7f104fcb58098ea5547b6b098b`; [main GitHub Actions #40504504583](https://github.com/rekixo-lab/jodlo/actions/runs/40504504583) completed **SUCCESS** on that exact commit (119/119 Node tests, docs/design/founder checks, local D1 migrations, strict TypeScript and both Wrangler dry-run Worker builds). This milestone only hardens existing identity logout; **none** of the proposed manual-review/contact/pilot choices are made by the code or confirmed by the founder. General proceed authorization should not be mistaken for exact product decisions.
+The new backend uses **category + opaque listing ID only**, private worker profile remains draft, moderator can hide via trusted internal DB operation; this does not authorize personal/geo/contact data. Hindi and English only, no Hinglish; old Finworkar read-only.

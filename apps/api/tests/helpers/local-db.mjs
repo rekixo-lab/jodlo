@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 export function openLocalDatabase() {
   const db = new DatabaseSync(":memory:");
   db.exec("PRAGMA foreign_keys = ON");
-  for (const name of ["0001_public_catalog.sql", "0002_shared_accounts_worker_drafts.sql", "0003_google_identity_sessions.sql"]) {
+  for (const name of ["0001_public_catalog.sql", "0002_shared_accounts_worker_drafts.sql", "0003_google_identity_sessions.sql", "0004_worker_service_listings.sql"]) {
     db.exec(readFileSync(new URL("../../../../infra/migrations/" + name, import.meta.url), "utf8"));
   }
   const adapter = {

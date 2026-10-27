@@ -1,10 +1,11 @@
 import { validCategoryId, validOpaqueId } from "../shared/identifiers.ts";
 
 /**
- * PURE, INTERNAL visibility projection for synthetic trusted facts.
+ * Pure server-verified visibility allowlist for minimal public service listings.
  *
- * It does not publish workers, query a listing table, grant verified status,
- * expose a public route or choose the M-005 publication process. A future
+ * It never publishes a worker profile, grants verification or trusts client flags.
+ * M-005 separately approved immediate public SERVICE listings. Worker opt-in
+ * profile status remains private 'draft' and is not a verification badge. A future
  * D1 reader must construct every flag from current authoritative records
  * and use a founder-approved disclosure policy, not client/body flags.
  */
@@ -15,8 +16,6 @@ export type ListingVisibilityFacts = Readonly<{
   categoryId: string;
   ownerActive: boolean;
   workerOptedIn: boolean;
-  /** Existing worker_profiles status='draft' MUST be treated as private. */
-  workerDraftOnly: boolean;
   categoryActive: boolean;
   listingPublished: boolean;
   listingAvailable: boolean;
@@ -25,13 +24,13 @@ export type ListingVisibilityFacts = Readonly<{
   disclosureApprovedByPolicy: boolean;
 }>;
 
-export type SyntheticPublicListing = Readonly<{
+export type PublicListingProjection = Readonly<{
   id: string;
   categoryId: string;
 }>;
 
 const REQUIRED_BOOLEAN_FIELDS = [
-  "ownerActive", "workerOptedIn", "workerDraftOnly",
+  "ownerActive", "workerOptedIn",
   "categoryActive", "listingPublished", "listingAvailable",
   "moderationApproved", "disclosureApprovedByPolicy",
 ] as const;
@@ -41,11 +40,11 @@ const REQUIRED_BOOLEAN_FIELDS = [
  * No names, personal location, worker account IDs, photos, trust badges,
  * contact details, internal draft state or hidden moderation reasons.
  *
- * NOT a full business listing DTO or approval to make it public.
+ * This is a minimal listing DTO; not a worker profile, verified badge or contact.
  */
 export function projectVisibleListing(
   facts: ListingVisibilityFacts,
-): SyntheticPublicListing | null {
+): PublicListingProjection | null {
   if (!facts || typeof facts !== "object" ||
       !validOpaqueId(facts.listingId) ||
       !validOpaqueId(facts.listingOwnerAccountId) ||
@@ -55,7 +54,7 @@ export function projectVisibleListing(
     return null;
   }
   if (facts.listingOwnerAccountId !== facts.workerAccountId) return null;
-  if (!facts.ownerActive || !facts.workerOptedIn || facts.workerDraftOnly ||
+  if (!facts.ownerActive || !facts.workerOptedIn ||
       !facts.categoryActive || !facts.listingPublished ||
       !facts.listingAvailable || !facts.moderationApproved ||
       !facts.disclosureApprovedByPolicy) {
