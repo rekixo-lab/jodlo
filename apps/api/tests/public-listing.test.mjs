@@ -13,7 +13,6 @@ const allowFacts=()=>({
   categoryId:"category1",
   ownerActive:true,
   workerOptedIn:true,
-  workerDraftOnly:false,
   categoryActive:true,
   listingPublished:true,
   listingAvailable:true,
@@ -33,7 +32,7 @@ test("missing, malformed or untrusted status flags fail closed instead of defaul
   assert.equal(projectVisibleListing(null),null);
   assert.equal(projectVisibleListing([]),null);
   for(const key of [
-    "ownerActive","workerOptedIn","workerDraftOnly","categoryActive",
+    "ownerActive","workerOptedIn","categoryActive",
     "listingPublished","listingAvailable","moderationApproved","disclosureApprovedByPolicy",
   ]){
     const missing={...allowFacts()};
@@ -45,8 +44,7 @@ test("missing, malformed or untrusted status flags fail closed instead of defaul
   }
 });
 
-test("draft worker opt-in NEVER implies publication or verification",()=>{
-  assert.equal(projectVisibleListing({...allowFacts(),workerDraftOnly:true}),null);
+test("private draft opt-in alone does not imply published service",()=>{
   assert.equal(projectVisibleListing({...allowFacts(),workerOptedIn:false}),null);
   assert.equal(projectVisibleListing({...allowFacts(),listingPublished:false}),null);
   assert.equal(projectVisibleListing({...allowFacts(),disclosureApprovedByPolicy:false}),null);
@@ -74,7 +72,7 @@ test("current authoritative facts must be rechecked, never reused from earlier b
   const preview=allowFacts();
   assert.ok(projectVisibleListing(preview));
   for(const update of [
-    {ownerActive:false},{workerDraftOnly:true},{listingPublished:false},
+    {ownerActive:false},{workerOptedIn:false},{listingPublished:false},
     {listingAvailable:false},{moderationApproved:false},
     {categoryActive:false},{disclosureApprovedByPolicy:false},
     {listingOwnerAccountId:"account-other2"},
@@ -98,7 +96,7 @@ test("projection allowlist ignores extra PII, verification, media and location f
   ]) assert.equal(JSON.stringify(result).includes(secret),false,secret);
 });
 
-test("real existing local D1 worker opt-in remains draft despite a published category fixture",async()=>{
+test("private worker profile remains draft; distinct listing controls publication",async()=>{
   const {db,adapter}=openLocalDatabase();
   try{
     const accountId="account-worker1";
@@ -112,11 +110,11 @@ test("real existing local D1 worker opt-in remains draft despite a published cat
     const category=db.prepare("SELECT is_active FROM categories WHERE id=?").get("category1");
     assert.equal(state.status,"draft");
     assert.equal(category.is_active,1);
-    assert.equal(projectVisibleListing({...allowFacts(),
+    assert.deepEqual(projectVisibleListing({...allowFacts(),
       ownerActive:state.account_status==="active",
-      workerOptedIn:true,workerDraftOnly:state.status==="draft",
+      workerOptedIn:state.status==="draft",
       categoryActive:category.is_active===1,
-    }),null);
+    }),{id:"listing-000001",categoryId:"category1"});
     assert.throws(()=>db.prepare(
       "UPDATE worker_profiles SET status='published' WHERE account_id=?").run(accountId),
       /CHECK constraint failed/);
