@@ -38,3 +38,7 @@ No Firebase/Firestore schema, no legacy auth/OTP, no legacy Razorpay, no automat
 ## Verified implementation status
 
 [PR #22](https://github.com/rekixo-lab/jodlo/pull/22) merged as `24ed69e735e136cc95b6ac43f74d83f08d019e6a`; [main GitHub Actions #40489994251](https://github.com/rekixo-lab/jodlo/actions/runs/40489994251) **SUCCESS** on the same commit (76/76 Node tests, local D1, docs/design guards, strict TypeScript, both Wrangler dry-run builds). All inspected Finworkar repositories remained read-only. JODLO's new pure guard tests are not production evidence or user metrics; continue using this map as a checklist, never copied source.
+
+## 2026-10-27 — Original JODLO spoken-query prototype (non-migrated)
+
+The legacy matcher treated Hindi voice grammar and Roman Hindi intent words as low-signal while emphasizing the work/category term. JODLO builds **its own** tiny safe phrase analyzer (no copied legacy vocabulary) for public category search in `catalog/search-phrases.ts`, matching all remaining category terms and returning nothing for unspecific or unresolved multi-trade phrases. No actual microphone, speech recognition, offline model, worker discovery or old data migrated. CI verification pending; M-005 founder policy still controls future synonym/category/voice experience.

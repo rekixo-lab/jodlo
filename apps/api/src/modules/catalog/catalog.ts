@@ -1,4 +1,5 @@
 import type { D1Database } from "../../data/d1.ts";
+import { categoryIntentTerms } from "./search-phrases.ts";
 
 export type CatalogLanguage = "en" | "hi";
 export type PublicCategory = { id: string; slug: string; name: string };
@@ -62,18 +63,33 @@ export function parseCatalogSearch(params: URLSearchParams): CatalogSearchOption
  * locality, verification labels, exact GPS or seed content. All terms are bound.
  * instr() makes SQL LIKE % and _ literal, preventing wildcard amplification.
  */
-export const SEARCH_PUBLIC_CATEGORIES_QUERY =
-  PUBLIC_CATEGORY_FIELDS +
-  "FROM categories WHERE is_active = 1 " +
-  "AND (instr(lower(name_en), lower(?)) > 0 " +
-  "OR instr(name_hi, ?) > 0 OR instr(slug, lower(?)) > 0) " +
-  "ORDER BY sort_order ASC, id ASC LIMIT ? OFFSET ?";
+const MATCH_PUBLIC_CATEGORY_TERM =
+  "(instr(lower(name_en), lower(?)) > 0 " +
+  "OR instr(name_hi, ?) > 0 OR instr(slug, lower(?)) > 0)";
+const PUBLIC_CATEGORY_SORT_PAGE = " ORDER BY sort_order ASC, id ASC LIMIT ? OFFSET ?";
+
+function searchQuery(termCount: number): string {
+  // termCount is internal and bounded by categoryIntentTerms to at most 6.
+  // Every term is still passed via bound parameters; never embedded in SQL.
+  return PUBLIC_CATEGORY_FIELDS + "FROM categories WHERE is_active = 1 AND " +
+    Array(termCount).fill(MATCH_PUBLIC_CATEGORY_TERM).join(" AND ") +
+    PUBLIC_CATEGORY_SORT_PAGE;
+}
+
+export const SEARCH_PUBLIC_CATEGORIES_QUERY = searchQuery(1);
 
 export async function searchPublicCategories(
   db: D1Database, opts: CatalogSearchOptions,
 ): Promise<CatalogSearchPage> {
-  const { results } = await db.prepare(SEARCH_PUBLIC_CATEGORIES_QUERY)
-    .bind(opts.language, opts.query, opts.query, opts.query, opts.limit + 1, opts.offset)
+  const intent = categoryIntentTerms(opts.query);
+  // A generic sentence such as "मुझे काम चाहिए" must not reveal the first
+  // category as a false-positive best match.
+  if (intent?.length === 0) return { categories: [], nextOffset: null };
+  const terms = intent ?? [opts.query];
+  const values = terms.flatMap(term => [term, term, term]);
+  const sql = terms.length === 1 ? SEARCH_PUBLIC_CATEGORIES_QUERY : searchQuery(terms.length);
+  const { results } = await db.prepare(sql)
+    .bind(opts.language, ...values, opts.limit + 1, opts.offset)
     .all<PublicCategory>();
   const categories = results.slice(0, opts.limit)
     .map(({ id, slug, name }) => ({ id, slug, name }));
