@@ -27,7 +27,6 @@ export function openLocalDatabase() {
     prepare(query) {
       let params = [];
       const stmt = { _query: query, _values: params,
-      return {
         bind(...values) { params = values; this._values = values; return this; },
         async all() { return { results: db.prepare(query).all(...params).map(row => ({ ...row })) }; },
         async run() { return db.prepare(query).run(...params); },
