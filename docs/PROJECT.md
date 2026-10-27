@@ -11,3 +11,7 @@ JODLO is a new India-first local work/service discovery platform for real nearby
 - No forced 30/60/90-day deadline. Measure actual service outcomes, not fake users or inflated downloads. Work via tested small PRs and an updated [STATUS](STATUS.md); no false green CI claims.
 
 Read [README](../README.md), [AGENTS](../AGENTS.md), [AI HANDOFF](AI_HANDOFF.md), [Architecture](ARCHITECTURE.md), [Roadmap](ROADMAP.md), [Payment policy](PAYMENTS.md), and [Manual Actions](MANUAL_ACTIONS.md).
+
+## Founder delivery decision 2026-10-27
+
+Implement and test the **whole** new JODLO source first with local Cloudflare Worker/D1/R2 simulations, mock third-party services, Android tests and actual green GitHub CI. No staging environment, no remote deployment, no Cloudflare credentials or DNS setup during development. Deploy **directly to production** only when complete, with separate founder approval, backups, live smoke tests, safe traffic rollout and rollback. See [ADR-0004](decisions/0004-local-first-no-staging-until-production.md), [Release Readiness](RELEASE_READINESS.md).

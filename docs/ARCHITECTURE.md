@@ -68,7 +68,7 @@ A **single modular Worker** keeps deploys, latency, cost and debugging simple at
 
 ## Data/security invariants
 
-- New Cloudflare account resources with staging and production isolation, separate secrets and databases; never reference old Firebase records.
+- New **production-only** Cloudflare resources only after complete product readiness. Locally simulate D1/R2/Queues with synthetic data and never connect to real production bindings during code development.
 - Store only necessary PII, with purpose/retention, access controls and deletion/export processes before collecting real users.
 - D1 transactions and business-unique idempotency keys for wallet/calling/payment; never trust client time/price/entitlements.
 - No secrets in Git, logs, App assets or README. Store credentials with Wrangler encrypted secrets/Cloudflare account secrets.
@@ -78,8 +78,8 @@ A **single modular Worker** keeps deploys, latency, cost and debugging simple at
 
 ## Deployment rules
 
-- Never auto-deploy on push at this stage. Build and tests are separate from any Cloudflare account setup.
-- Owner provisions `rekixo.com` Cloudflare zone and explicitly authorizes `jodlo.rekixo.com` Custom Domain. Domain is reserved, not live.
+- No staging or production deployment during development. PR and main GitHub CI use local tests, strict types and Wrangler build `--dry-run` only.
+- Founder authorizes `rekixo.com` DNS and `jodlo.rekixo.com` routing **only at final production launch** after code, privacy, backups, monitoring and rollback are ready. Old Finworkar stays unchanged.
 - CI must be green before PR merges; GitHub Actions runner billing/access issues are blocking external conditions, not a reason to fake passing tests.
 
 ## Official implementation references (check latest versions before provisioning)
@@ -96,3 +96,7 @@ A **single modular Worker** keeps deploys, latency, cost and debugging simple at
 Founder preference is **Google Pay India UPI** for eligible real-world payments; **Google Play Billing** governs in-app digital purchases unless a valid policy exception or approved/enrolled alternative program applies. The previous **Razorpay** integration is not copied. JODLO's backend must verify payments authoritatively, keep a separate immutable/idempotent transaction ledger and refund/reconciliation processing, and never release paid entitlements solely from client callbacks. **No payment provider or checkout is implemented.**
 
 Read [payment strategy](PAYMENTS.md) and [ADR-0002](decisions/0002-google-pay-and-play-billing.md).
+
+## Superseding no-staging architecture decision
+
+Founder instruction (2026-10-27): complete Android/API/D1/R2/RTC/payment modules using local Wrangler workerd simulations, fake provider adapters and CI **without deploying a staging Worker**. Cloudflare credentials and DNS are not needed now. Real provider transactions, DNS/TLS and live Cloudflare permissions remain unverified until approved first production release, with controlled smoke tests and rollback. See [ADR-0004](decisions/0004-local-first-no-staging-until-production.md) and [Readiness](RELEASE_READINESS.md).
