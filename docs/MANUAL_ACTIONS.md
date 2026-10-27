@@ -132,3 +132,7 @@ Founder said to continue. Only four **synthetic/tested** routine-work phrase map
 ### 2026-10-27 — Work-intent alias editorial guard (no new manual setup now)
 
 The founder requested continued engineering. Safe code/test-only widening to the ten **proposed** routine trade IDs and 24 engineering examples does **NOT** grant category activation or approval for native-language service imports. See [matcher QA scope](reference/JODLO_SMART_DISCOVERY_FOUNDATION_2026-10-27.md). M-005 still needs explicit broad-category safety/activation policy and editorial workflow; M-003 user-area/privacy, M-004 visual UI and M-007 production remain separately gated. No cloud/API credentials required for this nonvisual change.
+
+## 2026-10-27 — Historical 889-category review tooling: no new owner action now
+
+The founder asked for continued engineering and broad *legitimate* trade coverage. A local-only pinned-archive [review matrix](reference/JODLO_LEGACY_889_CATEGORY_REVIEW_2026-10-27.md) now allows individual review of each of the 889 historical Categories and their risk/script/label-collision evidence. This is **not** M-005 authorization to auto-enable all 889, and does not decide M-003 user area/privacy or M-004 visual UI. M-007 Cloudflare production remains forbidden. No service import, Google credentials, live area, private profiles or admin routes. Continue mechanical/editorial analysis; ask for exact human activation/safety rules when truly required, not an unbounded all-catalog deployment.
