@@ -32,7 +32,7 @@
 - Old findings are from static source inspection; production costs, source-vs-deployed versions, live cloud traffic and app behavior were **not measured**.
 
 ## Exact safe resumption (unless updated STATUS says otherwise)
-1. Confirm `rekixo-lab/jodlo` feature branch, PR #1 and the latest GitHub Actions check; GitHub read/write has been restored (2026-10-27).
-2. The foundation was uploaded to the feature branch with 36 files; CI run 40465566596 passed before subsequent deployment-preparation changes. Verify current SHA and new checks before merging. No Cloudflare account connection yet.
+1. Open `rekixo-lab/jodlo` **main**, confirm status and latest CI. Foundation PR #1 merged 2026-10-27 with green main run 40466265299.
+2. Main contains 38 initial files including staging-only GitHub Actions deployment workflow. GitHub CI GREEN for main commit `2b447de586e0c9d655edc188203acf843e4dc66f` (run 40466265299); any subsequent commit needs new tests. No Cloudflare account/deployment has been connected.
 3. Verify Cloudflare account/zone and environments without changing existing `rekixo.com` production DNS; plan local/stage/prod separation.
 4. Confirm MVP product roles and auth/area model before D1 schema. **No UI without founder sign-off.**

@@ -5,7 +5,7 @@ This is the smallest set of external account actions required; never give the AI
 ## GitHub (M-01, complete)
 - [x] Authorize GitHub connector for `rekixo-lab/jodlo`. Read/write now verified.
 - [ ] Inspect JODLO PR checks; confirm any GitHub Actions usage/billing/runner limitations if pre-step failures persist. Do not blindly retry.
-- [ ] Review and approve merge once actual CI is green; keep changes on feature branch until verified.
+- [x] Foundation PR #1 merged after green GitHub Actions [main run 40466265299](https://github.com/rekixo-lab/jodlo/actions/runs/40466265299).
 
 ## Cloudflare account (M-02, founder only, required for real deployment)
 1. Open [Cloudflare Dashboard](https://dash.cloudflare.com/), log into an account where `rekixo.com` DNS is managed, or confirm whose zone it is.
@@ -22,3 +22,10 @@ Google Pay India merchant UPI/bank PSP onboarding, SKU classification, Google Pl
 Founder chooses first locality/categories and approves flows/wireframes **before UI code or Play Store media**. Review new Play package `com.rekixo.jodlo`, signing, policies and final release gates.
 
 See [Payments](PAYMENTS.md), [STATUS](STATUS.md), [Cloudflare Architecture](CLOUDFLARE_INFRASTRUCTURE.md).
+
+## M-02 next exact action — staging Cloudflare credentials
+
+1. Create environment `jodlo-staging`: [GitHub Environment Settings](https://github.com/rekixo-lab/jodlo/settings/environments).
+2. Add two **environment secrets** `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` securely in GitHub UI; do **not** send either value here.
+3. Once configured, start [Deploy JODLO staging](https://github.com/rekixo-lab/jodlo/actions/workflows/deploy-staging.yml) with `Run workflow` on main. Workflow verifies docs/tests/types/build and creates only `jodlo-api-staging` in your Cloudflare account at a workers.dev staging subdomain. Do not attach `jodlo.rekixo.com` or change other DNS yet.
+4. Confirm the deployment URL and request `GET /api/v1/health`, expected `{\"ok\":true,\"data\":{\"service\":\"jodlo-api\",\"status\":\"ok\"}}`. Share only the public staging URL or sanitized errors.
