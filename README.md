@@ -290,3 +290,7 @@ Workers with an existing private opt-in can **immediately self-publish one categ
 ## Historical Finworkar categories available as read-only reference
 
 Founder-provided complete legacy Firestore catalog is safely archived: original JSON in private ChatGPT Library; all 8,390 records in compact Hindi/English-only [GitHub gzip reference](docs/reference/data/finworkar-catalog-bilingual-2026-10-27.json.gz); see [full catalog audit](docs/reference/FINWORKAR_CATALOG_AUDIT_2026-10-27.md). `npm run reference:check` verifies data integrity without Firebase access. It does **not** activate any old categories, set the pilot city, transfer personal data or permit extra languages. Existing worker instant self-publication requires approved active JODLO category only; no auto verified badge. Old Finworkar read-only.
+
+## Founder-selected pilot city names (2026-10-27)
+
+**Bilaspur / बिलासपुर** and **Raipur / रायपुर** were chosen as the two pilot city names (see [ADR-0010](docs/decisions/0010-bilaspur-raipur-pilot-city-names.md)). This is nonpersonal planning only, not a geofence, location consent, active category seed, customer request workflow or production launch. [10 curated category candidates](docs/reference/JODLO_PILOT_TAXONOMY_PROPOSAL_2026-10-27.md) remain pending founder selection. The existing `npm run reference:check` validates the tiny city-name manifest and the legacy catalog without deploying anything. Immediate worker self-publication for separately approved categories remains allowed without any automatic verified badge.

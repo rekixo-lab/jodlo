@@ -1,5 +1,7 @@
 # JODLO pilot taxonomy proposal — 2026-10-27
 
+**Founder-selected city-name scope (ADR-0010): Bilaspur / बिलासपुर and Raipur / रायपुर.** Exact local areas/geofences and personal-location policy remain unapproved. The 10 categories below are not yet approved or seeded.
+
 > **NOT APPROVED. REFERENCE ONLY. NO D1 SEED, CLOUD DEPLOYMENT OR UI.** Worker self-publication in **already enabled** categories is approved; verified badges are never automatic (ADR-0009). This proposal neither enables a category nor changes that decision. Only Hindi (Devanagari) and English (ADR-0008).
 
 ## Provenance and quality findings
@@ -56,7 +58,7 @@ Even these categories need safeguards: home entry, property damage, tools, paint
 
 ## Founder decisions, implementation and proof
 
-**M-005:** Founder must choose an actual pilot city/area and which exact curated category IDs, if any, may become JODLO active seeds. The publication method is **already approved** (instant, not auto-verified); do not re-ask. Separately unapproved: first customer availability request/contact, verification rules and operational moderation/report/appeal.
+**M-005:** Founder has selected the **two city names** (Bilaspur and Raipur); now must choose which exact curated category IDs, if any, may become JODLO active seeds. Exact local pilot areas/wards have not been approved. The publication method is **already approved** (instant, not auto-verified); do not re-ask. Separately unapproved: first customer availability request/contact, verification rules and operational moderation/report/appeal.
 
 **M-003** (personal location consent, retention, deletion), **M-004** (UI), **M-006** (payments/calling), **M-007** (production), **M-008** (real Google OAuth/device) remain gated.
 
