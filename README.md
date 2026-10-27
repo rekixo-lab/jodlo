@@ -206,3 +206,5 @@ After code/product readiness, obtain **explicit founder approval** for a control
 ## First database development slice (2026-10-27; local code, not deployed)
 
 `infra/migrations/0001_public_catalog.sql` and `apps/api/wrangler.local.jsonc` enable a local-only category catalog. Run `npm install`, `npm run db:migrate:local`, `npm test`, `npm run typecheck` and `npm run db:build:local`. `GET /api/v1/catalog?lang=hi` is public and read-only; only approved/active categories appear and Hindi labels fall back to English. No seed city/categories, identities, user records or production bindings exist. Future D1 tables require founder-approved roles, auth and locality/privacy model. No Cloudflare staging or production deployment.
+
+**Catalog code verification:** [green PR CI #40473268574](https://github.com/rekixo-lab/jodlo/actions/runs/40473268574) on code commit `0b44bf8` (19 tests, local D1 migration, both Wrangler dry-run bundles, TypeScript, docs and design checks). This is PR validation, not a claim of green post-merge `main` CI or real Cloudflare D1/production validation.
