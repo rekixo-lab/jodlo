@@ -160,3 +160,7 @@ Before proposing changes to catalog visibility or four-step posting, read [legac
 ## 2026-10-27 — Safe Smart Discovery implementation boundary
 
 Read [availability facet design and limitations](docs/reference/JODLO_SMART_DISCOVERY_FOUNDATION_2026-10-27.md) before future worker/customer browse/search changes. The founder's latest broad go-ahead starts backend work but does **not** authorize unconditional 889-category seed, personal-area data, visual UI or remote deployment. Existing public Catalog APIs may now optionally limit results to categories that have **actually eligible** published listings; worker/full active-catalog Search still finds empty categories. Shared listing eligibility must remain authoritative and server-checked. Old 100-row browse cap and reviewed synonym mapping are future work, never claim complete smart semantic search. Exact CI proof before green claims.
+
+## Latest nonvisual catalog paging rule — 2026-10-27
+
+New explicit `/api/v1/catalog?limit=1..25&after=sort_order:category_id` keyset browsing supports future approved full-catalog scale without showing a giant grid. Default no-limit catalog read remains identical. The future manual Category Picker must reuse the server cursor and check `nextCursor`; **no JODLO UI until M-004**. The fixture's 889 active rows are synthetic, not real approved seeds; `availableOnly` is global/public/non-locality-specific until M-003. Read [exact scope](docs/reference/JODLO_SMART_DISCOVERY_FOUNDATION_2026-10-27.md). No Finworkar writes or cloud deploy.
