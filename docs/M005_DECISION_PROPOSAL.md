@@ -3,7 +3,7 @@
 **FOUNDER APPROVED on 2026-10-27:** workers **immediately self-publish** a minimal service listing. **No automatic verification badge.** The earlier proposed manual pre-publication review is **superseded**; do not ask it again. See [ADR-0009](decisions/0009-instant-service-publication.md).
 
 ## Still unapproved
-- First actual pilot city/area and the real service categories to activate (none are seeded).
+- Founder-selected city names are **Bilaspur and Raipur** (ADR-0010). Exact subareas/wards, personal locality policy (M-003) and the real service categories to activate are **still pending** (none are seeded).
 - Verification/trust definitions and whether additional public service details should be shown.
 - Customer first sends an availability request vs direct calling, moderation report/appeal admin workflow, spam rules.
 - M-003 locality selection, GPS consent, deletion/retention; M-004 app UI; M-008 live Google; M-007 production-only launch.
