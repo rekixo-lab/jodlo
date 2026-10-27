@@ -21,7 +21,7 @@ Single identity simplifies switching between finding services and offering servi
 ## Follow-up gates
 
 - **M-001 DONE:** this account model is approved and must not be re-asked.
-- **M-002 UPCOMING:** select real identity/OTP provider, link trusted external subject to internal account ID, secure recoverability and rate limits **before any real signup or phone/email collection**.
+- **M-002 DONE:** founder chose Google Sign-In only for initial login; [ADR-0007](0007-google-signin-verified-session.md) establishes verified Google `sub` + hashed JODLO sessions. M-008 future OAuth console setup still required for real-device/provider tests.
 - **M-003 UPCOMING:** local area/consent/privacy, retention and deletion specifics **before any personal location schema**.
 - **M-004 UPCOMING:** founder approves actual visuals before any Android/web UI code.
 - No staging or Cloudflare deployment; no old Finworkar changes. Google Pay India preference/Google Play Billing rules unchanged.

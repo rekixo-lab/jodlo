@@ -65,3 +65,7 @@ Premium transitions, tab/action feedback and occasional lightweight 3D are requi
 ## Approved account-to-worker boundary (ADR-0006)
 
 Active `accounts` implicitly have customer capability; optional `worker_profiles` rows represent opt-in and begin as private `draft`. The `identity` service owns trusted server-resolved internal account IDs and account lifecycle, while the `workers` service owns the idempotent transition into a worker draft. No separate customer/worker logins, client-supplied role grant, public verification, provider-specific subjects or precise GPS. Real identity verification is M-002; privacy/area decisions M-003. [Decision](decisions/0006-shared-account-opt-in-worker.md).
+
+## Google sign-in ownership (ADR-0007)
+
+`identity/google.ts` cryptographically verifies Google OIDC JWT using `jose` and trusted Google JWKS; `identity/google-accounts.ts` transactionally maps verified Google `sub` to an active internal `accounts.id` without copying email, name or tokens; `identity/sessions.ts` creates and resolves short-lived, hashed-at-rest bearer sessions and revokes them. `http/router.ts` owns bounded JSON/method/HTTP status only. Worker modules reuse one resolved actor and D1 contract; no client-supplied account IDs, no Google ID token used as a long-term app session. Future real OAuth setup is manual gate M-008, UI remains M-004. No deployed providers.

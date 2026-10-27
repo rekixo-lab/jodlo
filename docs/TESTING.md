@@ -37,3 +37,9 @@ No staged Cloudflare deployment or remote resource tests during normal developme
 ## Shared-account M-001 regression tests (2026-10-27)
 
 Local synthetic DB and fake trusted-auth tests assert one customer account + optional worker draft, idempotent opt-in, no cross-account leaks, disabled accounts, default closed route, strict bearer validation, no client-declared account/verification, and database FK/draft-only constraints. New tests reuse `apps/api/tests/helpers/local-db.mjs`; no new SDK. **Verified:** [PR #10](https://github.com/rekixo-lab/jodlo/pull/10) merged as `e01dbde44cbe46aadf3d563c66f411a8c9d96818`; [main GitHub Actions #40476898497](https://github.com/rekixo-lab/jodlo/actions/runs/40476898497) SUCCESS on that commit (27 Node tests, docs/design guard, both dry-run builds, local D1 migration 0001+0002 and strict TypeScript). There are no live-auth, real-user PII, Android device or production-load tests yet.
+
+## M-002 authentication tests — local only (2026-10-27)
+
+- Synthetic RSA/RS256 JWKS signed tokens test issuer/audience/expiry/issued-at/Google `sub` validation, tampering, wrong keys, clock claims and resolver failure without calling Google's services. The only new cryptographic dependency is maintained `jose` v6 (Worker-compatible); `npm install` now precedes tests in Actions.
+- Local SQLite schema `0003` and migration tests assert stable subject account mapping, idempotent repeat sign-in, distinct hashed one-hour bearer tokens, session expiry/disable/logout revocation, no client account role or cross-user draft access, atomic failure handling and invalid/oversized request errors. No real OAuth client, phone/email, Android UI or live provider validation.
+- **Green CI must be independently observed** before claiming this change verified. Full real Google integration, mobile Credential Manager, callback/revocation policies, quota/rate-limiting, WAF and Play device tests remain release gates.

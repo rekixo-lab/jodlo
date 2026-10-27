@@ -63,3 +63,11 @@
 
 - **Done:** [PR #10](https://github.com/rekixo-lab/jodlo/pull/10) merged as `e01dbde44cbe46aadf3d563c66f411a8c9d96818`; [main GitHub Actions #40476898497](https://github.com/rekixo-lab/jodlo/actions/runs/40476898497) SUCCESS on that commit (27 Node tests, docs/design guard, both dry-run builds, local D1 migration 0001+0002 and strict TypeScript).
 - **Pending:** M-002 real provider/OTP, M-003 area/retention, M-004 UI review. **Manual:** do not provide account passwords, tokens or OTP in chat. **Next:** seek founder direction on real login method before provider integration; do not deploy.
+
+## 2026-10-27 — M-002 Google Sign-In chosen; backend implementation PR in progress
+
+- **Founder decision DONE:** Google Sign-In is the sole initial login; phone OTP is not selected. [ADR-0007](decisions/0007-google-signin-verified-session.md). Do not re-ask M-002.
+- **Code under review:** `0003_google_identity_sessions.sql`, server-verified Google ID token using rotating JWKS and trusted client audience; Google `sub`→opaque account mapping with D1 transactional batch, hash-only expiring session storage, owner authorization and logout revocation. One small audited `jose` cryptographic dependency; reusable local DB test adapter.
+- **Pending evidence:** hosted GitHub Actions and PR/main CI for this new implementation; **do not label implementation GREEN until latest actual run succeeds**. Tests use synthetic RSA tokens, no provider production integration.
+- **Manual:** M-002 DONE. **M-008 UPCOMING** Google Cloud OAuth public client IDs/Android signing setup only when real-device integration is ready. No passwords/secrets should be shared here. M-003 area/privacy, M-004 UI approval, M-007 production release pending.
+- **Next exact task:** pass crypto/account/session/migration regressions, PR review and hosted CI; then merge, verify main, record evidence. No staging or deployment.
