@@ -132,5 +132,5 @@ First shippable unit is local-only `categories` migration and typed read API (en
 
 ## Legacy behavior preservation without legacy code migration — 2026-10-27
 
-- [ ] Read-only inspect old Finworkar worker/customer flow and preserve source-backed differences in [Legacy behavior study](LEGACY_FINWORKAR_BEHAVIOR.md); implement a new pure deny-by-default contact guard (two-way block, active/publication/moderation/listing owner, channel approval), synthetic tests, verify PR/main CI before checking complete.
+- [x] Read-only legacy worker/customer behavior study plus independent pure JODLO contact guard, tests and CI. [PR #22](https://github.com/rekixo-lab/jodlo/pull/22) merged as `24ed69e735e136cc95b6ac43f74d83f08d019e6a`; [main GitHub Actions #40489994251](https://github.com/rekixo-lab/jodlo/actions/runs/40489994251) **SUCCESS** on the same commit (76/76 Node tests, local D1, docs/design guards, strict TypeScript, both Wrangler dry-run builds). No actual requests/listings.
 - [ ] After founder M-003 and M-005 decisions: implement final worker listings, area-first search, contact/request stages and true atomic authorization/rechecks in D1; later device/RTC/Google integrations only at approved gates. No Firebase, Razorpay or existing UI copying.

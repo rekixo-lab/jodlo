@@ -34,3 +34,7 @@ Source checkpoints (read-only, unchanged):
 No Firebase/Firestore schema, no legacy auth/OTP, no legacy Razorpay, no automatic call billing/price/reward scheme, no Google Maps/Agora/FCM integrations, no legacy artwork/animations, no old worker trust badges. **M-003** locality/consent/retention and **M-005** pilot matching/publication/calling workflow require the founder's explicit decisions before concrete request/listing storage. **M-004** before Android/web UI, **M-008** real Google OAuth, **M-007** production-only deployment.
 
 **Confidence boundary:** Source inspection demonstrates legacy code paths, not how actual users behaved in production, conversion/reliability metrics or correctness of production configuration. Do not describe it as observed live traffic. Reinspect when legacy source changes; never edit legacy repositories.
+
+## Verified implementation status
+
+[PR #22](https://github.com/rekixo-lab/jodlo/pull/22) merged as `24ed69e735e136cc95b6ac43f74d83f08d019e6a`; [main GitHub Actions #40489994251](https://github.com/rekixo-lab/jodlo/actions/runs/40489994251) **SUCCESS** on the same commit (76/76 Node tests, local D1, docs/design guards, strict TypeScript, both Wrangler dry-run builds). All inspected Finworkar repositories remained read-only. JODLO's new pure guard tests are not production evidence or user metrics; continue using this map as a checklist, never copied source.
