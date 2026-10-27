@@ -1,6 +1,6 @@
 import type { Env } from "../data/d1.ts";
 import { validOpaqueId } from "../modules/shared/identifiers.ts";
-import { listPublicCategories, parseCatalogSearch, searchPublicCategories, type CatalogLanguage } from "../modules/catalog/catalog.ts";
+import { browsePublicCategories, parseCatalogBrowse, parseCatalogSearch, searchPublicCategories } from "../modules/catalog/catalog.ts";
 import { healthData } from "../modules/system/health.ts";
 import { optInAsWorker, ownWorkerDraft } from "../modules/workers/profile.ts";
 import { validGoogleClientId, verifyGoogleIdToken } from "../modules/identity/google.ts";
@@ -77,26 +77,20 @@ export async function handleRequest(
   if (url.pathname === "/api/v1/catalog") {
     const methodError = getOnly(request);
     if (methodError) return methodError;
-    const params = url.searchParams;
-    const language = params.get("lang") ?? "en";
-    const availableOnly = params.get("availableOnly");
-    let hasUnknownParameter = false;
-    params.forEach((_value, key) => {
-      if (key !== "lang" && key !== "availableOnly") hasUnknownParameter = true;
-    });
-    if (hasUnknownParameter ||
-        params.getAll("lang").length > 1 ||
-        params.getAll("availableOnly").length > 1 ||
-        (availableOnly !== null && availableOnly !== "1") ||
-        (language !== "en" && language !== "hi")) {
+    const options = parseCatalogBrowse(url.searchParams);
+    if (!options) {
       return json({ ok: false, error: { code: "INVALID_QUERY", message: "Invalid catalog query" } }, 400);
     }
     if (!env.DB) {
       return json({ ok: false, error: { code: "SERVICE_UNAVAILABLE", message: "Catalog unavailable" } }, 503);
     }
     try {
-      const categories = await listPublicCategories(env.DB, language as CatalogLanguage, availableOnly === "1");
-      return json({ ok: true, data: { language, categories } });
+      const page = await browsePublicCategories(env.DB, options);
+      // Only paged clients see nextCursor; preserve the legacy unpaginated DTO.
+      const data = options.limit === null
+        ? { language:options.language,categories:page.categories }
+        : { language:options.language,...page };
+      return json({ ok: true, data });
     } catch {
       // Do not expose SQL, binding details, tokens, or database configuration.
       return json({ ok: false, error: { code: "SERVICE_UNAVAILABLE", message: "Catalog unavailable" } }, 503);

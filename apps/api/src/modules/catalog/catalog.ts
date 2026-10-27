@@ -1,6 +1,7 @@
 import type { D1Database } from "../../data/d1.ts";
 import { categoryIntentTerms } from "./search-phrases.ts";
 import { PUBLIC_LISTING_ELIGIBILITY } from "../workers/listings.ts";
+import { validCategoryId } from "../shared/identifiers.ts";
 
 export type CatalogLanguage = "en" | "hi";
 export type PublicCategory = { id: string; slug: string; name: string };
@@ -40,6 +41,79 @@ export async function listPublicCategories(
     .bind(language)
     .all<PublicCategory>();
   return results.map(({ id, slug, name }) => ({ id, slug, name }));
+}
+
+/** A bounded keyset page lets a manual category picker eventually traverse
+ * hundreds of approved entries without loading a giant UI grid at once.
+ * The original unpaginated /catalog response remains unchanged (100 cap).
+ */
+export interface CatalogBrowseOptions {
+  language: CatalogLanguage;
+  availableOnly: boolean;
+  limit: number | null;
+  after: { sortOrder: number; id: string } | null;
+}
+
+export type CatalogBrowsePage = {
+  categories: PublicCategory[];
+  nextCursor: string | null;
+};
+
+/** Strict public cursor: sort-order and an already public category ID, not a
+ * personal identifier. Server still independently filters active/eligible rows.
+ */
+export function parseCatalogBrowse(params: URLSearchParams): CatalogBrowseOptions | null {
+  const allowed = new Set(["lang","availableOnly","limit","after"]);
+  let invalid = false;
+  params.forEach((_value,key) => {
+    if (!allowed.has(key) || params.getAll(key).length !== 1) invalid = true;
+  });
+  if (invalid) return null;
+  const language = params.get("lang") ?? "en";
+  if (language !== "en" && language !== "hi") return null;
+  const availability = params.get("availableOnly");
+  if (availability !== null && availability !== "1") return null;
+  const limitRaw = params.get("limit");
+  const afterRaw = params.get("after");
+  if (limitRaw === null && afterRaw !== null) return null;
+  if (limitRaw !== null && !/^(?:[1-9]|1[0-9]|2[0-5])$/.test(limitRaw)) return null;
+  let after: CatalogBrowseOptions["after"] = null;
+  if (afterRaw !== null) {
+    const match = /^(0|[1-9][0-9]{0,6}):([a-zA-Z0-9_-]{1,64})$/.exec(afterRaw);
+    if (!match || Number(match[1]) > 1_000_000 || !validCategoryId(match[2])) return null;
+    after = {sortOrder:Number(match[1]),id:match[2]};
+  }
+  return {language,availableOnly:availability === "1",
+    limit:limitRaw === null ? null : Number(limitRaw),after};
+}
+
+const PUBLIC_PAGE_FIELDS = PUBLIC_CATEGORY_FIELDS.trimEnd() + ", sort_order AS sortOrder ";
+function browsePageSql(availableOnly: boolean, hasCursor: boolean): string {
+  return PUBLIC_PAGE_FIELDS + "FROM categories WHERE is_active = 1 " +
+    (availableOnly ? "AND " + ELIGIBLE_LISTING_EXISTS + " " : "") +
+    (hasCursor ? "AND (sort_order > ? OR (sort_order = ? AND id > ?)) " : "") +
+    "ORDER BY sort_order ASC, id ASC LIMIT ?";
+}
+
+/** Returns exactly one page; never leaks sort_order to the API projection. */
+export async function browsePublicCategories(
+  db:D1Database,opts:CatalogBrowseOptions,
+):Promise<CatalogBrowsePage> {
+  if (opts.limit === null) {
+    return {categories:await listPublicCategories(db,opts.language,opts.availableOnly),nextCursor:null};
+  }
+  const args: (string | number)[] = [opts.language];
+  if(opts.after) args.push(opts.after.sortOrder,opts.after.sortOrder,opts.after.id);
+  args.push(opts.limit + 1);
+  const {results} = await db.prepare(browsePageSql(opts.availableOnly,opts.after !== null))
+    .bind(...args).all<PublicCategory & {sortOrder:number}>();
+  const selected = results.slice(0,opts.limit);
+  const last = selected[selected.length-1];
+  return {
+    categories:selected.map(({id,slug,name})=>({id,slug,name})),
+    nextCursor:results.length > opts.limit && last
+      ? String(last.sortOrder) + ":" + last.id : null,
+  };
 }
 
 export interface CatalogSearchOptions {
