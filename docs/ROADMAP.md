@@ -192,5 +192,5 @@ First shippable unit is local-only `categories` migration and typed read API (en
 
 ## 2026-10-27 — Founder historic public catalog source delivered
 
-- [x] Founder export of **all 8,390 legacy catalog records** received; persist complete original in private Library, bilingual safe full projection in GitHub; audit counts, ancestry, en/hi names, status conflicts, unsafe legacy category ID, and service sections. [Source audit](docs/reference/FINWORKAR_CATALOG_AUDIT_2026-10-27.md).
+- [x] Founder export of **all 8,390 legacy catalog records** received; persist complete original in private Library, bilingual safe full projection in GitHub; audit counts, ancestry, en/hi names, status conflicts, unsafe legacy category ID, and service sections. [Source audit](reference/FINWORKAR_CATALOG_AUDIT_2026-10-27.md).
 - [ ] Use verified source to propose a **curated Hindi/English JODLO pilot taxonomy**, review risk tiers, explicit exception mapping and service hierarchy; get founder's actual pilot area/categories before real active D1 seed. No "enable everything" shortcut.

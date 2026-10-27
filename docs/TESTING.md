@@ -135,4 +135,4 @@ Use disposable local tempfile to validate owner-read and policy decision within 
 
 ## Complete historical catalog reference integrity, 2026-10-27
 
-- `npm run reference:check` (node built-in zlib/crypto, no deps) verifies bilingual gzip SHA-256, uncompressed JSON SHA-256, original source SHA, **28/206/889/7267** collection counts, complete en/hi name presence, unique IDs, no orphans or cross-parent mismatches, all per-category service totals and known ID/status exceptions. No external credentials or Firebase access, and no D1 seed/deployment. [Source audit](docs/reference/FINWORKAR_CATALOG_AUDIT_2026-10-27.md).
+- `npm run reference:check` (node built-in zlib/crypto, no deps) verifies bilingual gzip SHA-256, uncompressed JSON SHA-256, original source SHA, **28/206/889/7267** collection counts, complete en/hi name presence, unique IDs, no orphans or cross-parent mismatches, all per-category service totals and known ID/status exceptions. No external credentials or Firebase access, and no D1 seed/deployment. [Source audit](reference/FINWORKAR_CATALOG_AUDIT_2026-10-27.md).
