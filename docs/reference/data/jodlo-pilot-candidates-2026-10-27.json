@@ -1,0 +1,32 @@
+{
+  "kind": "JODLO_UNAPPROVED_TAXONOMY_REVIEW_ONLY",
+  "state": "FOUNDER_DECISION_REQUIRED_NO_D1_SEED",
+  "sourceJsonSha256": "31303a2af70cdb64186b974194d2cb1a0b068bfdd79a8ac03f5532174f4c3375",
+  "languages": [
+    "en",
+    "hi"
+  ],
+  "pilotCandidateCategoryIds": [
+    "plumber",
+    "carpenter",
+    "house-painter",
+    "house-cleaner-maid",
+    "sofa-carpet-cleaner",
+    "gardener",
+    "tailor-stitching",
+    "bicycle-repairer",
+    "watch-repairer",
+    "tyre-puncture-technician"
+  ],
+  "needsExtraReviewCategoryIds": [
+    "mobile-repair",
+    "laptop-repair",
+    "two-wheeler-mechanic",
+    "home-shifting-helper"
+  ],
+  "holdCategoryIds": [
+    "electrician",
+    "ac-technician",
+    "home-tutor"
+  ]
+}

@@ -21,7 +21,7 @@
     "build:api": "wrangler deploy --dry-run --config apps/api/wrangler.jsonc",
     "design:check": "node scripts/verify-design-guards.mjs",
     "founder:check": "node scripts/verify-founder-gates.mjs",
-    "reference:check": "node scripts/verify-legacy-catalog-reference.mjs"
+    "reference:check": "node scripts/verify-legacy-catalog-reference.mjs && node scripts/verify-pilot-taxonomy-proposal.mjs"
   },
   "devDependencies": {
     "typescript": "~5.8.3",

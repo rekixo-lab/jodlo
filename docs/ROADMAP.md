@@ -196,3 +196,10 @@ First shippable unit is local-only `categories` migration and typed read API (en
 - [ ] Use verified source to propose a **curated Hindi/English JODLO pilot taxonomy**, review risk tiers, explicit exception mapping and service hierarchy; get founder's actual pilot area/categories before real active D1 seed. No "enable everything" shortcut.
 
 **Verified source-reference closeout:** [PR #37](https://github.com/rekixo-lab/jodlo/pull/37) merged as `24ceeb5a206efb4116a3620b542ddaddb8eaa550`; [exact main GitHub Actions #40523757801](https://github.com/rekixo-lab/jodlo/actions/runs/40523757801) completed **SUCCESS** on that SHA: **128/128 tests**, bilingual gzip/SHA and full ancestry check, docs/design/founder CI, local D1 migrations, strict TS and both Wrangler dry-run builds. Historic file collection/source study complete. Next backlog = review categories by founder-approved actual pilot location, publish a **proposed** first-wave category shortlist (not active D1), resolve one category ID mapping and statuses, then seed only founder-chosen safe taxonomy locally. Do not infer customer demand from old flags. Privacy M-003/location separate; UI M-004 and Cloudflare M-007 blocked.
+
+## 2026-10-27 — Source-backed pilot taxonomy and service Hindi quality gate (proposal only)
+
+1. **Reference audit (code/CI only):** run source SHA/ancestry + new pilot-candidate/Hindi-script quality verifier with `npm run reference:check`; no live data.
+2. **M-005 founder input:** choose actual pilot city and exact candidate IDs after reading [proposed shortlist](reference/JODLO_PILOT_TAXONOMY_PROPOSAL_2026-10-27.md); don't automatically enable 889 old categories.
+3. **After approval, separately:** review Hindi service content, risk/credential/moderation scope and reversible ID mappings. Future approved local-only seed should be minimal, tested and explicit; Cloudflare remains blocked until M-007.
+4. **Unrelated safe work:** synthetic auth/discovery/regression tests and moderation-policy planning with no PII or operational request/call routes. M-003/M-004/M-006/M-008 still gated.
