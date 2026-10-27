@@ -5,6 +5,14 @@
 
 **Last documentation consolidation:** 2026-10-27 (India). **Mode:** source/planned architecture + local scaffold. **Legacy:** strictly read-only. **This is not a production service.**
 
+## New hard founder directive — code reuse, premium theme, smooth animation (2026-10-27)
+
+**Hard rule:** Every future engineer/AI must search for/reuse matching existing tested code, UI components, contracts and media rather than copy-pasting. Delete unused/duplicate code and asset files. Localized strings and one approved semantic Material 3 theme/source of truth for attractive colors, type, corners, strokes, spacing, elevation and motion; no repeated hardcoded screen styles. Create reusable composables on real needs, not heavy premature abstraction.
+
+**Required premium visuals:** subtle professional depth, beautiful highly responsive animated tabs, navigation transitions, press/gesture feedback, state changes and selected high-value 3D/2.5D. Use light draw/layer animations, support reduced-motion/static fallback, TalkBack and low-end performance/battery. Real 3D engine only if founder approves and benchmarks support it. **UI design/palette/animation specifics still require founder review BEFORE implementation.** No Android UI has been built yet.
+
+**Read/obey:** [ADR-0005](decisions/0005-reuse-tokens-premium-motion.md), [Reuse Assets](REUSE_ASSET_POLICY.md), [Design System](DESIGN_SYSTEM.md), [Motion 3D](MOTION_3D.md). CI will include `design:check` and synthetic tests; future device performance gates remain pending. Cloudflare deployment remains delayed until finished code.
+
 ## What we are building
 A new, independent, responsive local-work/services platform **JODLO**, focused on actual local matching and verified customer-worker contact/outcomes rather than installation counts. Founder's requirements: native Android, low-end-device performance, Hindi/Hinglish UX, modularity, clear architecture, minimal unnecessary dependencies/schedulers, Cloudflare-first, future changes without big rewrites, and manual owner gates clearly identified.
 
