@@ -61,3 +61,7 @@ Split Worker runtime (or Gradle module) only if independently deployable scaling
 Every developer/AI searches existing shared contracts, validators, provider ports and composables before adding code. When genuinely repeated, extract one small owned/tested function/component instead of copying. No mega-utils, redundant microservices or duplicate business sources. Android owns reusable localized theme/motion widgets, server Worker owns authoritative auth/pricing/ledger; shared contracts prevent divergent DTOs. Asset files are canonical, compressed and not duplicated.
 
 Premium transitions, tab/action feedback and occasional lightweight 3D are required in the *approved future UI*, using central design tokens and low-end/accessibility/reduced-motion tests. See [ADR-0005](decisions/0005-reuse-tokens-premium-motion.md), [Reuse](REUSE_ASSET_POLICY.md), [Design](DESIGN_SYSTEM.md) and [Motion](MOTION_3D.md).
+
+## Approved account-to-worker boundary (ADR-0006)
+
+Active `accounts` implicitly have customer capability; optional `worker_profiles` rows represent opt-in and begin as private `draft`. The `identity` service owns trusted server-resolved internal account IDs and account lifecycle, while the `workers` service owns the idempotent transition into a worker draft. No separate customer/worker logins, client-supplied role grant, public verification, provider-specific subjects or precise GPS. Real identity verification is M-002; privacy/area decisions M-003. [Decision](decisions/0006-shared-account-opt-in-worker.md).

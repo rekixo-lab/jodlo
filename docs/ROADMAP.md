@@ -21,7 +21,7 @@
 - [ ] Founder UI review & approval before UI work.
 
 ## Phase 2 — Complete locally testable Cloudflare-compatible backend
-- [ ] **M-001 founder manual decision (now):** one account with customer and optional worker roles vs separate accounts; see [manual-action register](MANUAL_ACTIONS.md). Do not treat architecture proposal as approval.
+- [x] **M-001 approved 2026-10-27:** shared account gives customer access and opt-in private worker draft; [ADR-0006](decisions/0006-shared-account-opt-in-worker.md) and [manual-action register](MANUAL_ACTIONS.md).
 - [ ] **M-002/M-003 later product gates:** auth/OTP provider and manual area/PII consent model before related D1 identity/location implementations; non-blocked typed contracts and fake auth tests may proceed.
 - [x] First local-only public categories D1 migration, indexed bounded read-only API and synthetic migration tests added in catalog PR; [green PR CI #40473268574](https://github.com/rekixo-lab/jodlo/actions/runs/40473268574) on code commit `0b44bf8` (19 tests, local D1 migration, both Wrangler dry-run bundles, TypeScript, docs and design checks); zero live resources.
 - [ ] Full accounts/workers/areas/listings D1 relational schema, migrations, privacy lifecycle/backup-recovery tests; founder identity/area model decisions pending.
@@ -79,3 +79,9 @@ First shippable unit is local-only `categories` migration and typed read API (en
 ## Verified milestone after PR #7
 **Merged catalog milestone:** [PR #7](https://github.com/rekixo-lab/jodlo/pull/7) squash-merged as `dd16db9`, verified [green main GitHub Actions #40473524328](https://github.com/rekixo-lab/jodlo/actions/runs/40473524328) on `dd16db92a1e04b2e40237bc440ab0a062039f5ea` (19 Node tests, local-only Wrangler D1 migration, local and normal Worker dry-run builds, strict TS, docs/design checks). No Cloudflare/Android deployment.
 **Next:** settle minimal customer/worker identity and locality/consent/retention model, then implement tested D1 ownership tables, migration/restore and typed authorization APIs locally. Neither Android UI nor cloud deployment is authorized by this milestone.
+
+## M-001 backend implementation slice — 2026-10-27
+
+- [x] Founder approved one account: customer by default, worker opt-in; no separate worker credentials. [ADR-0006](decisions/0006-shared-account-opt-in-worker.md).
+- [ ] Local `accounts` / private worker draft migration, idempotent opt-in + owner-only authenticated route, SQLite and fake-auth tests (PR/main GitHub CI confirmation required for completed-code tick).
+- [ ] M-002 real identity/OTP choice **before** any production-grade login/user PII; M-003 precise location and deletion/retention rules before storage, M-004 before UI. Avoid false claims of live verified workers.

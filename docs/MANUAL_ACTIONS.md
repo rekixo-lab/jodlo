@@ -15,7 +15,7 @@
 
 | ID | State | Owner / trigger | Exact manual decision or action | What is gated / safe work until then |
 | --- | --- | --- | --- | --- |
-| **M-001** | **NEEDS_DECISION_NOW** | Founder; before first identity/worker/account D1 migration | Choose one shared login/account allowing customer and opt-in worker roles, **or** fully separate customer/worker accounts. Recommended for review: one account, roles granted server-side; **not approved**. | Blocks committing user-role/ownership schema; proceed with typed models/specs, auth guards and mock/local tests without real PII |
+| **M-001** | **DONE** | Founder; explicitly approved in JODLO chat on 2026-10-27 | One shared account grants customer use; worker role is opt-in with one private draft profile; no separate worker login. See [ADR-0006](decisions/0006-shared-account-opt-in-worker.md). | Unblocks account/worker schema, but NOT real login provider (M-002), private location (M-003), publication or UI (M-004) |
 | **M-002** | **UPCOMING** | Founder; before activating real login and phone/email data flows | Decide identity method/provider and whether phone OTP is required; review cost, privacy/abuse and account recovery. Do **not** provide OTP, tokens or private phone numbers here. | Real identity integration blocked; provider ports, fake identity verification and negative auth tests can proceed |
 | **M-003** | **UPCOMING** | Founder; before personal-location/areas schema | Decide area-selection and privacy/retention: proposed manual area-first, optional precise GPS only with consent and clear deletion; exact city/residency needs separate approval. | Real area/PII storage/search rules held; public category catalog can advance |
 | **M-004** | **UPCOMING** | Founder; before ANY Android/web UI visual code, theme, screen or 3D artwork | Review layout flows, palette, typography, Hindi copy, transitions and selective 2.5D/3D storyboard; grant explicit design approval or request revisions. | No visual implementation until approved; backend, test harness, technical nonvisual interfaces can advance |
@@ -27,8 +27,8 @@
 
 ## Next action and order
 
-1. **Ask M-001 now:** Should the *same JODLO account* be able to act as both a customer and an opt-in worker, or should they have entirely separate accounts? Explain the single-account recommendation without silently locking it in.
-2. After approval, design local-only versioned D1 identity/worker relationships and ownership/auth tests. Ask **M-002/M-003** as their dependent implementation is reached; continue independent fake-adapter work in parallel.
+1. **M-001 approved and recorded:** shared JODLO customer + optional worker account, [ADR-0006](decisions/0006-shared-account-opt-in-worker.md). Do not re-ask this question.
+2. Local-only D1 account and worker-draft schema plus authorization tests may advance now. **M-002** becomes the next manual gate before selecting the real identity/OTP provider or collecting phone/email. **M-003** remains upcoming before location storage. Continue provider-independent contracts and fake tests without asking for secrets.
 3. Invite **M-004** feedback *before* UI coding; reserve **M-006/M-007** for actual later release/provider gates.
 
 Read [AGENTS](../AGENTS.md), [Status](STATUS.md), [AI handoff](AI_HANDOFF.md), [Roadmap](ROADMAP.md), [Payment rules](PAYMENTS.md), [Release Readiness](RELEASE_READINESS.md) and [ADR-0004](decisions/0004-local-first-no-staging-until-production.md).

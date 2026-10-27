@@ -1,4 +1,4 @@
-import type { CatalogDatabase } from "../../data/d1.ts";
+import type { D1Database } from "../../data/d1.ts";
 
 export type CatalogLanguage = "en" | "hi";
 export type PublicCategory = { id: string; slug: string; name: string };

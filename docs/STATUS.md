@@ -32,7 +32,7 @@
 - [ ] Production release checklist reviewed only when code is feature-complete; no arbitrary deadline.
 
 ## Manual owner tasks
-**Owner-action checkpoint — 2026-10-27:** Hard requirement to proactively ask for any genuinely needed founder/manual task in the active JODLO conversation is tracked in [Manual Actions](MANUAL_ACTIONS.md). Current **M-001 NEEDS_DECISION_NOW:** single account with both customer/opt-in worker roles vs separate customer and worker accounts; decision **not yet approved**. M-002 auth provider, M-003 area/privacy and M-004 UI sign-off are upcoming at their respective gates. M-006/M-007 provider/production provisioning remain deferred. AI should keep building safe non-blocked backend/test components; no cloud activity now.
+**Owner-action checkpoint — 2026-10-27:** Hard requirement to proactively ask for any genuinely needed founder/manual task in the active JODLO conversation is tracked in [Manual Actions](MANUAL_ACTIONS.md). **M-001 DONE (founder explicit approval, 2026-10-27):** one customer account can opt into a private worker draft profile; no separate account. [ADR-0006](decisions/0006-shared-account-opt-in-worker.md). M-002 auth provider, M-003 area/privacy and M-004 UI sign-off are upcoming at their respective gates. M-006/M-007 provider/production provisioning remain deferred. AI should keep building safe non-blocked backend/test components; no cloud activity now.
 
 **None for Cloudflare right now.** Do not request API token, account ID, DNS or staging setup. Founder feedback is required only when proposing visible UI and major product choices. Merchant/provider onboarding and Cloudflare production access wait until final launch gate.
 
@@ -50,3 +50,10 @@
 
 ### Latest stable main checkpoint
 **Merged catalog milestone:** [PR #7](https://github.com/rekixo-lab/jodlo/pull/7) squash-merged as `dd16db9`, verified [green main GitHub Actions #40473524328](https://github.com/rekixo-lab/jodlo/actions/runs/40473524328) on `dd16db92a1e04b2e40237bc440ab0a062039f5ea` (19 Node tests, local-only Wrangler D1 migration, local and normal Worker dry-run builds, strict TS, docs/design checks). No Cloudflare/Android deployment.
+
+## 2026-10-27 — M-001 approved; shared-account worker drafts (new engineering slice)
+
+- **Decision DONE:** founder explicitly selected one JODLO account for customer and opt-in worker access in current chat. Persisted in [ADR-0006](decisions/0006-shared-account-opt-in-worker.md) and [Manual Actions](MANUAL_ACTIONS.md); no repeated M-001 question.
+- **New implementation:** local-only D1 migration `0002_shared_accounts_worker_drafts.sql`, provider-neutral trusted AUTH contract, internal account provisioning service (not exposed as public API), idempotent private worker-draft opt-in and owner-only GET/POST route. No self-declared account ID or verified/published profile; no real provider/PII/location.
+- **Evidence:** new changes require actual GitHub PR Actions and merged-main success. Prior main GREEN [40475496269](https://github.com/rekixo-lab/jodlo/actions/runs/40475496269) only covers previous commit, not this slice. Do not mark new CI GREEN until observed.
+- **Pending/Blocked:** M-002 real login/OTP selection before collecting identities; M-003 area/consent before location schema; M-004 founder UI design sign-off; account deletion/retention decisions. **Manual now:** no account/cloud credentials needed. **Next:** pass fresh PR CI, merge + verify main; then real identity/PII gate M-002 as needed while continuing safe provider-independent work.

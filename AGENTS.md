@@ -17,7 +17,7 @@ At **every JODLO session**, read [`docs/MANUAL_ACTIONS.md`](docs/MANUAL_ACTIONS.
 
 Record the gate in `docs/MANUAL_ACTIONS.md` (stable ID, state, trigger, owner, resolution evidence); mirror only the **currently blocking** items in `docs/STATUS.md` and the next roadmap/handoff step. Owner proposals are **not approvals**. Once the founder answers, record the approved decision and resume its gated work via PR and real CI. **A chat assistant cannot independently send unscheduled future alerts**; check/notify on every active project session, not by promising background monitoring.
 
-**Current first founder gate:** `M-001` account/role model for identity/worker database schemas; see the action register. No Cloudflare staging, production credentials, UI implementation or old Finworkar mutation.
+**M-001 DONE:** founder approved **one account for customers with optional private worker draft** on 2026-10-27; [ADR-0006](docs/decisions/0006-shared-account-opt-in-worker.md). Do not re-ask. Next manual decision **M-002** is the real external identity/OTP provider at its integration gate; M-003 location and M-004 visual UI are unapproved. No Cloudflare staging, production credentials, UI implementation or old Finworkar mutation.
 
 ## Required read order
 1. [`README.md`](README.md): mission, fixed product identity and the architecture at a glance.

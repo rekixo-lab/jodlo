@@ -23,3 +23,7 @@ Owner prefers **Google Pay** for eligible India UPI merchant payments; **Google 
 Pilot city/area, category set, worker/customer roles, trust/verification rules, post photos, contact channel/calling proposition, UI design and accessibility.
 
 See [PROJECT](PROJECT.md), [MODULE BOUNDARIES](MODULE_BOUNDARIES.md), [PAYMENTS](PAYMENTS.md), [STATUS](STATUS.md).
+
+## Accepted account model (2026-10-27)
+
+**M-001 founder-approved:** one JODLO login/account supports customer use and optional worker enrollment; enrolling must not itself prove identity or make a public worker profile. The current backend implementation is private draft-only. Identity/OTP provider M-002, locality/privacy M-003 and specific UI M-004 remain undecided; see [ADR-0006](decisions/0006-shared-account-opt-in-worker.md) and [Manual Actions](MANUAL_ACTIONS.md).
