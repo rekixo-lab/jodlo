@@ -1,5 +1,7 @@
 # JODLO — current project status (2026-10-27)
 
+Project identity: Android package `com.rekixo.jodlo`; planned domain `jodlo.rekixo.com` (not deployed).
+
 ## Verified, committed to GitHub
 - [x] New repo `rekixo-lab/jodlo` initialized and authenticated write access verified.
 - [x] 36 initial files imported into `feature/cloudflare-foundation-20261027`, including README, AGENTS, AI_HANDOFF, Android/Cloudflare infrastructure and module boundaries, legacy comparison, payment ADR, status/roadmap and TypeScript Cloudflare Worker starter.
