@@ -24,3 +24,5 @@ jobs:
         run: npm run typecheck
       - name: Wrangler bundle check (no deployment)
         run: npm run build:api
+      - name: Wrangler staging bundle check (no deployment)
+        run: npx wrangler deploy --dry-run --config apps/api/wrangler.staging.jsonc
