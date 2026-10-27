@@ -1,0 +1,25 @@
+{
+  "name": "jodlo",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "JODLO greenfield modular Cloudflare platform foundation",
+  "engines": {
+    "node": ">=22.16.0"
+  },
+  "workspaces": [
+    "apps/api"
+  ],
+  "scripts": {
+    "test": "node --experimental-strip-types --test apps/api/tests/*.test.mjs",
+    "typecheck": "tsc --noEmit -p apps/api/tsconfig.json",
+    "check": "npm run docs:check && npm run test && npm run typecheck",
+    "dev:api": "wrangler dev --config apps/api/wrangler.jsonc --local",
+    "docs:check": "node scripts/verify-documentation.mjs",
+    "build:api": "wrangler deploy --dry-run --config apps/api/wrangler.jsonc"
+  },
+  "devDependencies": {
+    "typescript": "~5.8.3",
+    "wrangler": "^4.0.0"
+  }
+}

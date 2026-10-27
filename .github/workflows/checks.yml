@@ -1,0 +1,26 @@
+name: JODLO foundation checks (no deployment)
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate linked docs (no deps)
+        run: npm run docs:check
+      - name: Native Node API tests (no deps)
+        run: npm test
+      - name: Install TypeScript and Wrangler (no deployment)
+        run: npm install --no-audit --no-fund
+      - name: TypeScript strict checks
+        run: npm run typecheck
+      - name: Wrangler bundle check (no deployment)
+        run: npm run build:api
