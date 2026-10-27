@@ -18,10 +18,10 @@ jobs:
         run: npm run docs:check
       - name: Enforce design token and asset deduplication rules (no deps)
         run: npm run design:check
-      - name: Node API and design-guard fixture tests (no deps)
-        run: npm test
-      - name: Install TypeScript and Wrangler (no deployment)
+      - name: Install dependencies (jose verified JWT library; no deployment)
         run: npm install --no-audit --no-fund
+      - name: Node API and design-guard fixture tests
+        run: npm test
       - name: Apply catalog D1 migrations locally (no remote resources)
         run: npm run db:migrate:local
       - name: Bundle local D1 Worker (never deploy)

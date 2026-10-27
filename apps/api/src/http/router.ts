@@ -2,6 +2,10 @@ import type { Env } from "../data/d1.ts";
 import { listPublicCategories, type CatalogLanguage } from "../modules/catalog/catalog.ts";
 import { healthData } from "../modules/system/health.ts";
 import { optInAsWorker, ownWorkerDraft } from "../modules/workers/profile.ts";
+import { validGoogleClientId, verifyGoogleIdToken } from "../modules/identity/google.ts";
+import { resolveGoogleAccount } from "../modules/identity/google-accounts.ts";
+import { findSessionAccount, issueSession, makeSessionVerifier, revokeSession } from "../modules/identity/sessions.ts";
+import { readGoogleLoginBody } from "./body.ts";
 
 type ApiErrorCode = "NOT_FOUND" | "METHOD_NOT_ALLOWED" | "INVALID_QUERY" | "SERVICE_UNAVAILABLE" | "UNAUTHORIZED" | "FORBIDDEN";
 type ApiResponse = { ok: true; data: unknown } | { ok: false; error: { code: ApiErrorCode; message: string } };
@@ -21,13 +25,26 @@ function json(data: ApiResponse, status = 200, additionalHeaders: HeadersInit = 
   });
 }
 
+
+/** One centralized parser: reject multiple/ambiguous or malformed auth headers. */
+function bearerToken(request: Request): string | null {
+  const header = request.headers.get("Authorization");
+  const match = header?.match(/^Bearer ([A-Za-z0-9_-]{1,2048})$/);
+  return match?.[1] ?? null;
+}
+
 function getOnly(request: Request): Response | null {
   if (request.method === "GET") return null;
   return json({ ok: false, error: { code: "METHOD_NOT_ALLOWED", message: "Method not allowed" } }, 405, { Allow: "GET" });
 }
 
-/** Closed router; catalog is public, database writes remain inaccessible. */
-export async function handleRequest(request: Request, env: Env = {}): Promise<Response> {
+/** Production uses the fixed Google-JWKS verifier; injectable only through direct
+ * router unit tests (the deployed Worker entrypoint never supplies a replacement).
+ */
+export async function handleRequest(
+  request: Request, env: Env = {},
+  verifyGoogle: typeof verifyGoogleIdToken = verifyGoogleIdToken,
+): Promise<Response> {
   const url = new URL(request.url);
   if (url.pathname === "/api/v1/health") {
     return getOnly(request) ?? json({ ok: true, data: healthData() });
@@ -55,6 +72,43 @@ export async function handleRequest(request: Request, env: Env = {}): Promise<Re
       return json({ ok: false, error: { code: "SERVICE_UNAVAILABLE", message: "Catalog unavailable" } }, 503);
     }
   }
+  if (url.pathname === "/api/v1/auth/google") {
+    if (request.method !== "POST") {
+      return json({ ok: false, error: { code: "METHOD_NOT_ALLOWED", message: "Method not allowed" } }, 405, { Allow: "POST" });
+    }
+    if (url.search) return json({ ok: false, error: { code: "INVALID_QUERY", message: "Unexpected query" } }, 400);
+    if (!env.DB || !validGoogleClientId(env.GOOGLE_CLIENT_ID)) {
+      return json({ ok: false, error: { code: "SERVICE_UNAVAILABLE", message: "Sign-in unavailable" } }, 503);
+    }
+    const idToken = await readGoogleLoginBody(request);
+    if (!idToken) return json({ ok: false, error: { code: "INVALID_QUERY", message: "Invalid sign-in request" } }, 400);
+    try {
+      const subject = await verifyGoogle(idToken, env.GOOGLE_CLIENT_ID);
+      if (!subject) return json({ ok: false, error: { code: "UNAUTHORIZED", message: "Invalid sign-in" } }, 401);
+      const accountId = await resolveGoogleAccount(env.DB, subject);
+      if (!accountId) return json({ ok: false, error: { code: "FORBIDDEN", message: "Account unavailable" } }, 403);
+      return json({ ok: true, data: await issueSession(env.DB, accountId) });
+    } catch {
+      return json({ ok: false, error: { code: "SERVICE_UNAVAILABLE", message: "Sign-in unavailable" } }, 503);
+    }
+  }
+  if (url.pathname === "/api/v1/auth/logout") {
+    if (request.method !== "POST") {
+      return json({ ok: false, error: { code: "METHOD_NOT_ALLOWED", message: "Method not allowed" } }, 405, { Allow: "POST" });
+    }
+    if (url.search || request.body !== null) {
+      return json({ ok: false, error: { code: "INVALID_QUERY", message: "Unexpected input" } }, 400);
+    }
+    if (!env.DB) return json({ ok: false, error: { code: "SERVICE_UNAVAILABLE", message: "Identity unavailable" } }, 503);
+    const token = bearerToken(request);
+    if (!token) return json({ ok: false, error: { code: "UNAUTHORIZED", message: "Authentication required" } }, 401);
+    try {
+      if (!await revokeSession(env.DB, token)) return json({ ok: false, error: { code: "UNAUTHORIZED", message: "Authentication required" } }, 401);
+      return json({ ok: true, data: { revoked: true } });
+    } catch {
+      return json({ ok: false, error: { code: "SERVICE_UNAVAILABLE", message: "Identity unavailable" } }, 503);
+    }
+  }
   if (url.pathname === "/api/v1/me/worker-profile") {
     const allowed = "GET, POST";
     if (request.method !== "GET" && request.method !== "POST") {
@@ -64,7 +118,7 @@ export async function handleRequest(request: Request, env: Env = {}): Promise<Re
     if (url.search || (request.method === "POST" && request.body !== null)) {
       return json({ ok: false, error: { code: "INVALID_QUERY", message: "Unexpected input" } }, 400);
     }
-    if (!env.DB || !env.AUTH) {
+    if (!env.DB) {
       return json({ ok: false, error: { code: "SERVICE_UNAVAILABLE", message: "Identity unavailable" } }, 503);
     }
     const credential = request.headers.get("Authorization");
@@ -72,8 +126,8 @@ export async function handleRequest(request: Request, env: Env = {}): Promise<Re
       return json({ ok: false, error: { code: "UNAUTHORIZED", message: "Authentication required" } }, 401);
     }
     try {
-      // AUTH must validate the bearer with an approved provider and resolve an internal account ID.
-      const actor = await env.AUTH.verify(credential.slice(7));
+      // Production resolves server-issued revocable sessions; old AUTH seam is only a trusted fake in tests.
+      const actor = await (env.AUTH ?? makeSessionVerifier(env.DB)).verify(token);
       if (!actor || !/^[-_a-zA-Z0-9]{8,128}$/.test(actor.accountId)) {
         return json({ ok: false, error: { code: "UNAUTHORIZED", message: "Authentication required" } }, 401);
       }
