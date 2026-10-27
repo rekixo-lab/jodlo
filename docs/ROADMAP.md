@@ -26,6 +26,14 @@
 - [ ] Private R2 media validation; approved Queue workflows and idempotency as needed.
 - [ ] Automated tests: unit, integration, authorization, privacy, data recovery, latency and cost.
 
+## Mandatory cross-phase gate — zero duplicate assets, reuse, premium animated UI
+
+- [ ] Before each new feature, search and reuse common tested components/helpers/API contracts; remove dead/duplicate code, unused Gradle/JS dependencies and duplicate image/icon/media files. Do not over-abstract single-use functionality.
+- [ ] Android user text and descriptions via localized `strings.xml`; one founder-approved theme owns attractive palette, typography, corners/radii, strokes, spacing, elevation and animation durations. No per-screen hardcoded style constants.
+- [ ] Founder chooses premium light/dark visual directions, tab/navigation/action transition patterns and selective professional 3D/2.5D **before any UI coding**.
+- [ ] Build purposeful high-quality motion for tabs, navigation, loading/feedback/actions with reduce-motion/no-animation fallback, low-end Android FPS/thermal/memory/APK and TalkBack validation.
+- [ ] CI uses `npm run design:check`, duplicate-asset guard and future Android Lint/Detekt and release-mode performance/device tests. [ADR-0005](decisions/0005-reuse-tokens-premium-motion.md), [Design](DESIGN_SYSTEM.md), [Motion](MOTION_3D.md), [Reuse](REUSE_ASSET_POLICY.md).
+
 ## Phase 3 — Native Android after UI approval
 - [ ] New Android Kotlin applicationId `com.rekixo.jodlo`, environment-aware networking.
 - [ ] Founder's confirmed screen layouts, navigation and copy; no legacy theme copy.

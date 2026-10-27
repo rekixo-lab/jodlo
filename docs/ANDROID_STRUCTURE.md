@@ -90,3 +90,15 @@ Before writing Compose screens, XML layouts, themes, colors, wireframes, screens
 - Emulator + physical budget phone smoke tests and performance baseline.
 - No forced background GPS or public exposure of private contact details.
 - Founder-approved UI before implementation and a single controlled final production release (no staging); never auto-publish to Play.
+## Hard quality rules: reusable UI, theme tokens and premium animations
+
+**Founder directive 2026-10-27:** Any repeated screen/widget/business code MUST reuse existing tested components/feature helpers and approved API contracts, not copy-pasted duplicates. Design-system primitives only when real reuse is established. Eliminate extra APK dependencies and repeated media.
+
+- Central Android `core/designsystem`: `MaterialTheme.colorScheme/typography/shapes` plus semantic spacing, border/stroke, elevation, radius and motion tokens **after founder palette approval**. Strings/content descriptions/plurals in localized XML (`values`, `values-hi` etc.), render via `stringResource`.
+- Reuse one approved button, tab, card, search, state component and media loader design across features. No screen-level HEX constants, font sizes, corner radii, border widths, random animation timing or duplicated icon PNGs.
+- Professional animation is required where informative: tab indicator, screen navigation/gesture transitions, press states, sheets, loading/success/error and occasional immersive depth/3D highlights; **not endless motion on every list cell**.
+- Start with low-cost 2.5D layer transforms and optimized illustrations. Only add actual 3D renderer/complex animation SDK if justified by approved prototype and measured binary/memory/CPU/GPU/battery cost. Provide static/no-motion fallback, TalkBack and safe system animation-scale handling.
+- Run `npm run design:check` now; later Android Lint/Detekt, dark/light screenshot tests and release-mode Macrobenchmark/frame tracing on low-end devices. Static checks alone do not prove smoothness.
+- **No UI has yet been implemented or founder-approved**—this is a binding quality standard, not permission to choose the exact theme or screens.
+
+[Design System](DESIGN_SYSTEM.md) · [Motion/3D](MOTION_3D.md) · [Reuse/Assets](REUSE_ASSET_POLICY.md) · [ADR-0005](decisions/0005-reuse-tokens-premium-motion.md).
