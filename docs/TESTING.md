@@ -98,3 +98,7 @@ Local synthetic DB and fake trusted-auth tests assert one customer account + opt
 - Positive: natural search `मुझे प्लंबिंग चाहिए`, `मैं प्लंबिंग का काम करता हूँ`, `I need plumbing`, `I need painting service`; keep `lang=hi|en` output labels and bounded SQL active-only filtering.
 - Negative: `mujhe plumbing chahiye`, `main plumbing ka kaam karta hu`, `मुझे plumbing चाहिए`, `I need प्लंबिंग`; no transliteration, mixed-script or third language matching. No unsupported language UI/copy.
 - All other existing catalog injection, privacy and pagination tests still must pass. Use actual exact PR/main GitHub Actions evidence; no voice/audio or real workers claimed. [ADR-0008](decisions/0008-hindi-english-only.md).
+
+## Two-connection SQLite synthetic request CAS stress rehearsal (2026-10-27)
+
+Use disposable local tempfile to validate owner-read and policy decision within serialized write, revision compare-and-swap, unique request/retry composite key, exact-once receipt on retry, stale different key rejection, rollback after interrupted SQL step, lock collision on separate SQLite connections, rollback-resilient receipt validation. No durable schema, public API, D1 remote contention test, or M-005-approved request lifecycle. Future production-specific D1 transaction strategy must be independently validated after founder signoff.

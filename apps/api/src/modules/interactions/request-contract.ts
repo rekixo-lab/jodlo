@@ -81,7 +81,10 @@ export function decideRequestTransition<S extends string>(
         priorReceipt.result.ownerAccountId !== current.ownerAccountId ||
         priorReceipt.result.categoryId !== current.categoryId ||
         priorReceipt.result.state !== command.toState ||
-        priorReceipt.result.revision !== command.expectedRevision + 1) {
+        priorReceipt.result.revision !== command.expectedRevision + 1 ||
+        // A replay must never authenticate a receipt from a future revision.
+        // A genuine replay may occur AFTER further legitimate revisions.
+        current.revision < priorReceipt.result.revision) {
       return { kind: "reject", code: "KEY_CONFLICT" };
     }
     return { kind: "replay", receipt: priorReceipt };

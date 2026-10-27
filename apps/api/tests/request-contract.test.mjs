@@ -120,3 +120,12 @@ test("synthetic unique-key + CAS store rehearsal prevents double commit or out-o
   assert.equal(dispatch(attempt({idempotencyKey:"retrykey-00000003",
     expectedRevision:1,toState:"cancelled"})).kind,"reject");
 });
+
+test("future-version receipt cannot be replayed against a rolled-back snapshot", () => {
+  const first=decideRequestTransition(baseline(),attempt(),policy);
+  assert.equal(first.kind,"apply");
+  assert.deepEqual(decideRequestTransition(baseline(),attempt(),policy,first.receipt),
+    {kind:"reject",code:"KEY_CONFLICT"});
+  // Correct forward state can replay, as can a later valid revision.
+  assert.equal(decideRequestTransition(first.result,attempt(),policy,first.receipt).kind,"replay");
+});

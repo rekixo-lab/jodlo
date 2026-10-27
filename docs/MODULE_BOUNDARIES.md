@@ -79,3 +79,5 @@ Active `accounts` implicitly have customer capability; optional `worker_profiles
 ## Legacy-inspired safety gate without cross-repo code reuse (2026-10-27)
 
 [Behavior study](LEGACY_FINWORKAR_BEHAVIOR.md) captures the read-only legacy worker/customer flow. Internal pure `interactions/contact-safety.ts` requires explicit server-trusted participation/publication/moderation/block/channel facts and recheck-at-write as a future D1 adapter invariant. It does **not** create a contact request, call, post/listing or published worker. Do not import Firebase, legacy payment code, passwords, images or UX designs. Future M-003/M-005 product approval required.
+
+**Synthetic atomicity rehearsal (2026-10-27):** test-only SQLite file/unique retry journal models the future atomic storage obligation; it is NOT production D1 schema. `request-contract.ts` remains policy-neutral and now rejects replay of a future receipt against an earlier request revision. Do not introduce a real `requests` D1 table or public action API before founder-approved M-005/M-003, or assume SQLite locking equals deployed D1 semantics.
