@@ -100,16 +100,16 @@ export function decideRequestTransition<S extends string>(
   if (current.revision === Number.MAX_SAFE_INTEGER) {
     return { kind: "reject", code: "INVALID_INPUT" };
   }
-  const result: RequestSnapshot<S> = {
+  const result: RequestSnapshot<S> = Object.freeze({
     ...current, state: command.toState, revision: current.revision + 1,
-  };
-  const receipt: RequestReceipt<S> = {
+  });
+  const receipt: RequestReceipt<S> = Object.freeze({
     requestId: current.requestId,
     actorAccountId: command.actorAccountId,
     idempotencyKey: command.idempotencyKey,
     expectedRevision: command.expectedRevision,
     toState: command.toState,
     result,
-  };
+  });
   return { kind: "apply", result, receipt };
 }

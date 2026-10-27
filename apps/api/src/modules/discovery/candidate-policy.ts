@@ -37,8 +37,8 @@ export function selectCandidateIds(
       typeof approve !== "function") {
     throw new Error("Invalid selection input or missing trusted policy");
   }
-  const accepted: string[] = [];
-  const seen = new Set<string>();
+  // Validate the complete trusted-source batch, even if the requested result
+  // limit would have been reached before an invalid later candidate.
   for (const candidate of candidates) {
     if (!validOpaqueId(candidate?.workerAccountId) ||
         !Array.isArray(candidate.categoryIds) ||
@@ -47,6 +47,10 @@ export function selectCandidateIds(
       // Bad trusted-source candidate invalidates the batch: no partial exposure.
       throw new Error("Invalid internal candidate");
     }
+  }
+  const accepted: string[] = [];
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
     if (candidate.workerAccountId === context.requesterAccountId ||
         seen.has(candidate.workerAccountId)) continue;
     seen.add(candidate.workerAccountId);

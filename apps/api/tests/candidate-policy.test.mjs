@@ -62,6 +62,8 @@ test("invalid inputs, excessive batch sizes or policy errors fail closed",()=>{
   assert.throws(()=>selectCandidateIds(context,Array.from({length:101},()=>rows[0]),()=>true),/Invalid/);
   assert.throws(()=>selectCandidateIds(context,[candidate("worker-aaaa1",["unsafe category"])],()=>true),/candidate/);
   assert.throws(()=>selectCandidateIds(context,[candidate("short")],()=>true),/candidate/);
+  assert.throws(()=>selectCandidateIds(context,
+    [candidate("worker-aaaa1"), candidate("short")],()=>true,1),/candidate/);
   assert.throws(()=>selectCandidateIds(context,rows,()=>{throw Error("policy unavailable")}),/policy unavailable/);
 });
 

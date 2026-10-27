@@ -24,6 +24,8 @@ test("pure request command applies policy-gated transition with immutable receip
     toState:"submitted", result:result.result,
   });
   assert.deepEqual(original,baseline());
+  assert.equal(Object.isFrozen(result.result),true);
+  assert.equal(Object.isFrozen(result.receipt),true);
 });
 
 test("duplicate command replays original receipt even when snapshot advanced", () => {
