@@ -22,3 +22,7 @@ JODLO has **exactly two supported languages**:
 ## Verification and gating
 
 Use synthetic positive Hindi+English and negative Romanized-Hindi/mixed-script tests; require PR and post-merge main CI Green. M-003 locality/privacy and M-005 pilot flows remain future founder decisions; M-004 blocks UI implementation, M-008 Google provider setup, M-007 remote production-only launch. This language decision is **already finalized** and must not be re-asked.
+
+## Implementation verified
+
+[PR #25](https://github.com/rekixo-lab/jodlo/pull/25) merged as `e0ce6d04a56f9c8aaa27c24d50f821ace5201ae3`; [main GitHub Actions #40493262734](https://github.com/rekixo-lab/jodlo/actions/runs/40493262734) **SUCCESS** on that exact SHA (84/84 Node tests, local D1 migrations, strict TypeScript, docs/design guards and both Worker dry-run bundles). Synthetic natural search tests confirm separate English/Hindi categories and denial of Hinglish/Roman Hindi/mixed-script queries. No UI language switch or real production speech/audio was tested.
