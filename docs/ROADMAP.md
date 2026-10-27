@@ -1,13 +1,13 @@
 # JODLO — Living delivery roadmap
 
-**Status 2026-10-27: GitHub branch foundation import in progress; CI/Cloudflare NOT YET DEPLOYED.** No fixed deadline, no dropped tasks.
+**Status 2026-10-27: GitHub Foundation merged with GREEN CI; Cloudflare NOT YET DEPLOYED.** No fixed deadline, no dropped tasks.
 
 ## Phase 0 — Repository foundation / NOW
 - [x] Lock JODLO name, Android ID `com.rekixo.jodlo`, website `jodlo.rekixo.com`.
 - [x] Write mission, team agreement, legacy-reference boundaries, architecture ADR.
 - [x] Develop minimal Cloudflare Worker API scaffold and local tests (verify test results before accepting).
-- [x] GitHub App write access now works; files committed to feature branch. Inspect checks and PR after import.
-- [x] GitHub Actions green for initial foundation commit [40465566596](https://github.com/rekixo-lab/jodlo/actions/runs/40465566596); **reverify current head on every commit**.
+- [x] GitHub App write access works; 38 Foundation files committed to `main` via PR #1.
+- [x] GitHub Actions green for final merged `main` commit [40466265299](https://github.com/rekixo-lab/jodlo/actions/runs/40466265299); **reverify each new head**.
 - [ ] Founder provision/approve Cloudflare account and secure GitHub Environment `jodlo-staging` secrets; avoid unrelated `rekixo.com` DNS and all legacy systems.
 - [ ] Decide staging/production resource naming, budgets, logging retention and alerts.
 
@@ -52,7 +52,7 @@
 `Date | Work ID | Done (link/test) | Pending | Blocked/manual owner action | Next exact action`
 
 ## Known blockers as of 2026-10-27
-- GitHub repository exists and is public but GitHub connector returned `403 Resource not accessible by integration` on both file and issue writes; new GitHub App repository access likely requires founder authorization. Do not state files are in GitHub until verified.
+- RESOLVED: GitHub read/write works, Foundation present on main; actual green main CI run 40466265299.
 - Legacy GitHub Actions account had pre-run failures in previous project; GitHub runner/billing permission may require owner attention if reproduced here.
 - No Cloudflare credentials, DNS zone permission, database, deployed Worker or production data yet. These require founder or connected account access.
 ## Payment policy alignment — 2026-10-27

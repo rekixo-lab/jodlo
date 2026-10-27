@@ -155,9 +155,9 @@ The only implemented API is `GET /api/v1/health`; it returns generic readiness w
 
 - [x] Mission, identity, architecture/decisions and collaboration rules drafted.
 - [x] Initial API skeleton and deterministic request tests drafted.
-- [x] Architecture decisions, new-chat handoff and Android/Cloudflare module design written locally (see linked docs).
+- [x] Architecture decisions, new-chat handoff and Android/Cloudflare module design **committed on GitHub main** (see linked docs).
 - [x] **Local** docs link checker added (`npm run docs:check`), 20 mandatory docs and 90 relative links valid; local Node tests 7/7 and TypeScript check passed on 2026-10-27.
-- [ ] GitHub repository files pushed and remote checks GREEN: **BLOCKED by GitHub connector 403**, not yet authorized for this repository.
+- [x] **GitHub foundation merged to main** with 38 files (36 original+2 staging deploy files), after PR #1 verified green. [Main Actions run](https://github.com/rekixo-lab/jodlo/actions/runs/40466265299) succeeded on squash merge commit `2b447de586e0c9d655edc188203acf843e4dc66f`.
 - [ ] Cloudflare account/zone/bindings/provisioning.
 - [ ] Live website/API/Android app.
 - [ ] Founder-reviewed UI.
@@ -181,3 +181,5 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for next actions and [docs/MANUAL_ACTIONS
 ## Staging Cloudflare deployment (requires founder-managed credentials)
 
 The documented foundation can be deployed **only after GitHub CI is green** and the founder adds limited `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` in protected GitHub Environment `jodlo-staging`. The manual [Deploy JODLO staging](.github/workflows/deploy-staging.yml) workflow tests and deploys an isolated `jodlo-api-staging` Worker with `workers.dev` enabled. The production website `jodlo.rekixo.com` remains unconfigured; no DNS or production resources change. See [Manual Actions](docs/MANUAL_ACTIONS.md) and [Status](docs/STATUS.md).
+
+> **Current definitive status:** GitHub README/AGENTS/docs exist in `main`, CI green (run 40466265299). Cloudflare staging and custom domain are NOT deployed yet; owner must securely configure environment secrets. Read [STATUS](docs/STATUS.md).

@@ -61,7 +61,7 @@ These snapshots do NOT prove deployed version, spend or traffic. This evidence a
 ## Initial known implementation status
 - Local scaffold includes `apps/api/src/index.ts`, HTTP router, system health module and tests. No login, profiles, listings, payments, database, Cloudflare binding or deploy code exists yet.
 - Latest local run on 2026-10-27: `npm run check` passed (**20 required docs, 90 local Markdown links, 7/7 Node unit tests, strict TypeScript check**). This does NOT establish GitHub green CI or Cloudflare deploy; new sessions must rerun against their actual checkout.
-- `rekixo-lab/jodlo` was confirmed as public/empty, but GitHub integration writes returned 403 on create-file and create-issue attempts, including a recheck on 2026-10-27. **No JODLO GitHub commits or green CI have been verified**.
+- **Resolved on 2026-10-27:** GitHub connector read/write works. Foundation PR #1 **merged into main** with 38 files. Main CI [run 40466265299](https://github.com/rekixo-lab/jodlo/actions/runs/40466265299) = SUCCESS. This supersedes the previous 403/empty local-archive findings.
 - Existing `jodlo.rekixo.com` is a planned address; not confirmed routed/live. No Cloudflare provisioning has been executed.
 - Follow [`STATUS.md`](STATUS.md) for current status (this handoff may become older).
 
@@ -75,7 +75,7 @@ These snapshots do NOT prove deployed version, spend or traffic. This evidence a
 7. Write back decisions in ADRs; append concise progress to [`STATUS.md`](STATUS.md). If repository push is blocked, deliver an updated ZIP and say so.
 
 ## Exact first blockers / next tasks
-**Status updated 2026-10-27:** GitHub read/write is authorized; 36 foundation files were committed in branch `feature/cloudflare-foundation-20261027`; PR #1 is open. GitHub Actions [run 40465566596](https://github.com/rekixo-lab/jodlo/actions/runs/40465566596) was GREEN for its exact commit. Subsequent changes require new CI checks. **Not deployed to Cloudflare**: a Cloudflare account connection and scoped secret configuration are required before staging. **Next:** verify PR CI after staging workflow/config documentation changes, then founder provides credentials securely via GitHub environment secrets, and launch staging health endpoint. No UI before owner approval.
+**Current status 2026-10-27:** 38 Foundation and staging-workflow files merged to GitHub main. [Main Actions run 40466265299](https://github.com/rekixo-lab/jodlo/actions/runs/40466265299) GREEN. Cloudflare account is NOT connected; staging Worker has NOT been deployed and domain `jodlo.rekixo.com` remains unconfigured. Next founder action: add scoped Cloudflare API token and account ID to GitHub Environment `jodlo-staging`. Then manually run staging deployment workflow, capture workers.dev URL and verify health before any production domain.
 
 ## Living documents checklist
 - [`PROJECT.md`](PROJECT.md) — mission, founder operational agreement.
