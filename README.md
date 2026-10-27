@@ -1,1 +1,180 @@
 # JODLO
+
+**Fast, native Android experience. Cloudflare-first infrastructure. Clean-slate build.**
+
+> JODLO is a new, independent local work and services platform for India, designed to connect customers with nearby, relevant workers through a simple, trustworthy and privacy-first experience.
+
+| Project identity | Fixed decision |
+|---|---|
+| Name | **JODLO** |
+| Native Android application ID | **`com.rekixo.jodlo`** |
+| Website | **`https://jodlo.rekixo.com`** (reserved; NOT deployed yet) |
+| Repository | **`rekixo-lab/jodlo`** |
+| Cloud infrastructure | **Cloudflare-first** |
+| Payments | **Google Pay India (UPI) preferred where permitted; Google Play Billing for Play digital purchases unless valid alternative/exception** |
+| Legacy payment system | **Do NOT port the old Finworkar Razorpay integration** |
+| Existing Finworkar | **Read-only reference; NEVER modify or overwrite** |
+| Data | **New, independent data stores; no migration** |
+| UI | **Founder review and suggestions before any layout, theme or screen is implemented** |
+
+## हमारा मकसद
+
+भारत में लोगों को आसपास के सही वर्कर या सर्विस देने वाले व्यक्ति को आसानी से खोजने में मदद करना, और काम करने वालों को अपनी वास्तविक सेवा दिखाने का सुविधाजनक माध्यम देना। हिंदी/हिंग्लिश और कम क्षमता वाले Android फ़ोन का ध्यान रखा जाएगा। सुरक्षा, भरोसा, जवाब देने की विश्वसनीयता और वास्तविक काम मिलने के परिणाम डाउनलोड की संख्या से ज़्यादा महत्वपूर्ण हैं।
+
+JODLO को **हल्का, तेज़, सुचारु, कम खर्च वाला, सुरक्षित और भविष्य में आसानी से बदलने योग्य** बनाना है। अनावश्यक कोड, फीचर, डिपेंडेंसी, background jobs और architectural complexity को नए प्रोजेक्ट में नहीं लाएँगे।
+
+
+## For a new AI chat / नए AI के लिए — START HERE
+
+**This repository is the project's written source of truth; ChatGPT Memory is not a substitute.** If opening a new chat, connect/share `https://github.com/rekixo-lab/jodlo` **after files have actually been pushed**, or attach the latest foundation ZIP. An AI cannot see local, unpushed docs merely because their names are listed here.
+
+**Read in this order:** [AGENTS.md](AGENTS.md) → [AI HANDOFF](docs/AI_HANDOFF.md) → [CURRENT STATUS](docs/STATUS.md) → [Roadmap](docs/ROADMAP.md) → [Architecture](docs/ARCHITECTURE.md). Every session must update the status with Done / Pending / Blocked / Next and links/tests, and never invent production/CI success.
+
+### End-to-end proposed design at a glance
+
+```text
+Android native Kotlin (com.rekixo.jodlo)        Approved web site (future)
+             |                                        |
+             +---- HTTPS /api/v1 ---------------------+
+                              |
+                   Cloudflare Worker API
+                Small typed, modular monolith
+                /    |      |        |      \
+             Identity Workers Listings Search  Contact
+                \    |      |        |      /
+                  D1 (only after schema approval)
+                   |                    |
+         R2 private media (later)      Queues for async (later)
+                   |                    |
+          External: FCM + media RTC provider (evaluated) +
+          Google Pay India/merchant PSP OR Google Play Billing
+```
+
+**Only implemented API today:** local `GET /api/v1/health`. The database, R2/Queues, cloud deployment, native Android app, UI, calls and payment checkout are NOT implemented. No new cloud resource or live DNS was created.
+
+### Android Activity/class design — proposed, not a built app
+
+- **One thin `MainActivity`** for Android lifecycle/navigation, not a 2,500-line all-purpose `HomeActivity`.
+- **ViewModel + `StateFlow` per feature**, clear `UiState`/events, cancellation/lifecycle-aware state, separate domain/repository/network/cache adapters. Kotlin first; Jetpack Compose is a *technical proposal*, and visuals/layouts **still need founder approval**.
+- Source root would be `apps/android/app/src/main/java/com/rekixo/jodlo/` with `core/{network,session,model,data,security,location,image,push,designsystem,testing}` and `feature/{onboarding,authentication,discovery,workerprofile,listings,contacts,calling,payments,settings}`. These are architectural intentions, **not currently existing code modules**.
+- Never put D1/R2 keys, wallet authority, payment proof or RTC signing secret in Android. FCM/RTC are separately approved platform/provider integrations.
+- See **[Android Structure — classes and dependencies](docs/ANDROID_STRUCTURE.md)** and [ADR-0003](docs/decisions/0003-native-android-single-activity.md).
+
+### Cloudflare infrastructure choices — proposed, not provisioned
+
+| Component | Decision and timing |
+| --- | --- |
+| Workers + TypeScript | **One initial Worker** with small typed routes and feature modules, versioned `/api/v1`; avoid premature microservices. |
+| D1 | Relational tables, indexed area/category search, ownership and idempotent writes **after schema reviews**. |
+| R2 | Private worker photos/portfolio; controlled uploads, scanning and thumbnails when media exists. |
+| Queues | For actual asynchronous notifications/moderation/reconciliation only; duplicate-safe consumer + dead-letter. |
+| Durable Objects | Only if measured realtime signaling/state coordination needs it, **not ordinary HTTP voice media**. |
+| WAF/rate limiting/Observability | Protect and measure requests before public launch, minimal PII in logs. |
+| Cloudflare website | `jodlo.rekixo.com` after UI and DNS review; prevent disruption of legacy domain. |
+| External | Android + Google Play + FCM + eligible Google Pay/Play Billing + native RTC media where required. |
+
+**Read:** [Cloudflare Infrastructure](docs/CLOUDFLARE_INFRASTRUCTURE.md), [Module Boundaries](docs/MODULE_BOUNDARIES.md), [Technical Research](docs/ARCHITECTURE_RESEARCH_20261027.md). No Cloudflare service has been deployed or provisioned by this scaffold.
+
+### What old Finworkar taught us: keep / rebuild / drop
+
+- **Keep rules as design inputs:** privacy-protecting profiles/locations, server-side payment and call event reconciliation, Hindi/Hinglish vocabulary, bounded search/pagination, reports and account deletion.
+- **Rebuild:** Firebase Auth/Firestore/Functions calls become explicit Worker API + D1; multi-Activity Java/Firebase screens become Kotlin feature layers; old Firestore geo queries become indexed and bounded D1 queries; Agora is only one RTC candidate, not assumed; wallet is newly designed, with independent ledger.
+- **Drop by default:** old Razorpay implementation, Firebase-coupled client, oversized multi-purpose Activities and 2,000-line call logic, unnecessary ads/rewards/stories/premium boosts, excessive always-on maintenance cron and premature platform dependencies. **Never remove safety-critical cleanup, refunds, deletion or reconciliation.**
+- **Read only:** all three old GitHub repositories; never change the live Finworkar code/data or claim that its production metrics were audited.
+
+### Mandatory gates to implement anything new
+
+1. Tests + branch/PR + actual green GitHub Actions; **a local test pass alone is not CI green**.
+2. D1 schema/permissions and product requirements before user data collection.
+3. Founder design review **before UI implementation or promotional artwork**; founder can suggest anything, and final design requires agreement.
+4. SKU/payment channel eligibility before Google Pay/Play Billing checkout. Do not port Razorpay and do not activate money movement early.
+5. Manual founder permissions/Cloudflare/DNS/provider provisioning and explicit staging/production release approval.
+
+The project is long-term; 30/60/90 days are not a fixed finishing deadline. **Never drop a checklist item merely to finish early.**
+
+## Product principles
+
+1. **Greenfield only:** Finworkar Android / Firebase backend / website remain unchanged. Use them for feature understanding and lessons; do not copy credentials, private records or broken architectural assumptions.
+2. **Native Android, Cloudflare backend:** Kotlin/Android on-device; Workers/TypeScript for API and business rules; D1, R2, Queues and other bindings added only when required. Cloudflare cannot replace Android runtime, Google Play delivery, push services, real-time voice-media infrastructure or all payment providers.
+3. **Modular monolith to start:** Small independently testable feature modules with explicit interfaces; one API Worker initially, split into multiple services when measurements justify it.
+4. **Performance budget:** Measure launch delay, first content, p95 API latency, payload size, query scans, DB read/write counts and cloud spending. Goals are targets until measured, never guarantees.
+5. **Zero trust and privacy:** least privilege, no contact/location data in public endpoints by default, authenticated writes, abuse prevention, verified event idempotency and account deletion support.
+6. **Maintainable and future-proof:** versioned APIs, structured logs without PII, types, tests, migration strategy, reproducible environments, small PRs and rollback planning.
+7. **Payment strategy:** Google Pay India/UPI is the founder-selected preference for eligible payments; Google Pay is **not** Google Play Billing. Follow Play digital-purchase rules (or properly enrolled allowed alternative billing), verify merchant/UPI success server-to-server, and never copy legacy Razorpay. See [Payment Strategy](docs/PAYMENTS.md) and [ADR-0002](docs/decisions/0002-google-pay-and-play-billing.md).
+8. **Founder owns UI decisions:** show proposed flow/wireframes and ask for user suggestions and approval **before creating or changing UI**; likewise for brand/Play Store media.
+9. **No rushed launch:** No fixed 30/60/90-day deadline. Track every pending task and do not call failing/blocked CI a success.
+
+## Project structure
+
+```
+apps/
+  api/                Cloudflare Worker, TypeScript, HTTP contracts and tests
+  android/            Reserved: native Kotlin Android, after founder UI review
+  web/                Reserved: Cloudflare-hosted website, after founder UI review
+  admin/              Reserved: scoped admin UI, after authorization architecture
+packages/             Shared contracts when a second client needs them
+infra/migrations/     D1 migration scripts only after schema review
+.github/workflows/    No-deploy quality checks
+docs/
+  PROJECT.md          Mission, boundaries, decisions and collaboration
+  ARCHITECTURE.md     Architecture, performance, persistence and security
+  AI_HANDOFF.md       Exact resumption guide for any new AI session
+  ANDROID_STRUCTURE.md Native Android Activity/ViewModel/module blueprint
+  CLOUDFLARE_INFRASTRUCTURE.md Cloudflare services, D1/R2/Queues/ops
+  MODULE_BOUNDARIES.md Module ownership, contracts, no tight coupling
+  ARCHITECTURE_RESEARCH_20261027.md  source-backed deep audit and blueprint
+  PRODUCT_REQUIREMENTS.md Product capabilities and unanswered decisions
+  PAYMENTS.md          Google Pay-first decision, Play Billing rules, safe checkout gates
+  ROADMAP.md          Ordered milestones and truthful delivery state
+  MANUAL_ACTIONS.md   Founder-controlled external account actions
+  reference/          Old code mapping (read-only)
+  decisions/          Architecture Decision Records
+```
+
+Folders not yet implemented intentionally remain absent or placeholder-only; we do not create fake features.
+
+## Run the first API starter locally
+
+Requires **Node.js >=22.16**. No package install is needed for the offline request tests.
+
+```bash
+npm test
+```
+
+For TypeScript typechecking and Cloudflare local emulation, first install declared dev dependencies:
+
+```bash
+npm install
+npm run typecheck
+npm run dev:api
+```
+
+The only implemented API is `GET /api/v1/health`; it returns generic readiness without accessing user records, credentials, databases, Cloudflare secrets or remote systems. It is not production health monitoring. No deployment scripts are configured yet. Production deployment requires an explicit setup/approval gate.
+
+## Implementation status
+
+- [x] Mission, identity, architecture/decisions and collaboration rules drafted.
+- [x] Initial API skeleton and deterministic request tests drafted.
+- [x] Architecture decisions, new-chat handoff and Android/Cloudflare module design written locally (see linked docs).
+- [x] **Local** docs link checker added (`npm run docs:check`), 20 mandatory docs and 90 relative links valid; local Node tests 7/7 and TypeScript check passed on 2026-10-27.
+- [ ] GitHub repository files pushed and remote checks GREEN: **BLOCKED by GitHub connector 403**, not yet authorized for this repository.
+- [ ] Cloudflare account/zone/bindings/provisioning.
+- [ ] Live website/API/Android app.
+- [ ] Founder-reviewed UI.
+- [x] Payment direction recorded: **Google Pay India preferred; Razorpay not ported; Play Billing compatibility gate documented**.
+- [ ] Merchant onboarding, policy decisions, payment tests and actual checkout implementation.
+- [ ] Real worker/customer journeys, identity and storage.
+
+**Source-only development. No production system touched. Documentation is currently LOCAL ONLY until GitHub write and CI are actually verified.**
+
+## Legacy reference sources (read-only)
+
+- https://github.com/rekixo-lab/finworkar-android
+- https://github.com/rekixo-lab/finworkar-backend
+- https://github.com/rekixo-lab/Finworkar-web
+
+Read the [October 2026 infrastructure and structure research](docs/ARCHITECTURE_RESEARCH_20261027.md) for evidence, Cloudflare decisions, module diagram and migration-free build sequence.
+
+See [docs/ROADMAP.md](docs/ROADMAP.md) for next actions and [docs/MANUAL_ACTIONS.md](docs/MANUAL_ACTIONS.md) for the actions that only the founder can perform.
+
+**Public repository warning:** do not commit secrets, signing keys, customer records, exported user data, raw GPS coordinates, vendor invoices or payment information.
