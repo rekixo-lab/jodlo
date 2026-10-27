@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { openLocalDatabase } from "./helpers/local-db.mjs";
+import { ensureAccount } from "../src/modules/identity/accounts.ts";
+import { optInAsWorker, ownWorkerDraft, OWN_DRAFT_QUERY } from "../src/modules/workers/profile.ts";
 
 const openDb = openLocalDatabase;
 
