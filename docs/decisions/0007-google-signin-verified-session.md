@@ -25,3 +25,7 @@
 Automated checks should include locally generated RSA/JWK signature-positive and negative tests, wrong audience/issuer/alg/expiry, failed/duplicate DB account linking, session expiry/disable/revoke, no role escalation, and migration to disposable local D1. **GitHub green PR and latest main run must be observed before declaring code milestone done.**
 
 References: [Manual Actions](../MANUAL_ACTIONS.md), [Status](../STATUS.md), [Android Structure](../ANDROID_STRUCTURE.md), [ADR-0006](0006-shared-account-opt-in-worker.md), [Google backend token rules](https://developers.google.com/identity/sign-in/android/backend-auth), [Google OIDC](https://developers.google.com/identity/openid-connect/openid-connect), [Cloudflare WebCrypto](https://developers.cloudflare.com/workers/runtime-apis/web-crypto/).
+
+## Later local-only security-hardening implementation note (2026-10-27)
+
+Reuse `auth_sessions` and `idx_auth_sessions_expiry`: cap six simultaneous unexpired sessions per active account with conditional atomic SQL; when full, send HTTP 429 with retry delay rather than issuing more secrets. On verified sign-in, opportunistically purge at most 100 expired session hashes, no background cron or new tracking table. Add owner-scoped `POST /api/v1/auth/logout-all`. These are safe backend implementation constraints, **not** comprehensive HTTP/edge rate-limiting or a final retention/deletion policy. M-003/M-008 founder gates unchanged.

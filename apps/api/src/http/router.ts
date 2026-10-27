@@ -4,10 +4,10 @@ import { healthData } from "../modules/system/health.ts";
 import { optInAsWorker, ownWorkerDraft } from "../modules/workers/profile.ts";
 import { validGoogleClientId, verifyGoogleIdToken } from "../modules/identity/google.ts";
 import { resolveGoogleAccount } from "../modules/identity/google-accounts.ts";
-import { issueSession, makeSessionVerifier, revokeSession } from "../modules/identity/sessions.ts";
+import { issueSession, makeSessionVerifier, revokeAllSessions, revokeSession, SESSION_TTL_SECONDS } from "../modules/identity/sessions.ts";
 import { readGoogleLoginBody } from "./body.ts";
 
-type ApiErrorCode = "NOT_FOUND" | "METHOD_NOT_ALLOWED" | "INVALID_QUERY" | "SERVICE_UNAVAILABLE" | "UNAUTHORIZED" | "FORBIDDEN";
+type ApiErrorCode = "NOT_FOUND" | "METHOD_NOT_ALLOWED" | "INVALID_QUERY" | "SERVICE_UNAVAILABLE" | "UNAUTHORIZED" | "FORBIDDEN" | "RATE_LIMITED";
 type ApiResponse = { ok: true; data: unknown } | { ok: false; error: { code: ApiErrorCode; message: string } };
 
 const HEADERS: Readonly<Record<string, string>> = Object.freeze({
@@ -87,12 +87,17 @@ export async function handleRequest(
       if (!subject) return json({ ok: false, error: { code: "UNAUTHORIZED", message: "Invalid sign-in" } }, 401);
       const accountId = await resolveGoogleAccount(env.DB, subject);
       if (!accountId) return json({ ok: false, error: { code: "FORBIDDEN", message: "Account unavailable" } }, 403);
-      return json({ ok: true, data: await issueSession(env.DB, accountId) });
+      const session = await issueSession(env.DB, accountId);
+      if (!session) {
+        return json({ ok: false, error: { code: "RATE_LIMITED", message: "Active session limit reached" } },
+          429, { "Retry-After": String(SESSION_TTL_SECONDS) });
+      }
+      return json({ ok: true, data: session });
     } catch {
       return json({ ok: false, error: { code: "SERVICE_UNAVAILABLE", message: "Sign-in unavailable" } }, 503);
     }
   }
-  if (url.pathname === "/api/v1/auth/logout") {
+  if (url.pathname === "/api/v1/auth/logout" || url.pathname === "/api/v1/auth/logout-all") {
     if (request.method !== "POST") {
       return json({ ok: false, error: { code: "METHOD_NOT_ALLOWED", message: "Method not allowed" } }, 405, { Allow: "POST" });
     }
@@ -103,8 +108,12 @@ export async function handleRequest(
     const token = bearerToken(request);
     if (!token) return json({ ok: false, error: { code: "UNAUTHORIZED", message: "Authentication required" } }, 401);
     try {
-      if (!await revokeSession(env.DB, token)) return json({ ok: false, error: { code: "UNAUTHORIZED", message: "Authentication required" } }, 401);
-      return json({ ok: true, data: { revoked: true } });
+      const allDevices = url.pathname === "/api/v1/auth/logout-all";
+      const revoked = allDevices
+        ? await revokeAllSessions(env.DB, token)
+        : await revokeSession(env.DB, token);
+      if (!revoked) return json({ ok: false, error: { code: "UNAUTHORIZED", message: "Authentication required" } }, 401);
+      return json({ ok: true, data: { revoked: true, ...(allDevices ? { allDevices: true } : {}) } });
     } catch {
       return json({ ok: false, error: { code: "SERVICE_UNAVAILABLE", message: "Identity unavailable" } }, 503);
     }

@@ -29,7 +29,7 @@ export function openLocalDatabase() {
       const stmt = { _query: query, _values: params,
         bind(...values) { params = values; this._values = values; return this; },
         async all() { return { results: db.prepare(query).all(...params).map(row => ({ ...row })) }; },
-        async run() { return db.prepare(query).run(...params); },
+        async run() { const result = db.prepare(query).run(...params); return { meta: { changes: Number(result.changes) } }; },
       };
       return stmt;
     },
