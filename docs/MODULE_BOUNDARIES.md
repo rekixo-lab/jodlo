@@ -56,3 +56,8 @@ Unit state/policy, invalid payload, missing identity/role, conflicting status, p
 
 ## Splitting criterion
 Split Worker runtime (or Gradle module) only if independently deployable scaling/security/fault domain, ownership, or build size creates measured benefit; module structure itself does not require microservice deployment.
+## Cross-module mandatory reuse invariant
+
+Every developer/AI searches existing shared contracts, validators, provider ports and composables before adding code. When genuinely repeated, extract one small owned/tested function/component instead of copying. No mega-utils, redundant microservices or duplicate business sources. Android owns reusable localized theme/motion widgets, server Worker owns authoritative auth/pricing/ledger; shared contracts prevent divergent DTOs. Asset files are canonical, compressed and not duplicated.
+
+Premium transitions, tab/action feedback and occasional lightweight 3D are required in the *approved future UI*, using central design tokens and low-end/accessibility/reduced-motion tests. See [ADR-0005](decisions/0005-reuse-tokens-premium-motion.md), [Reuse](REUSE_ASSET_POLICY.md), [Design](DESIGN_SYSTEM.md) and [Motion](MOTION_3D.md).

@@ -3,6 +3,8 @@
 > **MOST RECENT OWNER INSTRUCTION (2026-10-27): No staging, no deployment while building JODLO.** Finish all code with local Worker/D1/R2/Queue simulations, fake payment/RTC/FCM adapters and green GitHub CI. No Cloudflare tokens or DNS work until final approved production release. Previous staging workflow has been deleted. See [ADR-0004](docs/decisions/0004-local-first-no-staging-until-production.md), [Release Readiness](docs/RELEASE_READINESS.md).
 
 
+**NEW MANDATORY OWNER RULE (2026-10-27):** Reuse existing tested code/components/contracts/assets; do not write repeated logic or duplicate media. User-facing text MUST be localized; colors, radius, strokes, typography, spacing and motion MUST be driven by centralized founder-approved design tokens, not hardcoded per screen. Deliver polished animated tabs/navigation/actions and **selective** immersive 3D/2.5D without sacrificing reduced-motion, accessibility, low-end Android FPS/memory/battery. Before ANY UI/theme/screen/visual implementation, show founder proposed design and obtain approval. Run `npm run design:check` and PR review checklist. Read [ADR-0005](docs/decisions/0005-reuse-tokens-premium-motion.md), [Reuse Policy](docs/REUSE_ASSET_POLICY.md), [Design](docs/DESIGN_SYSTEM.md), [Motion](docs/MOTION_3D.md).
+
 **Start here, every time.** This file is a repository-resident handoff, NOT a claim that the chat has durable Memory. A new assistant must be given this repository/ZIP, or have GitHub access, to read it.
 
 ## Required read order
@@ -39,3 +41,10 @@
 2. Foundation PRs #1/#2 merged; latest earlier confirmed green `main` run 40466624240. Founder revoked the staging plan; PR #3 removed staging workflow/config and merged successfully after green checks. Check **latest** CI before every merge. No Cloudflare resources are provisioned.
 3. **Do not configure Cloudflare account or deployment** now. Move on to locally testable D1 schema, typed API/auth contracts and worker discovery; get founder feedback before visible Android/web UI code.
 4. Confirm MVP product roles and auth/area model before D1 schema. **No UI without founder sign-off.**
+## Mandatory future UI/feature PR review
+
+- [ ] Reused existing tested small feature/core components/contract/adapter rather than copy-pasting; justified only genuinely needed abstraction/dependency.
+- [ ] No duplicate assets, dead code, raw literal strings/colors/strokes/radii/font/spacing/motion; central theme & localized resources.
+- [ ] Founder **explicitly approved** particular layout, palette, 3D/motion storyboard before implementing visual code; accepted quality brief is NOT specific design approval.
+- [ ] High-quality animation for meaningful tabs/navigation/actions/feedback plus selective 3D/depth, interruptible/responsive, reduced-motion fallback; real low-end frame, APK/memory/battery and accessibility checks when UI exists.
+- [ ] `npm run design:check`, tests, typecheck, actual green GitHub CI; no Cloudflare deploy/staging while coding.

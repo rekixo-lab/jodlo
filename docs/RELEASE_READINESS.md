@@ -2,6 +2,12 @@
 
 **Founder-approved strategy (2026-10-27): no deployed staging, no Cloudflare deployment before product readiness.** Development uses local cloud simulations, mock integrations and GitHub CI. First external deployment is a separately approved production release.
 
+## Mandatory quality acceptance before final release
+
+- [ ] Follow [ADR-0005](decisions/0005-reuse-tokens-premium-motion.md): reusable tested UI/business components/contracts, no redundant media/assets, no unused SDKs, localized strings and one approved theme for colors, corners, strokes, spacing, elevation, typography and animation tokens.
+- [ ] Founder-approved premium palette, tab/navigation/action animations and selective 3D/depth visuals **before their implementation**; sensible reduced-motion/low-power/static fallbacks.
+- [ ] Release-mode real-device motion/frame jank, startup, battery/thermal, memory/APK and accessibility checks passed, with actual evidence—not just static design guard.
+
 ## Code completion (no Cloudflare account needed)
 - [ ] Native Android Kotlin project `com.rekixo.jodlo`, founder-approved screen UX/UI, accessible/localized and optimized for low-end devices.
 - [ ] Typed Worker API contracts, validation, authentication, roles, profiles, catalog, listings, area/geosearch, contact requests, moderation, abuse protection, account deletion and admin safeguards.

@@ -15,3 +15,7 @@ Read [README](../README.md), [AGENTS](../AGENTS.md), [AI HANDOFF](AI_HANDOFF.md)
 ## Founder delivery decision 2026-10-27
 
 Implement and test the **whole** new JODLO source first with local Cloudflare Worker/D1/R2 simulations, mock third-party services, Android tests and actual green GitHub CI. No staging environment, no remote deployment, no Cloudflare credentials or DNS setup during development. Deploy **directly to production** only when complete, with separate founder approval, backups, live smoke tests, safe traffic rollout and rollback. See [ADR-0004](decisions/0004-local-first-no-staging-until-production.md), [Release Readiness](RELEASE_READINESS.md).
+
+## Additional founder mandatory rule — reuse, visual premium quality and motion (2026-10-27)
+
+Reuse existing tested code, domain helpers/contracts and UI components everywhere genuinely shared; do not copy-paste or keep extra dependencies/duplicate assets. All localization strings, semantic colors, type, corner radii, strokes, spacing and motion are centralized design-system resources, not arbitrary literals. Future Android/web UX has professional fast/interruptible animations (tabs, navigation, actions and feedback) and selective high-quality 3D/2.5D with battery/performance/reduced-motion/accessibility gates. Founder **must approve actual palette/screens/animation proposal before UI coding**. [ADR-0005](decisions/0005-reuse-tokens-premium-motion.md), [Design](DESIGN_SYSTEM.md), [Motion](MOTION_3D.md), [Reuse](REUSE_ASSET_POLICY.md).

@@ -20,3 +20,10 @@ Read [Roadmap](ROADMAP.md) and [Status](STATUS.md). Never merge failing checks o
 ## Code-first local test policy — 2026-10-27
 
 No staged Cloudflare deployment or remote resource tests during normal development. Test Worker APIs with Wrangler local workerd, D1/R2/Queues simulations, mock Google Pay/Google Play Billing bank/PSP callbacks, fake RTC/FCM adapters, Android emulator and real-device tests, schema migration/restore, security/rate-limit, idempotency and failure/retry cases. CI must be green and must not deploy. Live Cloudflare permission, real DNS/TLS and provider transport/payment behavior remain `UNVERIFIED` until owner-approved production rollout. See [ADR-0004](decisions/0004-local-first-no-staging-until-production.md) and [Release Readiness](RELEASE_READINESS.md).
+
+## Hard rule tests: reuse, theme strings/colors, premium motion quality
+
+- `npm run design:check` scans future Android Kotlin/XML screens and media assets to reject common hardcoded user strings, colors, radius, stroke, type and animation duration; and byte-identical image/vector files across Android/web. Six synthetic tests exercise allowed/rejected cases. **No Android UI/assets yet; guard is preventive.**
+- Semantic duplicate business rules, visually near-identical assets and needless abstraction cannot be fully caught by static checks—mandatory PR code review remains necessary.
+- After founder approval and UI implementation, add Android Lint/Detekt, snapshot/accessibility tests, release-mode Macrobenchmark/frame/jank, touch responsiveness, low-end phone battery and memory analysis, reduced-motion static fallback validation, 3D SDK asset size budget.
+- Specific palette/layouts/3D design NOT YET APPROVED. See [Reuse](REUSE_ASSET_POLICY.md) · [Design](DESIGN_SYSTEM.md) · [Motion](MOTION_3D.md) · [ADR-0005](decisions/0005-reuse-tokens-premium-motion.md).

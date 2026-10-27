@@ -5,6 +5,8 @@
 
 **Fast, native Android experience. Cloudflare-first infrastructure. Clean-slate build.**
 
+> **HARD FOUNDER REQUIREMENT (2026-10-27): REUSE FIRST, PREMIUM DESIGN AND MOTION.** Reuse genuinely shared code/components/assets/contracts; no duplicate functions or media, unused SDKs or scattered UI text, colors, typography, radius, strokes, spacing and animation values. Localized user text and **one founder-approved design theme** are mandatory. Premium responsive animations for tabs/navigation/actions plus **selective lightweight 3D/2.5D**, preserving low-end phone speed, reduced-motion, accessibility and battery. **Founder approves actual visual palette/screens/motion before UI implementation.** Read [ADR-0005](docs/decisions/0005-reuse-tokens-premium-motion.md) · [Reuse](docs/REUSE_ASSET_POLICY.md) · [Design System](docs/DESIGN_SYSTEM.md) · [Motion/3D](docs/MOTION_3D.md).
+
 > JODLO is a new, independent local work and services platform for India, designed to connect customers with nearby, relevant workers through a simple, trustworthy and privacy-first experience.
 
 | Project identity | Fixed decision |
@@ -188,3 +190,15 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for next actions and [docs/MANUAL_ACTIONS
 After code/product readiness, obtain **explicit founder approval** for a controlled first **production** deployment to `jodlo.rekixo.com`, with secure production provider credentials, backups/recovery, migration plan, live smoke tests and rollback. Real RTC, payment/Play callbacks, DNS/TLS and Cloudflare policy behavior cannot be fully proven offline; mark those UNVERIFIED until safe live testing.
 
 [Local-only ADR](docs/decisions/0004-local-first-no-staging-until-production.md) · [Release Readiness](docs/RELEASE_READINESS.md) · [Current Status](docs/STATUS.md).
+
+## Required reuse and premium visual-quality gates
+
+**Reuse, don't repeat:** search existing shared component/helper/contract/icon/asset first; extract small tested reusable code when a genuine second usage appears. Keep modules lean and remove dead/redundant features. No copy-paste network, search, validation, media, payment or styling code. Avoid premature giant generic libraries.
+
+**One semantic theme:** all Android user-facing strings use `stringResource`/localized XML, including Hindi; palette, typography, corners/radii, strokes/borders, spacing, elevation and animation durations come from founder-approved Material 3/design-system tokens. Future web does the same with translation/CSS variables. No duplicate images or unused heavy 3D assets.
+
+**High-end feel without bloat:** animated tab indicator/navigation/action transitions, press feedback, loading/success/error and optional subtle perspective/selected 3D. Honor reduced-motion, screen readers and low-end frame/memory/battery budget. Never block the user behind animation; actual style must be proposed to founder before coding.
+
+**Automated guard:** `npm run design:check` plus fixture tests in GitHub CI, supplemented by future Android Lint/Detekt/on-device benchmarks. They catch common hardcodes and byte-identical media, but not every semantic duplicate or frame-jank bug.
+
+[ADR-0005](docs/decisions/0005-reuse-tokens-premium-motion.md) · [Reuse policy](docs/REUSE_ASSET_POLICY.md) · [Design tokens and premium palette brief](docs/DESIGN_SYSTEM.md) · [Motion/3D standards](docs/MOTION_3D.md).

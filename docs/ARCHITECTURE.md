@@ -100,3 +100,7 @@ Read [payment strategy](PAYMENTS.md) and [ADR-0002](decisions/0002-google-pay-an
 ## Superseding no-staging architecture decision
 
 Founder instruction (2026-10-27): complete Android/API/D1/R2/RTC/payment modules using local Wrangler workerd simulations, fake provider adapters and CI **without deploying a staging Worker**. Cloudflare credentials and DNS are not needed now. Real provider transactions, DNS/TLS and live Cloudflare permissions remain unverified until approved first production release, with controlled smoke tests and rollback. See [ADR-0004](decisions/0004-local-first-no-staging-until-production.md) and [Readiness](RELEASE_READINESS.md).
+
+## Mandatory reuse and premium visual quality (ADR-0005)
+
+Founder requires no unnecessary code repetition, duplicate media assets, unused SDKs or scattered style constants. Share tested API/domain contracts and relevant components; keep abstractions small and justified. All localized Android UI strings, theme colors/typography/corners/strokes/spacing/elevation and animations must use one founder-approved token system (future web has equivalent). Professional animated tabs/navigation/actions and selected immersive 3D are a *required visual direction* but must be lightweight, accessible/reduced-motion and measured on low-end Android. UI designs/palette are not approved yet. [ADR-0005](decisions/0005-reuse-tokens-premium-motion.md) · [Reuse](REUSE_ASSET_POLICY.md) · [Design](DESIGN_SYSTEM.md) · [Motion](MOTION_3D.md).
