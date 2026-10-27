@@ -120,3 +120,8 @@ First shippable unit is local-only `categories` migration and typed read API (en
 ## Catalog discovery CI milestone (2026-10-27)
 
 [PR #18](https://github.com/rekixo-lab/jodlo/pull/18) merged as `36c9d83ad8f720d4eb7244364e789f5fc4bd7879`; [main GitHub Actions #40484455029](https://github.com/rekixo-lab/jodlo/actions/runs/40484455029) **SUCCESS** on the exact main head (55/55 Node tests, local D1 migrations, documentation/design guards, strict TypeScript, local and normal Worker dry-run builds). Next: domain-neutral pure validation/state-machine contract tests only until founder approves M-003 location/privacy and M-005 actual pilot categories, worker listing publication/trust and matching lifecycle; M-004 visual UI, M-008 Google OAuth and M-007 production gates still pending. No worker/area tables added or real users seeded by this slice.
+
+## Request/matching contract foundation — 2026-10-27
+
+- [ ] Add pure test-only owner-checked request-state decision with injected transition graph, fake replay/idempotency/CAS policy and abstract privacy-safe matching candidate filter (no real production transitions). Require actual PR+main GREEN before marking done.
+- [ ] M-003 founder approval BEFORE location/retention/deletion schema, M-005 founder approval BEFORE worker publication, request lifecycle and real matching eligibility/trust. No public request route or writeable listing tables now.

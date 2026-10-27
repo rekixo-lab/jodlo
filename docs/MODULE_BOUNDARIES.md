@@ -69,3 +69,7 @@ Active `accounts` implicitly have customer capability; optional `worker_profiles
 ## Google sign-in ownership (ADR-0007)
 
 `identity/google.ts` cryptographically verifies Google OIDC JWT using `jose` and trusted Google JWKS; `identity/google-accounts.ts` transactionally maps verified Google `sub` to an active internal `accounts.id` without copying email, name or tokens; `identity/sessions.ts` creates and resolves short-lived, hashed-at-rest bearer sessions and revokes them. `http/router.ts` owns bounded JSON/method/HTTP status only. Worker modules reuse one resolved actor and D1 contract; no client-supplied account IDs, no Google ID token used as a long-term app session. Future real OAuth setup is manual gate M-008, UI remains M-004. No deployed providers.
+
+## Pure pre-policy contracts (2026-10-27; no public API)
+
+`interactions/request-contract.ts` will own only generic immutable transition decisions; the caller must provide a founder-approved transition graph and later implement atomic D1 revision/unique-retry storage. `discovery/candidate-policy.ts` will select only opaque approved synthetic worker IDs by category, requiring a trusted injected predicate; drafts must remain invisible and no public worker/contact/GPS/trust signal is inferred. Shared `modules/shared/identifiers.ts` owns three narrow ID/key validators to avoid duplicate validation. These contracts **do not approve or implement** user requests, worker publication, ranking/matching, localities or real worker data. M-003/M-005 remain owner-controlled gates.
