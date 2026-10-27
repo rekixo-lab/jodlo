@@ -110,3 +110,9 @@ First shippable unit is local-only `categories` migration and typed read API (en
 ## Latest green admission checkpoint — 2026-10-27
 
 [PR #16](https://github.com/rekixo-lab/jodlo/pull/16) merged as `17ea0b882977ad0bd3a695e49b0112dde64fc9d6`; [main Actions #40482955589](https://github.com/rekixo-lab/jodlo/actions/runs/40482955589) completed **SUCCESS** on that exact commit (49/49 Node tests, docs/design checks, local D1 migrations, TypeScript and both Wrangler dry-run builds). All login admission is local simulated and Cloudflare limits are approximate per PoP. Next safe development: typed discovery and request state-machine contracts, local fake ownership/moderation tests. **Never create user locality/PII or final categories** before M-003/M-005 explicit founder choices; no UI before M-004, no Google live setup before M-008, no production Cloudflare before M-007.
+
+## Public taxonomy search (local-only), 2026-10-27
+
+- [ ] Add safely bounded bilingual, active-only public category search with deterministic pagination, Unicode normalization, injection/literal-wildcard tests and failure redaction; mark done only after PR/main green CI.
+- [ ] **M-005 UPCOMING:** Founder chooses actual pilot categories, trust labels and request workflow before any public worker listing or real category seeding; **M-003 UPCOMING:** Founder locality/consent/retention decision before location storage.
+- [ ] Android design still M-004; no remote Cloudflare or Google OAuth service until separately approved gates.
