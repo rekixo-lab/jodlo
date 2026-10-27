@@ -9,7 +9,7 @@ export const PUBLIC_CATEGORIES_QUERY =
   "FROM categories WHERE is_active = 1 ORDER BY sort_order ASC, id ASC LIMIT 100";
 
 export async function listPublicCategories(
-  db: CatalogDatabase,
+  db: D1Database,
   language: CatalogLanguage,
 ): Promise<PublicCategory[]> {
   const { results } = await db.prepare(PUBLIC_CATEGORIES_QUERY)

@@ -1,31 +1,8 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
-import { ensureAccount } from "../src/modules/identity/accounts.ts";
-import { optInAsWorker, ownWorkerDraft, OWN_DRAFT_QUERY } from "../src/modules/workers/profile.ts";
+import { openLocalDatabase } from "./helpers/local-db.mjs";
 
-function openDb() {
-  const db = new DatabaseSync(":memory:");
-  db.exec("PRAGMA foreign_keys = ON");
-  for (const name of ["0001_public_catalog.sql", "0002_shared_accounts_worker_drafts.sql"]) {
-    db.exec(readFileSync(new URL("../../../infra/migrations/" + name, import.meta.url), "utf8"));
-  }
-  const adapter = {
-    prepare(sql) {
-      const params = [];
-      return {
-        bind(...values) {
-          params.push(...values);
-          return this;
-        },
-        async all() { return { results: db.prepare(sql).all(...params).map(row => ({ ...row })) }; },
-        async run() { return db.prepare(sql).run(...params); },
-      };
-    },
-  };
-  return { db, adapter };
-}
+const openDb = openLocalDatabase;
 
 test("migration gives each account customer access and zero worker roles by default", () => {
   const { db } = openDb();

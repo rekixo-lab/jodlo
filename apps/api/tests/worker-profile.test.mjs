@@ -1,28 +1,13 @@
 import assert from "node:assert/strict";
-import { DatabaseSync } from "node:sqlite";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 import worker from "../src/index.ts";
+import { openLocalDatabase } from "./helpers/local-db.mjs";
 
 function fixtures() {
-  const db = new DatabaseSync(":memory:");
-  db.exec("PRAGMA foreign_keys = ON");
-  for (const file of ["0001_public_catalog.sql", "0002_shared_accounts_worker_drafts.sql"]) {
-    db.exec(readFileSync(new URL("../../../infra/migrations/" + file, import.meta.url), "utf8"));
-  }
+  const { db, adapter } = openLocalDatabase();
   for (const id of ["account-owner1", "account-other2"]) {
     db.prepare("INSERT INTO accounts(id) VALUES (?)").run(id);
   }
-  const DB = {
-    prepare(query) {
-      let values = [];
-      return {
-        bind(...params) { values = params; return this; },
-        async run() { return db.prepare(query).run(...values); },
-        async all() { return { results: db.prepare(query).all(...values).map(row => ({ ...row })) }; },
-      };
-    },
-  };
   const AUTH = {
     async verify(token) {
       if (token === "signed-owner") return { accountId: "account-owner1" };
@@ -30,7 +15,7 @@ function fixtures() {
       return null;
     },
   };
-  return { db, env: { DB, AUTH } };
+  return { db, env: { DB: adapter, AUTH } };
 }
 
 const url = "https://jodlo.rekixo.com/api/v1/me/worker-profile";

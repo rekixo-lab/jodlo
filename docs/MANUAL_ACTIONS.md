@@ -23,7 +23,7 @@
 | **M-006** | **DEFERRED** | Founder; only once payments/RTC/FCM provider work needs real onboarding | Review eligible Google Pay India UPI merchant path and Google Play Billing digital SKU compliance, RTC/notification vendor, contracts, costs and safe provider setup. No legacy Razorpay. | Develop deny-by-default billing rules, local fake adapters and simulations, not live transactions |
 | **M-007** | **DEFERRED** | Founder; after full product readiness, before first production-only release | Approve Cloudflare production-only resources/budget, D1 backups/migrations, DNS/TLS, scoped secrets, Play release controls, monitored smoke tests and rollback. | Absolutely no staging or remote Cloudflare deployment, no changes to Finworkar/live DNS |
 
-**No manual Cloudflare, GitHub secret, Google Play or merchant console action is required today.** This register is the source of truth for *requests to the founder*, not evidence that an unapproved product decision is settled.
+**No manual Cloudflare, GitHub secret, Google Play or merchant console action is required at this milestone.** This register is the source of truth for *requests to the founder*, not evidence that an unapproved product decision is settled.
 
 ## Next action and order
 
