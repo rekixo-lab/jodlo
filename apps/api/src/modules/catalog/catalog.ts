@@ -1,4 +1,4 @@
-import type { CatalogDatabase } from "../../data/d1.ts";
+import type { D1Database } from "../../data/d1.ts";
 
 export type CatalogLanguage = "en" | "hi";
 export type PublicCategory = { id: string; slug: string; name: string };
@@ -9,7 +9,7 @@ export const PUBLIC_CATEGORIES_QUERY =
   "FROM categories WHERE is_active = 1 ORDER BY sort_order ASC, id ASC LIMIT 100";
 
 export async function listPublicCategories(
-  db: CatalogDatabase,
+  db: D1Database,
   language: CatalogLanguage,
 ): Promise<PublicCategory[]> {
   const { results } = await db.prepare(PUBLIC_CATEGORIES_QUERY)

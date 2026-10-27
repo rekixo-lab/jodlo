@@ -17,7 +17,7 @@ At **every JODLO session**, read [`docs/MANUAL_ACTIONS.md`](docs/MANUAL_ACTIONS.
 
 Record the gate in `docs/MANUAL_ACTIONS.md` (stable ID, state, trigger, owner, resolution evidence); mirror only the **currently blocking** items in `docs/STATUS.md` and the next roadmap/handoff step. Owner proposals are **not approvals**. Once the founder answers, record the approved decision and resume its gated work via PR and real CI. **A chat assistant cannot independently send unscheduled future alerts**; check/notify on every active project session, not by promising background monitoring.
 
-**Current first founder gate:** `M-001` account/role model for identity/worker database schemas; see the action register. No Cloudflare staging, production credentials, UI implementation or old Finworkar mutation.
+**M-001 DONE:** founder approved **one account for customers with optional private worker draft** on 2026-10-27; [ADR-0006](docs/decisions/0006-shared-account-opt-in-worker.md). Do not re-ask. Next manual decision **M-002** is the real external identity/OTP provider at its integration gate; M-003 location and M-004 visual UI are unapproved. No Cloudflare staging, production credentials, UI implementation or old Finworkar mutation.
 
 ## Required read order
 1. [`README.md`](README.md): mission, fixed product identity and the architecture at a glance.
@@ -51,8 +51,8 @@ Record the gate in `docs/MANUAL_ACTIONS.md` (stable ID, state, trigger, owner, r
 ## Exact safe resumption (unless updated STATUS says otherwise)
 1. Open `rekixo-lab/jodlo` **main**, confirm status and latest CI. Foundation PR #1 merged 2026-10-27 with green main run 40466265299.
 2. Foundation PRs #1/#2 merged; latest earlier confirmed green `main` run 40466624240. Founder revoked the staging plan; PR #3 removed staging workflow/config and merged successfully after green checks. Check **latest** CI before every merge. No Cloudflare resources are provisioned.
-3. **Do not configure Cloudflare or deploy.** The first D1 public-category migration and typed catalog read API are now merged and green. Before any identity, worker, locality or private-data schema, confirm MVP customer/worker roles, external authentication/OTP choice, manual area/privacy and deletion model; then add local-only D1 authorization-tested migrations. Get founder feedback before visible Android/web UI code.
-4. Confirm MVP product roles and auth/area model before D1 schema. **No UI without founder sign-off.**
+3. **Do not configure Cloudflare or deploy.** Public catalog is merged and green; M-001 shared account is approved, with account/worker draft schema in PR #10 pending actual CI. Next: M-002 identity/OTP provider before real account onboarding or private identity records; M-003 before any personal-location storage. No UI before M-004 approval.
+4. M-001 is already confirmed; do not re-ask. Confirm remaining M-002/M-003 only at their integration gates. **No UI without founder sign-off.**
 ## Mandatory future UI/feature PR review
 
 - [ ] Reused existing tested small feature/core components/contract/adapter rather than copy-pasting; justified only genuinely needed abstraction/dependency.
