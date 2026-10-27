@@ -75,3 +75,7 @@ The inherited group, family and category IDs of every descendant are **internall
 - [ ] Moderator reporting/appeal, category controls, contact/request lifecycle, verified badge policy still require product decisions; M-004 UI design, M-008 real Google OAuth, M-007 production-only deploy remain gated.
 
 **Never edit old Finworkar repositories or import the legacy Firebase backend**. JODLO remains an independent Cloudflare Workers+D1 system using only shared validated ID rules, actual owner-approved category seeds, and Hindi + English UI/content.
+
+## Verified CI/archive reproducibility checkpoint
+
+[PR #37](https://github.com/rekixo-lab/jodlo/pull/37) merged as `24ceeb5a206efb4116a3620b542ddaddb8eaa550`; [exact main GitHub Actions #40523757801](https://github.com/rekixo-lab/jodlo/actions/runs/40523757801) completed **SUCCESS** on that SHA: **128/128 tests**, bilingual gzip/SHA and full ancestry check, docs/design/founder CI, local D1 migrations, strict TS and both Wrangler dry-run builds. Complete compressed snapshot was pulled from GitHub checkout and SHA checked using built-in Node tools with no Firebase credentials. Existing 128 Node API/safety tests still pass. This does **not** prove any real pilot data/customer demand/production Cloudflare behavior.
