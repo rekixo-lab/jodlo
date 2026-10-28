@@ -1,0 +1,348 @@
+{
+  "kind": "JODLO_M005_OFFICIAL_EVIDENCE_CROSSWALK_PRELIMINARY",
+  "state": "EXPERT_SIGNOFF_REQUIRED_ZERO_CATEGORY_APPROVAL",
+  "asOfDate": "2026-10-28",
+  "languages": [
+    "en",
+    "hi"
+  ],
+  "sourceJsonSha256": "31303a2af70cdb64186b974194d2cb1a0b068bfdd79a8ac03f5532174f4c3375",
+  "reviewBasis": "OFFICIAL_SOURCES_SCREENED_NO_ISSUED_CERTIFICATIONS",
+  "sources": [
+    {
+      "id": "MARKETPLACE_2020",
+      "issuer": "Department of Consumer Affairs",
+      "title": "Consumer Protection (E-Commerce) Rules, 2020",
+      "url": "https://consumeraffairs.nic.in/sites/default/files/E%20commerce%20rules.pdf",
+      "type": "OFFICIAL_LEGAL_TEXT",
+      "note": "Applicability to JODLO's exact listing versus transaction model and complaint/advertising obligations need legal classification; not assumed."
+    },
+    {
+      "id": "PRIVACY_2025",
+      "issuer": "Ministry of Electronics and Information Technology",
+      "title": "Digital Personal Data Protection Rules, 2025, notification of 13 November 2025",
+      "url": "https://www.meity.gov.in/static/uploads/2025/11/53450e6e5dc0bfa85ebd78686cadad39.pdf",
+      "type": "OFFICIAL_LEGAL_TEXT",
+      "note": "Rules have staggered effective dates: some began on 13 Nov 2025, rule 4 at one year, and rules 3, 5-16, 22-23 at eighteen months; confirm Act-specific commencement and amendments. As of 28 Oct 2026 not all rules are in force."
+    },
+    {
+      "id": "CEA_2026",
+      "issuer": "Central Electricity Authority",
+      "title": "Notified electrical safety Regulations 2023 and 2026 amendment list",
+      "url": "https://cea.nic.in/sub-sub-heading-view?lang=en&mappingId=653&subHeadingId=1036&subSubHeadingId=10091",
+      "type": "OFFICIAL_REGULATORY_INDEX",
+      "note": "Review exact current technical requirements and state electrician permit/licensing rules; this index alone does not prove a JODLO applicant is qualified."
+    },
+    {
+      "id": "RAC_PRACTICES",
+      "issuer": "Ozone Cell, Ministry of Environment, Forest and Climate Change",
+      "title": "Official technician training manuals for flammable refrigerants and HCFC-22",
+      "url": "https://ozonecell.nic.in/home-page/refrigeration-air-conditioning-servicing-sector/page-refrigeration-air-conditioning-manual/",
+      "type": "OFFICIAL_TECHNICAL_GUIDANCE",
+      "note": "Handling flammable/high-pressure refrigerants and specialist equipment calls for trained technicians, safe procedures and qualified risk review; handbook is not a JODLO certification."
+    },
+    {
+      "id": "POCSO_2012",
+      "issuer": "India Code / Ministry of Women and Child Development",
+      "title": "Protection of Children from Sexual Offences Act 2012, reporting sections 19-21",
+      "url": "https://www.indiacode.nic.in/handle/123456789/17804?sam_handle=123456789%2F2517",
+      "type": "OFFICIAL_LEGAL_REFERENCE",
+      "note": "Safeguarding and applicable reporting obligations need a child-protection professional and legal review; cannot infer that all private tutors need a particular licence."
+    }
+  ],
+  "categories": [
+    {
+      "sourceCategoryId": "plumber",
+      "previousAssessment": "NARROW_SCOPE_RECOMMENDATION",
+      "evidenceIds": [
+        "MARKETPLACE_2020",
+        "CEA_2026"
+      ],
+      "requiredReviewerChecks": [
+        "REVIEW_PLATFORM_ECOMMERCE_APPLICABILITY",
+        "DEFINE_ACCURATE_SCOPE_AND_COMPLAINT_PROCESS",
+        "HOME_ENTRY_AND_DAMAGE_PROTOCOL",
+        "SEPARATE_ELECTRICAL_AND_GAS_TASKS"
+      ],
+      "legalSafetyReview": "NOT_COMPLETED",
+      "hindiEnglishHumanReview": "NOT_COMPLETED",
+      "founderM005Approval": "NOT_GRANTED",
+      "publicActivation": "BLOCKED"
+    },
+    {
+      "sourceCategoryId": "carpenter",
+      "previousAssessment": "NARROW_SCOPE_RECOMMENDATION",
+      "evidenceIds": [
+        "MARKETPLACE_2020"
+      ],
+      "requiredReviewerChecks": [
+        "REVIEW_PLATFORM_ECOMMERCE_APPLICABILITY",
+        "DEFINE_ACCURATE_SCOPE_AND_COMPLAINT_PROCESS",
+        "HOME_ENTRY_AND_DAMAGE_PROTOCOL",
+        "EXCLUDE_LOAD_BEARING_AND_UNSAFE_HEIGHTS"
+      ],
+      "legalSafetyReview": "NOT_COMPLETED",
+      "hindiEnglishHumanReview": "NOT_COMPLETED",
+      "founderM005Approval": "NOT_GRANTED",
+      "publicActivation": "BLOCKED"
+    },
+    {
+      "sourceCategoryId": "house-painter",
+      "previousAssessment": "NARROW_SCOPE_RECOMMENDATION",
+      "evidenceIds": [
+        "MARKETPLACE_2020"
+      ],
+      "requiredReviewerChecks": [
+        "REVIEW_PLATFORM_ECOMMERCE_APPLICABILITY",
+        "DEFINE_ACCURATE_SCOPE_AND_COMPLAINT_PROCESS",
+        "HOME_ENTRY_AND_DAMAGE_PROTOCOL",
+        "COATINGS_VENTILATION_AND_HEIGHT_CHECK"
+      ],
+      "legalSafetyReview": "NOT_COMPLETED",
+      "hindiEnglishHumanReview": "NOT_COMPLETED",
+      "founderM005Approval": "NOT_GRANTED",
+      "publicActivation": "BLOCKED"
+    },
+    {
+      "sourceCategoryId": "house-cleaner-maid",
+      "previousAssessment": "NARROW_SCOPE_RECOMMENDATION",
+      "evidenceIds": [
+        "MARKETPLACE_2020"
+      ],
+      "requiredReviewerChecks": [
+        "REVIEW_PLATFORM_ECOMMERCE_APPLICABILITY",
+        "DEFINE_ACCURATE_SCOPE_AND_COMPLAINT_PROCESS",
+        "HOME_ENTRY_AND_DAMAGE_PROTOCOL",
+        "NO_PATIENT_CHILDCARE_OR_BIOHAZARDS",
+        "CLEANING_CHEMICAL_CONTROLS"
+      ],
+      "legalSafetyReview": "NOT_COMPLETED",
+      "hindiEnglishHumanReview": "NOT_COMPLETED",
+      "founderM005Approval": "NOT_GRANTED",
+      "publicActivation": "BLOCKED"
+    },
+    {
+      "sourceCategoryId": "sofa-carpet-cleaner",
+      "previousAssessment": "NARROW_SCOPE_RECOMMENDATION",
+      "evidenceIds": [
+        "MARKETPLACE_2020"
+      ],
+      "requiredReviewerChecks": [
+        "REVIEW_PLATFORM_ECOMMERCE_APPLICABILITY",
+        "DEFINE_ACCURATE_SCOPE_AND_COMPLAINT_PROCESS",
+        "HOME_ENTRY_AND_DAMAGE_PROTOCOL",
+        "CLEANING_CHEMICAL_CONTROLS"
+      ],
+      "legalSafetyReview": "NOT_COMPLETED",
+      "hindiEnglishHumanReview": "NOT_COMPLETED",
+      "founderM005Approval": "NOT_GRANTED",
+      "publicActivation": "BLOCKED"
+    },
+    {
+      "sourceCategoryId": "gardener",
+      "previousAssessment": "NARROW_SCOPE_RECOMMENDATION",
+      "evidenceIds": [
+        "MARKETPLACE_2020"
+      ],
+      "requiredReviewerChecks": [
+        "REVIEW_PLATFORM_ECOMMERCE_APPLICABILITY",
+        "DEFINE_ACCURATE_SCOPE_AND_COMPLAINT_PROCESS",
+        "TOOL_HEIGHT_AND_PESTICIDE_EXCLUSIONS"
+      ],
+      "legalSafetyReview": "NOT_COMPLETED",
+      "hindiEnglishHumanReview": "NOT_COMPLETED",
+      "founderM005Approval": "NOT_GRANTED",
+      "publicActivation": "BLOCKED"
+    },
+    {
+      "sourceCategoryId": "tailor-stitching",
+      "previousAssessment": "NARROW_SCOPE_RECOMMENDATION",
+      "evidenceIds": [
+        "MARKETPLACE_2020"
+      ],
+      "requiredReviewerChecks": [
+        "REVIEW_PLATFORM_ECOMMERCE_APPLICABILITY",
+        "DEFINE_ACCURATE_SCOPE_AND_COMPLAINT_PROCESS",
+        "CUSTOMER_PROPERTY_CUSTODY_AND_MEASUREMENT_CONSENT"
+      ],
+      "legalSafetyReview": "NOT_COMPLETED",
+      "hindiEnglishHumanReview": "NOT_COMPLETED",
+      "founderM005Approval": "NOT_GRANTED",
+      "publicActivation": "BLOCKED"
+    },
+    {
+      "sourceCategoryId": "bicycle-repairer",
+      "previousAssessment": "NARROW_SCOPE_RECOMMENDATION",
+      "evidenceIds": [
+        "MARKETPLACE_2020"
+      ],
+      "requiredReviewerChecks": [
+        "REVIEW_PLATFORM_ECOMMERCE_APPLICABILITY",
+        "DEFINE_ACCURATE_SCOPE_AND_COMPLAINT_PROCESS",
+        "BRAKE_SAFETY_CHECK_AND_TEST_RIDE_CONSENT"
+      ],
+      "legalSafetyReview": "NOT_COMPLETED",
+      "hindiEnglishHumanReview": "NOT_COMPLETED",
+      "founderM005Approval": "NOT_GRANTED",
+      "publicActivation": "BLOCKED"
+    },
+    {
+      "sourceCategoryId": "watch-repairer",
+      "previousAssessment": "NARROW_SCOPE_RECOMMENDATION",
+      "evidenceIds": [
+        "MARKETPLACE_2020",
+        "PRIVACY_2025"
+      ],
+      "requiredReviewerChecks": [
+        "REVIEW_PLATFORM_ECOMMERCE_APPLICABILITY",
+        "DEFINE_ACCURATE_SCOPE_AND_COMPLAINT_PROCESS",
+        "VALUABLES_CUSTODY_AND_CONNECTED_ACCOUNT_PROTECTION"
+      ],
+      "legalSafetyReview": "NOT_COMPLETED",
+      "hindiEnglishHumanReview": "NOT_COMPLETED",
+      "founderM005Approval": "NOT_GRANTED",
+      "publicActivation": "BLOCKED"
+    },
+    {
+      "sourceCategoryId": "tyre-puncture-technician",
+      "previousAssessment": "NARROW_SCOPE_RECOMMENDATION",
+      "evidenceIds": [
+        "MARKETPLACE_2020"
+      ],
+      "requiredReviewerChecks": [
+        "REVIEW_PLATFORM_ECOMMERCE_APPLICABILITY",
+        "DEFINE_ACCURATE_SCOPE_AND_COMPLAINT_PROCESS",
+        "TRAFFIC_CONTROL_AND_SAFE_LIFTING"
+      ],
+      "legalSafetyReview": "NOT_COMPLETED",
+      "hindiEnglishHumanReview": "NOT_COMPLETED",
+      "founderM005Approval": "NOT_GRANTED",
+      "publicActivation": "BLOCKED"
+    },
+    {
+      "sourceCategoryId": "mobile-repair",
+      "previousAssessment": "EXTRA_REVIEW_REQUIRED",
+      "evidenceIds": [
+        "MARKETPLACE_2020",
+        "PRIVACY_2025"
+      ],
+      "requiredReviewerChecks": [
+        "REVIEW_PLATFORM_ECOMMERCE_APPLICABILITY",
+        "DEFINE_ACCURATE_SCOPE_AND_COMPLAINT_PROCESS",
+        "CUSTOMER_DEVICE_CONSENT_AND_DATA_DELETION",
+        "DEVICE_CUSTODY_AND_RESET_RESTRICTIONS"
+      ],
+      "legalSafetyReview": "NOT_COMPLETED",
+      "hindiEnglishHumanReview": "NOT_COMPLETED",
+      "founderM005Approval": "NOT_GRANTED",
+      "publicActivation": "BLOCKED"
+    },
+    {
+      "sourceCategoryId": "laptop-repair",
+      "previousAssessment": "EXTRA_REVIEW_REQUIRED",
+      "evidenceIds": [
+        "MARKETPLACE_2020",
+        "PRIVACY_2025"
+      ],
+      "requiredReviewerChecks": [
+        "REVIEW_PLATFORM_ECOMMERCE_APPLICABILITY",
+        "DEFINE_ACCURATE_SCOPE_AND_COMPLAINT_PROCESS",
+        "CUSTOMER_DEVICE_CONSENT_AND_DATA_DELETION",
+        "DEVICE_CUSTODY_AND_RESET_RESTRICTIONS"
+      ],
+      "legalSafetyReview": "NOT_COMPLETED",
+      "hindiEnglishHumanReview": "NOT_COMPLETED",
+      "founderM005Approval": "NOT_GRANTED",
+      "publicActivation": "BLOCKED"
+    },
+    {
+      "sourceCategoryId": "two-wheeler-mechanic",
+      "previousAssessment": "EXTRA_REVIEW_REQUIRED",
+      "evidenceIds": [
+        "MARKETPLACE_2020"
+      ],
+      "requiredReviewerChecks": [
+        "REVIEW_PLATFORM_ECOMMERCE_APPLICABILITY",
+        "DEFINE_ACCURATE_SCOPE_AND_COMPLAINT_PROCESS",
+        "VEHICLE_BRAKE_LIABILITY_AND_ROAD_TEST_CONSENT"
+      ],
+      "legalSafetyReview": "NOT_COMPLETED",
+      "hindiEnglishHumanReview": "NOT_COMPLETED",
+      "founderM005Approval": "NOT_GRANTED",
+      "publicActivation": "BLOCKED"
+    },
+    {
+      "sourceCategoryId": "home-shifting-helper",
+      "previousAssessment": "EXTRA_REVIEW_REQUIRED",
+      "evidenceIds": [
+        "MARKETPLACE_2020"
+      ],
+      "requiredReviewerChecks": [
+        "REVIEW_PLATFORM_ECOMMERCE_APPLICABILITY",
+        "DEFINE_ACCURATE_SCOPE_AND_COMPLAINT_PROCESS",
+        "HEAVY_LIFTING_DAMAGE_LIABILITY_AND_ITEM_RECEIPT",
+        "HOME_ENTRY_AND_DAMAGE_PROTOCOL"
+      ],
+      "legalSafetyReview": "NOT_COMPLETED",
+      "hindiEnglishHumanReview": "NOT_COMPLETED",
+      "founderM005Approval": "NOT_GRANTED",
+      "publicActivation": "BLOCKED"
+    },
+    {
+      "sourceCategoryId": "electrician",
+      "previousAssessment": "HOLD_FOR_SPECIALIST_POLICY",
+      "evidenceIds": [
+        "MARKETPLACE_2020",
+        "CEA_2026"
+      ],
+      "requiredReviewerChecks": [
+        "REVIEW_PLATFORM_ECOMMERCE_APPLICABILITY",
+        "DEFINE_ACCURATE_SCOPE_AND_COMPLAINT_PROCESS",
+        "CURRENT_CEA_AND_STATE_CREDENTIAL_RULES",
+        "WORK_DEENERGIZATION_AND_ISOLATION_PROCEDURE"
+      ],
+      "legalSafetyReview": "NOT_COMPLETED",
+      "hindiEnglishHumanReview": "NOT_COMPLETED",
+      "founderM005Approval": "NOT_GRANTED",
+      "publicActivation": "BLOCKED"
+    },
+    {
+      "sourceCategoryId": "ac-technician",
+      "previousAssessment": "HOLD_FOR_SPECIALIST_POLICY",
+      "evidenceIds": [
+        "MARKETPLACE_2020",
+        "CEA_2026",
+        "RAC_PRACTICES"
+      ],
+      "requiredReviewerChecks": [
+        "REVIEW_PLATFORM_ECOMMERCE_APPLICABILITY",
+        "DEFINE_ACCURATE_SCOPE_AND_COMPLAINT_PROCESS",
+        "CURRENT_CEA_AND_STATE_CREDENTIAL_RULES",
+        "SPECIALIST_REFRIGERANT_TRAINING_AND_TOOLS"
+      ],
+      "legalSafetyReview": "NOT_COMPLETED",
+      "hindiEnglishHumanReview": "NOT_COMPLETED",
+      "founderM005Approval": "NOT_GRANTED",
+      "publicActivation": "BLOCKED"
+    },
+    {
+      "sourceCategoryId": "home-tutor",
+      "previousAssessment": "HOLD_FOR_SPECIALIST_POLICY",
+      "evidenceIds": [
+        "MARKETPLACE_2020",
+        "POCSO_2012",
+        "PRIVACY_2025"
+      ],
+      "requiredReviewerChecks": [
+        "REVIEW_PLATFORM_ECOMMERCE_APPLICABILITY",
+        "DEFINE_ACCURATE_SCOPE_AND_COMPLAINT_PROCESS",
+        "PARENT_CHILD_CONSENT_AND_SUPERVISION",
+        "CHILD_ABUSE_REPORTING_ESCALATION"
+      ],
+      "legalSafetyReview": "NOT_COMPLETED",
+      "hindiEnglishHumanReview": "NOT_COMPLETED",
+      "founderM005Approval": "NOT_GRANTED",
+      "publicActivation": "BLOCKED"
+    }
+  ]
+}
