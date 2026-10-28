@@ -47,6 +47,8 @@ class InMemorySessionCoordinator(
     )
     private var active: Active? = null
     private var generation: Long = 0
+    private var latestSignInAttempt: Long = 0
+    private val googleBackend = BackendGoogleSessionExchange(authSender)
 
     private fun forget() {
         generation += 1
@@ -70,25 +72,59 @@ class InMemorySessionCoordinator(
         if (session == null) LoginState.SignedOut else LoginState.SignedIn(session.worker)
     }
 
-    /** The caller must already have exchanged Google proof at the trusted
-     * HTTPS backend. A spoofed JSON string is not a login credential.
-     * A rejected reply never replaces a previously valid session.
+    /** For tests and trusted pre-exchanged HTTPS replies only. It does NOT
+     * verify the Google ID token or TLS. Invalid replies keep the old session.
+     * Use signInWithGoogleIdToken for the complete fakeable backend round-trip.
      */
     fun acceptIssuedSession(reply: TransportReply): ApiOutcome<LoginState> {
         val parsed = JodloReplyDecoder.issuedSession(reply)
         if (parsed is ApiOutcome.Failed) return parsed
-        val accepted = (parsed as ApiOutcome.Ok).value
         return synchronized(lock) {
-            val now = elapsedMillis()
-            val lifetime = accepted.expiresInSeconds.toLong() * 1_000
-            if (now > Long.MAX_VALUE - lifetime)
-                ApiOutcome.Failed(FailureKind.BAD_RESPONSE, false)
-            else {
-                forget()
-                active = Active(accepted.accessToken, now + lifetime, generation)
-                ApiOutcome.Ok(LoginState.SignedIn(WorkerState.UNKNOWN))
+            installIssued((parsed as ApiOutcome.Ok).value)
+        }
+    }
+
+    /** Caller supplies an ephemeral ID token from a future approved provider.
+     * NO Google SDK/client ID/real OAuth integration is performed here.
+     * One non-retrying request, made off the Android main thread.
+     *
+     * A newer login attempt wins even if it fails; older responses cannot
+     * overwrite a newer session. Logout (including when already signed out)
+     * cancels acceptance of all in-flight login acknowledgements locally.
+     * This cannot undo a remote session issued by the backend.
+     */
+    fun signInWithGoogleIdToken(idToken: String): SessionResult<LoginState> {
+        // Validate BEFORE superseding any already-pending legitimate login.
+        val request = JodloRoutes.googleExchange(idToken)
+        val (attempt, startingGeneration) = synchronized(lock) {
+            latestSignInAttempt += 1
+            latestSignInAttempt to generation
+        }
+        val reply = googleBackend.exchange(request)
+        return synchronized(lock) {
+            if (attempt != latestSignInAttempt || generation != startingGeneration)
+                return@synchronized SessionResult.Failed(SessionFailure.REPLACED)
+            when (reply) {
+                is ApiOutcome.Ok -> when (val installed = installIssued(reply.value)) {
+                    is ApiOutcome.Ok -> SessionResult.Success(installed.value)
+                    is ApiOutcome.Failed ->
+                        SessionResult.Failed(SessionFailure.REMOTE_FAILURE, installed.kind)
+                }
+                is ApiOutcome.Failed ->
+                    SessionResult.Failed(SessionFailure.REMOTE_FAILURE, reply.kind)
             }
         }
+    }
+
+    /** Called only with lock held, never returns the opaque bearer. */
+    private fun installIssued(issued: IssuedSession): ApiOutcome<LoginState> {
+        val now = elapsedMillis()
+        val lifetime = issued.expiresInSeconds.toLong() * 1_000
+        if (now > Long.MAX_VALUE - lifetime)
+            return ApiOutcome.Failed(FailureKind.BAD_RESPONSE, false)
+        forget()
+        active = Active(issued.accessToken, now + lifetime, generation)
+        return ApiOutcome.Ok(LoginState.SignedIn(WorkerState.UNKNOWN))
     }
 
     private data class Lease(val token: String, val version: Long, val workerRevision: Long)
@@ -231,6 +267,8 @@ class InMemorySessionCoordinator(
      */
     fun logout(allDevices: Boolean = false): SessionResult<Boolean> {
         val (captured, missing) = synchronized(lock) {
+            // Even a signed-out logout invalidates pending backend login replies.
+            latestSignInAttempt += 1
             val current = active ?: return@synchronized null to SessionFailure.SIGNED_OUT
             val expired = expired(current)
             val lease = Lease(current.token, current.version, current.workerRevision)
