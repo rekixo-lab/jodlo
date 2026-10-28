@@ -233,7 +233,7 @@ class InMemorySessionCoordinator(
         val (captured, missing) = synchronized(lock) {
             val current = active ?: return@synchronized null to SessionFailure.SIGNED_OUT
             val expired = expired(current)
-            val lease = Lease(current.token, current.version)
+            val lease = Lease(current.token, current.version, current.workerRevision)
             forget()
             if (expired) null to SessionFailure.EXPIRED
             else lease to SessionFailure.SIGNED_OUT
