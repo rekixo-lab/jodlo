@@ -95,9 +95,9 @@ object JodloRoutes {
     fun googleExchange(idToken: String): ApiCall {
         require(idToken.length in 5..4096 &&
             GOOGLE_PROOF.matches(idToken)) { "Invalid Google proof shape" }
-        return ApiCall.googleExchangeBody("{\\"idToken\\":\\"$idToken\\"}")
+        return ApiCall.googleExchangeBody("""{"idToken":"$idToken"}""")
     }
-    private val GOOGLE_PROOF = Regex("[A-Za-z0-9_-]+\\\\.[A-Za-z0-9_-]+\\\\.[A-Za-z0-9_-]+")
+    private val GOOGLE_PROOF = Regex("""[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+""")
 
     fun myListings(token: String): ApiCall = ApiCall.getOwned("/api/v1/me/listings", token)
     fun workerDraft(token: String): ApiCall =
