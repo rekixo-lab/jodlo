@@ -32,9 +32,9 @@ data class MarketplaceReadSnapshot(
  * drops cached snapshots and makes late results DISCARDED. Cancellation is
  * cooperative and never promises to stop a request already sent on the wire.
  *
- * Private reads additionally compare a non-secret session epoch. Changing
- * account, signing out, unauthorized revocation or session expiry clears
- * cached worker data even when callers forget to close this scope.
+ * Private reads compare a non-secret session/write fingerprint. Changing
+ * account, signing out, unauthorized revocation, session expiry OR starting
+ * a worker mutation clears cached private data, including uncertain writes.
  *
  * This is deliberately READ-ONLY. A suggested Search category never
  * triggers worker opt-in or a service publication. Worker writes must stay
@@ -57,7 +57,7 @@ class HeadlessMarketplaceReadScope(
 
     private val lock = Any()
     private var closed = false
-    private var workerEpoch = session.sessionEpoch()
+    private var workerFingerprint = session.privateReadFingerprint()
     private val browseLane = Lane<CatalogBrowse>()
     private val searchLane = Lane<CatalogSearch>()
     private val publicLane = Lane<List<PublicListing>>()
@@ -65,9 +65,9 @@ class HeadlessMarketplaceReadScope(
     private val ownLane = Lane<List<OwnListing>>()
 
     private fun checkWorkerEpochLocked() {
-        val current = session.sessionEpoch()
-        if (workerEpoch != current) {
-            workerEpoch = current
+        val current = session.privateReadFingerprint()
+        if (workerFingerprint != current) {
+            workerFingerprint = current
             workerLane.discard()
             ownLane.discard()
         }
