@@ -7,7 +7,7 @@ sealed class LoginState {
     data class SignedIn(val worker: WorkerState) : LoginState()
 }
 
-enum class SessionFailure { SIGNED_OUT, EXPIRED, REPLACED, OPT_IN_REQUIRED, REMOTE_FAILURE, OPERATION_IN_PROGRESS, STALE_RESULT }
+enum class SessionFailure { SIGNED_OUT, EXPIRED, REPLACED, OPT_IN_REQUIRED, REMOTE_FAILURE, OPERATION_IN_PROGRESS, STALE_RESULT, CANCELLED }
 sealed class SessionResult<out T> {
     data class Success<T>(val value: T) : SessionResult<T>()
     data class Failed(
@@ -93,17 +93,26 @@ class InMemorySessionCoordinator(
      * cancels acceptance of all in-flight login acknowledgements locally.
      * This cannot undo a remote session issued by the backend.
      */
-    fun signInWithGoogleIdToken(idToken: String): SessionResult<LoginState> {
+    fun signInWithGoogleIdToken(
+        idToken: String,
+        cancellation: CancellationSignal? = null,
+    ): SessionResult<LoginState> {
+        if (cancellation?.isCancelled == true)
+            return SessionResult.Failed(SessionFailure.CANCELLED)
         // Validate BEFORE superseding any already-pending legitimate login.
         val request = JodloRoutes.googleExchange(idToken)
         val (attempt, startingGeneration) = synchronized(lock) {
             latestSignInAttempt += 1
             latestSignInAttempt to generation
         }
+        if (cancellation?.isCancelled == true)
+            return SessionResult.Failed(SessionFailure.CANCELLED)
         val reply = googleBackend.exchange(request)
         return synchronized(lock) {
             if (attempt != latestSignInAttempt || generation != startingGeneration)
                 return@synchronized SessionResult.Failed(SessionFailure.REPLACED)
+            if (cancellation?.isCancelled == true)
+                return@synchronized SessionResult.Failed(SessionFailure.CANCELLED)
             when (reply) {
                 is ApiOutcome.Ok -> when (val installed = installIssued(reply.value)) {
                     is ApiOutcome.Ok -> SessionResult.Success(installed.value)
@@ -161,10 +170,15 @@ class InMemorySessionCoordinator(
         needsWorker: Boolean = false,
         mutation: Boolean = false,
         consistentRead: Boolean = false,
+        cancellation: CancellationSignal? = null,
     ): SessionResult<R> {
+        if (cancellation?.isCancelled == true)
+            return SessionResult.Failed(SessionFailure.CANCELLED)
         val (captured, absent) = lease(needsWorker, mutation, consistentRead)
         if (captured == null) return SessionResult.Failed(absent)
         try {
+            if (cancellation?.isCancelled == true)
+                return SessionResult.Failed(SessionFailure.CANCELLED)
             val reply = call(captured.token)
             return synchronized(lock) {
                 val current = active
@@ -179,6 +193,8 @@ class InMemorySessionCoordinator(
                     return@synchronized SessionResult.Failed(
                         SessionFailure.REMOTE_FAILURE, FailureKind.UNAUTHORIZED)
                 }
+                if (cancellation?.isCancelled == true)
+                    return@synchronized SessionResult.Failed(SessionFailure.CANCELLED)
                 if (consistentRead && current.workerRevision != captured.workerRevision)
                     return@synchronized SessionResult.Failed(SessionFailure.STALE_RESULT)
                 update(reply, current)
@@ -200,8 +216,9 @@ class InMemorySessionCoordinator(
     /** A 404 means a valid account has not opted in yet, not an error state.
      * Network errors never grant or revoke worker status.
      */
-    fun checkWorker(): SessionResult<WorkerState> = withSession(
+    fun checkWorker(cancellation: CancellationSignal? = null): SessionResult<WorkerState> = withSession(
         call = { workers.myDraft(it) },
+        cancellation = cancellation,
         consistentRead = true,
         update = { reply, current ->
             when (reply) {
@@ -221,8 +238,9 @@ class InMemorySessionCoordinator(
         }
     )
 
-    fun optIn(): SessionResult<WorkerState> = withSession(
+    fun optIn(cancellation: CancellationSignal? = null): SessionResult<WorkerState> = withSession(
         call = { workers.optIn(it) },
+        cancellation = cancellation,
         mutation = true,
         update = { reply, current ->
             when (reply) {
@@ -236,8 +254,9 @@ class InMemorySessionCoordinator(
         }
     )
 
-    fun myListings(): SessionResult<List<OwnListing>> = withSession(
+    fun myListings(cancellation: CancellationSignal? = null): SessionResult<List<OwnListing>> = withSession(
         call = { workers.myListings(it) },
+        cancellation = cancellation,
         consistentRead = true,
         update = { reply, _ -> outcome(reply) }
     )
@@ -245,17 +264,22 @@ class InMemorySessionCoordinator(
     /** The Category ID must have been explicitly confirmed outside this
      * layer. Server-side active-Category and worker checks remain authoritative.
      */
-    fun publishExplicitCategory(confirmedCategoryId: String): SessionResult<PublicListing> =
+    fun publishExplicitCategory(
+        confirmedCategoryId: String,
+        cancellation: CancellationSignal? = null,
+    ): SessionResult<PublicListing> =
         withSession(
             call = { workers.publishExplicitCategory(it, confirmedCategoryId) },
+            cancellation = cancellation,
             update = { reply, _ -> outcome(reply) },
             needsWorker = true,
             mutation = true,
         )
 
-    fun unpublish(listingId: String): SessionResult<Boolean> =
+    fun unpublish(listingId: String, cancellation: CancellationSignal? = null): SessionResult<Boolean> =
         withSession(
             call = { workers.unpublish(it, listingId) },
+            cancellation = cancellation,
             update = { reply, _ -> outcome(reply) },
             needsWorker = true,
             mutation = true,
