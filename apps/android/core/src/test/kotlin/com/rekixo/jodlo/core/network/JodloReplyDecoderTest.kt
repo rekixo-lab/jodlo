@@ -1,5 +1,6 @@
 package com.rekixo.jodlo.core.network
 
+import java.io.ByteArrayInputStream
 import java.io.IOException
 
 private fun eq(actual: Any?, expected: Any?) {
@@ -106,5 +107,21 @@ fun main() {
     eq(sent,1)
     eq(failed,ApiOutcome.Failed(FailureKind.OFFLINE_OR_TIMEOUT,false))
     check(!failed.toString().contains("sensitive"))
+
+    // A malformed/oversized HTTPS response is BAD_RESPONSE rather than a
+    // crashing IllegalArgumentException or a misleading offline status.
+    for (bytes in listOf(
+        ByteArray(65_537) { 'a'.code.toByte() },
+        byteArrayOf(0x7b, 0xc3.toByte(), 0x28, 0x7d),
+        byteArrayOf(0xe0.toByte(), 0xa4.toByte()),
+    )) {
+        var replyAttempts = 0
+        val invalid = performOnce(call, { _ ->
+            replyAttempts++
+            TransportReply(200, readBoundedUtf8Reply(ByteArrayInputStream(bytes)))
+        }, JodloReplyDecoder::published)
+        eq(invalid, ApiOutcome.Failed(FailureKind.BAD_RESPONSE, false))
+        eq(replyAttempts, 1)
+    }
     println("JODLO Kotlin reply decoder: typed pages, explicit choices, listing privacy and one-shot network safety OK")
 }
