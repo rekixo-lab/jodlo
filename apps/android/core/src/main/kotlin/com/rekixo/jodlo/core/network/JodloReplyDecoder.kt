@@ -181,7 +181,8 @@ object JodloReplyDecoder {
         val selected = categories(data.required("categories"), 25)
         val next = when (val raw = data.required("nextOffset")) {
             JsonNull -> null
-            else -> raw.number().also { if (it !in 0..125) bad() }
+            // The matching JodloRoutes.search API accepts offset at most 100.
+            else -> raw.number().also { if (it !in 0..100) bad() }
         }
         val confirmation = data["needsChoice"]?.bool() ?: false
         val choices = data["choices"]?.let { categories(it, 10) } ?: emptyList()
