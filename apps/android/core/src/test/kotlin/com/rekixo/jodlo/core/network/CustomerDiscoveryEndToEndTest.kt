@@ -185,8 +185,9 @@ private fun journeyBrowseAmbiguousSelectionBackAndRestore() {
     check(later.loadSelectedListings()==PageCompletion.BLOCKED)
     check(later.selectCategory(CustomerCategorySource.SEARCH,"carpenter")
         ==PageCompletion.BLOCKED)
-    check(later.startSearch(saved.search!!.query,saved.search.language,
-        saved.search.availableOnly,saved.search.pageSize)==PageCompletion.APPLIED)
+    val restoredSearch = requireNotNull(saved.search)
+    check(later.startSearch(restoredSearch.query, restoredSearch.language,
+        restoredSearch.availableOnly, restoredSearch.pageSize)==PageCompletion.APPLIED)
     check(later.selectCategory(CustomerCategorySource.SEARCH,"carpenter")
         ==PageCompletion.APPLIED)
     check(later.loadSelectedListings()==PageCompletion.APPLIED)
