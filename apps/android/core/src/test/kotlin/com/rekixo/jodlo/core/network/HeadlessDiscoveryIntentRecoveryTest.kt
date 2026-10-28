@@ -198,7 +198,6 @@ private fun testUntrustedRestoreIsRejectedBeforeMutatingOldState() {
             destination=CustomerDestination.SEARCH),
         CustomerDiscoveryIntent(search=CustomerSearchIntent("carpenter",Language.EN,false,20),
             destination=CustomerDestination.PUBLIC_LISTINGS),
-        CustomerDiscoveryIntent(destination=CustomerDestination.SEARCH),
     )
     for (candidate in invalid) {
         check(runCatching {scope.restoreRevisitIntent(candidate)}.isFailure)

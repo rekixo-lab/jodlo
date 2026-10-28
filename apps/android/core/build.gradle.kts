@@ -169,3 +169,11 @@ tasks.register<JavaExec>("verifyPublicationReconciliation") {
     classpath = sourceSets["test"].runtimeClasspath
     mainClass.set("com.rekixo.jodlo.core.network.HeadlessPublicationReconciliationTestKt")
 }
+
+tasks.register<JavaExec>("verifyLifecycleRegression") {
+    group = "verification"
+    description = "Verify cross-scope logout, account replacement, expiry, slow worker write/recheck and empty Search restore"
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.rekixo.jodlo.core.network.CustomerWorkerLifecycleRegressionTestKt")
+}

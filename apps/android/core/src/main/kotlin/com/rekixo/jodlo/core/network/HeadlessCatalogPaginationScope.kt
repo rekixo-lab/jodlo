@@ -245,9 +245,10 @@ class HeadlessCatalogPaginationScope(
                 "Search intent must be normalized"
             }
         }
-        require(intent.destination != CustomerDestination.SEARCH || intent.search != null) {
-            "Missing Search intent"
-        }
+        // A user may navigate to Search BEFORE entering any query.
+        // Restoring that valid empty Search destination must not invent a
+        // search request or reject an otherwise safe navigation snapshot.
+        // With null search intent the lane remains Idle and sends no GET.
         return synchronized(lock) {
             if (closed) return@synchronized PageCompletion.DISCARDED
             reconcileLocked()
