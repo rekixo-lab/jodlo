@@ -270,5 +270,10 @@ export async function searchPublicCategories(
   }
   const categories = results.slice(0, opts.limit)
     .map(({ id, slug, name }) => ({ id, slug, name }));
-  return { categories, nextOffset: results.length > opts.limit ? opts.offset + opts.limit : null };
+  // The parser permits a Search GET only for offsets 0..100. Never advertise
+  // a continuation (for example 125) that the same API would reject with 400.
+  // This is a deliberate public Search depth bound, not proof of no more rows.
+  const candidateOffset = opts.offset + opts.limit;
+  return { categories, nextOffset:
+    results.length > opts.limit && candidateOffset <= 100 ? candidateOffset : null };
 }
