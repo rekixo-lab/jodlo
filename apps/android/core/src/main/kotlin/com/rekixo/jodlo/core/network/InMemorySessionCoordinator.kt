@@ -7,7 +7,7 @@ sealed class LoginState {
     data class SignedIn(val worker: WorkerState) : LoginState()
 }
 
-enum class SessionFailure { SIGNED_OUT, EXPIRED, REPLACED, OPT_IN_REQUIRED, REMOTE_FAILURE }
+enum class SessionFailure { SIGNED_OUT, EXPIRED, REPLACED, OPT_IN_REQUIRED, REMOTE_FAILURE, OPERATION_IN_PROGRESS, STALE_RESULT }
 sealed class SessionResult<out T> {
     data class Success<T>(val value: T) : SessionResult<T>()
     data class Failed(
@@ -42,6 +42,8 @@ class InMemorySessionCoordinator(
         val expiresAt: Long,
         val version: Long,
         var worker: WorkerState = WorkerState.UNKNOWN,
+        var workerRevision: Long = 0,
+        var mutationInFlight: Boolean = false,
     )
     private var active: Active? = null
     private var generation: Long = 0
@@ -89,53 +91,68 @@ class InMemorySessionCoordinator(
         }
     }
 
-    private data class Lease(val token: String, val version: Long)
-    private fun lease(): Pair<Lease?, SessionFailure> = synchronized(lock) {
-        val old = active ?: return@synchronized null to SessionFailure.SIGNED_OUT
-        if (expired(old)) {
+    private data class Lease(val token: String, val version: Long, val workerRevision: Long)
+
+    /** Reserve one write while holding the session lock. No queue or replay. */
+    private fun lease(
+        needsWorker: Boolean,
+        mutation: Boolean,
+        consistentRead: Boolean,
+    ): Pair<Lease?, SessionFailure> = synchronized(lock) {
+        val current = active ?: return@synchronized null to SessionFailure.SIGNED_OUT
+        if (expired(current)) {
             forget()
             return@synchronized null to SessionFailure.EXPIRED
         }
-        Lease(old.token, old.version) to SessionFailure.SIGNED_OUT
+        if ((mutation || consistentRead) && current.mutationInFlight)
+            return@synchronized null to SessionFailure.OPERATION_IN_PROGRESS
+        if (needsWorker && current.worker != WorkerState.DRAFT)
+            return@synchronized null to SessionFailure.OPT_IN_REQUIRED
+        if (mutation) {
+            current.mutationInFlight = true
+            // A read begun before this worker write must not apply afterwards.
+            current.workerRevision += 1
+        }
+        Lease(current.token, current.version, current.workerRevision) to SessionFailure.SIGNED_OUT
     }
 
-    /** A single blocking request with a generation check before applying the
-     * result. Do not call this from the Android main thread.
+    /** Single blocking attempt outside the lock. A failed/late POST may still
+     * have committed on the server; never automatically retry it.
      */
     private fun <T, R> withSession(
         call: (String) -> ApiOutcome<T>,
         update: (ApiOutcome<T>, Active) -> SessionResult<R>,
         needsWorker: Boolean = false,
+        mutation: Boolean = false,
+        consistentRead: Boolean = false,
     ): SessionResult<R> {
-        val (lease, absent) = lease()
-        if (lease == null) return SessionResult.Failed(absent)
-        if (needsWorker) {
-            val state = synchronized(lock) {
-                val value = readableActive()
-                when {
-                    value == null || value.version != lease.version -> SessionFailure.REPLACED
-                    value.worker != WorkerState.DRAFT -> SessionFailure.OPT_IN_REQUIRED
-                    else -> null
+        val (captured, absent) = lease(needsWorker, mutation, consistentRead)
+        if (captured == null) return SessionResult.Failed(absent)
+        try {
+            val reply = call(captured.token)
+            return synchronized(lock) {
+                val current = active
+                if (current == null || current.version != captured.version)
+                    return@synchronized SessionResult.Failed(SessionFailure.REPLACED)
+                if (expired(current)) {
+                    forget()
+                    return@synchronized SessionResult.Failed(SessionFailure.EXPIRED)
                 }
+                if (reply is ApiOutcome.Failed && reply.kind == FailureKind.UNAUTHORIZED) {
+                    forget()
+                    return@synchronized SessionResult.Failed(
+                        SessionFailure.REMOTE_FAILURE, FailureKind.UNAUTHORIZED)
+                }
+                if (consistentRead && current.workerRevision != captured.workerRevision)
+                    return@synchronized SessionResult.Failed(SessionFailure.STALE_RESULT)
+                update(reply, current)
             }
-            if (state != null) return SessionResult.Failed(state)
-        }
-        // Network call is OUTSIDE lock, enabling a concurrent logout/relogin.
-        val reply = call(lease.token)
-        return synchronized(lock) {
-            val current = active
-            if (current == null || current.version != lease.version)
-                return@synchronized SessionResult.Failed(SessionFailure.REPLACED)
-            if (expired(current)) {
-                forget()
-                return@synchronized SessionResult.Failed(SessionFailure.EXPIRED)
+        } finally {
+            // Clean up even when an injected adapter throws. Do not touch any
+            // newer login which replaced this session while the call ran.
+            if (mutation) synchronized(lock) {
+                active?.takeIf { it.version == captured.version }?.mutationInFlight = false
             }
-            if (reply is ApiOutcome.Failed && reply.kind == FailureKind.UNAUTHORIZED) {
-                forget()
-                return@synchronized SessionResult.Failed(
-                    SessionFailure.REMOTE_FAILURE, FailureKind.UNAUTHORIZED)
-            }
-            update(reply, current)
         }
     }
 
@@ -149,15 +166,18 @@ class InMemorySessionCoordinator(
      */
     fun checkWorker(): SessionResult<WorkerState> = withSession(
         call = { workers.myDraft(it) },
+        consistentRead = true,
         update = { reply, current ->
             when (reply) {
                 is ApiOutcome.Ok -> {
                     current.worker = WorkerState.DRAFT
+                    current.workerRevision += 1
                     SessionResult.Success(WorkerState.DRAFT)
                 }
                 is ApiOutcome.Failed -> {
                     if (reply.kind == FailureKind.NOT_FOUND) {
                         current.worker = WorkerState.NO_DRAFT
+                        current.workerRevision += 1
                         SessionResult.Success(WorkerState.NO_DRAFT)
                     } else SessionResult.Failed(SessionFailure.REMOTE_FAILURE, reply.kind)
                 }
@@ -167,10 +187,12 @@ class InMemorySessionCoordinator(
 
     fun optIn(): SessionResult<WorkerState> = withSession(
         call = { workers.optIn(it) },
+        mutation = true,
         update = { reply, current ->
             when (reply) {
                 is ApiOutcome.Ok -> {
                     current.worker = WorkerState.DRAFT
+                    current.workerRevision += 1
                     SessionResult.Success(WorkerState.DRAFT)
                 }
                 is ApiOutcome.Failed -> SessionResult.Failed(SessionFailure.REMOTE_FAILURE, reply.kind)
@@ -180,6 +202,7 @@ class InMemorySessionCoordinator(
 
     fun myListings(): SessionResult<List<OwnListing>> = withSession(
         call = { workers.myListings(it) },
+        consistentRead = true,
         update = { reply, _ -> outcome(reply) }
     )
 
@@ -191,6 +214,7 @@ class InMemorySessionCoordinator(
             call = { workers.publishExplicitCategory(it, confirmedCategoryId) },
             update = { reply, _ -> outcome(reply) },
             needsWorker = true,
+            mutation = true,
         )
 
     fun unpublish(listingId: String): SessionResult<Boolean> =
@@ -198,6 +222,7 @@ class InMemorySessionCoordinator(
             call = { workers.unpublish(it, listingId) },
             update = { reply, _ -> outcome(reply) },
             needsWorker = true,
+            mutation = true,
         )
 
     /** Drop local credentials synchronously BEFORE attempting remote revoke.
