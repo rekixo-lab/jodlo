@@ -113,3 +113,11 @@ tasks.register<JavaExec>("verifyBackNavigation") {
     classpath = sourceSets["test"].runtimeClasspath
     mainClass.set("com.rekixo.jodlo.core.network.HeadlessCustomerBackNavigationTestKt")
 }
+
+tasks.register<JavaExec>("verifyIntentRecovery") {
+    group = "verification"
+    description = "Verify bounded Customer search/filter intent recovery without result restoration or replay"
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.rekixo.jodlo.core.network.HeadlessDiscoveryIntentRecoveryTestKt")
+}
