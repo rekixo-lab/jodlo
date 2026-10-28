@@ -159,7 +159,7 @@ class InMemorySessionCoordinator(
                     if (reply.kind == FailureKind.NOT_FOUND) {
                         current.worker = WorkerState.NO_DRAFT
                         SessionResult.Success(WorkerState.NO_DRAFT)
-                    } else outcome(reply)
+                    } else SessionResult.Failed(SessionFailure.REMOTE_FAILURE, reply.kind)
                 }
             }
         }
@@ -173,7 +173,7 @@ class InMemorySessionCoordinator(
                     current.worker = WorkerState.DRAFT
                     SessionResult.Success(WorkerState.DRAFT)
                 }
-                is ApiOutcome.Failed -> outcome(reply)
+                is ApiOutcome.Failed -> SessionResult.Failed(SessionFailure.REMOTE_FAILURE, reply.kind)
             }
         }
     )
