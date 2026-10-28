@@ -360,9 +360,23 @@ class HeadlessCatalogPaginationScope(
         destinationOnFirst: CustomerDestination? = null,
         newBrowseIntent: CustomerBrowseIntent? = null,
         newSearchIntent: CustomerSearchIntent? = null,
+        recoveryOnly: Boolean = false,
     ): Admission = synchronized(lock) {
         if (closed) return@synchronized Admission.Discarded
         reconcileLocked()
+        if (recoveryOnly) {
+            // The retry must be attached to the same exact request intent,
+            // not to a newer search that won the race after capture.
+            if (!first || (lane.state !is PageState.Error &&
+                    lane.state !== PageState.RefreshRequired))
+                return@synchronized Admission.Blocked
+            if (lane === browse && (newBrowseIntent == null ||
+                    browseIntent != newBrowseIntent))
+                return@synchronized Admission.Blocked
+            if (lane === search && (newSearchIntent == null ||
+                    searchIntent != newSearchIntent))
+                return@synchronized Admission.Blocked
+        }
         if (first) {
             if (lane === browse) browseIntent = requireNotNull(newBrowseIntent)
             if (lane === search) searchIntent = requireNotNull(newSearchIntent)
@@ -395,10 +409,12 @@ class HeadlessCatalogPaginationScope(
         destinationOnFirst: CustomerDestination? = null,
         newBrowseIntent: CustomerBrowseIntent? = null,
         newSearchIntent: CustomerSearchIntent? = null,
+        recoveryOnly: Boolean = false,
         request: (PageState.Ready?) -> ApiOutcome<PageState.Ready>,
     ): PageCompletion {
         val admission = admit(
             lane, first, hasNext, destinationOnFirst, newBrowseIntent, newSearchIntent,
+            recoveryOnly,
         )
         val ticket = when (admission) {
             is Admission.Accepted -> admission.ticket
@@ -468,6 +484,26 @@ class HeadlessCatalogPaginationScope(
         }
     }
 
+    /** One USER-initiated recovery attempt. Never retries automatically.
+     * Only Failed/RefreshRequired public Browse can restart from page one;
+     * READY, IDLE and LOADING remain blocked. No stale cursor replay.
+     */
+    fun retryBrowse(): PageCompletion {
+        val intent = synchronized(lock) {
+            if (!closed) {
+                reconcileLocked()
+                browseIntent
+            } else null
+        } ?: return synchronized(lock) {
+            if (closed) PageCompletion.DISCARDED else PageCompletion.BLOCKED
+        }
+        return run(
+            browse, first = true, hasNext = { true },
+            destinationOnFirst = CustomerDestination.BROWSE,
+            newBrowseIntent = intent, recoveryOnly = true,
+        ) { browsePage(intent.language, intent.availableOnly, intent.pageSize, null) }
+    }
+
     fun nextBrowse(): PageCompletion = run(
         browse, first = false, hasNext = { it.nextCursor != null && it.pageCount < 20 },
     ) { previous ->
@@ -512,6 +548,29 @@ class HeadlessCatalogPaginationScope(
             ),
         ) {
             searchPage(normalized, language, availableOnly, pageSize, 0, true)
+        }
+    }
+
+    /** User-initiated Search recovery from normalized query and filters.
+     * The first page alone includes ambiguous choices; never reuse old
+     * offsets, old results or a selected Category. No timers/backoff/GET.
+     */
+    fun retrySearch(): PageCompletion {
+        val intent = synchronized(lock) {
+            if (!closed) {
+                reconcileLocked()
+                searchIntent
+            } else null
+        } ?: return synchronized(lock) {
+            if (closed) PageCompletion.DISCARDED else PageCompletion.BLOCKED
+        }
+        return run(
+            search, first = true, hasNext = { true },
+            destinationOnFirst = CustomerDestination.SEARCH,
+            newSearchIntent = intent, recoveryOnly = true,
+        ) {
+            searchPage(intent.query, intent.language, intent.availableOnly, intent.pageSize,
+                0, true)
         }
     }
 
