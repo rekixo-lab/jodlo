@@ -34,6 +34,19 @@ interface WorkerRepository {
 /** Only HTTP transport is replaceable; DTO parsing and safety checks are shared
  * by every production or test client. This does not create a live Android app.
  */
+/** The route builder and JSON decoder already bound/validated cursor syntax.
+ * Match the server's SQLite (sort_order, id) keyset ordering using only the
+ * nonpersonal public cursor; a stale/backward anchor is not a valid page.
+ */
+private fun browseCursorAdvances(after: String?, next: String): Boolean {
+    if (after == null) return true
+    val previousOrder = after.substringBefore(':').toInt()
+    val nextOrder = next.substringBefore(':').toInt()
+    return nextOrder > previousOrder ||
+        (nextOrder == previousOrder &&
+            next.substringAfter(':') > after.substringAfter(':'))
+}
+
 class RemoteCatalogRepository(private val sender: RequestSender) : CatalogRepository {
     override fun browse(language: Language, availableOnly: Boolean,
                         limit: Int, after: String?): ApiOutcome<CatalogBrowse> {
@@ -41,8 +54,10 @@ class RemoteCatalogRepository(private val sender: RequestSender) : CatalogReposi
         return performOnce(call, sender::send, JodloReplyDecoder::browse)
             .validated { dto ->
                 dto.language == language && dto.categories.size <= limit &&
-                    (dto.nextCursor == null || dto.categories.size == limit) &&
-                    (after == null || dto.nextCursor != after)
+                    (dto.nextCursor == null ||
+                        (dto.categories.size == limit &&
+                            dto.categories.last().id == dto.nextCursor.substringAfter(':') &&
+                            browseCursorAdvances(after, dto.nextCursor)))
             }
     }
 
@@ -56,7 +71,8 @@ class RemoteCatalogRepository(private val sender: RequestSender) : CatalogReposi
                     !(!includeChoices && dto.needsChoice) &&
                     dto.categories.size <= limit &&
                     (dto.nextOffset == null ||
-                        (dto.nextOffset == offset + limit && !dto.needsChoice))
+                        (dto.nextOffset == offset + limit &&
+                            dto.categories.size == limit && !dto.needsChoice))
             }
     }
 
