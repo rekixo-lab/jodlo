@@ -107,8 +107,10 @@ class HeadlessMarketplaceReadScope(
 
     /** Snapshot never returns old worker data after a session replacement. */
     fun snapshot(): MarketplaceReadSnapshot = synchronized(lock) {
-        checkWorkerEpochLocked()
-        checkPublicRevisionLocked()
+        if (!closed) {
+            checkWorkerEpochLocked()
+            checkPublicRevisionLocked()
+        }
         MarketplaceReadSnapshot(
             closed, browseLane.state, searchLane.state, publicLane.state,
             workerLane.state, ownLane.state,
