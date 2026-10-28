@@ -35,3 +35,7 @@ Verification: exact PR head and subsequent merged-main GitHub Actions must both 
 ## 2026-10-28 Service-level evidence companion
 
 The complete [7,267-Service source-locked quality review](JODLO_LEGACY_7267_SERVICE_REVIEW_2026-10-28.md) is now derived on demand using the same pinned archive reader, not imported into JODLO Search/D1. Review every parent-scoped Service before ever adding synonyms. All 889 Categories remain unapproved by this review alone.
+
+## 2026-10-28 — Full 889-category activation preflight companion
+
+For preparing founder M-005's **broad safe activation** decision, inspect [the offline, all-inclusive, review-only 889-category preflight](JODLO_CATEGORY_EXPANSION_PREFLIGHT_2026-10-28.md). It does not enable any category, generate SQL, import the legacy catalog or replace human safety/language review.

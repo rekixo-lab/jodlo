@@ -196,3 +196,7 @@ Only exact includeChoices=1 on existing Search may expose D1 ACTIVE public Categ
 ## 2026-10-28 — Guided selection must be explicit and backend checked
 
 Current `includeChoices=1` Search detects curated-phrase/literal name contradictions and offers only bounded ACTIVE public categories; >9 literal matches mean empty choices/manual browse. Default DTO unchanged for existing clients. The worker's **own explicit** category ID (not query-derived arbitrary free text) is passed to existing authorized `POST /api/v1/me/listings`; DB still validates active category+account+opt-in and moderation. See apps/api/tests/catalog-confirmed-publish.test.mjs and docs/reference/JODLO_SMART_DISCOVERY_FOUNDATION_2026-10-27.md. No auto-post, no 889 seed, unapproved alias import, real location/UI or deployment without M-003/004/005/007.
+
+## 2026-10-28 — Full 889-category review-only activation preflight
+
+Use [catalog expansion preflight](docs/reference/JODLO_CATEGORY_EXPANSION_PREFLIGHT_2026-10-28.md) and `npm run catalog:preflight-summary` before any actual category activation. A draft may contain **ALL 889 legacy categories**, including invalid source IDs flagged for explicit mapping, but every single row remains blocked for founder M-005 + occupational safety + bilingual semantics + canonical JODLO ID/slug mapping. No executable SQL, 889 import or production activation should be generated from this report. `verifyCatalogExpansionPreflight` rejects forged approval fields; run tests. M-003 location, M-004 UI, M-007 deployment still separate, old Finworkar READ ONLY.
