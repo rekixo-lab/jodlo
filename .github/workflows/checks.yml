@@ -42,6 +42,6 @@ jobs:
         with:
           gradle-version: '8.10.2'
       - name: Compile Kotlin networking core and execute real JVM contract tests (no Android SDK or deployment)
-        run: gradle -p apps/android :core:verifyContracts :core:verifyReplies :core:verifyRepositories :core:verifySessions --no-daemon
+        run: gradle -p apps/android :core:verifyContracts :core:verifyReplies :core:verifyRepositories :core:verifySessions :core:verifyAuthExchange --no-daemon
       - name: Wrangler bundle check (no deployment)
         run: npm run build:api
