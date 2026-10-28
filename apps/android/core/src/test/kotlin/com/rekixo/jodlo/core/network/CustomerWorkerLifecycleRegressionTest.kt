@@ -252,7 +252,11 @@ private fun lifecycleRecreationDuringWriteRestoresIntentNotResultsOrSelection() 
         val before=h.catalog.searchCalls.get()
         check(fresh.retrySearch()==PageCompletion.DEFERRED)
         check(h.catalog.searchCalls.get()==before)
-        check(fresh.loadSelectedListings()==PageCompletion.BLOCKED)
+        // The global worker-write barrier takes precedence over the absent
+        // selection; neither DEFERRED nor BLOCKED dispatches public HTTP.
+        val beforePublic=h.catalog.publicCalls.get()
+        check(fresh.loadSelectedListings()==PageCompletion.DEFERRED)
+        check(h.catalog.publicCalls.get()==beforePublic)
     } finally {release.countDown()}
     check(lifeDone(posting)==WorkerWriteCompletion.APPLIED)
     check(fresh.retrySearch()==PageCompletion.APPLIED)
