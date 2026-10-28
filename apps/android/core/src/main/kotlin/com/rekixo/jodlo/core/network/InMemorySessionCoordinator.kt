@@ -43,6 +43,7 @@ class InMemorySessionCoordinator(
         val version: Long,
         var worker: WorkerState = WorkerState.UNKNOWN,
         var workerRevision: Long = 0,
+        var writeRevision: Long = 0,
         var mutationInFlight: Boolean = false,
     )
     private var active: Active? = null
@@ -73,6 +74,15 @@ class InMemorySessionCoordinator(
     internal fun sessionEpoch(): Long = synchronized(lock) {
         readableActive()
         generation
+    }
+
+    /** Non-secret fingerprint: a private read may be stale after ANY worker
+     * mutation begins, even if the POST/DELETE response is lost or cancelled.
+     * Never expose an account ID or bearer via this fingerprint.
+     */
+    internal fun privateReadFingerprint(): Pair<Long, Long> = synchronized(lock) {
+        readableActive()
+        generation to (active?.writeRevision ?: 0L)
     }
 
     /** Snapshot contains ONLY public account/worker state. */
@@ -164,6 +174,7 @@ class InMemorySessionCoordinator(
             return@synchronized null to SessionFailure.OPT_IN_REQUIRED
         if (mutation) {
             current.mutationInFlight = true
+            current.writeRevision += 1
             // A read begun before this worker write must not apply afterwards.
             current.workerRevision += 1
         }
