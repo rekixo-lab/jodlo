@@ -299,3 +299,5 @@ Founder-provided complete legacy Firestore catalog is safely archived: original 
 
 
 **Nonvisual Kotlin Repository Layer (2026-10-28):** [Android Core](apps/android/README.md) now has separately injected Catalog and Worker repository interfaces, strict typed backend response coherence, explicit Category selection for posting, and fake-network Kotlin tests. No Android screen or APK, actual Google mobile login, personal GPS or approved active historical Categories are implied.
+
+**Session state (2026-10-28):** The [headless Kotlin Android core](apps/android/README.md) now has in-memory expiry, draft-only worker state and local-first logout with stale-response isolation. No APK or live Google mobile integration exists.

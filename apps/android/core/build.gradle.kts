@@ -33,3 +33,11 @@ tasks.register<JavaExec>("verifyRepositories") {
     classpath = sourceSets["test"].runtimeClasspath
     mainClass.set("com.rekixo.jodlo.core.network.JodloRepositoryTestKt")
 }
+
+tasks.register<JavaExec>("verifySessions") {
+    group = "verification"
+    description = "Compile and run nonvisual in-memory session and worker state tests"
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.rekixo.jodlo.core.network.InMemorySessionCoordinatorTestKt")
+}

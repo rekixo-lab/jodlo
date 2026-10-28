@@ -41,3 +41,22 @@ gradle -p apps/android :core:verifyContracts :core:verifyReplies :core:verifyRep
 ```
 
 New `JodloRepositoryTest.kt` uses a fake, *no network or Google tokens*, and checks a complete read-only Search → manual Category selection → authorized-request construction → public/own Listing → unpublish path. It rejects wrong-language, wrong-query, wrong-category, forged verified profile, pagination contradiction and transport loss. This is **not Android APK/integration, native device session storage or UI**. Worker eligibility still depends on approved-active backend Categories only; M-003/004/005/007/008 remain explicitly gated.
+
+## 2026-10-28 — Headless in-memory session and worker state
+
+New Kotlin `InMemorySessionCoordinator.kt` reuses the existing `WorkerRepository` and strict reply parser. This is NONVISUAL, not an Android APK or verified Google mobile sign-in.
+
+- Only accept the exact *server-issued* Google-exchange response containing an opaque 43-character Bearer and 1–3600 second lifetime. The caller MUST have acquired the response from the trusted backend over HTTPS. The decoder cannot authenticate a randomly supplied JSON response or Google identity on its own; M-008 remains pending.
+- A private process-memory token powers the client; only `SignedOut` and `SignedIn(worker=UNKNOWN|NO_DRAFT|DRAFT)` are exposed as state. Tokens are not copied into UI, disk, telemetry, debug messages, saved state or repositories. Java/Kotlin strings cannot be guaranteed securely zeroized. Process termination discards the session.
+- Session expiry uses an injectable MONOTONIC elapsed clock, not a changeable wall clock. A `404 NOT_FOUND` worker-profile result means `NO_DRAFT`, while successful opt-in means `DRAFT`; neither claims worker verification.
+- On 401, local session is invalidated. Offline or server errors do not grant new worker permissions or silently erase valid worker state. Logout clears memory BEFORE requesting server revoke, whether one-device or all-device. If revoke fails, it is explicitly **unconfirmed**; the server may still accept the previous token until expiry. No automatic retries.
+- Each privileged operation checks session generation after its network response. A late result from an older login or logout cannot mutate a newer worker state or report authenticated success. This cannot reverse an already-committed remote POST; do not automatically retry ambiguous publication.
+
+Actual fake-clock, fake-network Kotlin suite `:core:verifySessions` covers verified shape, memory-only state, TTL expiry, invalid/extra token data, worker profile 404, 401 revocation, local-first logout, all-device reply, offline uncertainty and late response/re-login races.
+
+Run all four compiled Kotlin suites:
+```bash
+gradle -p apps/android :core:verifyContracts :core:verifyReplies :core:verifyRepositories :core:verifySessions --no-daemon
+```
+
+Still no Android `:app`, Activity, UI, credential storage, on-device Google SDK, real approved Category seed, location data, customer contact implementation or Cloudflare deployment. Founder M-003/004/005/007/008 remain independent.

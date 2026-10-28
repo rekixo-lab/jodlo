@@ -189,3 +189,7 @@ New [Kotlin nonvisual Android-compatible Core](../apps/android/README.md) compil
 ### 2026-10-28 — Kotlin nonvisual Repository implementation; no manual account work
 
 Kotlin [Catalog and Worker repository interfaces](../apps/android/README.md) now connect typed public search, private draft/opt-in and explicitly selected Category posting requests to strict decoders with injectable fake HTTPS sender. This avoids creating unapproved UI or calling live provider resources. **No new external credentials, Android screen design, private area permission or Category activation is implied**; M-003/004/005/007/008 founder gates stay separate.
+
+### 2026-10-28 — Nonvisual Kotlin session lifecycle tests, no external account setup
+
+The [headless Kotlin session controller](../apps/android/README.md) gates worker requests using a private in-memory session, handles backend-issued one-hour expiry, local-first logout and stale responses, and clearly distinguishes unconfirmed network revocation. It does not do real Android Google authentication, live provider setup, approved visual UI or actual Category activation. M-008 mobile OAuth integration and M-004 UI design approvals remain pending; M-003 location, M-005 catalog/contact and M-007 deployment remain separate. No credential sharing or console action is needed now.
