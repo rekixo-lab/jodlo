@@ -66,6 +66,15 @@ class InMemorySessionCoordinator(
         return current
     }
 
+    /** Internal non-secret epoch for invalidating account-scoped read snapshots.
+     * Advances on replacement, logout, authorization failure and expiry.
+     * Not a credential or a stable account identifier.
+     */
+    internal fun sessionEpoch(): Long = synchronized(lock) {
+        readableActive()
+        generation
+    }
+
     /** Snapshot contains ONLY public account/worker state. */
     fun snapshot(): LoginState = synchronized(lock) {
         val session = readableActive()
