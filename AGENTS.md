@@ -192,3 +192,7 @@ The offline [strict candidate alias review contract](docs/reference/JODLO_EDITOR
 ## 2026-10-28 — Ambiguous phrase confirmation contract
 
 Only exact includeChoices=1 on existing Search may expose D1 ACTIVE public Category choices when two explicitly reviewed phrase matches have all words accounted for. Every choice must be backend filtered, never auto-selected/published; current worker-availableOnly facet is GLOBAL, not geo-local. Default response DTO remains unchanged. No 889 category import, editorial 32 proposals, M-003 location, M-004 visual UI or M-007 deployment. Read docs/reference/JODLO_SMART_DISCOVERY_FOUNDATION_2026-10-27.md.
+
+## 2026-10-28 — Guided selection must be explicit and backend checked
+
+Current `includeChoices=1` Search detects curated-phrase/literal name contradictions and offers only bounded ACTIVE public categories; >9 literal matches mean empty choices/manual browse. Default DTO unchanged for existing clients. The worker's **own explicit** category ID (not query-derived arbitrary free text) is passed to existing authorized `POST /api/v1/me/listings`; DB still validates active category+account+opt-in and moderation. See apps/api/tests/catalog-confirmed-publish.test.mjs and docs/reference/JODLO_SMART_DISCOVERY_FOUNDATION_2026-10-27.md. No auto-post, no 889 seed, unapproved alias import, real location/UI or deployment without M-003/004/005/007.

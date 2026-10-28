@@ -236,6 +236,28 @@ export async function searchPublicCategories(
   const { results } = await db.prepare(sql)
     .bind(opts.language, ...values, opts.limit + 1, opts.offset)
     .all<PublicCategory>();
+  // A curated phrase can conflict with the *literal* name of a different
+  // active trade. Opt-in clients must not treat that incidental text match as
+  // the user's intended profession. Show a bounded explicit choice instead.
+  // The default response stays backward compatible for existing clients.
+  if (opts.includeChoices && alias.kind === "unique" &&
+      results.some(row => row.id !== alias.categoryId)) {
+    // Never make up a complete result set from a truncated query page.
+    // Fetch at most 11 text matches (independent of client's search limit).
+    const { results: literal } = await db.prepare(sql)
+      .bind(opts.language, ...values, 11, 0).all<PublicCategory>();
+    if (literal.length > 9) {
+      return { categories: [], nextOffset: null, needsChoice: true, choices: [] };
+    }
+    const { results: mapped } = await db.prepare(curatedAliasQuery(opts.availableOnly))
+      .bind(opts.language, alias.categoryId, 1, 0).all<PublicCategory>();
+    const candidates = new Map<string, PublicCategory>();
+    for (const row of [...literal, ...mapped])
+      candidates.set(row.id, {id:row.id,slug:row.slug,name:row.name});
+    // Stable response for deterministic user confirmation.
+    return { categories: [], nextOffset: null, needsChoice: true,
+      choices: [...candidates.values()].sort((a,b)=>a.id.localeCompare(b.id)) };
+  }
   // Preserve the pre-existing name/grammar search and its pagination.
   // Only on an actual miss try one conservative category-specific alias.
   if (results.length === 0 && alias.kind === "unique") {

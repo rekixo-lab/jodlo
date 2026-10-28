@@ -152,3 +152,7 @@ The [editorial candidate contract](reference/JODLO_EDITORIAL_PHRASE_PROPOSALS_20
 ### 2026-10-28 — Opt-in Search disambiguation; no manual owner setup yet
 
 The existing Search route now supports a strictly optional, D1-active includeChoices=1 facet for known dual-trade intents. This is technical backend infrastructure only; it does not decide the M-005 real Category activation policy or import human-unapproved words. M-004 visual choice UI, M-003 real locality privacy and M-007 production are still gated. No cloud/provider action now.
+
+### 2026-10-28 — Strict Search-to-Publish technical confirmation only
+
+An integration regression now proves an authenticated opted-in Worker can choose an *existing active* Category ID from Search and explicitly publish using the already approved `POST /api/v1/me/listings` contract. No AI inference automatically publishes. Literal-vs-curated name collisions with opt-in `includeChoices=1` require explicit choice or manual browse; no new UI and no new public Category ID is authorized by these tests. M-005 founder decision on broad real catalog, M-004 visual choices, M-003 personal location and M-007 production remain separate. No external setup now.
