@@ -224,3 +224,8 @@ The first Android-compatible Kotlin code is [apps/android/core](apps/android/REA
 ## 2026-10-28 — Strict Android-compatible Kotlin API reply boundary
 
 Run `gradle -p apps/android :core:verifyContracts :core:verifyReplies --no-daemon` locally (also in CI). `JodloReplyDecoder` projects only current `{ok,data}`/error envelopes to typed public Category and Listing DTOs. It refuses malformed, privacy-expanding, unsupported-language, unbounded or mismatched HTTP responses and **never treats a Search choice as posting consent**. `performOnce` does not retry uncertain POST/DELETE operations. `apps/android` remains nonvisual JVM Core only, with NO actual Android app/UI, GPS, provider or deployment. All Founder M-003/004/005/007/008 gates and Hindi Devanagari + English only remain in force.
+
+
+## 2026-10-28 — Kotlin repository interfaces available and tested
+
+Nonvisual `CatalogRepository` / `WorkerRepository` are now compiled in `apps/android/core`. Reuse these instead of making direct API calls from future approved Android UI; use `RequestSender` fake and run `gradle -p apps/android :core:verifyContracts :core:verifyReplies :core:verifyRepositories --no-daemon`. All response data is checked against the requested language/query/category, and **search matches/choices never grant automatic posting**. `WorkerDraft(status="draft")` is only opt-in, never verification. No app, screens, location, cloud deploy or new active Catalog authorization without independent founder M-003/004/005/007/008 approvals.

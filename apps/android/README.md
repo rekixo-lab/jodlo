@@ -27,3 +27,17 @@ Execute **both** Kotlin contract suites:
 gradle -p apps/android :core:verifyContracts :core:verifyReplies --no-daemon
 ```
 GitHub CI compiles both Kotlin files/tests and runs both real JVM executables. No Android `:app`, Manifest, screen, theme, GPS, R2, Cloudflare deploy, real Google OAuth or new API route was added. M-003, M-004, M-005, M-007, M-008 are still gated.
+
+## 2026-10-28 — Tested nonvisual Catalog and Worker Repository interfaces
+
+The headless `JodloRepositories.kt` now exposes **two separately injectable interfaces**, `CatalogRepository` (public browse/search/listings) and `WorkerRepository` (opt-in draft/my listings, explicit Category ID publish and unpublish). Its implementations use only the established `JodloRoutes` request planner, `JodloReplyDecoder`, and the single-attempt `performOnce` transport boundary. An injected `RequestSender` allows **real compiled Kotlin behavior tests** against offline fake responses; actual HTTPS transport can be injected via `HttpsTransport.asRequestSender()`, later called off the UI thread.
+
+The repositories **never store bearer tokens**, auto-select ambiguous search results, publish anything from a Search response, retry an unacknowledged POST/DELETE, or infer “verified” worker identity. A successful Worker opt-in is strictly `WorkerDraft(status="draft")`. The following additional response-scope checks fail closed: returned Hindi/English language must match request; normalized Search echo must match the requested query; paged results may not exceed requested limit or replay the cursor; search `needsChoice` cannot appear without explicit opt-in; public listing and publication Category IDs must equal the exact requested ID. These are consistency checks, not substitutes for server D1 authorization.
+
+All **three** Kotlin suite executables compile and run locally in CI:
+
+```bash
+gradle -p apps/android :core:verifyContracts :core:verifyReplies :core:verifyRepositories --no-daemon
+```
+
+New `JodloRepositoryTest.kt` uses a fake, *no network or Google tokens*, and checks a complete read-only Search → manual Category selection → authorized-request construction → public/own Listing → unpublish path. It rejects wrong-language, wrong-query, wrong-category, forged verified profile, pagination contradiction and transport loss. This is **not Android APK/integration, native device session storage or UI**. Worker eligibility still depends on approved-active backend Categories only; M-003/004/005/007/008 remain explicitly gated.

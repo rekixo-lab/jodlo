@@ -296,3 +296,6 @@ Founder-provided complete legacy Firestore catalog is safely archived: original 
 ## Founder-selected pilot city names (2026-10-27)
 
 **Bilaspur / बिलासपुर** and **Raipur / रायपुर** were chosen as the two pilot city names (see [ADR-0010](docs/decisions/0010-bilaspur-raipur-pilot-city-names.md)). This is nonpersonal planning only, not a geofence, location consent, active category seed, customer request workflow or production launch. [10 curated category candidates](docs/reference/JODLO_PILOT_TAXONOMY_PROPOSAL_2026-10-27.md) remain pending founder selection. The existing `npm run reference:check` validates the tiny city-name manifest and the legacy catalog without deploying anything. Immediate worker self-publication for separately approved categories remains allowed without any automatic verified badge.
+
+
+**Nonvisual Kotlin Repository Layer (2026-10-28):** [Android Core](apps/android/README.md) now has separately injected Catalog and Worker repository interfaces, strict typed backend response coherence, explicit Category selection for posting, and fake-network Kotlin tests. No Android screen or APK, actual Google mobile login, personal GPS or approved active historical Categories are implied.

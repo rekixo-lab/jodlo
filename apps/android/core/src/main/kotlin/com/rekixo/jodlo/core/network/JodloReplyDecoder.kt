@@ -14,6 +14,8 @@ import kotlinx.serialization.json.intOrNull
 data class PublicCategory(val id: String, val slug: String, val name: String)
 data class PublicListing(val id: String, val categoryId: String)
 data class OwnListing(val id: String, val categoryId: String, val visible: Boolean)
+/** The backend never returns a verified role from worker opt-in. */
+data class WorkerDraft(val status: String)
 data class CatalogBrowse(val language: Language, val categories: List<PublicCategory>, val nextCursor: String?)
 data class CatalogSearch(
     val language: Language, val query: String,
@@ -197,6 +199,14 @@ object JodloReplyDecoder {
         }
         if (rows.map { it.id }.toSet().size != rows.size) bad()
         rows
+    }
+    fun workerDraft(reply: TransportReply): ApiOutcome<WorkerDraft> = decode(reply) { data ->
+        data.keysOnly(setOf("profile"))
+        val profile = data.required("profile").obj()
+        profile.keysOnly(setOf("status"))
+        val status = profile.required("status").str()
+        if (status != "draft") bad()
+        WorkerDraft(status)
     }
     fun unpublished(reply: TransportReply): ApiOutcome<Boolean> = decode(reply) { data ->
         data.keysOnly(setOf("unpublished"))
