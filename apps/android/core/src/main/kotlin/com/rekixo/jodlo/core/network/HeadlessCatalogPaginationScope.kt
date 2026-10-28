@@ -22,8 +22,28 @@ sealed class PageState {
     ) : PageState()
 }
 enum class PageCompletion { APPLIED, DISCARDED, DEFERRED, BLOCKED }
+
+/** Explicit selection is a CUSTOMER read choice, never posting consent. */
+enum class CustomerCategorySource { BROWSE, SEARCH }
+sealed class CustomerSelectionState {
+    object Idle : CustomerSelectionState()
+    object RefreshRequired : CustomerSelectionState()
+    data class Chosen(val category: PublicCategory, val source: CustomerCategorySource)
+        : CustomerSelectionState()
+    data class Loading(val category: PublicCategory, val source: CustomerCategorySource)
+        : CustomerSelectionState()
+    data class Ready(
+        val category: PublicCategory, val source: CustomerCategorySource,
+        val listings: List<PublicListing>,
+    ) : CustomerSelectionState()
+    data class Error(
+        val category: PublicCategory, val source: CustomerCategorySource,
+        val kind: FailureKind,
+    ) : CustomerSelectionState()
+}
 data class CatalogPageSnapshot(
     val closed: Boolean, val browse: PageState, val search: PageState,
+    val selection: CustomerSelectionState = CustomerSelectionState.Idle,
 )
 
 /** Headless public pagination, always called off the future Android main thread.
@@ -38,7 +58,11 @@ data class CatalogPageSnapshot(
  * The existing API has NO snapshot revision / transactional pagination token,
  * so a perfectly consistent cross-request server snapshot is NOT guaranteed.
  * We only enforce safe client-side boundaries; remote changes may still occur
- * between two valid GETs. No polling, GPS, UI or public contact workflow.
+ * between two valid GETs. An exact user-selected Category from the current
+ * Browse/Search result can be opened via a separate, read-only Listings GET.
+ * Ambiguous Search choices are NEVER auto-selected, and neither selection nor
+ * opening Listings invokes worker opt-in, posting, contact or verification.
+ * No polling, GPS, UI or public contact workflow.
  */
 class HeadlessCatalogPaginationScope(
     private val catalog: CatalogRepository,
@@ -72,24 +96,48 @@ class HeadlessCatalogPaginationScope(
     private var marker = session.publicReadMarker()
     private val browse = Lane()
     private val search = Lane()
+    private var selectionState: CustomerSelectionState = CustomerSelectionState.Idle
+    private var selectedCategory: PublicCategory? = null
+    private var selectedSource: CustomerCategorySource? = null
+    private var listingsSignal: CancellationSignal? = null
+
+    private fun resetSelectionLocked(refresh: Boolean) {
+        listingsSignal?.cancel()
+        listingsSignal = null
+        selectedCategory = null
+        selectedSource = null
+        selectionState = if (refresh) CustomerSelectionState.RefreshRequired
+            else CustomerSelectionState.Idle
+    }
+
+    private fun resetSelectionForLaneLocked(lane: Lane, refresh: Boolean) {
+        if ((lane === browse && selectedSource == CustomerCategorySource.BROWSE) ||
+            (lane === search && selectedSource == CustomerCategorySource.SEARCH)) {
+            resetSelectionLocked(refresh)
+        }
+    }
 
     private fun reconcileLocked() {
         val current = session.publicReadMarker()
         if (current.revision != marker.revision) {
             browse.invalidate()
             search.invalidate()
+            resetSelectionLocked(refresh = true)
         }
         marker = current
         val now = elapsedMillis()
         for (lane in listOf(browse, search)) {
             val started = lane.firstStarted ?: continue
-            if (now < started || now - started >= publicFreshnessMillis) lane.invalidate()
+            if (now < started || now - started >= publicFreshnessMillis) {
+                lane.invalidate()
+                resetSelectionForLaneLocked(lane, refresh = true)
+            }
         }
     }
 
     fun snapshot(): CatalogPageSnapshot = synchronized(lock) {
         if (!closed) reconcileLocked()
-        CatalogPageSnapshot(closed, browse.state, search.state)
+        CatalogPageSnapshot(closed, browse.state, search.state, selectionState)
     }
 
     /** A future approved screen can request this on resume or explicit refresh.
@@ -101,6 +149,7 @@ class HeadlessCatalogPaginationScope(
             reconcileLocked()
             browse.invalidate()
             search.invalidate()
+            resetSelectionLocked(refresh = true)
             true
         }
     }
@@ -124,6 +173,7 @@ class HeadlessCatalogPaginationScope(
         reconcileLocked()
         if (marker.writeInFlight) {
             lane.invalidate()
+            resetSelectionForLaneLocked(lane, refresh = true)
             return@synchronized Admission.Deferred
         }
         val previous = if (first) null else (lane.state as? PageState.Ready
@@ -132,6 +182,9 @@ class HeadlessCatalogPaginationScope(
         val time = if (first) elapsedMillis() else lane.firstStarted
             ?: return@synchronized Admission.Blocked
         lane.signal?.cancel()
+        // The selected Category belongs to the OLD result generation.
+        // Even a next-page attempt starts a new generation until applied.
+        resetSelectionForLaneLocked(lane, refresh = false)
         val signal = CancellationSignal()
         lane.signal = signal
         lane.firstStarted = time
@@ -288,9 +341,118 @@ class HeadlessCatalogPaginationScope(
         }
     }
 
+
+    /** Only an exact item displayed in the CURRENT server-derived page may
+     * become an explicit Customer selection. Search ambiguity uses choices,
+     * normal Search uses categories; no inferred/first-result selection.
+     */
+    fun selectCategory(
+        source: CustomerCategorySource, categoryId: String,
+    ): PageCompletion {
+        JodloRoutes.publicListings(categoryId)
+        return synchronized(lock) {
+            if (closed) return@synchronized PageCompletion.DISCARDED
+            reconcileLocked()
+            if (marker.writeInFlight) {
+                resetSelectionLocked(refresh = true)
+                return@synchronized PageCompletion.DEFERRED
+            }
+            val page = when (source) {
+                CustomerCategorySource.BROWSE -> browse.state
+                CustomerCategorySource.SEARCH -> search.state
+            } as? PageState.Ready ?: return@synchronized PageCompletion.BLOCKED
+            val allowed = if (source == CustomerCategorySource.SEARCH && page.needsChoice)
+                page.choices else page.categories
+            val category = allowed.singleOrNull { it.id == categoryId }
+                ?: return@synchronized PageCompletion.BLOCKED
+            resetSelectionLocked(refresh = false)
+            selectedCategory = category
+            selectedSource = source
+            selectionState = CustomerSelectionState.Chosen(category, source)
+            PageCompletion.APPLIED
+        }
+    }
+
+    /** No GET is dispatched by selection alone. An explicit caller action
+     * fetches only the chosen Category's public Listings. A later category
+     * selection, new source page, worker write, TTL or close discards the
+     * late response. No personal worker data is returned.
+     */
+    fun loadSelectedListings(): PageCompletion {
+        data class Request(val category: PublicCategory, val source: CustomerCategorySource,
+                           val signal: CancellationSignal)
+        var deferred = false
+        val request = synchronized(lock) {
+            if (closed) return@synchronized null
+            reconcileLocked()
+            if (marker.writeInFlight) {
+                resetSelectionLocked(refresh = true)
+                deferred = true
+                return@synchronized null
+            }
+            val category = selectedCategory ?: return@synchronized null
+            val source = selectedSource ?: return@synchronized null
+            if (selectionState is CustomerSelectionState.Loading)
+                return@synchronized null
+            val page = when (source) {
+                CustomerCategorySource.BROWSE -> browse.state
+                CustomerCategorySource.SEARCH -> search.state
+            }
+            if (page !is PageState.Ready) {
+                resetSelectionLocked(refresh = true)
+                return@synchronized null
+            }
+            val signal = CancellationSignal()
+            listingsSignal?.cancel()
+            listingsSignal = signal
+            selectionState = CustomerSelectionState.Loading(category, source)
+            Request(category, source, signal)
+        } ?: return if (deferred) PageCompletion.DEFERRED else synchronized(lock) {
+            if (closed) PageCompletion.DISCARDED else PageCompletion.BLOCKED
+        }
+        val result = if (request.signal.isCancelled)
+            ApiOutcome.Failed(FailureKind.BAD_RESPONSE, false)
+        else try {
+            catalog.listings(request.category.id)
+        } catch (_: Exception) {
+            ApiOutcome.Failed(FailureKind.BAD_RESPONSE, false)
+        }
+        return synchronized(lock) {
+            if (!closed) reconcileLocked()
+            if (closed || listingsSignal !== request.signal ||
+                request.signal.isCancelled || marker.writeInFlight ||
+                selectedCategory != request.category || selectedSource != request.source) {
+                return@synchronized PageCompletion.DISCARDED
+            }
+            selectionState = when (result) {
+                is ApiOutcome.Failed -> CustomerSelectionState.Error(
+                    request.category, request.source, result.kind)
+                is ApiOutcome.Ok -> {
+                    // Existing strict repository/decoder also validates this.
+                    // Defend the headless coordination layer against fakes.
+                    val rows = result.value
+                    if (rows.size > 25 || rows.any { it.categoryId != request.category.id } ||
+                        rows.map { it.id }.distinct().size != rows.size) {
+                        CustomerSelectionState.Error(
+                            request.category, request.source, FailureKind.BAD_RESPONSE)
+                    } else CustomerSelectionState.Ready(
+                        request.category, request.source, rows.toList())
+                }
+            }
+            listingsSignal = null
+            PageCompletion.APPLIED
+        }
+    }
+
+    /** Explicitly leave Listings; a later GET requires another selection. */
+    fun clearSelection() = synchronized(lock) {
+        resetSelectionLocked(refresh = false)
+    }
+
     fun close() = synchronized(lock) {
         closed = true
         browse.close()
         search.close()
+        resetSelectionLocked(refresh = false)
     }
 }
