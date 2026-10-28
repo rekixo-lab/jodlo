@@ -155,8 +155,8 @@ class HeadlessMarketplaceReadScope(
             }
         }
         return synchronized(lock) {
-            if (privateRead) checkWorkerEpochLocked()
-            if (publicRead) checkPublicRevisionLocked()
+            if (!closed && privateRead) checkWorkerEpochLocked()
+            if (!closed && publicRead) checkPublicRevisionLocked()
             if (closed || lane.signal !== signal || signal.isCancelled ||
                 (publicRead && publicMarker.writeInFlight)) {
                 ReadCompletion.DISCARDED
