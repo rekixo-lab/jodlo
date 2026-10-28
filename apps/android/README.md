@@ -60,3 +60,7 @@ gradle -p apps/android :core:verifyContracts :core:verifyReplies :core:verifyRep
 ```
 
 Still no Android `:app`, Activity, UI, credential storage, on-device Google SDK, real approved Category seed, location data, customer contact implementation or Cloudflare deployment. Founder M-003/004/005/007/008 remain independent.
+
+## 2026-10-28 — Kotlin worker session race and single-flight guard (CI pending)
+
+Nonvisual Kotlin `InMemorySessionCoordinator` now reserves **one worker write per session** across opt-in, explicit Category publish and unpublish. A concurrent write is rejected with `SessionFailure.OPERATION_IN_PROGRESS` **before a second network call** (no queue, automatic retry or exactly-once server guarantee). Worker-profile and own-listings reads capture a revision and reject overtaken responses with `STALE_RESULT`, preventing a delayed pre-opt-in 404 from downgrading a successful DRAFT or a stale listings response from appearing current. Write reservations are released on remote failures and unexpected injected-adapter exceptions, with replacement-login isolation preserved. Real executable fake-interleaving tests were added to existing `:core:verifySessions`. This remains a blocking, headless Kotlin JVM library, not an Android Activity/APK/Google SDK. No personal location, active Category seeds, contact workflow, Cloudflare deployment, UI or Founder approvals were added. M-003/M-004/M-005/M-007/M-008 remain independent. Verify PR CI and a separate green merged-main run before marking complete.

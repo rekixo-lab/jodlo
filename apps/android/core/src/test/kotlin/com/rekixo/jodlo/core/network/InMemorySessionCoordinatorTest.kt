@@ -21,9 +21,11 @@ private class FakeWorkers : WorkerRepository {
     var posting: ApiOutcome<PublicListing> = ApiOutcome.Ok(PublicListing(LISTING_ID, "plumber"))
     var deleting: ApiOutcome<Boolean> = ApiOutcome.Ok(true)
     var beforeLookup: (() -> Unit)? = null
+    var beforeListings: (() -> Unit)? = null
     var beforePosting: (() -> Unit)? = null
     var lookupCalls = 0
     var postCalls = 0
+    var optInCalls = 0
     val observedTokens = mutableListOf<String>()
     override fun myDraft(session: String): ApiOutcome<WorkerDraft> {
         observedTokens.add(session)
@@ -33,10 +35,12 @@ private class FakeWorkers : WorkerRepository {
     }
     override fun optIn(session: String): ApiOutcome<WorkerDraft> {
         observedTokens.add(session)
+        optInCalls++
         return optin
     }
     override fun myListings(session: String): ApiOutcome<List<OwnListing>> {
         observedTokens.add(session)
+        beforeListings?.invoke()
         return listings
     }
     override fun publishExplicitCategory(session: String, confirmedCategoryId: String)
@@ -207,7 +211,94 @@ private fun testStalePublishNeverGrantsSuccess() {
     check(coordinator.snapshot()==LoginState.SignedOut)
     // Do not repeat the request: a stale response may mean the backend DID publish.
 }
+
+/** A slow pre-opt-in 404 must not downgrade the successful DRAFT state. */
+private fun testOldProfileCannotUndoOptIn() {
+    val fake = FakeWorkers()
+    val session = InMemorySessionCoordinator(fake, RequestSender {
+        error(503, "SERVICE_UNAVAILABLE")
+    }) { 0L }
+    check(session.acceptIssuedSession(issued()) is ApiOutcome.Ok)
+    fake.beforeLookup = {
+        fake.beforeLookup = null
+        check(session.optIn() == SessionResult.Success(WorkerState.DRAFT))
+    }
+    check(session.checkWorker() == SessionResult.Failed(SessionFailure.STALE_RESULT))
+    check(session.snapshot() == LoginState.SignedIn(WorkerState.DRAFT))
+    check(fake.lookupCalls == 1 && fake.optInCalls == 1)
+}
+
+/** Two rapid taps never send two overlapping writes or queue a replay. */
+private fun testConcurrentMutationsRejected() {
+    val fake = FakeWorkers()
+    val session = InMemorySessionCoordinator(fake, RequestSender {
+        error(503, "SERVICE_UNAVAILABLE")
+    }) { 0L }
+    check(session.acceptIssuedSession(issued()) is ApiOutcome.Ok)
+    check(session.optIn() == SessionResult.Success(WorkerState.DRAFT))
+    fake.beforePosting = {
+        fake.beforePosting = null
+        val busy = SessionResult.Failed(SessionFailure.OPERATION_IN_PROGRESS)
+        check(session.publishExplicitCategory("plumber") == busy)
+        check(session.unpublish(LISTING_ID) == busy)
+        check(session.optIn() == busy)
+        check(session.checkWorker() == busy)
+        check(session.myListings() == busy)
+        check(session.snapshot() == LoginState.SignedIn(WorkerState.DRAFT))
+    }
+    check(session.publishExplicitCategory("plumber") ==
+        SessionResult.Success(PublicListing(LISTING_ID, "plumber")))
+    check(fake.postCalls == 1 && fake.optInCalls == 1)
+    // An uncertain remote acknowledgement is NOT safe to replay automatically.
+    fake.posting = ApiOutcome.Failed(FailureKind.OFFLINE_OR_TIMEOUT, false)
+    check(session.publishExplicitCategory("plumber") ==
+        SessionResult.Failed(SessionFailure.REMOTE_FAILURE, FailureKind.OFFLINE_OR_TIMEOUT))
+    check(fake.postCalls == 2)
+    check(session.unpublish(LISTING_ID) == SessionResult.Success(true))
+}
+
+/** Earlier owned-listing data cannot be applied after a successful publish. */
+private fun testStaleOwnListingsResponseRejected() {
+    val fake = FakeWorkers()
+    val session = InMemorySessionCoordinator(fake, RequestSender {
+        error(503, "SERVICE_UNAVAILABLE")
+    }) { 0L }
+    check(session.acceptIssuedSession(issued()) is ApiOutcome.Ok)
+    check(session.optIn() == SessionResult.Success(WorkerState.DRAFT))
+    fake.beforeListings = {
+        fake.beforeListings = null
+        check(session.publishExplicitCategory("plumber") ==
+            SessionResult.Success(PublicListing(LISTING_ID, "plumber")))
+    }
+    check(session.myListings() == SessionResult.Failed(SessionFailure.STALE_RESULT))
+    check(session.myListings() == SessionResult.Success(emptyList<OwnListing>()))
+}
+
+/** Unexpected fake-adapter exceptions never strand the session write lock. */
+private fun testExceptionalSenderReleasesGate() {
+    val fake = FakeWorkers()
+    val session = InMemorySessionCoordinator(fake, RequestSender {
+        error(503, "SERVICE_UNAVAILABLE")
+    }) { 0L }
+    check(session.acceptIssuedSession(issued()) is ApiOutcome.Ok)
+    check(session.optIn() == SessionResult.Success(WorkerState.DRAFT))
+    fake.beforePosting = {
+        fake.beforePosting = null
+        throw IllegalStateException("injected fake failure")
+    }
+    checkRejected("unexpected fake sender exception") {
+        session.publishExplicitCategory("plumber")
+    }
+    check(session.publishExplicitCategory("plumber") ==
+        SessionResult.Success(PublicListing(LISTING_ID, "plumber")))
+    check(fake.postCalls == 2)
+}
+
 fun main() {
+    testOldProfileCannotUndoOptIn()
+    testConcurrentMutationsRejected()
+    testStaleOwnListingsResponseRejected()
+    testExceptionalSenderReleasesGate()
     testIssuanceAndExpiry()
     testRejectedIssuancePreservesGoodSession()
     testReLoginStaleReplyIsolation()
