@@ -130,7 +130,10 @@ private fun localLogoutRemovesWorkerStateButKeepsPublicData() {
     check(customer.browse is ReadState.Ready)
     check(catalog.requests.get()==1 && worker.privateGETs.get()==1)
     check(reads.ownListings()==ReadCompletion.APPLIED)
-    check(reads.workerSnapshot().ownListings==ReadState.SessionError(SessionFailure.SIGNED_OUT))
+    // Existing mixed diagnostic scope retains the typed sign-out error;
+    // actor-specific Worker view intentionally hides all private lanes.
+    check(reads.snapshot().ownListings==ReadState.SessionError(SessionFailure.SIGNED_OUT))
+    check(reads.workerSnapshot().ownListings==ReadState.Idle)
     check(reads.workerSnapshot().login==LoginState.SignedOut)
 }
 
