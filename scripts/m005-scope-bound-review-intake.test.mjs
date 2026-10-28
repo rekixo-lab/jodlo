@@ -42,7 +42,13 @@ test("forged signoffs, stale scope digest, altered gates and permission fields f
  assertDenied(x=>{x.categories[0].signoffs[0].gate="FOUNDER_APPROVED";});
  assertDenied(x=>{x.categories[0].decision="ACTIVE";});
  assertDenied(x=>{x.categories[0].approved=true;});
- assertDenied(x=>{x.categories.pop();});
+ // A partial subset is a supported reviewer workflow; never equate it with
+ // the full 17-category coverage or with activation approval.
+ const partial=structuredClone(intake);
+ partial.categories.pop();
+ const partialSummary=validateM005EvidenceIntake(partial,scopes,government);
+ assert.equal(partialSummary.categoriesUnderReview,16);
+ assert.equal(partialSummary.authorizedCategories,0);
  assertDenied(x=>{x.categories.reverse();});
  assertDenied(x=>{x.languages=["en","hi-Latn"];});
 });
