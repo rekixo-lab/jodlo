@@ -125,7 +125,7 @@ private fun successPublishThenExplicitPublicRefreshThenUnpublish() {
     h.browseAndOpen()
     check(h.customer.presentation().phase==CustomerViewPhase.EMPTY)
     check(h.reads.publicListings("plumber")==ReadCompletion.APPLIED)
-    check(h.reads.customerSnapshot().publicListings==ReadState.Ready(emptyList()))
+    check(h.reads.customerSnapshot().publicListings==ReadState.Ready(emptyList<PublicListing>()))
     check(h.reads.ownListings()==ReadCompletion.APPLIED)
     check(h.dashboard.snapshot().owned==WorkerListingsPhase.EMPTY)
     val beforePublic=h.api.allCount()
