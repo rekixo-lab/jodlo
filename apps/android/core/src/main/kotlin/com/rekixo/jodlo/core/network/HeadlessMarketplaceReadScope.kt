@@ -47,6 +47,9 @@ data class MarketplaceReadSnapshot(
  * with an earlier write cannot become current after it finishes. No network
  * request is auto-scheduled; callers explicitly refresh after the barrier.
  * Changes by OTHER devices/workers need their own new read: there is no push.
+ * Public cached successes expire after 60 seconds by default, measured from
+ * request start via a monotonic process clock. This is a local display bound,
+ * NOT a server freshness guarantee, subscription, polling loop or push stream.
  *
  * This is deliberately READ-ONLY. A suggested Search category never
  * triggers worker opt-in or a service publication. Worker writes must stay
@@ -55,20 +58,37 @@ data class MarketplaceReadSnapshot(
 class HeadlessMarketplaceReadScope(
     private val catalog: CatalogRepository,
     private val session: InMemorySessionCoordinator,
+    private val elapsedMillis: () -> Long = { System.nanoTime() / 1_000_000L },
+    private val publicFreshnessMillis: Long = 60_000L,
 ) {
+    init {
+        require(publicFreshnessMillis in 1L..300_000L) { "Invalid public freshness window" }
+    }
+
     private class Lane<T> {
         var signal: CancellationSignal? = null
         var state: ReadState<T> = ReadState.Idle
+        // Only public Ready values have a freshness timestamp. A request's
+        // START time is conservative when an HTTP reply takes a long time.
+        var publicStartedAt: Long? = null
+
+        fun expirePublic(now: Long, maxAge: Long) {
+            val started = publicStartedAt ?: return
+            if (state is ReadState.Ready &&
+                (now < started || now - started >= maxAge)) invalidatePublic()
+        }
 
         fun discard() {
             signal?.cancel()
             signal = null
+            publicStartedAt = null
             state = ReadState.Idle
         }
 
         fun invalidatePublic() {
             signal?.cancel()
             signal = null
+            publicStartedAt = null
             state = ReadState.RefreshRequired
         }
     }
@@ -94,6 +114,10 @@ class HeadlessMarketplaceReadScope(
             searchLane.invalidatePublic()
             publicLane.invalidatePublic()
         } else publicMarker = current
+        val now = elapsedMillis()
+        browseLane.expirePublic(now, publicFreshnessMillis)
+        searchLane.expirePublic(now, publicFreshnessMillis)
+        publicLane.expirePublic(now, publicFreshnessMillis)
     }
 
     private fun checkWorkerEpochLocked() {
@@ -117,6 +141,18 @@ class HeadlessMarketplaceReadScope(
         )
     }
 
+    /** Explicit caller-triggered invalidate for user refresh or external change.
+     * No network operation is started. Future callers must use existing GETs.
+     */
+    fun requestPublicRefresh(): Boolean = synchronized(lock) {
+        if (closed) return@synchronized false
+        checkPublicRevisionLocked()
+        browseLane.invalidatePublic()
+        searchLane.invalidatePublic()
+        publicLane.invalidatePublic()
+        true
+    }
+
     private fun <T> load(
         lane: Lane<T>,
         privateRead: Boolean = false,
@@ -124,6 +160,7 @@ class HeadlessMarketplaceReadScope(
         fetch: (CancellationSignal) -> ReadState<T>,
     ): ReadCompletion {
         var deferred = false
+        var publicStartedAt: Long? = null
         val signal = synchronized(lock) {
             if (closed) return@synchronized null
             if (privateRead) checkWorkerEpochLocked()
@@ -136,6 +173,7 @@ class HeadlessMarketplaceReadScope(
                     deferred = true
                     return@synchronized null
                 }
+                publicStartedAt = elapsedMillis()
             }
             lane.signal?.cancel()
             CancellationSignal().also {
@@ -161,7 +199,19 @@ class HeadlessMarketplaceReadScope(
                 (publicRead && publicMarker.writeInFlight)) {
                 ReadCompletion.DISCARDED
             } else {
+                // A very slow GET can already exceed its cache freshness
+                // window by the time the server reply is received.
+                if (publicRead && result is ReadState.Ready) {
+                    val started = publicStartedAt ?: error("Missing public GET start")
+                    val now = elapsedMillis()
+                    if (now < started || now - started >= publicFreshnessMillis) {
+                        lane.invalidatePublic()
+                        return@synchronized ReadCompletion.DISCARDED
+                    }
+                }
                 lane.state = result
+                lane.publicStartedAt =
+                    if (publicRead && result is ReadState.Ready) publicStartedAt else null
                 lane.signal = null
                 ReadCompletion.APPLIED
             }
