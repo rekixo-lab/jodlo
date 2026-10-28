@@ -171,6 +171,39 @@ test("reject client supplied owner, verification, location, media, text and SQL-
   } finally {f.db.close();}
 });
 
+test("listing publication refuses duplicate JSON keys including escaped aliases",async()=>{
+  const f=setup();
+  try {
+    f.opt(a);
+    // Send the exact wire bytes: constructing an object would erase duplicates.
+    for(const body of [
+      '{"categoryId":"cat1","categoryId":"cat2"}',
+      '{"categoryId":"cat2","categoryId":"cat1"}',
+      '{"categoryId":"cat1","category\\u0049d":"cat2"}',
+      '{"categoryId":"cat1","verified":true}',
+      '{"categoryId":{"id":"cat1"}}',
+    ]){
+      const response=await worker.fetch(new Request(origin+own,{
+        method:"POST",
+        headers:{"Authorization":"Bearer signed-owner","Content-Type":"application/json"},
+        body,
+      }),f.env);
+      assert.equal(response.status,400,body);
+      assert.equal((await response.json()).error.code,"INVALID_QUERY");
+    }
+    assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM worker_listings").get().n,0);
+    // Escaped key/value spellings still decode as one safe member.
+    const accepted=await worker.fetch(new Request(origin+own,{
+      method:"POST",
+      headers:{"Authorization":"Bearer signed-owner","Content-Type":"application/json"},
+      body:' { "category\\u0049d" : "c\\u0061t1" } ',
+    }),f.env);
+    assert.equal(accepted.status,200);
+    assert.equal((await accepted.json()).data.listing.categoryId,"cat1");
+    assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM worker_listings").get().n,1);
+  }finally{f.db.close();}
+});
+
 test("session is required; method/query validation and DB outages fail closed",async()=>{
   const f=setup();
   try {
