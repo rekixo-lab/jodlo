@@ -67,6 +67,37 @@ test("search has bounded deterministic offset pages without disclosing extra row
   } finally { db.close(); }
 });
 
+test("Search never advertises an offset the public API would reject", async () => {
+  const {db,adapter}=openLocalDatabase();
+  try {
+    // Synthetic active catalog only: no actual JODLO category activation.
+    const add=db.prepare("INSERT INTO categories(id,slug,name_en,name_hi,is_active,sort_order) VALUES(?,?,?,?,?,?)");
+    for(let i=0;i<135;i++) {
+      const id="fixture-"+String(i).padStart(3,"0");
+      add.run(id,id,"Fixture Trade "+i,"परीक्षण कार्य "+i,1,i);
+    }
+    const page=async(offset,limit,lang="en")=>{
+      const res=await worker.fetch(request("?q=Fixture&offset="+offset+"&limit="+limit+"&lang="+lang),{DB:adapter});
+      assert.equal(res.status,200);
+      return (await res.json()).data;
+    };
+    // 100 remains a legal next offset; exceeding it never becomes a link.
+    assert.equal((await page(75,25)).nextOffset,100);
+    assert.equal((await page(95,5)).nextOffset,100);
+    assert.equal((await page(99,1)).nextOffset,100);
+    const beyond=(await page(95,10));
+    assert.equal(beyond.categories.length,10);
+    assert.equal(beyond.nextOffset,null);
+    const atMax=await page(100,25,"hi");
+    assert.equal(atMax.categories.length,25);
+    assert.equal(atMax.nextOffset,null); // More local rows exist, but no valid next GET.
+    assert.equal(atMax.categories[0].id,"fixture-100");
+    assert.ok(atMax.categories.every(c=>c.name.startsWith("परीक्षण")));
+    assert.equal((await page(100,1)).nextOffset,null);
+    assert.equal((await worker.fetch(request("?q=Fixture&offset=125"),{DB:adapter})).status,400);
+  } finally {db.close();}
+});
+
 test("SQL is parameterized; wildcard, quote and SQL comment characters are literal", async () => {
   const { db, env } = sample();
   try {
