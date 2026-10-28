@@ -12,7 +12,7 @@ function sample(){
     active:true,selectable:true,serviceCount:1});
   const serv=(id,categoryId)=>({
     id,categoryId,groupId:"group",familyId:"family",
-    name_en:"Service "+id,name_hi:"सेवा",
+    name_en:"Service "+id,name_hi:id==="s1"?"नल सुधार":"लकड़ी बनावट",
   });
   const raw={kind:"JODLO_BILINGUAL_REFERENCE_ONLY_NOT_A_LIVE_SEED",
     languagePolicy:["en","hi"],collections:{
