@@ -16,6 +16,18 @@ data class PublicListing(val id: String, val categoryId: String)
 data class OwnListing(val id: String, val categoryId: String, val visible: Boolean)
 /** The backend never returns a verified role from worker opt-in. */
 data class WorkerDraft(val status: String)
+
+/** A verified BACKEND-issued session response, not a verified Google identity
+ * from client input. Its token must not enter loggers, UI state or disk.
+ * Kotlin Strings cannot be securely zeroized; this is memory-only.
+ */
+class IssuedSession internal constructor(
+    internal val accessToken: String,
+    val expiresInSeconds: Int,
+) {
+    override fun toString(): String = "IssuedSession(token=<redacted>, expiresInSeconds=$expiresInSeconds)"
+}
+
 data class CatalogBrowse(val language: Language, val categories: List<PublicCategory>, val nextCursor: String?)
 data class CatalogSearch(
     val language: Language, val query: String,
@@ -199,6 +211,24 @@ object JodloReplyDecoder {
         }
         if (rows.map { it.id }.toSet().size != rows.size) bad()
         rows
+    }
+    /** Exact /auth/google success body, only for a trusted HTTPS exchange. */
+    fun issuedSession(reply: TransportReply): ApiOutcome<IssuedSession> = decode(reply) { data ->
+        data.keysOnly(setOf("accessToken", "tokenType", "expiresInSeconds"))
+        val token = data.required("accessToken").str()
+        if (!Regex("[A-Za-z0-9_-]{43}").matches(token) ||
+            data.required("tokenType").str() != "Bearer") bad()
+        val ttl = data.required("expiresInSeconds").number()
+        if (ttl !in 1..3600) bad()
+        IssuedSession(token, ttl)
+    }
+    /** /auth/logout and /auth/logout-all are NOT interchangeable. */
+    fun revoked(reply: TransportReply, allDevices: Boolean): ApiOutcome<Boolean> = decode(reply) { data ->
+        if (allDevices) data.keysOnly(setOf("revoked", "allDevices"))
+        else data.keysOnly(setOf("revoked"))
+        if (!data.required("revoked").bool() ||
+            (allDevices && data.required("allDevices").bool() != true)) bad()
+        true
     }
     fun workerDraft(reply: TransportReply): ApiOutcome<WorkerDraft> = decode(reply) { data ->
         data.keysOnly(setOf("profile"))

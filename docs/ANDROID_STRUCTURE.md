@@ -107,3 +107,7 @@ Before writing Compose screens, XML layouts, themes, colors, wireframes, screens
 ## 2026-10-28 — Nonvisual Repository boundary exists; views still pending approval
 
 `apps/android/core/src/main/kotlin/com/rekixo/jodlo/core/network/JodloRepositories.kt` now defines **actual compiled** `CatalogRepository` / `WorkerRepository` interfaces and transport/decoder-backed implementations. Future approved Android `ViewModel` components should depend on these interfaces rather than importing `HttpsTransport` / JSON directly. The injection surface is tested with fake network data, without app code or UI. `WorkerRepository.publishExplicitCategory` must only be invoked after explicit user Category confirmation, and existing server-active/opted-in checks still decide publish eligibility. M-004 UI approval remains necessary before implementing any Activity, screen, Compose theme, navigation or animation.
+
+## 2026-10-28 — Headless session state, NOT a user screen
+
+A nonvisual `InMemorySessionCoordinator` can supply a later approved ViewModel with public SignedOut/SignedIn and Worker draft-only state, not bearer strings. Expiry is monotonic; logout is local-first; stale network responses cannot resurrect state. No Activity, UI, Google SDK, credential store or GPS has been built. M-003/M-004/M-008 remain separate.
