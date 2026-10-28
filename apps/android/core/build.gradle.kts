@@ -129,3 +129,11 @@ tasks.register<JavaExec>("verifyDiscoveryE2E") {
     classpath = sourceSets["test"].runtimeClasspath
     mainClass.set("com.rekixo.jodlo.core.network.CustomerDiscoveryEndToEndTestKt")
 }
+
+tasks.register<JavaExec>("verifyOfflineRecovery") {
+    group = "verification"
+    description = "Verify explicit public GET recovery across offline, timeout, page failure and stale responses"
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.rekixo.jodlo.core.network.PublicOfflineRecoveryTestKt")
+}
