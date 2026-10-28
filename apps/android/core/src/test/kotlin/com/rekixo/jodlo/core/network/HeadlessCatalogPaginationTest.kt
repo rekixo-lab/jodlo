@@ -275,11 +275,16 @@ private fun testBadInputDoesNotReplaceValidPageAndNoUnsupportedOffset() {
     check(scope.startSearch("electrician",Language.EN,pageSize=2)==PageCompletion.APPLIED)
     check(runCatching {scope.startSearch("x",Language.EN)}.isFailure)
     check((scope.snapshot().search as PageState.Ready).query=="electrician")
-    fake.searchReply = {q,lang,_,limit,_ ->
-        ApiOutcome.Ok(CatalogSearch(lang,q,listOf(ONE,TWO),125,false,emptyList()))
+    fake.searchReply = {q,lang,_,limit,offset ->
+        ApiOutcome.Ok(CatalogSearch(lang,q,listOf(category("trade$offset")),
+            offset + limit,false,emptyList()))
     }
     check(scope.startSearch("electrician",Language.EN,pageSize=25)==PageCompletion.APPLIED)
-    check((scope.snapshot().search as PageState.Ready).nextOffset == null)
+    repeat(4) { check(scope.nextSearch()==PageCompletion.APPLIED) }
+    val end = scope.snapshot().search as PageState.Ready
+    check(end.categories.map {it.id} ==
+        listOf("trade0","trade25","trade50","trade75","trade100"))
+    check(end.nextOffset == null) // Backend 125 exceeds route maximum of 100.
     check(scope.nextSearch()==PageCompletion.BLOCKED)
 }
 
