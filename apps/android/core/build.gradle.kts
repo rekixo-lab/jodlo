@@ -137,3 +137,11 @@ tasks.register<JavaExec>("verifyOfflineRecovery") {
     classpath = sourceSets["test"].runtimeClasspath
     mainClass.set("com.rekixo.jodlo.core.network.PublicOfflineRecoveryTestKt")
 }
+
+tasks.register<JavaExec>("verifyCustomerPresentation") {
+    group = "verification"
+    description = "Verify UI-agnostic Customer loading/empty/choices/error/retry projection and no hidden network reads"
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.rekixo.jodlo.core.network.HeadlessCustomerPresentationTestKt")
+}

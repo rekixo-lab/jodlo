@@ -210,6 +210,12 @@ class HeadlessCatalogPaginationScope(
         )
     }
 
+    /** Current, reconciled public presentation. Pure projection: no GET,
+     * private session data, implicit Category choice or automatic retry.
+     */
+    fun presentation(): CustomerViewState =
+        HeadlessCustomerPresentation.project(snapshot())
+
     /** Capture a bounded navigation/query intent only. This is process-local
      * data, not permission to serialize a query to disk or remote analytics.
      * A closed scope cannot provide a resumable request.
