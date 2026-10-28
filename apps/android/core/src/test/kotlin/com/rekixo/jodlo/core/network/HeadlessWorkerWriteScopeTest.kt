@@ -18,7 +18,7 @@ private fun reached(latch: CountDownLatch) {
     check(latch.await(5, TimeUnit.SECONDS)) { "Fake network call not started" }
 }
 
-private class FakeWorkers : WorkerRepository {
+private class ReviewFakeWorkerRepository : WorkerRepository {
     var published: ApiOutcome<PublicListing> = ApiOutcome.Ok(PublicListing(LISTING_ID,"plumber"))
     var unpublished: ApiOutcome<Boolean> = ApiOutcome.Ok(true)
     var rows: ApiOutcome<List<OwnListing>> = ApiOutcome.Ok(emptyList())
@@ -47,11 +47,11 @@ private class FakeWorkers : WorkerRepository {
         return unpublished
     }
 }
-private fun coordinator(fake: FakeWorkers): InMemorySessionCoordinator =
+private fun coordinator(fake: ReviewFakeWorkerRepository): InMemorySessionCoordinator =
     InMemorySessionCoordinator(fake, RequestSender {
         serverError(503, "SERVICE_UNAVAILABLE")
     }) { 0L }
-private fun signedInDraft(fake: FakeWorkers): InMemorySessionCoordinator =
+private fun signedInDraft(fake: ReviewFakeWorkerRepository): InMemorySessionCoordinator =
     coordinator(fake).also {
         check(it.acceptIssuedSession(issued()) is ApiOutcome.Ok)
         check(it.optIn() == SessionResult.Success(WorkerState.DRAFT))
@@ -60,7 +60,7 @@ private fun review(state: WorkerWriteState): WorkerWriteState.NeedsReview =
     state as? WorkerWriteState.NeedsReview ?: error("Expected unresolved write")
 
 private fun testExplicitPublishUncertainThenReadOnlyVisibility() {
-    val fake = FakeWorkers()
+    val fake = ReviewFakeWorkerRepository()
     val session = signedInDraft(fake)
     fake.published = ApiOutcome.Failed(FailureKind.OFFLINE_OR_TIMEOUT, false)
     val scope = HeadlessWorkerWriteScope(session)
@@ -93,7 +93,7 @@ private fun testExplicitPublishUncertainThenReadOnlyVisibility() {
 }
 
 private fun testUnpublishAmbiguityCannotBeCertifiedByInvisibleRecord() {
-    val fake = FakeWorkers()
+    val fake = ReviewFakeWorkerRepository()
     val session = signedInDraft(fake)
     fake.unpublished = ApiOutcome.Failed(FailureKind.SERVICE_UNAVAILABLE, false)
     val scope = HeadlessWorkerWriteScope(session)
@@ -110,7 +110,7 @@ private fun testUnpublishAmbiguityCannotBeCertifiedByInvisibleRecord() {
 }
 
 private fun testRejectedAndInvalidActionsNeverReplay() {
-    val fake = FakeWorkers()
+    val fake = ReviewFakeWorkerRepository()
     val session = signedInDraft(fake)
     val scope = HeadlessWorkerWriteScope(session)
     check(runCatching { scope.publishExplicitCategory("raw trade description") }.isFailure)
@@ -129,7 +129,7 @@ private fun testRejectedAndInvalidActionsNeverReplay() {
 }
 
 private fun testUncertainReadFailureKeepsGuard() {
-    val fake = FakeWorkers()
+    val fake = ReviewFakeWorkerRepository()
     val scope = HeadlessWorkerWriteScope(signedInDraft(fake))
     fake.published = ApiOutcome.Failed(FailureKind.OFFLINE_OR_TIMEOUT, false)
     check(scope.publishExplicitCategory("plumber") == WorkerWriteCompletion.APPLIED)
@@ -145,7 +145,7 @@ private fun testUncertainReadFailureKeepsGuard() {
 private fun testSingleFlightAndSlowRead() {
     val started = CountDownLatch(1)
     val release = CountDownLatch(1)
-    val fake = FakeWorkers()
+    val fake = ReviewFakeWorkerRepository()
     val session = signedInDraft(fake)
     val scope = HeadlessWorkerWriteScope(session)
     fake.beforePublish = {
@@ -186,7 +186,7 @@ private fun testSingleFlightAndSlowRead() {
 }
 
 private fun testNewAccountPurgesPendingWriteAndCloseDiscardsReplies() {
-    val fake = FakeWorkers()
+    val fake = ReviewFakeWorkerRepository()
     val session = signedInDraft(fake)
     fake.published = ApiOutcome.Failed(FailureKind.OFFLINE_OR_TIMEOUT, false)
     val scope = HeadlessWorkerWriteScope(session)
@@ -218,7 +218,7 @@ private fun testNewAccountPurgesPendingWriteAndCloseDiscardsReplies() {
 }
 
 private fun testReadScopePurgesCacheWhenWriteAttempted() {
-    val fake = FakeWorkers()
+    val fake = ReviewFakeWorkerRepository()
     val session = signedInDraft(fake)
     fake.rows = ApiOutcome.Ok(listOf(OwnListing(LISTING_ID, "plumber", true)))
     val reads = HeadlessMarketplaceReadScope(RemoteCatalogRepository(RequestSender {
