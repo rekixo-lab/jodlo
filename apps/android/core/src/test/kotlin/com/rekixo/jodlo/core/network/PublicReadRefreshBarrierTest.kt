@@ -251,6 +251,35 @@ private fun testClosedScopeRemainsClosedDuringWrite() {
     check(worker.writes.get() == 1 && catalog.publicCalls.get() == 1)
 }
 
+
+/** Even a public GET that finishes after the scope closes AND a worker
+ * mutation occurs must not resurrect RefreshRequired or personal data.
+ */
+private fun testCloseDuringLateGETAndWriteKeepsEmptySnapshot() {
+    val start = CountDownLatch(1)
+    val release = CountDownLatch(1)
+    val catalog = RefreshFakeCatalog()
+    val worker = RefreshFakeWorker()
+    val session = makeSession(worker)
+    val reads = HeadlessMarketplaceReadScope(catalog, session)
+    catalog.beforePublic = {
+        start.countDown()
+        check(release.await(5, TimeUnit.SECONDS))
+    }
+    val old = asynchronous { reads.publicListings("plumber") }
+    try {
+        reached(start)
+        reads.close()
+        check(session.publishExplicitCategory("plumber") is SessionResult.Success)
+    } finally {
+        release.countDown()
+    }
+    check(completed(old) == ReadCompletion.DISCARDED)
+    val snapshot = reads.snapshot()
+    check(snapshot.closed && snapshot.publicListings == ReadState.Idle)
+    check(snapshot.browse == ReadState.Idle && snapshot.search == ReadState.Idle)
+}
+
 fun main() {
     testSuccessfulWriteMarksAllPublicLanes()
     testTimeoutAndUnpublishInvalidateWithoutRetry()
@@ -259,5 +288,6 @@ fun main() {
     testSlowWriteFinishesAfterPriorPublicRequest()
     testNoSpuriousRefreshForWorkerReadsOrAccountChange()
     testClosedScopeRemainsClosedDuringWrite()
+    testCloseDuringLateGETAndWriteKeepsEmptySnapshot()
     println("JODLO public refresh: old GET discarded, write barrier deferred, explicit refetch safe OK")
 }
