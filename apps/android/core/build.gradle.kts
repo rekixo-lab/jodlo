@@ -89,3 +89,11 @@ tasks.register<JavaExec>("verifyPublicFreshness") {
     classpath = sourceSets["test"].runtimeClasspath
     mainClass.set("com.rekixo.jodlo.core.network.PublicCacheFreshnessTestKt")
 }
+
+tasks.register<JavaExec>("verifyPagination") {
+    group = "verification"
+    description = "Verify headless Category cursor/Search offset pagination against races and stale pages"
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.rekixo.jodlo.core.network.HeadlessCatalogPaginationTestKt")
+}
