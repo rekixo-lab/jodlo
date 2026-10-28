@@ -57,7 +57,9 @@ Android native Kotlin (com.rekixo.jodlo)        Approved web site (future)
           Google Pay India/merchant PSP OR Google Play Billing
 ```
 
-**Implemented locally:** `GET /api/v1/health` and a binding-gated, read-only `GET /api/v1/catalog?lang=en|hi` backed by a first versioned public-category D1 migration. The catalog is empty until approved taxonomy entries exist; without a configured local D1 binding it returns 503. **No live D1 database exists.** R2/Queues, cloud deployment, Android app, UI, calls and payment checkout remain unimplemented. No cloud resource or DNS created.
+**First Android-compatible Kotlin code (2026-10-28):** a [nonvisual headless networking Core](apps/android/README.md) now exists and is compiled/tested in CI without Android SDK, Activity, Layout, Theme or UI. It plans the existing secure Search, Category browse, Worker opt-in and category-only Listing routes and has a bounded one-shot HTTPS adapter. This is **not yet a native Android app/APK or Android UI**; M-004 and M-008 still gate visual screens and real OAuth, and location M-003 remains entirely unset.
+
+**Implemented locally:** `GET /api/v1/health` and a binding-gated, read-only `GET /api/v1/catalog?lang=en|hi` backed by a first versioned public-category D1 migration. The catalog is empty until approved taxonomy entries exist; without a configured local D1 binding it returns 503. **No live D1 database exists.** R2/Queues, cloud deployment, actual Android app/APK and UI, calls and payment checkout remain unimplemented. No cloud resource or DNS created.
 
 ### Android Activity/class design — proposed, not a built app
 

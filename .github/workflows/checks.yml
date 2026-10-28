@@ -32,5 +32,16 @@ jobs:
         run: npm run db:build:local
       - name: TypeScript strict checks
         run: npm run typecheck
+      - name: Install JDK 17 for nonvisual Kotlin protocol checks
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install pinned Gradle for Android-compatible Kotlin Core
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Compile Kotlin networking core and execute real JVM contract tests (no Android SDK or deployment)
+        run: gradle -p apps/android :core:verifyContracts --no-daemon
       - name: Wrangler bundle check (no deployment)
         run: npm run build:api

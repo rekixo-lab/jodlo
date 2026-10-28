@@ -1,0 +1,16 @@
+plugins {
+    kotlin("jvm") version "1.9.24"
+}
+repositories {
+    mavenCentral()
+}
+kotlin {
+    jvmToolchain(17)
+}
+tasks.register<JavaExec>("verifyContracts") {
+    group = "verification"
+    description = "Compile and run the JODLO Android-compatible headless Kotlin contract suite"
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.rekixo.jodlo.core.network.JodloApiCoreTestKt")
+}
