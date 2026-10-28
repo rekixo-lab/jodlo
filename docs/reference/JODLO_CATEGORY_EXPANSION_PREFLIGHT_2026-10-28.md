@@ -33,3 +33,7 @@ The draft preflight does NOT imply the user-facing Android search discovers all 
 **M-005:** define a category-by-category review policy that can support *broad safe activation without a small pilot allowlist*, including exclusions/verification for regulated, illegal, risky or misclassified services and human Hindi/English editorial checks. Only after that decision should a separately reviewed, signed-off ID manifest or D1 migration be prepared. This offline report itself must NEVER be treated as a public approval.
 
 Verify PR head and separately merged-main GitHub Actions before stating tests are green.
+
+## 2026-10-28 reviewer packets
+
+Human reviewer workflow now available in [45 deterministic small review packets](JODLO_CATEGORY_HUMAN_REVIEW_PACKETS_2026-10-28.md), each with source-backed Service and collision samples. No approval or activation.
