@@ -1,5 +1,6 @@
 package com.rekixo.jodlo.core.network
 
+import java.io.ByteArrayInputStream
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 
@@ -66,6 +67,21 @@ fun main() {
     rejects("no arbitrary base path") { HttpsTransport("https://example.com/foreign") }
     rejects("no network on main thread") {
         HttpsTransport("https://example.com").execute(JodloRoutes.publicListings("plumber"))
+    }
+    // Read-limit and strict UTF-8 tests run without HTTPS, an Android SDK or credentials.
+    val exactlyMax = "a".repeat(65_536).toByteArray(StandardCharsets.UTF_8)
+    check(readBoundedUtf8Reply(ByteArrayInputStream(exactlyMax)).length == 65_536)
+    val splitHindi = "a".repeat(4095) + "ह" // 3-byte UTF-8 crosses 4096-byte chunks.
+    check(readBoundedUtf8Reply(ByteArrayInputStream(splitHindi.toByteArray(
+        StandardCharsets.UTF_8))) == splitHindi)
+    rejects("oversized streamed response is rejected before buffering") {
+        readBoundedUtf8Reply(ByteArrayInputStream(ByteArray(65_537) { 'a'.code.toByte() }))
+    }
+    rejects("malformed server UTF-8 cannot be silently replaced") {
+        readBoundedUtf8Reply(ByteArrayInputStream(byteArrayOf(0x7b, 0xc3.toByte(), 0x28, 0x7d)))
+    }
+    rejects("truncated multibyte UTF-8 is not a valid reply") {
+        readBoundedUtf8Reply(ByteArrayInputStream(byteArrayOf(0x7b, 0xe0.toByte(), 0xa4.toByte())))
     }
     check(!TransportReply(200, "secret-user-data").toString().contains("secret-user-data"))
     println("JODLO Android headless Kotlin: bilingual Unicode, routes, privacy and publication safety OK")

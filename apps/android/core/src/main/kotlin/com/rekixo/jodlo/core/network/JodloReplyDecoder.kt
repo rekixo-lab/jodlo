@@ -50,6 +50,8 @@ fun <T> performOnce(call: ApiCall, send: (ApiCall) -> TransportReply,
                     decode: (TransportReply) -> ApiOutcome<T>): ApiOutcome<T> =
     try {
         decode(send(call))
+    } catch (_: InvalidReplyBodyException) {
+        ApiOutcome.Failed(FailureKind.BAD_RESPONSE, retryable = false)
     } catch (_: IOException) {
         ApiOutcome.Failed(FailureKind.OFFLINE_OR_TIMEOUT, retryable = false)
     }

@@ -1,7 +1,12 @@
 package com.rekixo.jodlo.core.network
 
+import java.io.IOException
+import java.io.InputStream
 import java.net.URI
 import java.net.URLEncoder
+import java.nio.ByteBuffer
+import java.nio.charset.CharacterCodingException
+import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
 import java.text.Normalizer
 import javax.net.ssl.HttpsURLConnection
@@ -122,6 +127,36 @@ object JodloRoutes {
         ApiCall.post(if (allDevices) "/api/v1/auth/logout-all" else "/api/v1/auth/logout", token)
 }
 
+/** An invalid server body is NOT a network failure, even if the HTTP status is 200.
+ * Do not include any attacker-controlled body bytes in exceptions or logs.
+ */
+internal class InvalidReplyBodyException : IOException("Invalid HTTP response body")
+
+/** Bound bytes BEFORE buffering them. A strict decoder rejects malformed or
+ * incomplete UTF-8 (including bytes split at the 4096-byte read boundary).
+ * Transport I/O failures remain distinct from invalid server content.
+ */
+internal fun readBoundedUtf8Reply(stream: InputStream): String {
+    val output = java.io.ByteArrayOutputStream()
+    val buffer = ByteArray(4096)
+    var size = 0
+    while (true) {
+        val n = stream.read(buffer)
+        if (n < 0) break
+        size += n
+        if (size > 65_536) throw InvalidReplyBodyException()
+        output.write(buffer, 0, n)
+    }
+    return try {
+        StandardCharsets.UTF_8.newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+            .decode(ByteBuffer.wrap(output.toByteArray())).toString()
+    } catch (_: CharacterCodingException) {
+        throw InvalidReplyBodyException()
+    }
+}
+
 /** Blocking one-shot HTTPS adapter. Caller MUST run off Android's main thread.
  * No redirects, automatic retry, location, SDK, or remote deployment by default.
  */
@@ -151,19 +186,7 @@ class HttpsTransport(origin: String) {
             }
             val status = c.responseCode
             val stream = if (status in 200..399) c.inputStream else c.errorStream
-            val text = stream?.use { input ->
-                val output = java.io.ByteArrayOutputStream()
-                val buffer = ByteArray(4096)
-                var size = 0
-                while (true) {
-                    val n = input.read(buffer)
-                    if (n < 0) break
-                    size += n
-                    require(size <= 65_536) { "Reply over 64KiB" }
-                    output.write(buffer, 0, n)
-                }
-                output.toString(StandardCharsets.UTF_8.name())
-            } ?: ""
+            val text = stream?.use(::readBoundedUtf8Reply) ?: ""
             return TransportReply(status, text)
         } finally { c.disconnect() }
     }
