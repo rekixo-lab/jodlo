@@ -105,13 +105,16 @@ export function buildLegacyReview(snapshot) {
     categories:rows,
   };
 }
-export function loadPinnedLegacyReview(root=ROOT) {
+export function loadPinnedLegacySnapshot(root=ROOT) {
   const compressed=readFileSync(join(root,
     "docs/reference/data/finworkar-catalog-bilingual-2026-10-27.json.gz"));
   if(hash(compressed)!==GZ_SHA)throw Error("Reference gzip SHA mismatch");
   const raw=gunzipSync(compressed);
   if(hash(raw)!==JSON_SHA)throw Error("Reference JSON SHA mismatch");
-  return buildLegacyReview(JSON.parse(raw.toString("utf8")));
+  return JSON.parse(raw.toString("utf8"));
+}
+export function loadPinnedLegacyReview(root=ROOT) {
+  return buildLegacyReview(loadPinnedLegacySnapshot(root));
 }
 export function assertPinnedReview(report) {
   const s=report.summary;

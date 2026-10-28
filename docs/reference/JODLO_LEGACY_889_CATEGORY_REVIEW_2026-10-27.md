@@ -31,3 +31,7 @@ Use the work queue to prioritize source corrections and trustworthy **category-s
 Next stage (future separate approval): review true Category safety rules and mark accepted IDs explicitly under M-005; human-check Hindi/English synonym scopes and conflicting leaf labels; approve M-003 area/consent/retention before actual Bilaspur/Raipur location matching; UI needs M-004 visual approval; release needs M-007. This work itself **does not block approved active-category worker immediate self-publication** (ADR-0009), no auto verification badge.
 
 Verification: exact PR head and subsequent merged-main GitHub Actions must both succeed before claiming fully tested.
+
+## 2026-10-28 Service-level evidence companion
+
+The complete [7,267-Service source-locked quality review](JODLO_LEGACY_7267_SERVICE_REVIEW_2026-10-28.md) is now derived on demand using the same pinned archive reader, not imported into JODLO Search/D1. Review every parent-scoped Service before ever adding synonyms. All 889 Categories remain unapproved by this review alone.
