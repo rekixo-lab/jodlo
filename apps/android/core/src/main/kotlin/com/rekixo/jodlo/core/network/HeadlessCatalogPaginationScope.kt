@@ -25,6 +25,24 @@ enum class PageCompletion { APPLIED, DISCARDED, DEFERRED, BLOCKED }
 
 /** Headless destination names, NOT a screen, layout, Activity or Android UI. */
 enum class CustomerDestination { BROWSE, SEARCH, PUBLIC_LISTINGS }
+
+/** Public, bounded request intent only. Never includes results, a bearer,
+ * private worker state, cursor, offset, listing ID, or a selected Category.
+ */
+data class CustomerBrowseIntent(
+    val language: Language, val availableOnly: Boolean, val pageSize: Int,
+)
+data class CustomerSearchIntent(
+    val query: String, val language: Language,
+    val availableOnly: Boolean, val pageSize: Int,
+)
+data class CustomerDiscoveryIntent(
+    val browse: CustomerBrowseIntent? = null,
+    val search: CustomerSearchIntent? = null,
+    // PUBLIC_LISTINGS is intentionally not an allowed restoration destination.
+    val destination: CustomerDestination = CustomerDestination.BROWSE,
+)
+
 data class CustomerNavigationState(
     val destination: CustomerDestination = CustomerDestination.BROWSE,
     val backDestination: CustomerDestination? = null,
@@ -52,6 +70,7 @@ data class CatalogPageSnapshot(
     val closed: Boolean, val browse: PageState, val search: PageState,
     val selection: CustomerSelectionState = CustomerSelectionState.Idle,
     val navigation: CustomerNavigationState = CustomerNavigationState(),
+    val intent: CustomerDiscoveryIntent = CustomerDiscoveryIntent(),
 )
 
 /** Headless public pagination, always called off the future Android main thread.
@@ -73,6 +92,10 @@ data class CatalogPageSnapshot(
  * Pure headless Back Navigation preserves an unexpired source page but cancels
  * selected Listings' late replies. Search/Browse can be revisited WITHOUT a
  * hidden request; worker writes and TTL still invalidate their data.
+ * Separate in-process request intents allow a later fresh GET after a
+ * failed/expired query or lifecycle recreation. Restoring intent NEVER
+ * restores server data, selection, or in-flight requests and never sends GET.
+ * No disk saving or automatic persistence is provided by this Core.
  * No polling, GPS, UI or public contact workflow.
  */
 class HeadlessCatalogPaginationScope(
@@ -112,6 +135,18 @@ class HeadlessCatalogPaginationScope(
     private var selectedSource: CustomerCategorySource? = null
     private var listingsSignal: CancellationSignal? = null
     private var destination = CustomerDestination.BROWSE
+    private var browseIntent: CustomerBrowseIntent? = null
+    private var searchIntent: CustomerSearchIntent? = null
+
+    private fun intentLocked() = CustomerDiscoveryIntent(
+        browseIntent, searchIntent,
+        when (destination) {
+            CustomerDestination.PUBLIC_LISTINGS ->
+                if (selectedSource == CustomerCategorySource.SEARCH)
+                    CustomerDestination.SEARCH else CustomerDestination.BROWSE
+            else -> destination
+        },
+    )
 
     private fun navigationLocked() = CustomerNavigationState(
         destination,
@@ -171,7 +206,83 @@ class HeadlessCatalogPaginationScope(
         if (!closed) reconcileLocked()
         CatalogPageSnapshot(
             closed, browse.state, search.state, selectionState, navigationLocked(),
+            intentLocked(),
         )
+    }
+
+    /** Capture a bounded navigation/query intent only. This is process-local
+     * data, not permission to serialize a query to disk or remote analytics.
+     * A closed scope cannot provide a resumable request.
+     */
+    fun captureRevisitIntent(): CustomerDiscoveryIntent? = synchronized(lock) {
+        if (closed) null else {
+            reconcileLocked()
+            intentLocked()
+        }
+    }
+
+    /** Restore ONLY request parameters onto a lifecycle-new scope. Validate
+     * the complete candidate BEFORE clearing prior state, so malformed or
+     * tampered inputs cannot erase the current state or trigger a GET.
+     * Results are ALWAYS RefreshRequired, never rehydrated as Ready.
+     */
+    fun restoreRevisitIntent(intent: CustomerDiscoveryIntent): PageCompletion {
+        require(intent.destination != CustomerDestination.PUBLIC_LISTINGS) {
+            "Listings cannot be restored without a fresh Category selection"
+        }
+        intent.browse?.let {
+            JodloRoutes.browse(it.language, it.availableOnly, it.pageSize)
+        }
+        intent.search?.let {
+            JodloRoutes.search(it.query, it.language, it.availableOnly, true, it.pageSize, 0)
+            require(it.query == Normalizer.normalize(it.query.trim(), Normalizer.Form.NFC)) {
+                "Search intent must be normalized"
+            }
+        }
+        require(intent.destination != CustomerDestination.SEARCH || intent.search != null) {
+            "Missing Search intent"
+        }
+        return synchronized(lock) {
+            if (closed) return@synchronized PageCompletion.DISCARDED
+            reconcileLocked()
+            browse.invalidate()
+            search.invalidate()
+            resetSelectionLocked(refresh = false)
+            browseIntent = intent.browse
+            searchIntent = intent.search
+            if (browseIntent == null) browse.close()
+            if (searchIntent == null) search.close()
+            destination = intent.destination
+            PageCompletion.APPLIED
+        }
+    }
+
+    /** Clear the current Search query, page results, choices and any
+     * Search-derived Listings. Independent Browse cache/intent is preserved.
+     * Clear is not a search request, so it sends no network traffic.
+     */
+    fun clearSearchIntent(): Boolean = synchronized(lock) {
+        if (closed) return@synchronized false
+        reconcileLocked()
+        search.close()
+        searchIntent = null
+        resetSelectionForLaneLocked(search, refresh = false)
+        if (destination == CustomerDestination.SEARCH) destination = CustomerDestination.BROWSE
+        true
+    }
+
+    /** Explicitly forget all public discovery intent and results (logout,
+     * new customer session, or caller-directed hard reset). No remote calls.
+     */
+    fun resetDiscovery(): Boolean = synchronized(lock) {
+        if (closed) return@synchronized false
+        browse.close()
+        search.close()
+        resetSelectionLocked(refresh = false)
+        browseIntent = null
+        searchIntent = null
+        destination = CustomerDestination.BROWSE
+        true
     }
 
     /** Headless routing only; switching destinations never starts a GET.
@@ -247,9 +358,15 @@ class HeadlessCatalogPaginationScope(
     private fun admit(
         lane: Lane, first: Boolean, hasNext: (PageState.Ready) -> Boolean,
         destinationOnFirst: CustomerDestination? = null,
+        newBrowseIntent: CustomerBrowseIntent? = null,
+        newSearchIntent: CustomerSearchIntent? = null,
     ): Admission = synchronized(lock) {
         if (closed) return@synchronized Admission.Discarded
         reconcileLocked()
+        if (first) {
+            if (lane === browse) browseIntent = requireNotNull(newBrowseIntent)
+            if (lane === search) searchIntent = requireNotNull(newSearchIntent)
+        }
         if (marker.writeInFlight) {
             lane.invalidate()
             resetSelectionForLaneLocked(lane, refresh = true)
@@ -276,9 +393,13 @@ class HeadlessCatalogPaginationScope(
         lane: Lane, first: Boolean,
         hasNext: (PageState.Ready) -> Boolean,
         destinationOnFirst: CustomerDestination? = null,
+        newBrowseIntent: CustomerBrowseIntent? = null,
+        newSearchIntent: CustomerSearchIntent? = null,
         request: (PageState.Ready?) -> ApiOutcome<PageState.Ready>,
     ): PageCompletion {
-        val admission = admit(lane, first, hasNext, destinationOnFirst)
+        val admission = admit(
+            lane, first, hasNext, destinationOnFirst, newBrowseIntent, newSearchIntent,
+        )
         val ticket = when (admission) {
             is Admission.Accepted -> admission.ticket
             Admission.Blocked -> return PageCompletion.BLOCKED
@@ -341,6 +462,7 @@ class HeadlessCatalogPaginationScope(
         return run(
             browse, first = true, hasNext = { true },
             destinationOnFirst = CustomerDestination.BROWSE,
+            newBrowseIntent = CustomerBrowseIntent(language, availableOnly, pageSize),
         ) {
             browsePage(language, availableOnly, pageSize, null)
         }
@@ -385,6 +507,9 @@ class HeadlessCatalogPaginationScope(
         return run(
             search, first = true, hasNext = { true },
             destinationOnFirst = CustomerDestination.SEARCH,
+            newSearchIntent = CustomerSearchIntent(
+                normalized, language, availableOnly, pageSize,
+            ),
         ) {
             searchPage(normalized, language, availableOnly, pageSize, 0, true)
         }
@@ -543,5 +668,7 @@ class HeadlessCatalogPaginationScope(
         search.close()
         resetSelectionLocked(refresh = false)
         destination = CustomerDestination.BROWSE
+        browseIntent = null
+        searchIntent = null
     }
 }
