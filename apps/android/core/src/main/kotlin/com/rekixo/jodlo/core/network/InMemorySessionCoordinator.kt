@@ -49,6 +49,12 @@ class InMemorySessionCoordinator(
     private var active: Active? = null
     private var generation: Long = 0
     private var latestSignInAttempt: Long = 0
+    // Process-local, non-secret public-data barrier. A write can affect public
+    // Category availability/search/listings even when its reply is uncertain.
+    // Keep the version across logout and replacement; an older write can finish
+    // on the server after its original session was discarded.
+    private var publicReadRevision: Long = 0
+    private var writesOnWire: Int = 0
     private val googleBackend = BackendGoogleSessionExchange(authSender)
 
     private fun forget() {
@@ -83,6 +89,17 @@ class InMemorySessionCoordinator(
     internal fun privateReadFingerprint(): Pair<Long, Long> = synchronized(lock) {
         readableActive()
         generation to (active?.writeRevision ?: 0L)
+    }
+
+    /** A non-secret marker shared with read-only Customer scopes in this process.
+     * Both start and finish of each worker write invalidate previous public GET
+     * responses, including a GET sent while a write was still in flight.
+     * This is local invalidation, NOT push updates from unrelated devices.
+     */
+    internal data class PublicReadMarker(val revision: Long, val writeInFlight: Boolean)
+
+    internal fun publicReadMarker(): PublicReadMarker = synchronized(lock) {
+        PublicReadMarker(publicReadRevision, writesOnWire > 0)
     }
 
     /** Snapshot contains ONLY public account/worker state. */
@@ -175,6 +192,8 @@ class InMemorySessionCoordinator(
         if (mutation) {
             current.mutationInFlight = true
             current.writeRevision += 1
+            publicReadRevision += 1
+            writesOnWire += 1
             // A read begun before this worker write must not apply afterwards.
             current.workerRevision += 1
         }
@@ -223,6 +242,10 @@ class InMemorySessionCoordinator(
             // Clean up even when an injected adapter throws. Do not touch any
             // newer login which replaced this session while the call ran.
             if (mutation) synchronized(lock) {
+                // Runs after success, failure, cancellation or unexpected fake
+                // transport exception. The response might still have committed.
+                writesOnWire -= 1
+                publicReadRevision += 1
                 active?.takeIf { it.version == captured.version }?.mutationInFlight = false
             }
         }
