@@ -11,7 +11,7 @@
     "apps/api"
   ],
   "scripts": {
-    "test": "node --experimental-strip-types --test apps/api/tests/*.test.mjs scripts/verify-design-guards.test.mjs scripts/verify-founder-gates.test.mjs scripts/legacy-category-review.test.mjs scripts/legacy-service-review.test.mjs scripts/legacy-phrase-review.test.mjs scripts/editorial-phrase-proposals.test.mjs scripts/catalog-activation-preflight.test.mjs scripts/catalog-review-packets.test.mjs scripts/verify-m005-first-scope-review.test.mjs scripts/verify-m005-official-evidence.test.mjs scripts/m005-scope-bound-review-intake.test.mjs",
+    "test": "node --experimental-strip-types --test apps/api/tests/*.test.mjs scripts/verify-design-guards.test.mjs scripts/verify-founder-gates.test.mjs scripts/legacy-category-review.test.mjs scripts/legacy-service-review.test.mjs scripts/legacy-phrase-review.test.mjs scripts/editorial-phrase-proposals.test.mjs scripts/catalog-activation-preflight.test.mjs scripts/catalog-review-packets.test.mjs scripts/verify-m005-first-scope-review.test.mjs scripts/verify-m005-official-evidence.test.mjs scripts/m005-scope-bound-review-intake.test.mjs scripts/verify-kotlin-suite-coverage.test.mjs",
     "typecheck": "tsc --noEmit -p apps/api/tsconfig.json",
     "check": "npm run docs:check && npm run design:check && npm run founder:check && npm run reference:check && npm run test && npm run typecheck",
     "dev:api": "wrangler dev --config apps/api/wrangler.local.jsonc --local",
@@ -38,7 +38,8 @@
     "catalog:m005-official-evidence": "node scripts/verify-m005-official-evidence.mjs --summary",
     "catalog:m005-evidence-summary": "node scripts/m005-scope-bound-review-intake.mjs --summary",
     "catalog:m005-evidence-template": "node scripts/m005-scope-bound-review-intake.mjs --template",
-    "catalog:m005-evidence-card": "node scripts/m005-scope-bound-review-intake.mjs"
+    "catalog:m005-evidence-card": "node scripts/m005-scope-bound-review-intake.mjs",
+    "kotlin:coverage-check": "node scripts/verify-kotlin-suite-coverage.mjs"
   },
   "devDependencies": {
     "typescript": "~5.8.3",

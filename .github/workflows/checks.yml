@@ -22,6 +22,8 @@ jobs:
         run: npm run founder:check
       - name: Verify uploaded historical bilingual catalog reference (no deps)
         run: npm run reference:check
+      - name: Enforce exhaustive Kotlin JVM suite wiring (no deps)
+        run: npm run kotlin:coverage-check
       - name: Install dependencies (jose verified JWT library; no deployment)
         run: npm install --no-audit --no-fund
       - name: Node API and design-guard fixture tests
@@ -42,6 +44,6 @@ jobs:
         with:
           gradle-version: '8.10.2'
       - name: Compile Kotlin networking core and execute real JVM contract tests (no Android SDK or deployment)
-        run: gradle -p apps/android :core:verifyContracts :core:verifyReplies :core:verifyRepositories :core:verifySessions :core:verifyAuthExchange :core:verifyCancellation :core:verifyReadScope :core:verifyWorkerWriteReview :core:verifyPublicRefresh :core:verifyPublicFreshness :core:verifyPagination :core:verifyCustomerSelection :core:verifyBackNavigation :core:verifyIntentRecovery :core:verifyDiscoveryE2E :core:verifyOfflineRecovery :core:verifyCustomerPresentation :core:verifyActorBoundaries :core:verifyWorkerDashboard :core:verifyPublicationReconciliation :core:verifyLifecycleRegression --no-daemon
+        run: gradle -p apps/android :core:verifyHeadlessCore --no-daemon
       - name: Wrangler bundle check (no deployment)
         run: npm run build:api
