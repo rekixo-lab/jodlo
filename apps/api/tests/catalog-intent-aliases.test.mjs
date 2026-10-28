@@ -3,7 +3,7 @@ import test from "node:test";
 import worker from "../src/index.ts";
 import { openLocalDatabase } from "./helpers/local-db.mjs";
 import {
-  resolveConservativeWorkIntent, validateWorkAliasRegistry, WORK_INTENT_ALIASES,
+  resolveConservativeWorkIntent, ambiguousWorkCategoryIds, validateWorkAliasRegistry, WORK_INTENT_ALIASES,
 } from "../src/modules/catalog/intent-aliases.ts";
 
 const url="https://jodlo.rekixo.com/api/v1/catalog/search";
@@ -225,4 +225,100 @@ test("new phrases require an actual active category in D1 and honor existing ava
       assert.deepEqual((await f.get(hindi)).data.data.categories,[]);
     }
   } finally { f.db.close(); }
+});
+
+
+test("opt-in ambiguity returns all D1-active trades while old DTO stays unchanged",async()=>{
+  const f=setup();
+  try {
+    for(const [q,ids] of [
+      ["I need tap repair and wooden furniture",["plumber","carpenter"]],
+      ["मुझे नल टपक रहा है और लकड़ी का फर्नीचर चाहिए",["plumber","carpenter"]],
+    ]){
+      assert.deepEqual(ambiguousWorkCategoryIds(q),ids.slice().sort());
+      const old=(await f.get(q)).data.data;
+      assert.deepEqual(old,{language:"en",query:q,categories:[],nextOffset:null});
+      const fresh=(await f.get(q,"&includeChoices=1&lang=hi")).data.data;
+      assert.deepEqual(fresh.categories,[]);
+      assert.equal(fresh.needsChoice,true);
+      assert.deepEqual(fresh.choices.map(x=>x.id),ids);
+      assert.deepEqual(fresh.choices.map(x=>x.name),["प्लंबर","बढ़ई"]);
+      assert.ok(fresh.choices.every(x=>Object.keys(x).sort().join(",")==="id,name,slug"));
+    }
+    assert.equal((await f.get("I need tap repair","&includeChoices=1")).data.data.needsChoice,undefined);
+  } finally { f.db.close(); }
+});
+test("choices require confirmation even when just one active or published eligible trade remains",async()=>{
+  const f=setup();
+  try {
+    const q="I need tap repair and wooden furniture",suffix="&includeChoices=1";
+    f.db.prepare("UPDATE categories SET is_active=0 WHERE id='carpenter'").run();
+    let x=(await f.get(q,suffix)).data.data;
+    assert.equal(x.needsChoice,true);
+    assert.deepEqual(x.choices.map(c=>c.id),["plumber"]);
+    f.db.prepare("UPDATE categories SET is_active=1 WHERE id='carpenter'").run();
+    assert.deepEqual((await f.get(q,suffix+"&availableOnly=1")).data.data.choices,[]);
+    f.db.prepare("INSERT INTO accounts(id) VALUES('worker-ambiguity-test')").run();
+    f.db.prepare("INSERT INTO worker_profiles(account_id) VALUES('worker-ambiguity-test')").run();
+    f.db.prepare("INSERT INTO worker_listings(id,worker_account_id,category_id) VALUES(?,?,?)")
+      .run("99999999-9999-4999-8999-999999999999","worker-ambiguity-test","plumber");
+    x=(await f.get(q,suffix+"&availableOnly=1")).data.data;
+    assert.equal(x.needsChoice,true);
+    assert.deepEqual(x.choices,[{id:"plumber",slug:"plumber",name:"Plumber"}]);
+    for(const forbidden of ["worker-ambiguity-test","worker_account_id","phone","lat","lng",
+      "location","verified","moderation_status","owner"]) {
+      assert.equal(JSON.stringify(x).includes(forbidden),false,forbidden);
+    }
+    f.db.prepare("UPDATE worker_listings SET moderation_status='hidden'").run();
+    assert.deepEqual((await f.get(q,suffix+"&availableOnly=1")).data.data.choices,[]);
+  } finally {f.db.close();}
+});
+test("unrelated context, mixed script and suspicious SQL never result in choices",async()=>{
+  const f=setup();
+  try {
+    for(const q of [
+      "I need tap repair and wooden furniture medical advice",
+      "tap repair and wooden furniture in Raipur",
+      "mujhe tap repair and wooden furniture chahiye",
+      "I need नल टपक रहा है and wooden furniture",
+      "tap repair and wooden furniture' OR 1=1",
+      "tap repair; wooden furniture",
+    ]){
+      assert.deepEqual(ambiguousWorkCategoryIds(q),[],q);
+      const result=(await f.get(q,"&includeChoices=1")).data.data;
+      assert.deepEqual(result.categories,[],q);
+      assert.equal(Object.hasOwn(result,"choices"),false,q);
+    }
+  } finally {f.db.close();}
+});
+test("opt-in choice flag rejects bad values, duplicates, paginated choices",async()=>{
+  const f=setup();
+  try {
+    for(const suffix of [
+      "&includeChoices=0","&includeChoices=true","&includeChoices=1&includeChoices=1",
+      "&includeChoices=1&offset=1","&includeChoices=1&offset=100",
+      "&includeChoices=1&extra=1",
+    ]){
+      const x=await f.get("I need tap repair and wooden furniture",suffix);
+      assert.equal(x.status,400,suffix);
+      assert.equal(x.data.error.code,"INVALID_QUERY",suffix);
+    }
+    assert.equal((await f.get("plumber","&includeChoices=1&offset=0")).status,200);
+    const x=(await f.get("plumber")).data.data;
+    assert.deepEqual(x.categories,[{id:"plumber",slug:"plumber",name:"Plumber"}]);
+    assert.equal(Object.hasOwn(x,"needsChoice"),false);
+    const post=await worker.fetch(new Request(url+"?q=plumber&includeChoices=1",
+      {method:"POST"}),{DB:f.db});
+    assert.equal(post.status,405);
+  } finally {f.db.close();}
+});
+test("missing D1 or SQL exception fails closed and never leaks internal data",async()=>{
+  const uri=url+"?q="+encodeURIComponent("tap repair and wooden furniture")+"&includeChoices=1";
+  const noDb=await worker.fetch(new Request(uri));
+  assert.equal(noDb.status,503);
+  const fail=await worker.fetch(new Request(uri),{
+    DB:{prepare(){throw new Error("SECRET_CATEGORY_JOIN");}},
+  });
+  assert.equal(fail.status,503);
+  assert.equal((await fail.text()).includes("SECRET_CATEGORY_JOIN"),false);
 });

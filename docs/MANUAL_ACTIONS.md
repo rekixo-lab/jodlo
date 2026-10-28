@@ -148,3 +148,7 @@ The next nonvisual, offline [phrase collision review](reference/JODLO_LEGACY_PAR
 ### 2026-10-28 — Reviewer phrase proposal gate, no credentials/setup now
 
 The [editorial candidate contract](reference/JODLO_EDITORIAL_PHRASE_PROPOSALS_2026-10-28.md) is strictly local and **not approved** for public Search: all rows require native-language meaning, Category scope and founder M-005 real Category authorization. The ten historical first-wave IDs used for an example batch are NOT a launch decision. M-003 location privacy, M-004 actual visual UI and M-007 production remain outstanding; no extra founder account action now, and no Cloudflare or private worker data.
+
+### 2026-10-28 — Opt-in Search disambiguation; no manual owner setup yet
+
+The existing Search route now supports a strictly optional, D1-active includeChoices=1 facet for known dual-trade intents. This is technical backend infrastructure only; it does not decide the M-005 real Category activation policy or import human-unapproved words. M-004 visual choice UI, M-003 real locality privacy and M-007 production are still gated. No cloud/provider action now.

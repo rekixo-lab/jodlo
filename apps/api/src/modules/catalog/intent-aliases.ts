@@ -156,25 +156,43 @@ export function validateWorkAliasRegistry(rows: readonly IntentAlias[]): string[
 const REGISTRY_ERRORS=validateWorkAliasRegistry(WORK_INTENT_ALIASES);
 if (REGISTRY_ERRORS.length) throw new Error("Invalid JODLO category alias registry");
 
-/** Suggestion evidence only. Never automatic posting or claim of qualification. */
-export function resolveConservativeWorkIntent(raw: string): WorkIntent {
-  const parsed = tokenize(raw);
-  if (!parsed) return NONE;
-  const hits = WORK_INTENT_ALIASES
-    .filter(a => a.locale === parsed.locale && validCategoryId(a.categoryId))
-    .map(a => ({ alias: a, at: phraseOffset(parsed.words, a.phrase) }))
-    .filter(hit => hit.at >= 0);
-  const distinct = new Set(hits.map(hit => hit.alias.categoryId));
-  if (distinct.size > 1) return AMBIGUOUS;
-  if (distinct.size === 0) return NONE;
+/** Internal explicit-only matching; ambiguous matches retain ALL trade IDs.
+ * Reject unsupported extra words even when two curated phrases are present,
+ * so unrelated context cannot accidentally expose an apparent choice.
+ */
+type InternalMatch =
+  | Readonly<{ kind: "unique"; categoryId: string }>
+  | Readonly<{ kind: "ambiguous"; categoryIds: readonly string[] }>
+  | Readonly<{ kind: "none" }>;
 
-  const allowed = parsed.locale === "hi" ? HINDI_CONTEXT : ENGLISH_CONTEXT;
-  for (const { alias, at } of hits) {
-    const remaining = parsed.words.filter((_word, i) =>
-      i < at || i >= at + alias.phrase.split(" ").length);
-    if (remaining.every(word => allowed.has(word))) {
-      return Object.freeze({ kind: "unique", categoryId: alias.categoryId });
-    }
-  }
-  return NONE;
+function matchConservativeWorkIntent(raw: string): InternalMatch {
+  const parsed=tokenize(raw);
+  if(!parsed) return {kind:"none"};
+  const hits=WORK_INTENT_ALIASES
+    .filter(a=>a.locale===parsed.locale && validCategoryId(a.categoryId))
+    .map(a=>({alias:a,tokens:a.phrase.split(" "),at:phraseOffset(parsed.words,a.phrase)}))
+    .filter(hit=>hit.at>=0);
+  if(hits.length===0)return {kind:"none"};
+  const covered=new Set<number>();
+  for(const hit of hits) for(let i=hit.at;i<hit.at+hit.tokens.length;i++) covered.add(i);
+  const filler=parsed.locale==="hi"?HINDI_CONTEXT:ENGLISH_CONTEXT;
+  if(parsed.words.some((word,index)=>!covered.has(index)&&!filler.has(word)))
+    return {kind:"none"};
+  const ids=[...new Set(hits.map(hit=>hit.alias.categoryId))].sort();
+  if(ids.length>1)return {kind:"ambiguous",categoryIds:ids};
+  return {kind:"unique",categoryId:ids[0]};
+}
+
+/** Existing backwards-compatible result: ambiguous never autoselects. */
+export function resolveConservativeWorkIntent(raw: string): WorkIntent {
+  const match=matchConservativeWorkIntent(raw);
+  return match.kind==="ambiguous"?AMBIGUOUS:match;
+}
+
+/** Explicit choices only; every ID MUST still pass D1 active/eligibility rules.
+ * Never interpret these bare candidate IDs as publicly approved by themselves.
+ */
+export function ambiguousWorkCategoryIds(raw: string): readonly string[] {
+  const match=matchConservativeWorkIntent(raw);
+  return match.kind==="ambiguous"?match.categoryIds:[];
 }
