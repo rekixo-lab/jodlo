@@ -56,7 +56,10 @@ object JodloRoutes {
     private val CURSOR = Regex("(0|[1-9][0-9]{0,6}):([A-Za-z0-9_-]{1,64})")
     private val CONTROL = Regex("[\\u0000-\\u001f\\u007f-\\u009f]")
     private fun enc(s: String) = URLEncoder.encode(s, StandardCharsets.UTF_8.name())
-    private fun checkId(id: String) = require(CATEGORY.matches(id)) { "Invalid Category ID" }
+    internal fun requireCategoryId(id: String) =
+        require(CATEGORY.matches(id)) { "Invalid Category ID" }
+    internal fun requireListingId(id: String) =
+        require(LISTING.matches(id)) { "Invalid opaque Listing ID" }
 
     fun browse(lang: Language, availableOnly: Boolean = false,
                limit: Int? = null, after: String? = null): ApiCall {
@@ -85,7 +88,7 @@ object JodloRoutes {
     }
 
     fun publicListings(categoryId: String): ApiCall {
-        checkId(categoryId)
+        requireCategoryId(categoryId)
         return ApiCall.get("/api/v1/listings?categoryId=${enc(categoryId)}")
     }
     /** A Google ID token is client proof, NOT a JODLO session. The backend
@@ -107,12 +110,12 @@ object JodloRoutes {
 
     /** ADR-0009: explicit user-selected ID only, verified by active D1 on server. */
     fun publishListing(token: String, categoryId: String): ApiCall {
-        checkId(categoryId)
+        requireCategoryId(categoryId)
         return ApiCall.post("/api/v1/me/listings", token,
             "{\"categoryId\":\"$categoryId\"}")
     }
     fun unpublishListing(token: String, listingId: String): ApiCall {
-        require(LISTING.matches(listingId)) { "Invalid opaque Listing ID" }
+        requireListingId(listingId)
         return ApiCall.delete("/api/v1/me/listings?id=${enc(listingId)}", token)
     }
     fun logout(token: String, allDevices: Boolean = false): ApiCall =
