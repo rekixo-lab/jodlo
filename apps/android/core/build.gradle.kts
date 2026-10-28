@@ -73,3 +73,11 @@ tasks.register<JavaExec>("verifyWorkerWriteReview") {
     classpath = sourceSets["test"].runtimeClasspath
     mainClass.set("com.rekixo.jodlo.core.network.HeadlessWorkerWriteScopeTestKt")
 }
+
+tasks.register<JavaExec>("verifyPublicRefresh") {
+    group = "verification"
+    description = "Verify public browse/search/listing refresh barrier during uncertain worker writes"
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.rekixo.jodlo.core.network.PublicReadRefreshBarrierTestKt")
+}
