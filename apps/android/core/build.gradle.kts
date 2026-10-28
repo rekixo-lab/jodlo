@@ -65,3 +65,11 @@ tasks.register<JavaExec>("verifyReadScope") {
     classpath = sourceSets["test"].runtimeClasspath
     mainClass.set("com.rekixo.jodlo.core.network.HeadlessMarketplaceReadScopeTestKt")
 }
+
+tasks.register<JavaExec>("verifyWorkerWriteReview") {
+    group = "verification"
+    description = "Verify uncertain worker writes, read-only reconciliation and private cache invalidation"
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.rekixo.jodlo.core.network.HeadlessWorkerWriteScopeTestKt")
+}
