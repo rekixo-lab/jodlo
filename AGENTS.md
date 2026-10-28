@@ -176,3 +176,7 @@ Read [matcher QA continuation](docs/reference/JODLO_SMART_DISCOVERY_FOUNDATION_2
 ## Source-locked catalog review tooling — 2026-10-27
 
 Before making any 889-category search/seeding policy, run `npm run reference:check`, optionally inspect `npm run reference:review` and read [per-category review evidence](docs/reference/JODLO_LEGACY_889_CATEGORY_REVIEW_2026-10-27.md). All review rows are unapproved; duplicated service names across different categories are NOT aliases for automatic matching; source Safety Tiers are NOT enforcement rules. No live D1 seed or Worker/UI asset. Existing ADR-0009 immediate publish **only in approved-active categories** persists, along with M-003/M-004/M-005/M-007 gates and Hindi/English-only ADR-0008.
+
+## 2026-10-28 — Mandatory Service-vocabulary safety review before synonyms
+
+Before broader Hindi/English work-phrase matcher changes, run `npm run reference:check` and consult the source-locked [7,267-Service review](docs/reference/JODLO_LEGACY_7267_SERVICE_REVIEW_2026-10-28.md). Same English/Hindi Service label may belong to different historic categories; **never globally map/merge** without explicit parent review and ambiguous-choice tests. Source ID normalization, Hindi with Latin text and missing section definitions are unresolved. `reference:services` exports ONLY a local, all-unapproved work queue, no D1 seed and no Android/Worker import. Founder M-003/M-004/M-005/M-007 still gate location/UI/real categories/production. Preserve ADR-0008 and ADR-0009.
