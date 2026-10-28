@@ -1,6 +1,6 @@
 # JODLO Native Android — Activity, component and feature architecture
 
-**Stage:** Architecture proposal only. No Android application code or UI screen has been created/approved. Android application ID must be **`com.rekixo.jodlo`**. Kotlin native, optimized for lower-end Android devices and Hindi/Hinglish.
+**Stage (2026-10-28):** A [standalone Kotlin networking core](../apps/android/README.md) has been introduced and compiled in CI, with **no Android APK, Activity, Android SDK integration or UI screen created/approved**. The visual architecture below remains an unimplemented proposal. Android application ID must be **`com.rekixo.jodlo`**. Kotlin native, targeting lower-end Android devices; Hindi (Devanagari) and English ONLY (ADR-0008).
 
 ## Why we are changing the current structure
 Finworkar has ~2472-line `HomeActivity.java`, ~3508-line `GuidedAddPostActivity.java`, ~2254-line `CallService.kt`, and central `FinFirebase.java` exposing Auth/Firestore/Functions/Storage directly. This is a source-level observation. JODLO **must not** reproduce oversized Activities which own networking, permission state, business rules, sorting, analytics and UI simultaneously. Keep useful requirements and safety tests, not implementation baggage.
@@ -79,7 +79,7 @@ No vendor/provider selected. No WebRTC media transmitted through the JSON Worker
 - Bounded Room/Disk image cache, DataStore settings, avoid huge bitmaps, lazy lists, loading/error/empty states.
 - Limit dependency/SDK size; remove unused Ads/vision/animations/RTC from initial build until required.
 - Track startup time, frame jank, memory, ANR, APK size, API p95 and payload sizes on real low-end Android hardware; values in architecture research are **targets, not measured results**.
-- Hindi/Hinglish copy, accessible touch targets and offline/slow-mobile UX. Exact visuals require founder approval.
+- Hindi (Devanagari) and English copy only, accessible touch targets and offline/slow-mobile UX. Exact visuals require founder approval.
 
 ## UI approval checkpoint: mandatory
 Before writing Compose screens, XML layouts, themes, colors, wireframes, screenshots or store videos, present founder with **what is being proposed**, ask for their design ideas/suggestions and get explicit approval. Technical module plans can be prepared ahead of this gate. Document the final UI decisions in an ADR and roadmap. Don't claim a proposed class hierarchy is an approved design.
@@ -99,6 +99,6 @@ Before writing Compose screens, XML layouts, themes, colors, wireframes, screens
 - Professional animation is required where informative: tab indicator, screen navigation/gesture transitions, press states, sheets, loading/success/error and occasional immersive depth/3D highlights; **not endless motion on every list cell**.
 - Start with low-cost 2.5D layer transforms and optimized illustrations. Only add actual 3D renderer/complex animation SDK if justified by approved prototype and measured binary/memory/CPU/GPU/battery cost. Provide static/no-motion fallback, TalkBack and safe system animation-scale handling.
 - Run `npm run design:check` now; later Android Lint/Detekt, dark/light screenshot tests and release-mode Macrobenchmark/frame tracing on low-end devices. Static checks alone do not prove smoothness.
-- **No UI has yet been implemented or founder-approved**—this is a binding quality standard, not permission to choose the exact theme or screens.
+- **No UI has yet been implemented or founder-approved**—the new nonvisual Kotlin request/transport core is NOT an approval for theme, navigation or screens.
 
 [Design System](DESIGN_SYSTEM.md) · [Motion/3D](MOTION_3D.md) · [Reuse/Assets](REUSE_ASSET_POLICY.md) · [ADR-0005](decisions/0005-reuse-tokens-premium-motion.md).
