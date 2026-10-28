@@ -94,6 +94,33 @@ test("login denied without configuration, malformed/unknown credentials and unso
   }finally{db.close();}
 });
 
+test("login rejects duplicate JSON keys before Google verification, even with escaped names", async()=>{
+  const {db,env,fakeGoogle,getVerified}=fixture();
+  try {
+    const raw=source=>handleRequest(new Request(origin+loginPath,{
+      method:"POST",headers:{"Content-Type":"application/json"},body:source,
+    }),env,fakeGoogle);
+    for(const body of [
+      '{"idToken":"synthetic-google-id-token","idToken":"other"}',
+      '{"idToken":"other","idToken":"synthetic-google-id-token"}',
+      '{"idToken":"other","i\\u0064Token":"synthetic-google-id-token"}',
+      '{"idToken":"synthetic-google-id-token","role":"admin"}',
+      '{"idToken":{"value":"synthetic-google-id-token"}}',
+    ]){
+      const response=await raw(body);
+      assert.equal(response.status,400,body);
+      assert.equal((await response.json()).error.code,"INVALID_QUERY");
+    }
+    assert.equal(getVerified(),0,"ambiguous or nested JSON must not reach identity verification");
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM accounts").get().n,0);
+    // One member with valid JSON escapes remains compatible with JSON.parse.
+    const compatible=await raw(' { "i\\u0064Token" : "synthetic-\\u0067oogle-id-token" } ');
+    assert.equal(compatible.status,200);
+    assert.equal(getVerified(),1);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM accounts").get().n,1);
+  }finally{db.close();}
+});
+
 test("cross-account sessions isolate private worker drafts, expiry and disable block access",async()=>{
   const {db,env,fakeGoogle}=fixture();
   try {
