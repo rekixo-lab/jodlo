@@ -89,6 +89,44 @@ fun main() {
         ok("""{"language":"hi","categories":[$PLUMBER],"nextCursor":"0:plumber"}""")
     })
     check(staleCursor.browse(Language.HI,limit=1,after="0:plumber")==bad())
+
+    // The backend keyset cursor names the LAST returned category, not an
+    // arbitrary skipped anchor. Its (sort_order, id) must advance strictly.
+    val wrongCursorAnchor=RemoteCatalogRepository(RequestSender {
+        ok("""{"language":"hi","categories":[$PLUMBER],"nextCursor":"2:carpenter"}""")
+    })
+    check(wrongCursorAnchor.browse(Language.HI,limit=1)==bad())
+    val cursorBackwards=RemoteCatalogRepository(RequestSender {
+        ok("""{"language":"hi","categories":[$PLUMBER],"nextCursor":"1:plumber"}""")
+    })
+    check(cursorBackwards.browse(Language.HI,limit=1,after="2:carpenter")==bad())
+    val cursorBackwardsSameSort=RemoteCatalogRepository(RequestSender {
+        ok("""{"language":"hi","categories":[$CARPENTER],"nextCursor":"2:carpenter"}""")
+    })
+    check(cursorBackwardsSameSort.browse(Language.HI,limit=1,after="2:plumber")==bad())
+    val cursorForwardSameSort=RemoteCatalogRepository(RequestSender {
+        ok("""{"language":"hi","categories":[$PLUMBER],"nextCursor":"2:plumber"}""")
+    })
+    check(cursorForwardSameSort.browse(Language.HI,limit=1,after="2:carpenter")==
+        ApiOutcome.Ok(CatalogBrowse(Language.HI,
+            listOf(PublicCategory("plumber","plumber","प्लंबर")),"2:plumber")))
+
+    // A Search continuation must follow one FULL page. Partial/empty pages
+    // with nextOffset would skip categories and cannot be a real server page.
+    for (partial in listOf("",PLUMBER)) {
+        val implausible=RemoteCatalogRepository(RequestSender {
+            ok("""{"language":"hi","query":"प्लंबर","categories":[$partial],"nextOffset":20}""")
+        })
+        check(implausible.search("प्लंबर",Language.HI,limit=20)==bad())
+    }
+    val fullSearch=RemoteCatalogRepository(RequestSender {
+        ok("""{"language":"hi","query":"प्लंबर","categories":[$PLUMBER],"nextOffset":1}""")
+    })
+    check(fullSearch.search("प्लंबर",Language.HI,limit=1)==
+        ApiOutcome.Ok(CatalogSearch(Language.HI,"प्लंबर",
+            listOf(PublicCategory("plumber","plumber","प्लंबर")),1,
+            false,emptyList())))
+
     val wrongCategory=RemoteCatalogRepository(RequestSender {
         ok("""{"listings":[{"id":"$LISTING_ID","categoryId":"plumber"}]}""")
     })
