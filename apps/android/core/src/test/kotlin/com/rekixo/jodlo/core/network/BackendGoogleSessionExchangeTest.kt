@@ -83,13 +83,20 @@ private fun testLateLoginNeverReplacesNewerLogin() {
     var calls = 0
     val sender = RequestSender { req ->
         calls++
-        when (req.bodyUtf8()!!.decodeToString()) {
+        when (req.resource) {
+            "/api/v1/me/worker-profile" -> {
+                check(req.headers()["Authorization"] == "Bearer $ACCESS_B")
+                failure(404, "NOT_FOUND")
+            }
+            "/api/v1/auth/google" -> when (req.bodyUtf8()!!.decodeToString()) {
             """{"idToken":"$PROOF_A"}""" -> {
                 check(session.signInWithGoogleIdToken(PROOF_B) == signedIn)
                 success(ACCESS_A) // OLD response arrives last.
             }
             """{"idToken":"$PROOF_B"}""" -> success(ACCESS_B)
             else -> error("Unexpected proof")
+            }
+            else -> error("Unexpected route")
         }
     }
     session = coordinator(sender)
@@ -98,12 +105,7 @@ private fun testLateLoginNeverReplacesNewerLogin() {
     check(session.snapshot() == LoginState.SignedIn(WorkerState.UNKNOWN))
     check(calls == 2)
     // New login's token, never the earlier one, is used for private calls.
-    val privateCall = RequestSender { req ->
-        check(req.headers()["Authorization"] == "Bearer $ACCESS_B")
-        failure(404, "NOT_FOUND")
-    }
-    // For this fixture, verify the outbound private token using a shared sender.
-    check(privateCall.send(JodloRoutes.workerDraft(ACCESS_B)).status == 404)
+    check(session.checkWorker() == SessionResult.Success(WorkerState.NO_DRAFT))
 }
 
 private fun testNewerFailureStillSupersedesOldReply() {
