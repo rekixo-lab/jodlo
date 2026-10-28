@@ -188,3 +188,7 @@ Consult the [offline bilingual parent-scoped phrase review](docs/reference/JODLO
 ## 2026-10-28 — Editorial proposed phrases must never auto-activate
 
 The offline [strict candidate alias review contract](docs/reference/JODLO_EDITORIAL_PHRASE_PROPOSALS_2026-10-28.md) generates human-only work from pinned, parent-scoped service evidence. The `reference:editorial-batch` JSON MUST NOT be imported into the Worker matcher, D1, Android, or user-visible vocabulary without founder M-005 safety and human translation/meaning sign-off. The example batch's ten historical IDs are STILL unapproved and do not constrain future eventual broad catalog coverage. Keep M-003/M-004/M-007 and ADR-0008/0009 gates.
+
+## 2026-10-28 — Ambiguous phrase confirmation contract
+
+Only exact includeChoices=1 on existing Search may expose D1 ACTIVE public Category choices when two explicitly reviewed phrase matches have all words accounted for. Every choice must be backend filtered, never auto-selected/published; current worker-availableOnly facet is GLOBAL, not geo-local. Default response DTO remains unchanged. No 889 category import, editorial 32 proposals, M-003 location, M-004 visual UI or M-007 deployment. Read docs/reference/JODLO_SMART_DISCOVERY_FOUNDATION_2026-10-27.md.

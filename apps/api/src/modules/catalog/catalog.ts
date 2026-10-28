@@ -2,7 +2,7 @@ import type { D1Database } from "../../data/d1.ts";
 import { categoryIntentTerms } from "./search-phrases.ts";
 import { PUBLIC_LISTING_ELIGIBILITY } from "../workers/listings.ts";
 import { validCategoryId } from "../shared/identifiers.ts";
-import { resolveConservativeWorkIntent } from "./intent-aliases.ts";
+import { ambiguousWorkCategoryIds, resolveConservativeWorkIntent } from "./intent-aliases.ts";
 
 export type CatalogLanguage = "en" | "hi";
 export type PublicCategory = { id: string; slug: string; name: string };
@@ -123,17 +123,21 @@ export interface CatalogSearchOptions {
   limit: number;
   offset: number;
   availableOnly: boolean;
+  includeChoices: boolean;
 }
 export type CatalogSearchPage = {
   categories: PublicCategory[];
   nextOffset: number | null;
+  /** Only emitted after explicit includeChoices=1 and multi-trade evidence. */
+  needsChoice?: boolean;
+  choices?: PublicCategory[];
 };
 
 /** Exact query shape, bounded server-side regardless of client parameters.
  * NFC retains correct Hindi search while eliminating equivalent Unicode spellings.
  */
 export function parseCatalogSearch(params: URLSearchParams): CatalogSearchOptions | null {
-  const allowed = new Set(["lang", "q", "limit", "offset", "availableOnly"]);
+  const allowed = new Set(["lang", "q", "limit", "offset", "availableOnly", "includeChoices"]);
   let unknown = false;
   params.forEach((_value, key) => {
     if (!allowed.has(key) || params.getAll(key).length !== 1) unknown = true;
@@ -143,6 +147,8 @@ export function parseCatalogSearch(params: URLSearchParams): CatalogSearchOption
   if (language !== "en" && language !== "hi") return null;
   const availability = params.get("availableOnly");
   if (availability !== null && availability !== "1") return null;
+  const choices = params.get("includeChoices");
+  if(choices !== null && choices !== "1") return null;
 
   const query = (params.get("q") ?? "").trim().normalize("NFC");
   const length = [...query].length;
@@ -152,9 +158,12 @@ export function parseCatalogSearch(params: URLSearchParams): CatalogSearchOption
   const offsetRaw = params.get("offset");
   if (limitRaw !== null && !/^(?:[1-9]|1[0-9]|2[0-5])$/.test(limitRaw)) return null;
   if (offsetRaw !== null && !/^(?:0|[1-9][0-9]?|100)$/.test(offsetRaw)) return null;
+  // Choices are a bounded user decision, not another paginated search.
+  if(choices === "1" && offsetRaw !== null && offsetRaw !== "0") return null;
   return { language, query, limit: limitRaw === null ? 20 : Number(limitRaw),
     offset: offsetRaw === null ? 0 : Number(offsetRaw),
-    availableOnly: availability === "1" };
+    availableOnly: availability === "1",
+    includeChoices: choices === "1" };
 }
 
 /** Search ONLY the approved public category taxonomy: no workers, contact,
@@ -187,6 +196,19 @@ function curatedAliasQuery(availableOnly: boolean): string {
     "ORDER BY sort_order ASC, id ASC LIMIT ? OFFSET ?";
 }
 
+/** Bound to 2..10 current curated trade IDs, no private fields or matching
+ * against inactive categories. availableOnly uses published/allowed public rows.
+ */
+function ambiguousChoicesQuery(count: number, availableOnly: boolean): string {
+  if (!Number.isInteger(count) || count < 2 || count > 10)
+    throw new Error("Unexpected curated trade choice count");
+  return PUBLIC_CATEGORY_FIELDS +
+    "FROM categories WHERE categories.is_active = 1 AND categories.id IN (" +
+    Array(count).fill("?").join(",") + ") " +
+    (availableOnly ? "AND " + ELIGIBLE_LISTING_EXISTS + " " : "") +
+    "ORDER BY categories.sort_order ASC, categories.id ASC LIMIT 10";
+}
+
 export async function searchPublicCategories(
   db: D1Database, opts: CatalogSearchOptions,
 ): Promise<CatalogSearchPage> {
@@ -195,8 +217,17 @@ export async function searchPublicCategories(
   // category as a false-positive best match.
   if (intent?.length === 0) return { categories: [], nextOffset: null };
   const alias = resolveConservativeWorkIntent(opts.query);
-  // Two distinct trades are not automatically collapsed to one category.
-  if (alias.kind === "ambiguous") return { categories: [], nextOffset: null };
+  // Default remains unchanged. Explicit callers can request bounded,
+  // D1-validated options; this does NOT choose/post on the user's behalf.
+  if (alias.kind === "ambiguous") {
+    if (!opts.includeChoices) return { categories: [], nextOffset: null };
+    const ids=ambiguousWorkCategoryIds(opts.query);
+    if (ids.length < 2) return { categories: [], nextOffset: null };
+    const { results: choices }=await db.prepare(ambiguousChoicesQuery(ids.length,opts.availableOnly))
+      .bind(opts.language,...ids).all<PublicCategory>();
+    return { categories: [], nextOffset: null, needsChoice: true,
+      choices: choices.map(({id,slug,name})=>({id,slug,name})) };
+  }
   const terms = intent ?? [opts.query];
   const values = terms.flatMap(term => [term, term, term]);
   const sql = terms.length === 1
