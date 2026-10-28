@@ -28,3 +28,7 @@ The full 889 Category review lives in [category review](JODLO_LEGACY_889_CATEGOR
 Human reviewers can now take one phrase and inspect all historic category contexts; after a separate founder M-005 policy and native-language review, future service aliases should be explicitly scoped to a single approved Category and protected against cross-parent collisions. Customers will then be able to confirm ambiguous tasks rather than seeing arbitrary results. JODLO still honors only Hindi Devanagari and English (ADR-0008), active-category instant publication with no verified badge (ADR-0009), locality privacy M-003, UI approval M-004 and no Cloudflare deployment before M-007.
 
 Verification requires exact PR-head and independent merged-main GitHub CI green.
+
+## 2026-10-28 human editorial work queue
+
+Use the [review-only, SHA-pinned batch proposer and validator](JODLO_EDITORIAL_PHRASE_PROPOSALS_2026-10-28.md) to turn a small number of unambiguous old parent-scoped phrases into **human review tasks**, never public aliases. All existing collision/lineage/language and founder gates continue to apply.

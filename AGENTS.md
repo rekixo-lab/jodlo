@@ -184,3 +184,7 @@ Before broader Hindi/English work-phrase matcher changes, run `npm run reference
 ## 2026-10-28 — Legacy phrase collision analysis, no auto-alias import
 
 Consult the [offline bilingual parent-scoped phrase review](docs/reference/JODLO_LEGACY_PARENT_SCOPED_PHRASE_REVIEW_2026-10-28.md), generated with `npm run reference:phrases` only locally. One phrase may belong to multiple legacy Category IDs; the report retains ALL parent contexts and a mandatory unapproved state, **never** autoselect one. Do not import it into `apps/api`, D1, or the Android app without native-language review, founder M-005 category activation policy and tests, and preserve ADR-0008/0009 and M-003/M-004/M-007 gating.
+
+## 2026-10-28 — Editorial proposed phrases must never auto-activate
+
+The offline [strict candidate alias review contract](docs/reference/JODLO_EDITORIAL_PHRASE_PROPOSALS_2026-10-28.md) generates human-only work from pinned, parent-scoped service evidence. The `reference:editorial-batch` JSON MUST NOT be imported into the Worker matcher, D1, Android, or user-visible vocabulary without founder M-005 safety and human translation/meaning sign-off. The example batch's ten historical IDs are STILL unapproved and do not constrain future eventual broad catalog coverage. Keep M-003/M-004/M-007 and ADR-0008/0009 gates.
