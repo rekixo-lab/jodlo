@@ -153,3 +153,11 @@ tasks.register<JavaExec>("verifyActorBoundaries") {
     classpath = sourceSets["test"].runtimeClasspath
     mainClass.set("com.rekixo.jodlo.core.network.CustomerWorkerReadBoundaryTestKt")
 }
+
+tasks.register<JavaExec>("verifyWorkerDashboard") {
+    group = "verification"
+    description = "Verify nonvisual private Worker Dashboard read/write status, uncertainty and lifecycle privacy"
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.rekixo.jodlo.core.network.HeadlessWorkerDashboardPresentationTestKt")
+}
