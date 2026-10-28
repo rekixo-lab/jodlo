@@ -1,3 +1,12 @@
+/** A single JSON string field is the entire permitted body for these routes.
+ * JSON.parse silently collapses duplicate object keys, so counting keys AFTER
+ * parsing cannot prove the client sent just one field. Verify the wire shape
+ * BEFORE JSON.parse. The small JSON-string grammar preserves valid escapes
+ * (including escaped keys) while rejecting a second key or nested values.
+ */
+const ONE_STRING_FIELD_JSON =
+  /^\s*\{\s*"(?:[^"\\\x00-\x1f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"\s*:\s*"(?:[^"\\\x00-\x1f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"\s*\}\s*$/;
+
 /** Bounded JSON parser reused by both authentication and service publication.
  * Rejects streaming overflow regardless of Content-Length. No logging payloads.
  */
@@ -21,7 +30,9 @@ async function readBoundedObject(request:Request,maxBytes:number):
     const joined=new Uint8Array(size);
     let pos=0;
     for(const c of chunks){joined.set(c,pos);pos+=c.byteLength;}
-    const parsed:unknown=JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(joined));
+    const source=new TextDecoder("utf-8",{fatal:true}).decode(joined);
+    if(!ONE_STRING_FIELD_JSON.test(source))return null;
+    const parsed:unknown=JSON.parse(source);
     if(!parsed||typeof parsed!=="object"||Array.isArray(parsed))return null;
     return parsed as Record<string,unknown>;
   } catch {return null;}
