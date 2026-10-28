@@ -36,3 +36,7 @@ The archived safety tiers (113 kinds) remain **old evidence** and cannot automat
 4. Gate any real city/area-specific availability behind M-003, UI behind M-004, real catalog activation behind M-005 and any Cloudflare deployment behind M-007.
 
 See [889-category review](JODLO_LEGACY_889_CATEGORY_REVIEW_2026-10-27.md), [source catalog audit](FINWORKAR_CATALOG_AUDIT_2026-10-27.md), [ADR-0008](../decisions/0008-hindi-english-only.md), and [Smart Discovery foundation](JODLO_SMART_DISCOVERY_FOUNDATION_2026-10-27.md). CI results must be verified on exact PR/main hashes before claiming tests green.
+
+## Phrase-first disambiguation companion (2026-10-28)
+
+For actual human-language cleanup and future category-scoped aliases, consult the [offline full parent-scoped phrase review](JODLO_LEGACY_PARENT_SCOPED_PHRASE_REVIEW_2026-10-28.md). It groups all 14,534 en/hi source label occurrences by exact normalized language+phrase while preserving every parent Category, avoiding the false assumption that a shared label uniquely identifies a worker trade. Every phrase remains unapproved and not imported into the JODLO API.

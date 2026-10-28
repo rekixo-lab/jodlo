@@ -180,3 +180,7 @@ Before making any 889-category search/seeding policy, run `npm run reference:che
 ## 2026-10-28 — Mandatory Service-vocabulary safety review before synonyms
 
 Before broader Hindi/English work-phrase matcher changes, run `npm run reference:check` and consult the source-locked [7,267-Service review](docs/reference/JODLO_LEGACY_7267_SERVICE_REVIEW_2026-10-28.md). Same English/Hindi Service label may belong to different historic categories; **never globally map/merge** without explicit parent review and ambiguous-choice tests. Source ID normalization, Hindi with Latin text and missing section definitions are unresolved. `reference:services` exports ONLY a local, all-unapproved work queue, no D1 seed and no Android/Worker import. Founder M-003/M-004/M-005/M-007 still gate location/UI/real categories/production. Preserve ADR-0008 and ADR-0009.
+
+## 2026-10-28 — Legacy phrase collision analysis, no auto-alias import
+
+Consult the [offline bilingual parent-scoped phrase review](docs/reference/JODLO_LEGACY_PARENT_SCOPED_PHRASE_REVIEW_2026-10-28.md), generated with `npm run reference:phrases` only locally. One phrase may belong to multiple legacy Category IDs; the report retains ALL parent contexts and a mandatory unapproved state, **never** autoselect one. Do not import it into `apps/api`, D1, or the Android app without native-language review, founder M-005 category activation policy and tests, and preserve ADR-0008/0009 and M-003/M-004/M-007 gating.
