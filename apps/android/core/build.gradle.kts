@@ -105,3 +105,11 @@ tasks.register<JavaExec>("verifyCustomerSelection") {
     classpath = sourceSets["test"].runtimeClasspath
     mainClass.set("com.rekixo.jodlo.core.network.CustomerCategorySelectionTestKt")
 }
+
+tasks.register<JavaExec>("verifyBackNavigation") {
+    group = "verification"
+    description = "Verify headless Customer Back navigation, fresh state retention and stale GET isolation"
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.rekixo.jodlo.core.network.HeadlessCustomerBackNavigationTestKt")
+}
