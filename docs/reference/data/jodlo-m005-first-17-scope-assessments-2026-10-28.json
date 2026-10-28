@@ -1,0 +1,335 @@
+{
+  "kind": "JODLO_M005_SOURCE_BACKED_SCOPE_RECOMMENDATIONS_ONLY",
+  "state": "NO_HUMAN_CERTIFICATION_NO_FOUNDER_CATEGORY_APPROVAL_NO_D1_SEED",
+  "sourceJsonSha256": "31303a2af70cdb64186b974194d2cb1a0b068bfdd79a8ac03f5532174f4c3375",
+  "languages": [
+    "en",
+    "hi"
+  ],
+  "assessment": "PRELIMINARY_ASSISTANT_TEXT_REVIEW_NOT_LEGAL_OR_NATIVE_LANGUAGE_CERTIFICATION",
+  "categories": [
+    {
+      "sourceCategoryId": "plumber",
+      "assessment": "NARROW_SCOPE_RECOMMENDATION",
+      "sourceSafetyTier": "skilled_trade",
+      "sourceServiceEvidenceEn": "Tap / faucet repair",
+      "suggestedNameHi": "प्लंबर",
+      "proposedScopeEn": "Household tap, sink, flush and non-electrical water-pipe repairs",
+      "proposedScopeHi": "घरेलू नल, सिंक, फ्लश और बिना बिजली वाली पानी की पाइप मरम्मत",
+      "excludedWorkEn": "Electrical geyser wiring, gas lines, major structural excavation",
+      "excludedWorkHi": "गीजर की इलेक्ट्रिकल वायरिंग, गैस पाइप और बड़ी संरचनात्मक खुदाई",
+      "riskReason": "Home entry permission; water shutoff; damage reporting",
+      "requiredSignoffs": [
+        "FOUNDER_M005_CATEGORY_POLICY_AND_ID",
+        "HUMAN_TRADE_SAFETY_AND_LEGALITY",
+        "HUMAN_HINDI_ENGLISH_NAMING",
+        "OPERATIONAL_MODERATION_AND_CONTACT_SCOPE"
+      ],
+      "reviewState": "ALL_APPROVALS_PENDING"
+    },
+    {
+      "sourceCategoryId": "carpenter",
+      "assessment": "NARROW_SCOPE_RECOMMENDATION",
+      "sourceSafetyTier": "skilled_trade",
+      "sourceServiceEvidenceEn": "Furniture assembly and installation",
+      "suggestedNameHi": "बढ़ई",
+      "proposedScopeEn": "Furniture making, small door or cupboard fitting and routine carpentry",
+      "proposedScopeHi": "फर्नीचर बनाना, छोटी दरवाजा-अलमारी फिटिंग और सामान्य बढ़ईगीरी",
+      "excludedWorkEn": "Load-bearing structural work, unsafe work at height and electrical wiring",
+      "excludedWorkHi": "भार-वहन वाली संरचना, ऊँचाई पर असुरक्षित काम और बिजली वायरिंग",
+      "riskReason": "Property protection; safe tools; work-at-height exclusion",
+      "requiredSignoffs": [
+        "FOUNDER_M005_CATEGORY_POLICY_AND_ID",
+        "HUMAN_TRADE_SAFETY_AND_LEGALITY",
+        "HUMAN_HINDI_ENGLISH_NAMING",
+        "OPERATIONAL_MODERATION_AND_CONTACT_SCOPE"
+      ],
+      "reviewState": "ALL_APPROVALS_PENDING"
+    },
+    {
+      "sourceCategoryId": "house-painter",
+      "assessment": "NARROW_SCOPE_RECOMMENDATION",
+      "sourceSafetyTier": "skilled_trade",
+      "sourceServiceEvidenceEn": "Interior wall painting",
+      "suggestedNameHi": "घर की पुताई करने वाला",
+      "proposedScopeEn": "Accessible-height interior wall painting, putty and simple touch-ups",
+      "proposedScopeHi": "सुरक्षित ऊँचाई तक अंदर की दीवार की पुताई, पुट्टी और छोटी मरम्मत",
+      "excludedWorkEn": "High-rise exterior work, lead or hazardous coatings, unprotected scaffolds",
+      "excludedWorkHi": "ऊँची बाहरी दीवार, खतरनाक पेंट और बिना सुरक्षा के मचान",
+      "riskReason": "Ventilation and material disclosure; height restriction",
+      "requiredSignoffs": [
+        "FOUNDER_M005_CATEGORY_POLICY_AND_ID",
+        "HUMAN_TRADE_SAFETY_AND_LEGALITY",
+        "HUMAN_HINDI_ENGLISH_NAMING",
+        "OPERATIONAL_MODERATION_AND_CONTACT_SCOPE"
+      ],
+      "reviewState": "ALL_APPROVALS_PENDING"
+    },
+    {
+      "sourceCategoryId": "house-cleaner-maid",
+      "assessment": "NARROW_SCOPE_RECOMMENDATION",
+      "sourceSafetyTier": "standard",
+      "sourceServiceEvidenceEn": "Sweeping and mopping",
+      "suggestedNameHi": "घरेलू सफाईकर्मी",
+      "proposedScopeEn": "Routine household cleaning, dishwashing and basic room organization",
+      "proposedScopeHi": "सामान्य घर सफाई, बर्तन धोना और कमरों की व्यवस्था",
+      "excludedWorkEn": "Childcare, patient care, biohazard cleaning and hazardous chemical mixing",
+      "excludedWorkHi": "बच्चों या रोगियों की देखभाल, जैविक जोखिम वाली सफाई और खतरनाक रसायन मिलाना",
+      "riskReason": "Home access and privacy; chemical safety",
+      "requiredSignoffs": [
+        "FOUNDER_M005_CATEGORY_POLICY_AND_ID",
+        "HUMAN_TRADE_SAFETY_AND_LEGALITY",
+        "HUMAN_HINDI_ENGLISH_NAMING",
+        "OPERATIONAL_MODERATION_AND_CONTACT_SCOPE"
+      ],
+      "reviewState": "ALL_APPROVALS_PENDING"
+    },
+    {
+      "sourceCategoryId": "sofa-carpet-cleaner",
+      "assessment": "NARROW_SCOPE_RECOMMENDATION",
+      "sourceSafetyTier": "standard",
+      "sourceServiceEvidenceEn": "Sofa deep cleaning",
+      "suggestedNameHi": "सोफा और कालीन सफाईकर्मी",
+      "proposedScopeEn": "Non-hazardous sofa, mattress and carpet vacuum or wash cleaning",
+      "proposedScopeHi": "बिना खतरनाक रसायनों के सोफा, गद्दे और कालीन की सफाई",
+      "excludedWorkEn": "Fumigation, toxic solvent treatment and mold remediation",
+      "excludedWorkHi": "धुआँ देकर कीट नियंत्रण, विषैले सॉल्वेंट और फफूँद हटाने का विशेष उपचार",
+      "riskReason": "Fabric consent and drying; chemical disclosure",
+      "requiredSignoffs": [
+        "FOUNDER_M005_CATEGORY_POLICY_AND_ID",
+        "HUMAN_TRADE_SAFETY_AND_LEGALITY",
+        "HUMAN_HINDI_ENGLISH_NAMING",
+        "OPERATIONAL_MODERATION_AND_CONTACT_SCOPE"
+      ],
+      "reviewState": "ALL_APPROVALS_PENDING"
+    },
+    {
+      "sourceCategoryId": "gardener",
+      "assessment": "NARROW_SCOPE_RECOMMENDATION",
+      "sourceSafetyTier": "standard",
+      "sourceServiceEvidenceEn": "Garden maintenance",
+      "suggestedNameHi": "माली",
+      "proposedScopeEn": "Watering, planting, lawn care and low-height garden pruning",
+      "proposedScopeHi": "पानी देना, पौधे लगाना, लॉन की देखभाल और कम ऊँचाई की छंटाई",
+      "excludedWorkEn": "Tree felling, hazardous pesticide application and dangerous height work",
+      "excludedWorkHi": "पेड़ काटना, खतरनाक कीटनाशक छिड़काव और ऊँचाई पर जोखिम वाला काम",
+      "riskReason": "Tool safety; pesticide exclusion",
+      "requiredSignoffs": [
+        "FOUNDER_M005_CATEGORY_POLICY_AND_ID",
+        "HUMAN_TRADE_SAFETY_AND_LEGALITY",
+        "HUMAN_HINDI_ENGLISH_NAMING",
+        "OPERATIONAL_MODERATION_AND_CONTACT_SCOPE"
+      ],
+      "reviewState": "ALL_APPROVALS_PENDING"
+    },
+    {
+      "sourceCategoryId": "tailor-stitching",
+      "assessment": "NARROW_SCOPE_RECOMMENDATION",
+      "sourceSafetyTier": "standard",
+      "sourceServiceEvidenceEn": "Alteration and fitting",
+      "suggestedNameHi": "दर्जी",
+      "proposedScopeEn": "Clothing stitching, adjustments, buttons, zips and curtains",
+      "proposedScopeHi": "कपड़ों की सिलाई, नाप-सुधार, बटन, ज़िप और पर्दों की सिलाई",
+      "excludedWorkEn": "Unconsented handling of customer belongings or services outside tailoring",
+      "excludedWorkHi": "बिना अनुमति ग्राहक के कपड़े या सामान का उपयोग और दर्जी के काम से बाहर की सेवाएँ",
+      "riskReason": "Item receipt and consent; safe measurements",
+      "requiredSignoffs": [
+        "FOUNDER_M005_CATEGORY_POLICY_AND_ID",
+        "HUMAN_TRADE_SAFETY_AND_LEGALITY",
+        "HUMAN_HINDI_ENGLISH_NAMING",
+        "OPERATIONAL_MODERATION_AND_CONTACT_SCOPE"
+      ],
+      "reviewState": "ALL_APPROVALS_PENDING"
+    },
+    {
+      "sourceCategoryId": "bicycle-repairer",
+      "assessment": "NARROW_SCOPE_RECOMMENDATION",
+      "sourceSafetyTier": "standard",
+      "sourceServiceEvidenceEn": "Chain repair and lubrication",
+      "suggestedNameHi": "साइकिल मरम्मतकर्ता",
+      "proposedScopeEn": "Ordinary cycle puncture, chain, brake and gear service",
+      "proposedScopeHi": "साइकिल का पंचर, चेन, ब्रेक और गियर की सामान्य मरम्मत",
+      "excludedWorkEn": "Motorized vehicle repair and unsafe road testing",
+      "excludedWorkHi": "मोटर वाहन मरम्मत और सड़क पर असुरक्षित परीक्षण",
+      "riskReason": "Brake functional check; test ride consent",
+      "requiredSignoffs": [
+        "FOUNDER_M005_CATEGORY_POLICY_AND_ID",
+        "HUMAN_TRADE_SAFETY_AND_LEGALITY",
+        "HUMAN_HINDI_ENGLISH_NAMING",
+        "OPERATIONAL_MODERATION_AND_CONTACT_SCOPE"
+      ],
+      "reviewState": "ALL_APPROVALS_PENDING"
+    },
+    {
+      "sourceCategoryId": "watch-repairer",
+      "assessment": "NARROW_SCOPE_RECOMMENDATION",
+      "sourceSafetyTier": "standard",
+      "sourceServiceEvidenceEn": "watch repair",
+      "suggestedNameHi": "घड़ी मरम्मतकर्ता",
+      "proposedScopeEn": "Routine watch battery, cleaning and component repair",
+      "proposedScopeHi": "घड़ी की सामान्य बैटरी, सफाई और पुर्जों की मरम्मत",
+      "excludedWorkEn": "Unauthorized access to connected-device accounts or irreversible valuables work without consent",
+      "excludedWorkHi": "कनेक्टेड डिवाइस खातों में बिना अनुमति प्रवेश या सहमति के कीमती सामान में अपरिवर्तनीय बदलाव",
+      "riskReason": "Custody receipt; no account access",
+      "requiredSignoffs": [
+        "FOUNDER_M005_CATEGORY_POLICY_AND_ID",
+        "HUMAN_TRADE_SAFETY_AND_LEGALITY",
+        "HUMAN_HINDI_ENGLISH_NAMING",
+        "OPERATIONAL_MODERATION_AND_CONTACT_SCOPE"
+      ],
+      "reviewState": "ALL_APPROVALS_PENDING"
+    },
+    {
+      "sourceCategoryId": "tyre-puncture-technician",
+      "assessment": "NARROW_SCOPE_RECOMMENDATION",
+      "sourceSafetyTier": "standard",
+      "sourceServiceEvidenceEn": "Tube puncture repair",
+      "suggestedNameHi": "टायर पंचर मरम्मतकर्ता",
+      "proposedScopeEn": "Puncture, tube and pressure services at a controlled workshop",
+      "proposedScopeHi": "सुरक्षित दुकान में टायर पंचर, ट्यूब और हवा के दबाव का काम",
+      "excludedWorkEn": "Highway roadside work without traffic control and heavy-vehicle lifting without equipment",
+      "excludedWorkHi": "बिना यातायात सुरक्षा के राजमार्ग पर काम और उपकरण बिना भारी वाहन उठाना",
+      "riskReason": "Roadside restriction; wheel fitment check",
+      "requiredSignoffs": [
+        "FOUNDER_M005_CATEGORY_POLICY_AND_ID",
+        "HUMAN_TRADE_SAFETY_AND_LEGALITY",
+        "HUMAN_HINDI_ENGLISH_NAMING",
+        "OPERATIONAL_MODERATION_AND_CONTACT_SCOPE"
+      ],
+      "reviewState": "ALL_APPROVALS_PENDING"
+    },
+    {
+      "sourceCategoryId": "mobile-repair",
+      "assessment": "EXTRA_REVIEW_REQUIRED",
+      "sourceSafetyTier": "electronics_repair",
+      "sourceServiceEvidenceEn": "Data backup and transfer support",
+      "suggestedNameHi": "मोबाइल मरम्मत तकनीशियन",
+      "proposedScopeEn": "Device parts repair only after data-consent and privacy policy review",
+      "proposedScopeHi": "डेटा-सहमति और गोपनीयता नीति के बाद ही मोबाइल पुर्जों की मरम्मत",
+      "excludedWorkEn": "Customer-data access, credential recovery and resets without explicit informed consent",
+      "excludedWorkHi": "बिना सूचित सहमति ग्राहक डेटा, पासवर्ड या फोन रीसेट करना",
+      "riskReason": "Device data/privacy; custody and reset consent",
+      "requiredSignoffs": [
+        "FOUNDER_M005_CATEGORY_POLICY_AND_ID",
+        "HUMAN_TRADE_SAFETY_AND_LEGALITY",
+        "HUMAN_HINDI_ENGLISH_NAMING",
+        "OPERATIONAL_MODERATION_AND_CONTACT_SCOPE"
+      ],
+      "reviewState": "ALL_APPROVALS_PENDING"
+    },
+    {
+      "sourceCategoryId": "laptop-repair",
+      "assessment": "EXTRA_REVIEW_REQUIRED",
+      "sourceSafetyTier": "electronics_repair",
+      "sourceServiceEvidenceEn": "Virus and malware cleanup",
+      "suggestedNameHi": "कंप्यूटर और लैपटॉप मरम्मतकर्ता",
+      "proposedScopeEn": "Hardware repair with approved data custody and secure access policy",
+      "proposedScopeHi": "अनुमोदित डेटा सुरक्षा और सुरक्षित पहुँच नीति के साथ कंप्यूटर मरम्मत",
+      "excludedWorkEn": "Private file copying, account access, data wiping and credential requests without consent",
+      "excludedWorkHi": "बिना सहमति निजी फाइल कॉपी, खाते में प्रवेश, डेटा मिटाना या पासवर्ड माँगना",
+      "riskReason": "Private files and credentials; written backup consent",
+      "requiredSignoffs": [
+        "FOUNDER_M005_CATEGORY_POLICY_AND_ID",
+        "HUMAN_TRADE_SAFETY_AND_LEGALITY",
+        "HUMAN_HINDI_ENGLISH_NAMING",
+        "OPERATIONAL_MODERATION_AND_CONTACT_SCOPE"
+      ],
+      "reviewState": "ALL_APPROVALS_PENDING"
+    },
+    {
+      "sourceCategoryId": "two-wheeler-mechanic",
+      "assessment": "EXTRA_REVIEW_REQUIRED",
+      "sourceSafetyTier": "vehicle_repair",
+      "sourceServiceEvidenceEn": "Brake service",
+      "suggestedNameHi": "दोपहिया वाहन मैकेनिक",
+      "proposedScopeEn": "Mechanical servicing only after safety-critical work and road-test policy review",
+      "proposedScopeHi": "सुरक्षा-महत्वपूर्ण मरम्मत और सड़क परीक्षण नीति के बाद ही दोपहिया वाहन सर्विस",
+      "excludedWorkEn": "Unverified brake work and unsupervised roadside test rides",
+      "excludedWorkHi": "बिना जाँचे ब्रेक मरम्मत और बिना निगरानी सड़क परीक्षण",
+      "riskReason": "Vehicle safety-critical checks; road-test consent",
+      "requiredSignoffs": [
+        "FOUNDER_M005_CATEGORY_POLICY_AND_ID",
+        "HUMAN_TRADE_SAFETY_AND_LEGALITY",
+        "HUMAN_HINDI_ENGLISH_NAMING",
+        "OPERATIONAL_MODERATION_AND_CONTACT_SCOPE"
+      ],
+      "reviewState": "ALL_APPROVALS_PENDING"
+    },
+    {
+      "sourceCategoryId": "home-shifting-helper",
+      "assessment": "EXTRA_REVIEW_REQUIRED",
+      "sourceSafetyTier": "standard",
+      "sourceServiceEvidenceEn": "Safe lifting and loading",
+      "suggestedNameHi": "घर बदलने में सामान सहायता",
+      "proposedScopeEn": "Packing and lifting support after liability, weight and wording reviews",
+      "proposedScopeHi": "जिम्मेदारी, भार-सीमा और भाषा समीक्षा के बाद पैकिंग तथा सामान उठाने में सहायता",
+      "excludedWorkEn": "Unsafe heavy lifting, structural dismantling and unconsented handling of valuables",
+      "excludedWorkHi": "असुरक्षित भारी सामान उठाना, संरचना तोड़ना और अनुमति बिना कीमती सामान छूना",
+      "riskReason": "Manual handling and property liability; mixed Hindi labels",
+      "requiredSignoffs": [
+        "FOUNDER_M005_CATEGORY_POLICY_AND_ID",
+        "HUMAN_TRADE_SAFETY_AND_LEGALITY",
+        "HUMAN_HINDI_ENGLISH_NAMING",
+        "OPERATIONAL_MODERATION_AND_CONTACT_SCOPE"
+      ],
+      "reviewState": "ALL_APPROVALS_PENDING"
+    },
+    {
+      "sourceCategoryId": "electrician",
+      "assessment": "HOLD_FOR_SPECIALIST_POLICY",
+      "sourceSafetyTier": "high_voltage",
+      "sourceServiceEvidenceEn": "New house wiring",
+      "suggestedNameHi": "बिजली मिस्त्री",
+      "proposedScopeEn": "No public listing proposed until electrical qualification and risk policy approved",
+      "proposedScopeHi": "बिजली कार्य की योग्यता और जोखिम नीति स्वीकृत होने तक सार्वजनिक सूची नहीं",
+      "excludedWorkEn": "Live-wire, high-voltage, MCB and mains installation without verified safeguards",
+      "excludedWorkHi": "सत्यापित सुरक्षा बिना चालू तार, उच्च वोल्टेज और मुख्य बिजली फिटिंग",
+      "riskReason": "Electrical hazard and occupational qualification",
+      "requiredSignoffs": [
+        "FOUNDER_M005_CATEGORY_POLICY_AND_ID",
+        "HUMAN_TRADE_SAFETY_AND_LEGALITY",
+        "HUMAN_HINDI_ENGLISH_NAMING",
+        "OPERATIONAL_MODERATION_AND_CONTACT_SCOPE"
+      ],
+      "reviewState": "ALL_APPROVALS_PENDING"
+    },
+    {
+      "sourceCategoryId": "ac-technician",
+      "assessment": "HOLD_FOR_SPECIALIST_POLICY",
+      "sourceSafetyTier": "refrigerant_and_electrical",
+      "sourceServiceEvidenceEn": "AC gas refill",
+      "suggestedNameHi": "एसी मरम्मत तकनीशियन",
+      "proposedScopeEn": "No public listing proposed until refrigerant and electrical safety policy approved",
+      "proposedScopeHi": "रेफ्रिजरेंट और विद्युत सुरक्षा नीति स्वीकृत होने तक सार्वजनिक सूची नहीं",
+      "excludedWorkEn": "Gas recharge, compressor and electrical work without specialist safeguards",
+      "excludedWorkHi": "विशेषज्ञ सुरक्षा बिना गैस रिफिल, कंप्रेसर या बिजली मरम्मत",
+      "riskReason": "Refrigerant handling and electrical hazard",
+      "requiredSignoffs": [
+        "FOUNDER_M005_CATEGORY_POLICY_AND_ID",
+        "HUMAN_TRADE_SAFETY_AND_LEGALITY",
+        "HUMAN_HINDI_ENGLISH_NAMING",
+        "OPERATIONAL_MODERATION_AND_CONTACT_SCOPE"
+      ],
+      "reviewState": "ALL_APPROVALS_PENDING"
+    },
+    {
+      "sourceCategoryId": "home-tutor",
+      "assessment": "HOLD_FOR_SPECIALIST_POLICY",
+      "sourceSafetyTier": "standard",
+      "sourceServiceEvidenceEn": "school subjects home tuition",
+      "suggestedNameHi": "घरेलू शिक्षक",
+      "proposedScopeEn": "No public listing proposed until minor-safeguarding and parent-status policy approved",
+      "proposedScopeHi": "बच्चों की सुरक्षा और पुराने Parent Status की समीक्षा तक सार्वजनिक सूची नहीं",
+      "excludedWorkEn": "Unsupervised minor contact and in-home instruction without safeguarding rules",
+      "excludedWorkHi": "बच्चों से बिना निगरानी संपर्क और सुरक्षा नियम बिना घर पर पढ़ाना",
+      "riskReason": "Minor safeguarding; legacy group status conflict",
+      "requiredSignoffs": [
+        "FOUNDER_M005_CATEGORY_POLICY_AND_ID",
+        "HUMAN_TRADE_SAFETY_AND_LEGALITY",
+        "HUMAN_HINDI_ENGLISH_NAMING",
+        "OPERATIONAL_MODERATION_AND_CONTACT_SCOPE"
+      ],
+      "reviewState": "ALL_APPROVALS_PENDING"
+    }
+  ]
+}
