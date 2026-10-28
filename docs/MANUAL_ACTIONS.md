@@ -172,3 +172,7 @@ The first [17 evidence-linked actual Category scope assessments](reference/JODLO
 ### M-005 official-source reviewer evidence (2026-10-28)
 
 Government reference screening and the 17 Category-specific human work requirements are available in [official M-005 evidence crosswalk](reference/JODLO_M005_OFFICIAL_SAFETY_CROSSWALK_2026-10-28.md). Still needs qualified Indian legal/occupational review, Hindi and English human editorial signoff, operational complaint/contact policies and explicit Founder category approval. MeitY privacy rules have **staggered** 2025–2027 commencement; do not assert full immediate enforcement. No cloud account setup needed, no seeded Categories; M-003/M-004/M-007 unchanged.
+
+### M-005 — Scope-bound evidence submission ready; no credentials required (2026-10-28)
+
+The [pending human review intake](reference/JODLO_M005_SCOPE_BOUND_EVIDENCE_INTAKE_2026-10-28.md) prepares a precise single-trade JSON record (e.g. `npm run catalog:m005-evidence-card -- --category=plumber`) for qualified occupational/legal, human Hindi-English, operations/complaints and **Founder category-specific** signoffs. Any linked JODLO PR URL is UNVERIFIED and not an actual signature or approval. A formal expert review and explicit founder accepted Category scope/ID are still required before M-005 activation. Never post private identity, license, worker/customer or property information into the JSON/public GitHub. M-003 locality, M-004 UI and M-007 remote deploy independently pending. No additional console setup now.
