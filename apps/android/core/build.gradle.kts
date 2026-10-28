@@ -97,3 +97,11 @@ tasks.register<JavaExec>("verifyPagination") {
     classpath = sourceSets["test"].runtimeClasspath
     mainClass.set("com.rekixo.jodlo.core.network.HeadlessCatalogPaginationTestKt")
 }
+
+tasks.register<JavaExec>("verifyCustomerSelection") {
+    group = "verification"
+    description = "Verify explicit Customer Category choice and scoped public listings navigation"
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.rekixo.jodlo.core.network.CustomerCategorySelectionTestKt")
+}
