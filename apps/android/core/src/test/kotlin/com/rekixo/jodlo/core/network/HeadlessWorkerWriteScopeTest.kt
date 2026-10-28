@@ -79,7 +79,7 @@ private fun testExplicitPublishUncertainThenReadOnlyVisibility() {
     val after = review(scope.snapshot().state)
     check(after.observation == WorkerVisibility.VISIBLE)
     check(after.action == pending.action)
-    check(after !is WorkerWriteState.Confirmed) // Current visibility is NOT proof POST succeeded.
+    check(scope.snapshot().state is WorkerWriteState.NeedsReview) // Not a write acknowledgement.
     check(fake.publishCalls == 1 && fake.readCalls == 1)
     check(!scope.snapshot().toString().contains(TOKEN_A))
     check(scope.acknowledgeUncertainty())
