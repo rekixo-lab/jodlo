@@ -204,3 +204,7 @@ Use [catalog expansion preflight](docs/reference/JODLO_CATEGORY_EXPANSION_PREFLI
 ## 2026-10-28 — 889-Category small editor packets
 
 After running `npm run reference:check`, use `npm run catalog:review-packets` then `npm run catalog:review-packet -- --packet=1` (1..45) for parent-scoped Source/Service/ambiguous phrase examples from all 889. See [reviewer contract](docs/reference/JODLO_CATEGORY_HUMAN_REVIEW_PACKETS_2026-10-28.md). Never mistake 3 examples for exhaustive review or a missing mechanical flag for category approval. No generated file may be used as active D1 seed or public Search synonym index; retain M-003/004/005/007 boundaries and ADR-0008/0009.
+
+## 2026-10-28 — Concrete 17-trade M-005 risk review without implied approval
+
+Before treating any historic work type as JODLO-active, read [first 17 actual source Service-backed bilingual scope assessments](docs/reference/JODLO_M005_FIRST_17_SCOPE_REVIEW_2026-10-28.md). The pinned [JSON](docs/reference/data/jodlo-m005-first-17-scope-assessments-2026-10-28.json) is **not a seed**; even the 10 provisional narrow recommendations remain M-005 founder/human language, legal/safety, moderation/contact *pending*. 4 extra risk reviews + 3 holds prevent simplistic activation. Run `npm run catalog:m005-first-review`, `npm run reference:check`. These assessments are not a ten-category future product cap; other 872 old source Categories remain in the full 45 packet queue. M-003/M-004/M-007 and ADR-0008/0009 still enforce privacy, visuals, release and no auto-verification.
