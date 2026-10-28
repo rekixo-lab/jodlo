@@ -41,3 +41,11 @@ tasks.register<JavaExec>("verifySessions") {
     classpath = sourceSets["test"].runtimeClasspath
     mainClass.set("com.rekixo.jodlo.core.network.InMemorySessionCoordinatorTestKt")
 }
+
+tasks.register<JavaExec>("verifyAuthExchange") {
+    group = "verification"
+    description = "Compile and test fakeable, nonvisual Google backend exchange and login races"
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.rekixo.jodlo.core.network.BackendGoogleSessionExchangeTestKt")
+}

@@ -40,6 +40,12 @@ class ApiCall private constructor(
             ApiCall(HttpMethod.POST, path, bearer, body)
         fun delete(path: String, bearer: String): ApiCall =
             ApiCall(HttpMethod.DELETE, path, bearer)
+
+        /** ONLY the existing Google proof exchange can POST without a bearer.
+         * The ID token stays in the redacted body, never in the URL or logs.
+         */
+        internal fun googleExchangeBody(body: String): ApiCall =
+            ApiCall(HttpMethod.POST, "/api/v1/auth/google", json = body)
     }
 }
 
@@ -82,6 +88,17 @@ object JodloRoutes {
         checkId(categoryId)
         return ApiCall.get("/api/v1/listings?categoryId=${enc(categoryId)}")
     }
+    /** A Google ID token is client proof, NOT a JODLO session. The backend
+     * verifies the Google signature, issuer, audience, lifetime and subject.
+     * Match the server's exact one-field JSON contract; never log this proof.
+     */
+    fun googleExchange(idToken: String): ApiCall {
+        require(idToken.length in 5..4096 &&
+            GOOGLE_PROOF.matches(idToken)) { "Invalid Google proof shape" }
+        return ApiCall.googleExchangeBody("""{"idToken":"$idToken"}""")
+    }
+    private val GOOGLE_PROOF = Regex("""[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+""")
+
     fun myListings(token: String): ApiCall = ApiCall.getOwned("/api/v1/me/listings", token)
     fun workerDraft(token: String): ApiCall =
         ApiCall.getOwned("/api/v1/me/worker-profile", token)
@@ -124,7 +141,8 @@ class HttpsTransport(origin: String) {
             for ((k,v) in request.headers()) c.setRequestProperty(k, v)
             val body = request.bodyUtf8()
             if (body != null) {
-                require(body.size <= 256) { "Body over limit" }
+                val maxBody = if (request.resource == "/api/v1/auth/google") 8192 else 256
+                require(body.size <= maxBody) { "Body over limit" }
                 c.doOutput = true
                 c.outputStream.use { it.write(body) }
             }
