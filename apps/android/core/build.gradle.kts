@@ -161,3 +161,11 @@ tasks.register<JavaExec>("verifyWorkerDashboard") {
     classpath = sourceSets["test"].runtimeClasspath
     mainClass.set("com.rekixo.jodlo.core.network.HeadlessWorkerDashboardPresentationTestKt")
 }
+
+tasks.register<JavaExec>("verifyPublicationReconciliation") {
+    group = "verification"
+    description = "Verify Worker publish/unpublish -> real public listing JSON GET, explicit refresh and uncertain reconciliation"
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.rekixo.jodlo.core.network.HeadlessPublicationReconciliationTestKt")
+}
