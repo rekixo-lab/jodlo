@@ -121,3 +121,11 @@ tasks.register<JavaExec>("verifyIntentRecovery") {
     classpath = sourceSets["test"].runtimeClasspath
     mainClass.set("com.rekixo.jodlo.core.network.HeadlessDiscoveryIntentRecoveryTestKt")
 }
+
+tasks.register<JavaExec>("verifyDiscoveryE2E") {
+    group = "verification"
+    description = "Exercise real public route/JSON/repository and headless Browse/Search/Choice/Back/Restore end-to-end"
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.rekixo.jodlo.core.network.CustomerDiscoveryEndToEndTestKt")
+}
