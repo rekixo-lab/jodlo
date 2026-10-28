@@ -81,3 +81,11 @@ tasks.register<JavaExec>("verifyPublicRefresh") {
     classpath = sourceSets["test"].runtimeClasspath
     mainClass.set("com.rekixo.jodlo.core.network.PublicReadRefreshBarrierTestKt")
 }
+
+tasks.register<JavaExec>("verifyPublicFreshness") {
+    group = "verification"
+    description = "Verify bounded public cache age, manual refresh and late GET rejection"
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.rekixo.jodlo.core.network.PublicCacheFreshnessTestKt")
+}
