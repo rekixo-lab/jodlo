@@ -25,3 +25,11 @@ tasks.register<JavaExec>("verifyReplies") {
     classpath = sourceSets["test"].runtimeClasspath
     mainClass.set("com.rekixo.jodlo.core.network.JodloReplyDecoderTestKt")
 }
+
+tasks.register<JavaExec>("verifyRepositories") {
+    group = "verification"
+    description = "Compile and verify nonvisual Catalog/Worker repository fakes"
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.rekixo.jodlo.core.network.JodloRepositoryTestKt")
+}

@@ -102,3 +102,8 @@ Before writing Compose screens, XML layouts, themes, colors, wireframes, screens
 - **No UI has yet been implemented or founder-approved**—the new nonvisual Kotlin request/transport core is NOT an approval for theme, navigation or screens.
 
 [Design System](DESIGN_SYSTEM.md) · [Motion/3D](MOTION_3D.md) · [Reuse/Assets](REUSE_ASSET_POLICY.md) · [ADR-0005](decisions/0005-reuse-tokens-premium-motion.md).
+
+
+## 2026-10-28 — Nonvisual Repository boundary exists; views still pending approval
+
+`apps/android/core/src/main/kotlin/com/rekixo/jodlo/core/network/JodloRepositories.kt` now defines **actual compiled** `CatalogRepository` / `WorkerRepository` interfaces and transport/decoder-backed implementations. Future approved Android `ViewModel` components should depend on these interfaces rather than importing `HttpsTransport` / JSON directly. The injection surface is tested with fake network data, without app code or UI. `WorkerRepository.publishExplicitCategory` must only be invoked after explicit user Category confirmation, and existing server-active/opted-in checks still decide publish eligibility. M-004 UI approval remains necessary before implementing any Activity, screen, Compose theme, navigation or animation.

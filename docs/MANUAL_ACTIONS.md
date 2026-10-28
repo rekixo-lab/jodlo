@@ -184,3 +184,8 @@ New [Kotlin nonvisual Android-compatible Core](../apps/android/README.md) compil
 ### 2026-10-28 — Headless Kotlin reply decoder; no new manual approval or cloud action
 
 [Android Kotlin network core](../apps/android/README.md) now has strict compiled JSON parsing of current backend public Catalog and worker Listing replies, including ambiguous Search choices, typed errors and weak network failure. This is an internal, nonvisual safety improvement **not an Android app, design signoff, offline sync, native Google login or production deployment**. No new M-003/M-004/M-005/M-007/M-008 authorization implied; external console setup not needed for this step.
+
+
+### 2026-10-28 — Kotlin nonvisual Repository implementation; no manual account work
+
+Kotlin [Catalog and Worker repository interfaces](../apps/android/README.md) now connect typed public search, private draft/opt-in and explicitly selected Category posting requests to strict decoders with injectable fake HTTPS sender. This avoids creating unapproved UI or calling live provider resources. **No new external credentials, Android screen design, private area permission or Category activation is implied**; M-003/004/005/007/008 founder gates stay separate.

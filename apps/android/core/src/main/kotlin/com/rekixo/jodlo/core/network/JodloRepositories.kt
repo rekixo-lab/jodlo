@@ -1,0 +1,106 @@
+package com.rekixo.jodlo.core.network
+
+import java.text.Normalizer
+
+/** Inverted dependencies: later approved Android screens will depend on these
+ * nonvisual contracts, not HTTP, JSON or Cloudflare implementation details.
+ * No authentication token is stored or cached by a repository.
+ */
+fun interface RequestSender {
+    fun send(call: ApiCall): TransportReply
+}
+
+/** A nonvisual, read-only surface: public data contains no home location or contact. */
+interface CatalogRepository {
+    fun browse(language: Language, availableOnly: Boolean = false,
+               limit: Int = 20, after: String? = null): ApiOutcome<CatalogBrowse>
+    fun search(query: String, language: Language, availableOnly: Boolean = false,
+               includeChoices: Boolean = true, limit: Int = 20,
+               offset: Int = 0): ApiOutcome<CatalogSearch>
+    fun listings(categoryId: String): ApiOutcome<List<PublicListing>>
+}
+
+/** A separate privileged surface: caller must possess a valid session and
+ * explicitly supply a Category ID to publish; Search NEVER triggers posting.
+ */
+interface WorkerRepository {
+    fun myDraft(session: String): ApiOutcome<WorkerDraft>
+    fun optIn(session: String): ApiOutcome<WorkerDraft>
+    fun myListings(session: String): ApiOutcome<List<OwnListing>>
+    fun publishExplicitCategory(session: String, confirmedCategoryId: String): ApiOutcome<PublicListing>
+    fun unpublish(session: String, listingId: String): ApiOutcome<Boolean>
+}
+
+/** Only HTTP transport is replaceable; DTO parsing and safety checks are shared
+ * by every production or test client. This does not create a live Android app.
+ */
+class RemoteCatalogRepository(private val sender: RequestSender) : CatalogRepository {
+    override fun browse(language: Language, availableOnly: Boolean,
+                        limit: Int, after: String?): ApiOutcome<CatalogBrowse> {
+        val call = JodloRoutes.browse(language, availableOnly, limit, after)
+        return performOnce(call, sender::send, JodloReplyDecoder::browse)
+            .validated { dto ->
+                dto.language == language && dto.categories.size <= limit &&
+                    (dto.nextCursor == null || dto.categories.size == limit) &&
+                    (after == null || dto.nextCursor != after)
+            }
+    }
+
+    override fun search(query: String, language: Language, availableOnly: Boolean,
+                        includeChoices: Boolean, limit: Int, offset: Int): ApiOutcome<CatalogSearch> {
+        val call = JodloRoutes.search(query, language, availableOnly, includeChoices, limit, offset)
+        val expected = Normalizer.normalize(query.trim(), Normalizer.Form.NFC)
+        return performOnce(call, sender::send, JodloReplyDecoder::search)
+            .validated { dto ->
+                dto.language == language && dto.query == expected &&
+                    !(!includeChoices && dto.needsChoice) &&
+                    dto.categories.size <= limit &&
+                    (dto.nextOffset == null ||
+                        (dto.nextOffset == offset + limit && !dto.needsChoice))
+            }
+    }
+
+    override fun listings(categoryId: String): ApiOutcome<List<PublicListing>> {
+        val call = JodloRoutes.publicListings(categoryId)
+        return performOnce(call, sender::send, JodloReplyDecoder::publicListings)
+            .validated { rows -> rows.all { it.categoryId == categoryId } }
+    }
+}
+
+class RemoteWorkerRepository(private val sender: RequestSender) : WorkerRepository {
+    override fun myDraft(session: String): ApiOutcome<WorkerDraft> =
+        performOnce(JodloRoutes.workerDraft(session), sender::send, JodloReplyDecoder::workerDraft)
+
+    override fun optIn(session: String): ApiOutcome<WorkerDraft> =
+        performOnce(JodloRoutes.optInWorker(session), sender::send, JodloReplyDecoder::workerDraft)
+
+    override fun myListings(session: String): ApiOutcome<List<OwnListing>> =
+        performOnce(JodloRoutes.myListings(session), sender::send, JodloReplyDecoder::ownListings)
+
+    /** The server still verifies the active Category and the authenticated
+     * opted-in worker; a syntactically valid ID is not an approval to publish.
+     */
+    override fun publishExplicitCategory(session: String,
+                                         confirmedCategoryId: String): ApiOutcome<PublicListing> {
+        val call = JodloRoutes.publishListing(session, confirmedCategoryId)
+        return performOnce(call, sender::send, JodloReplyDecoder::published)
+            .validated { listing -> listing.categoryId == confirmedCategoryId }
+    }
+
+    override fun unpublish(session: String, listingId: String): ApiOutcome<Boolean> =
+        performOnce(JodloRoutes.unpublishListing(session, listingId),
+            sender::send, JodloReplyDecoder::unpublished)
+}
+
+/** Preserve the error-kind boundary, do not hold the original response body. */
+private inline fun <T> ApiOutcome<T>.validated(condition: (T) -> Boolean): ApiOutcome<T> =
+    when (this) {
+        is ApiOutcome.Ok -> if (condition(value)) this
+            else ApiOutcome.Failed(FailureKind.BAD_RESPONSE, false)
+        is ApiOutcome.Failed -> this
+    }
+
+/** Explicit injection boundary for real HTTPS; never auto-retries. The
+ * blocking transport still MUST be called off Android's main thread.
+ */
+fun HttpsTransport.asRequestSender(): RequestSender = RequestSender { execute(it) }
