@@ -144,3 +144,7 @@ The offline [7,267-Service work queue](reference/JODLO_LEGACY_7267_SERVICE_REVIE
 ### 2026-10-28 — Parent-scoped phrase disambiguation analysis; no owner setup now
 
 The next nonvisual, offline [phrase collision review](reference/JODLO_LEGACY_PARENT_SCOPED_PHRASE_REVIEW_2026-10-28.md) prepares a human editorial workflow for identical legacy Service labels used under multiple Categories, without assigning matches, approving an alias or activating a Category. This step remains safely independent of the founder's actual M-005 category safety/activation policy, M-003 location consent/area retention, M-004 UI design and M-007 production approval. No manual cloud/provider setup is needed for this scope.
+
+### 2026-10-28 — Reviewer phrase proposal gate, no credentials/setup now
+
+The [editorial candidate contract](reference/JODLO_EDITORIAL_PHRASE_PROPOSALS_2026-10-28.md) is strictly local and **not approved** for public Search: all rows require native-language meaning, Category scope and founder M-005 real Category authorization. The ten historical first-wave IDs used for an example batch are NOT a launch decision. M-003 location privacy, M-004 actual visual UI and M-007 production remain outstanding; no extra founder account action now, and no Cloudflare or private worker data.
