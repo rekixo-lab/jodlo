@@ -35,6 +35,11 @@ fun main() {
     eq(ambiguous.value.choices.map { it.id }, listOf("plumber","carpenter"))
     check(ambiguous.value.needsChoice && ambiguous.value.categories.isEmpty())
 
+    val validLastSearchOffset = JodloReplyDecoder.search(TransportReply(200,
+        envelope("""{"language":"en","query":"fixture","categories":[$plumber],"nextOffset":100}""")))
+    check(validLastSearchOffset is ApiOutcome.Ok &&
+        validLastSearchOffset.value.nextOffset == 100)
+
     val public = JodloReplyDecoder.publicListings(TransportReply(200,
         envelope("""{"listings":[$listing]}""")))
     check(public is ApiOutcome.Ok)
@@ -79,6 +84,7 @@ fun main() {
         """{"language":"en","query":"tap repair","categories":[],"nextOffset":null,"choices":[$carpenter]}""",
         """{"language":"en","query":"tap repair","categories":[],"nextOffset":null,"needsChoice":false}""",
         """{"language":"en","query":"tap repair","categories":[],"nextOffset":400}""",
+        """{"language":"en","query":"tap repair","categories":[],"nextOffset":125}""",
         """{"language":"en","query":"tap repair","categories":[],"nextOffset":null,"workerPhone":"secret"}""",
     )) rejects(envelope(data),parse=JodloReplyDecoder::search)
 
