@@ -2,6 +2,8 @@
 
 **Founder-approved strategy (2026-10-27): no deployed staging, no Cloudflare deployment before product readiness.** Development uses local cloud simulations, mock integrations and GitHub CI. First external deployment is a separately approved production release.
 
+**Latest source/CI gap ledger:** [Release Gap Audit — 2026-10-28](RELEASE_GAP_AUDIT_2026-10-28.md). It distinguishes previously verified headless tests from all still-open device, provider, operational and founder gates. The Kotlin suite inventory/aggregate checks are only **coverage wiring checks**, not release acceptance or numerical code coverage.
+
 ## Mandatory quality acceptance before final release
 
 - [ ] Follow [ADR-0005](decisions/0005-reuse-tokens-premium-motion.md): reusable tested UI/business components/contracts, no redundant media/assets, no unused SDKs, localized strings and one approved theme for colors, corners, strokes, spacing, elevation, typography and animation tokens.
