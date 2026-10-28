@@ -177,3 +177,16 @@ tasks.register<JavaExec>("verifyLifecycleRegression") {
     classpath = sourceSets["test"].runtimeClasspath
     mainClass.set("com.rekixo.jodlo.core.network.CustomerWorkerLifecycleRegressionTestKt")
 }
+
+/**
+ * Release preflight: run EVERY explicit nonvisual Kotlin verification suite.
+ * The matching task collection is lazy, so newly registered verify* JavaExec
+ * suites join automatically; no duplicated 21-name GitHub Actions command.
+ * scripts/verify-kotlin-suite-coverage.mjs independently fails CI if a new
+ * executable test main lacks a registered JavaExec verifier.
+ */
+tasks.register("verifyHeadlessCore") {
+    group = "verification"
+    description = "Run all headless Kotlin/JVM executable contract, race and end-to-end suites"
+    dependsOn(tasks.withType<JavaExec>().matching { it.name.startsWith("verify") })
+}
