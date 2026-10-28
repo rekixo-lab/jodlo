@@ -200,3 +200,7 @@ Current `includeChoices=1` Search detects curated-phrase/literal name contradict
 ## 2026-10-28 — Full 889-category review-only activation preflight
 
 Use [catalog expansion preflight](docs/reference/JODLO_CATEGORY_EXPANSION_PREFLIGHT_2026-10-28.md) and `npm run catalog:preflight-summary` before any actual category activation. A draft may contain **ALL 889 legacy categories**, including invalid source IDs flagged for explicit mapping, but every single row remains blocked for founder M-005 + occupational safety + bilingual semantics + canonical JODLO ID/slug mapping. No executable SQL, 889 import or production activation should be generated from this report. `verifyCatalogExpansionPreflight` rejects forged approval fields; run tests. M-003 location, M-004 UI, M-007 deployment still separate, old Finworkar READ ONLY.
+
+## 2026-10-28 — 889-Category small editor packets
+
+After running `npm run reference:check`, use `npm run catalog:review-packets` then `npm run catalog:review-packet -- --packet=1` (1..45) for parent-scoped Source/Service/ambiguous phrase examples from all 889. See [reviewer contract](docs/reference/JODLO_CATEGORY_HUMAN_REVIEW_PACKETS_2026-10-28.md). Never mistake 3 examples for exhaustive review or a missing mechanical flag for category approval. No generated file may be used as active D1 seed or public Search synonym index; retain M-003/004/005/007 boundaries and ADR-0008/0009.
