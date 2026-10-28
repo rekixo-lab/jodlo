@@ -41,3 +41,7 @@ Other included Services are checked against the pinned snapshot by `scripts/veri
 Validation: `npm run catalog:m005-first-review`, `npm run reference:check`, `npm test`. The validator cross-checks every Category ID, original safety tier, service evidence, source SHA and permanently pending signoffs against the original pinned immutable archive. It forbids fabricated `approved`/`is_active` fields, extra languages, human certification claims or promoting high-voltage/refrigerant categories to ordinary work. Actual CI verification on PR and merged main is required before asserting this change landed.
 
 M-003 personal location/consent, M-004 visual UI and M-007 Cloudflare remote production approval remain separate. Finworkar repository must remain read-only.
+
+## 2026-10-28 official government reference screening
+
+See the [official-source evidence and pending trade reviewer checklist](JODLO_M005_OFFICIAL_SAFETY_CROSSWALK_2026-10-28.md). No legal, technical or Hindi-language human signoff or Category activation is implied.
