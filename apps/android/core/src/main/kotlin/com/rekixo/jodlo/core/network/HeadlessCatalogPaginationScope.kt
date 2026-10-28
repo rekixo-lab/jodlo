@@ -23,6 +23,13 @@ sealed class PageState {
 }
 enum class PageCompletion { APPLIED, DISCARDED, DEFERRED, BLOCKED }
 
+/** Headless destination names, NOT a screen, layout, Activity or Android UI. */
+enum class CustomerDestination { BROWSE, SEARCH, PUBLIC_LISTINGS }
+data class CustomerNavigationState(
+    val destination: CustomerDestination = CustomerDestination.BROWSE,
+    val backDestination: CustomerDestination? = null,
+)
+
 /** Explicit selection is a CUSTOMER read choice, never posting consent. */
 enum class CustomerCategorySource { BROWSE, SEARCH }
 sealed class CustomerSelectionState {
@@ -44,6 +51,7 @@ sealed class CustomerSelectionState {
 data class CatalogPageSnapshot(
     val closed: Boolean, val browse: PageState, val search: PageState,
     val selection: CustomerSelectionState = CustomerSelectionState.Idle,
+    val navigation: CustomerNavigationState = CustomerNavigationState(),
 )
 
 /** Headless public pagination, always called off the future Android main thread.
@@ -62,6 +70,9 @@ data class CatalogPageSnapshot(
  * Browse/Search result can be opened via a separate, read-only Listings GET.
  * Ambiguous Search choices are NEVER auto-selected, and neither selection nor
  * opening Listings invokes worker opt-in, posting, contact or verification.
+ * Pure headless Back Navigation preserves an unexpired source page but cancels
+ * selected Listings' late replies. Search/Browse can be revisited WITHOUT a
+ * hidden request; worker writes and TTL still invalidate their data.
  * No polling, GPS, UI or public contact workflow.
  */
 class HeadlessCatalogPaginationScope(
@@ -100,8 +111,29 @@ class HeadlessCatalogPaginationScope(
     private var selectedCategory: PublicCategory? = null
     private var selectedSource: CustomerCategorySource? = null
     private var listingsSignal: CancellationSignal? = null
+    private var destination = CustomerDestination.BROWSE
+
+    private fun navigationLocked() = CustomerNavigationState(
+        destination,
+        when (destination) {
+            CustomerDestination.BROWSE -> null
+            CustomerDestination.SEARCH -> CustomerDestination.BROWSE
+            CustomerDestination.PUBLIC_LISTINGS ->
+                when (selectedSource) {
+                    CustomerCategorySource.BROWSE -> CustomerDestination.BROWSE
+                    CustomerCategorySource.SEARCH -> CustomerDestination.SEARCH
+                    null -> null
+                }
+        },
+    )
 
     private fun resetSelectionLocked(refresh: Boolean) {
+        if (destination == CustomerDestination.PUBLIC_LISTINGS) {
+            destination = when (selectedSource) {
+                CustomerCategorySource.SEARCH -> CustomerDestination.SEARCH
+                else -> CustomerDestination.BROWSE
+            }
+        }
         listingsSignal?.cancel()
         listingsSignal = null
         selectedCategory = null
@@ -137,7 +169,53 @@ class HeadlessCatalogPaginationScope(
 
     fun snapshot(): CatalogPageSnapshot = synchronized(lock) {
         if (!closed) reconcileLocked()
-        CatalogPageSnapshot(closed, browse.state, search.state, selectionState)
+        CatalogPageSnapshot(
+            closed, browse.state, search.state, selectionState, navigationLocked(),
+        )
+    }
+
+    /** Headless routing only; switching destinations never starts a GET.
+     * Previously cached pages remain subject to their original time window.
+     * Public Listings are never retained as an invisible back-stack payload.
+     */
+    fun showBrowse(): PageCompletion = synchronized(lock) {
+        if (closed) return@synchronized PageCompletion.DISCARDED
+        reconcileLocked()
+        resetSelectionLocked(refresh = false)
+        destination = CustomerDestination.BROWSE
+        PageCompletion.APPLIED
+    }
+
+    fun showSearch(): PageCompletion = synchronized(lock) {
+        if (closed) return@synchronized PageCompletion.DISCARDED
+        reconcileLocked()
+        resetSelectionLocked(refresh = false)
+        destination = CustomerDestination.SEARCH
+        PageCompletion.APPLIED
+    }
+
+    /** One Back step: Listings -> chosen source, Search -> Browse.
+     * No hidden network request or stale Listings restoration; Back at Browse
+     * is a no-op and the outer future Android host may handle system exit.
+     */
+    fun back(): PageCompletion = synchronized(lock) {
+        if (closed) return@synchronized PageCompletion.DISCARDED
+        reconcileLocked()
+        when (destination) {
+            CustomerDestination.BROWSE -> PageCompletion.BLOCKED
+            CustomerDestination.SEARCH -> {
+                // Never leave a hidden Search lane stuck Loading. Retain an
+                // already ready unexpired search for an explicit revisit.
+                if (search.signal != null) search.invalidate()
+                resetSelectionLocked(refresh = false)
+                destination = CustomerDestination.BROWSE
+                PageCompletion.APPLIED
+            }
+            CustomerDestination.PUBLIC_LISTINGS -> {
+                resetSelectionLocked(refresh = false)
+                PageCompletion.APPLIED
+            }
+        }
     }
 
     /** A future approved screen can request this on resume or explicit refresh.
@@ -168,6 +246,7 @@ class HeadlessCatalogPaginationScope(
 
     private fun admit(
         lane: Lane, first: Boolean, hasNext: (PageState.Ready) -> Boolean,
+        destinationOnFirst: CustomerDestination? = null,
     ): Admission = synchronized(lock) {
         if (closed) return@synchronized Admission.Discarded
         reconcileLocked()
@@ -189,15 +268,17 @@ class HeadlessCatalogPaginationScope(
         lane.signal = signal
         lane.firstStarted = time
         lane.state = PageState.Loading
+        if (first && destinationOnFirst != null) destination = destinationOnFirst
         Admission.Accepted(Ticket(signal, previous, time))
     }
 
     private fun run(
         lane: Lane, first: Boolean,
         hasNext: (PageState.Ready) -> Boolean,
+        destinationOnFirst: CustomerDestination? = null,
         request: (PageState.Ready?) -> ApiOutcome<PageState.Ready>,
     ): PageCompletion {
-        val admission = admit(lane, first, hasNext)
+        val admission = admit(lane, first, hasNext, destinationOnFirst)
         val ticket = when (admission) {
             is Admission.Accepted -> admission.ticket
             Admission.Blocked -> return PageCompletion.BLOCKED
@@ -257,7 +338,10 @@ class HeadlessCatalogPaginationScope(
         language: Language, availableOnly: Boolean = false, pageSize: Int = 20,
     ): PageCompletion {
         JodloRoutes.browse(language, availableOnly, pageSize)
-        return run(browse, first = true, hasNext = { true }) {
+        return run(
+            browse, first = true, hasNext = { true },
+            destinationOnFirst = CustomerDestination.BROWSE,
+        ) {
             browsePage(language, availableOnly, pageSize, null)
         }
     }
@@ -298,7 +382,10 @@ class HeadlessCatalogPaginationScope(
     ): PageCompletion {
         JodloRoutes.search(query, language, availableOnly, true, pageSize, 0)
         val normalized = Normalizer.normalize(query.trim(), Normalizer.Form.NFC)
-        return run(search, first = true, hasNext = { true }) {
+        return run(
+            search, first = true, hasNext = { true },
+            destinationOnFirst = CustomerDestination.SEARCH,
+        ) {
             searchPage(normalized, language, availableOnly, pageSize, 0, true)
         }
     }
@@ -369,6 +456,7 @@ class HeadlessCatalogPaginationScope(
             selectedCategory = category
             selectedSource = source
             selectionState = CustomerSelectionState.Chosen(category, source)
+            destination = CustomerDestination.PUBLIC_LISTINGS
             PageCompletion.APPLIED
         }
     }
@@ -454,5 +542,6 @@ class HeadlessCatalogPaginationScope(
         browse.close()
         search.close()
         resetSelectionLocked(refresh = false)
+        destination = CustomerDestination.BROWSE
     }
 }
