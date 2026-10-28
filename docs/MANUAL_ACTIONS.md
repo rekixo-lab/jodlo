@@ -180,3 +180,7 @@ The [pending human review intake](reference/JODLO_M005_SCOPE_BOUND_EVIDENCE_INTA
 ### 2026-10-28 — Headless Kotlin Core proceeds without M-004 screen approval
 
 New [Kotlin nonvisual Android-compatible Core](../apps/android/README.md) compiles/tests Category Browse/Search, approved worker opt-in/listing request plans and strict HTTPS transport without any screen/layout/theme. This is **not** a native app/APK, Google OAuth configured on a device, real Location data, customer contact route or public Category activation. **Founder M-004 still required before first visual screen**, M-003 before personal areas/GPS/consent, M-005 before real approved Category and customer request/communication policy, M-008 before real Android Google Sign-In, M-007 before Cloudflare production. No external credentials or console actions now.
+
+### 2026-10-28 — Headless Kotlin reply decoder; no new manual approval or cloud action
+
+[Android Kotlin network core](../apps/android/README.md) now has strict compiled JSON parsing of current backend public Catalog and worker Listing replies, including ambiguous Search choices, typed errors and weak network failure. This is an internal, nonvisual safety improvement **not an Android app, design signoff, offline sync, native Google login or production deployment**. No new M-003/M-004/M-005/M-007/M-008 authorization implied; external console setup not needed for this step.
