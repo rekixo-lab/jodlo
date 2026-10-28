@@ -27,3 +27,7 @@ Each row remains: legalSafetyReview=NOT_COMPLETED; hindiEnglishHumanReview=NOT_C
 Next real gates: (1) Indian lawyer plus relevant occupational expert records a trade-specific scoped finding including jurisdiction; (2) human native Hindi/English editor signs off all positive/excluded wording; (3) moderation/complaint, custody, customer-home-entry and contact controls receive operational approval; (4) founder explicitly approves bounded live Category IDs under M-005. The 872 other historical Categories remain in the 45-batch review queue, not excluded from future legitimate work. M-003 location privacy, M-004 visual/storyboard and M-007 production remain separate.
 
 To verify source-reference coverage locally: npm run catalog:m005-official-evidence, npm run reference:check, npm test. Only pinned local files are checked; no D1 seed, actual legal verification, app screen, external account action, remote Cloudflare deploy or Finworkar mutation.
+
+## 2026-10-28 reviewer evidence intake follow-up
+
+The [scope-bound, pending-only external review intake](JODLO_M005_SCOPE_BOUND_EVIDENCE_INTAKE_2026-10-28.md) now creates exact per-Category proof-submission checklists and rejects stale scope hashes. No human, legal or Founder signoff is created by source URL references.
