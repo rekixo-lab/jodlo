@@ -28,6 +28,28 @@ data class MarketplaceReadSnapshot(
     val ownListings: ReadState<List<OwnListing>>,
 )
 
+/** Type-separated customer-facing public read result. Cannot carry the
+ * authenticated worker read lanes, login state, owned listings or bearer.
+ * This is a DTO separation, NOT an authentication or UI approval mechanism.
+ */
+data class CustomerMarketplaceSnapshot(
+    val closed: Boolean,
+    val browse: ReadState<CatalogBrowse>,
+    val search: ReadState<CatalogSearch>,
+    val publicListings: ReadState<List<PublicListing>>,
+)
+
+/** Worker-only typed read projection. The process-local session is ALWAYS
+ * checked again; on logout/expiry/replacement races private rows fail closed.
+ * Does not include public customer queries, search history or selected choices.
+ */
+data class WorkerMarketplaceSnapshot(
+    val closed: Boolean,
+    val login: LoginState,
+    val worker: ReadState<WorkerState>,
+    val ownListings: ReadState<List<OwnListing>>,
+)
+
 /** One instance per future approved screen/view lifecycle, not per account.
  *
  * Calls are blocking and MUST run off Android's main thread. Each lane is
@@ -138,6 +160,41 @@ class HeadlessMarketplaceReadScope(
         MarketplaceReadSnapshot(
             closed, browseLane.state, searchLane.state, publicLane.state,
             workerLane.state, ownLane.state,
+        )
+    }
+
+    /** Typed public Customer view. Unlike the legacy combined snapshot,
+     * its type has NO authenticated Worker/Owned Listing properties.
+     * The existing lifecycle/TTL/write invalidation remains authoritative.
+     */
+    fun customerSnapshot(): CustomerMarketplaceSnapshot {
+        val source = snapshot()
+        return CustomerMarketplaceSnapshot(
+            source.closed, source.browse, source.search, source.publicListings,
+        )
+    }
+
+    /** Typed private Worker view. A snapshot can race with account switches:
+     * bracket the read with session epochs and return no private rows if
+     * they differ or the account is signed out. No implicit remote GET.
+     *
+     * Future consumers must call this only from a separately authorized
+     * Worker experience; server-side auth is still mandatory.
+     */
+    fun workerSnapshot(): WorkerMarketplaceSnapshot {
+        val before = session.sessionEpoch()
+        val source = snapshot()
+        val login = session.snapshot()
+        val after = session.sessionEpoch()
+        if (source.closed) return WorkerMarketplaceSnapshot(
+            true, LoginState.SignedOut, ReadState.Idle, ReadState.Idle,
+        )
+        if (before != after || login is LoginState.SignedOut)
+            return WorkerMarketplaceSnapshot(
+                false, LoginState.SignedOut, ReadState.Idle, ReadState.Idle,
+            )
+        return WorkerMarketplaceSnapshot(
+            false, login, source.worker, source.ownListings,
         )
     }
 
