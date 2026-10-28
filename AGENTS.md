@@ -220,3 +220,7 @@ Use [scope-bound human review evidence intake](docs/reference/JODLO_M005_SCOPE_B
 ## 2026-10-28 — Kotlin networking Core exists; UI remains gated
 
 The first Android-compatible Kotlin code is [apps/android/core](apps/android/README.md) (nonvisual JVM module) with a strict, compiled actual backend request/HTTPS boundary. Run `gradle -p apps/android :core:verifyContracts --no-daemon` (also in GitHub CI). This is **not Android :app**, an APK, or a founder-approved visible UI. Never add Activity, layout, screen, visual theme/motion, Android app assets or third-party tracking SDKs without explicit M-004 founder design approval. Do not add personal areas before M-003, unsafe Contact/Request or Category activation before M-005, real Google OAuth before M-008 or production before M-007. Hindi (Devanagari) and English only, Finworkar read only.
+
+## 2026-10-28 — Strict Android-compatible Kotlin API reply boundary
+
+Run `gradle -p apps/android :core:verifyContracts :core:verifyReplies --no-daemon` locally (also in CI). `JodloReplyDecoder` projects only current `{ok,data}`/error envelopes to typed public Category and Listing DTOs. It refuses malformed, privacy-expanding, unsupported-language, unbounded or mismatched HTTP responses and **never treats a Search choice as posting consent**. `performOnce` does not retry uncertain POST/DELETE operations. `apps/android` remains nonvisual JVM Core only, with NO actual Android app/UI, GPS, provider or deployment. All Founder M-003/004/005/007/008 gates and Hindi Devanagari + English only remain in force.

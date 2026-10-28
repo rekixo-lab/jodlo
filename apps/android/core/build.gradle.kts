@@ -14,3 +14,14 @@ tasks.register<JavaExec>("verifyContracts") {
     classpath = sourceSets["test"].runtimeClasspath
     mainClass.set("com.rekixo.jodlo.core.network.JodloApiCoreTestKt")
 }
+
+dependencies {
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
+}
+tasks.register<JavaExec>("verifyReplies") {
+    group = "verification"
+    description = "Compile and run typed JSON reply and one-shot error tests"
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.rekixo.jodlo.core.network.JodloReplyDecoderTestKt")
+}
