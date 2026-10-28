@@ -57,3 +57,11 @@ tasks.register<JavaExec>("verifyCancellation") {
     classpath = sourceSets["test"].runtimeClasspath
     mainClass.set("com.rekixo.jodlo.core.network.SessionCancellationTestKt")
 }
+
+tasks.register<JavaExec>("verifyReadScope") {
+    group = "verification"
+    description = "Compile and execute headless lifecycle/marketplace read coordination races"
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.rekixo.jodlo.core.network.HeadlessMarketplaceReadScopeTestKt")
+}
