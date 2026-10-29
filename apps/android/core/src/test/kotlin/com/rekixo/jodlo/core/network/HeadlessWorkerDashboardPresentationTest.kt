@@ -456,7 +456,10 @@ private fun optInPagedDashboardHidesUncertainMutationsAndSessionChanges() {
     check(uncertain.ownerPageNumber==null && !uncertain.ownerHasNextPage)
     check(uncertain.actions==setOf(
         WorkerDashboardAction.RECHECK_UNCERTAIN_WRITE,
-        WorkerDashboardAction.ACKNOWLEDGE_UNCERTAINTY))
+        WorkerDashboardAction.ACKNOWLEDGE_UNCERTAINTY,
+        WorkerDashboardAction.START_UNCERTAIN_PAGE_REVIEW))
+    check(uncertain.reviewPagesChecked==0 &&
+        !uncertain.reviewHasNextPage && !uncertain.reviewScanComplete)
     check(!uncertain.toString().contains("do-not-leak"))
     check(writes.acknowledgeUncertainty())
     check(dashboard.snapshot().owned==WorkerListingsPhase.REFRESH_REQUIRED)
@@ -568,6 +571,180 @@ private fun optInPagedMapperRejectsMixedOrSignedOutSnapshots() {
         it==WorkerDashboardAction.LOAD_NEXT_OWNER_PAGE})
 }
 
+
+/** The new Dashboard actions are hints only; a caller must deliberately ask
+ * the existing write scope for exactly one private page on every step.
+ */
+private fun pagedUncertainReviewDashboardShowsProgressWithoutCursorOrExtraGets() {
+    val afterId="00000000-0000-4000-8000-000000000024"
+    val pages=AtomicInteger()
+    val posts=AtomicInteger()
+    val entered=CountDownLatch(1)
+    val release=CountDownLatch(1)
+    val sender=RequestSender { call ->
+        when {
+            call.resource=="/api/v1/me/worker-profile" &&
+                call.method==HttpMethod.POST ->
+                TransportReply(200,"""{"ok":true,"data":{"profile":{"status":"draft"}}}""")
+            call.resource=="/api/v1/me/listings" && call.method==HttpMethod.POST -> {
+                posts.incrementAndGet()
+                TransportReply(503,
+                    """{"ok":false,"error":{"code":"SERVICE_UNAVAILABLE","message":"secret"}}""")
+            }
+            call.resource.startsWith("/api/v1/me/listings?limit=25") &&
+                call.method==HttpMethod.GET -> {
+                check(call.headers()["Authorization"]=="Bearer $DASH_TOKEN_A")
+                check(call.bodyUtf8()==null)
+                pages.incrementAndGet()
+                val body=if(call.resource.contains("&after=")) {
+                    check(call.resource=="/api/v1/me/listings?limit=25&after=$afterId")
+                    entered.countDown()
+                    check(release.await(8,TimeUnit.SECONDS))
+                    """{"listings":[{"id":"$DASH_OWN_ID","categoryId":"plumber","visible":true}],"nextCursor":null}"""
+                } else {
+                    val rows=(0..24).joinToString(",") { i ->
+                        val id="00000000-0000-4000-8000-" +
+                            i.toString().padStart(12,'0')
+                        """{"id":"$id","categoryId":"synthetic-$i","visible":false}"""
+                    }
+                    """{"listings":[$rows],"nextCursor":"$afterId"}"""
+                }
+                TransportReply(200,"""{"ok":true,"data":$body}""")
+            }
+            else -> error("Unexpected network call in owner Dashboard test")
+        }
+    }
+    val session=InMemorySessionCoordinator(RemoteWorkerRepository(sender),sender,{0L})
+    val reads=HeadlessMarketplaceReadScope(DashboardCatalog(),session)
+    val writes=HeadlessWorkerWriteScope(session)
+    val dashboard=HeadlessWorkerDashboardPresentation(session,reads,writes)
+    check(session.acceptIssuedSession(dashIssued()) is ApiOutcome.Ok)
+    check(session.optIn()==SessionResult.Success(WorkerState.DRAFT))
+    check(writes.publishExplicitCategory("plumber")==WorkerWriteCompletion.APPLIED)
+    val initial=dashboard.snapshot()
+    check(initial.mutation==WorkerMutationPhase.NEEDS_REVIEW)
+    check(initial.reviewPagesChecked==0 && !initial.reviewHasNextPage)
+    check(initial.actions==setOf(
+        WorkerDashboardAction.RECHECK_UNCERTAIN_WRITE,
+        WorkerDashboardAction.ACKNOWLEDGE_UNCERTAINTY,
+        WorkerDashboardAction.START_UNCERTAIN_PAGE_REVIEW))
+    check(initial.ownedListings.isEmpty() && initial.observedVisibility==null)
+    repeat(4){check(dashboard.snapshot()==initial)}
+    check(pages.get()==0 && posts.get()==1)
+
+    check(writes.recheckOwnListingsPage()==WorkerWriteCompletion.APPLIED)
+    val first=dashboard.snapshot()
+    check(first.mutation==WorkerMutationPhase.NEEDS_REVIEW)
+    check(first.reviewPagesChecked==1 && first.reviewHasNextPage)
+    check(!first.reviewScanComplete)
+    check(first.observedVisibility==WorkerVisibility.NOT_OBSERVED_IN_PAGED_SCAN)
+    check(first.actions==setOf(
+        WorkerDashboardAction.RECHECK_UNCERTAIN_WRITE,
+        WorkerDashboardAction.ACKNOWLEDGE_UNCERTAINTY,
+        WorkerDashboardAction.NEXT_UNCERTAIN_PAGE_REVIEW))
+    check(first.ownedListings.isEmpty() && first.ownerPageNumber==null)
+    check(!first.toString().contains(afterId))
+    repeat(4){check(dashboard.snapshot()==first)}
+    check(pages.get()==1 && posts.get()==1)
+
+    val slow=dashAsync {writes.recheckOwnListingsPage()}
+    try {
+        dashReached(entered)
+        val loading=dashboard.snapshot()
+        check(loading.mutation==WorkerMutationPhase.RECHECKING)
+        check(loading.actions.isEmpty())
+        check(loading.reviewPagesChecked==0 && !loading.reviewHasNextPage &&
+            !loading.reviewScanComplete)
+        check(loading.ownedListings.isEmpty() && loading.observedVisibility==null)
+        check(!loading.toString().contains(afterId))
+        check(writes.recheckOwnListingsPage()==WorkerWriteCompletion.BLOCKED)
+    } finally {release.countDown()}
+    check(dashDone(slow)==WorkerWriteCompletion.APPLIED)
+    val finished=dashboard.snapshot()
+    check(finished.mutation==WorkerMutationPhase.NEEDS_REVIEW)
+    check(finished.reviewPagesChecked==2 && finished.reviewScanComplete)
+    check(!finished.reviewHasNextPage)
+    check(finished.observedVisibility==WorkerVisibility.VISIBLE)
+    check(finished.actions==setOf(
+        WorkerDashboardAction.RECHECK_UNCERTAIN_WRITE,
+        WorkerDashboardAction.ACKNOWLEDGE_UNCERTAINTY,
+        WorkerDashboardAction.START_UNCERTAIN_PAGE_REVIEW))
+    check(finished.ownedListings.isEmpty() && finished.ownerPageNumber==null)
+    check(!finished.toString().contains(afterId))
+    check(writes.publishExplicitCategory("plumber")==WorkerWriteCompletion.BLOCKED)
+    repeat(4){check(dashboard.snapshot()==finished)}
+    check(pages.get()==2 && posts.get()==1)
+
+    check(writes.acknowledgeUncertainty())
+    val cleared=dashboard.snapshot()
+    check(cleared.mutation==WorkerMutationPhase.IDLE)
+    check(cleared.reviewPagesChecked==0 && !cleared.reviewHasNextPage &&
+        !cleared.reviewScanComplete)
+    check(WorkerDashboardAction.START_UNCERTAIN_PAGE_REVIEW !in cleared.actions)
+    check(session.acceptIssuedSession(dashIssued(DASH_TOKEN_B)) is ApiOutcome.Ok)
+    val replaced=dashboard.snapshot()
+    check(replaced.profile==WorkerProfilePhase.UNKNOWN)
+    check(replaced.ownedListings.isEmpty() && replaced.reviewPagesChecked==0)
+    check(!replaced.toString().contains(DASH_OWN_ID))
+    check(pages.get()==2 && posts.get()==1)
+}
+
+/** Pure mapper stress checks for offline cursor retry, terminal nonmatch,
+ * legacy fake compatibility and busy/signed-out/closed data suppression.
+ */
+private fun pagedReviewMapperKeepsRawCursorPrivateAndNeverClaimsSuccess() {
+    val cursor="00000000-0000-4000-8000-000000000024"
+    val read=WorkerMarketplaceSnapshot(false,
+        LoginState.SignedIn(WorkerState.DRAFT),
+        ReadState.Ready(WorkerState.DRAFT),ReadState.Idle)
+    val pending=WorkerWriteState.NeedsReview(
+        WorkerWriteAction.Unpublish(DASH_OWN_ID),
+        SessionFailure.REMOTE_FAILURE,FailureKind.OFFLINE_OR_TIMEOUT,
+        readFailure=SessionFailure.REMOTE_FAILURE,
+        pagedNextCursor=cursor,pagedPagesChecked=1)
+    val write=WorkerWriteSnapshot(false,pending)
+    val shown=HeadlessWorkerDashboardMapper.project(
+        read,write,pagedReviewAvailable=true)
+    check(shown.mutation==WorkerMutationPhase.NEEDS_REVIEW)
+    check(shown.reviewReadFailure==SessionFailure.REMOTE_FAILURE)
+    check(shown.reviewPagesChecked==1 && shown.reviewHasNextPage)
+    check(!shown.reviewScanComplete)
+    check(WorkerDashboardAction.NEXT_UNCERTAIN_PAGE_REVIEW in shown.actions)
+    check(WorkerDashboardAction.START_UNCERTAIN_PAGE_REVIEW !in shown.actions)
+    check(shown.observedVisibility==null && shown.ownedListings.isEmpty())
+    check(!shown.toString().contains(cursor))
+    check(WorkerDashboardState::class.java.declaredFields.none {
+        it.name.contains("cursor",ignoreCase=true) })
+    val legacy=HeadlessWorkerDashboardMapper.project(read,write)
+    check(WorkerDashboardAction.NEXT_UNCERTAIN_PAGE_REVIEW !in legacy.actions)
+    check(WorkerDashboardAction.START_UNCERTAIN_PAGE_REVIEW !in legacy.actions)
+    val busy=HeadlessWorkerDashboardMapper.project(
+        read,WorkerWriteSnapshot(false,WorkerWriteState.Rechecking(pending)),
+        pagedReviewAvailable=true)
+    check(busy.mutation==WorkerMutationPhase.RECHECKING)
+    check(busy.reviewPagesChecked==0 && !busy.reviewHasNextPage)
+    check(!busy.reviewScanComplete && busy.actions.isEmpty())
+    check(!busy.toString().contains(cursor))
+    val scan=HeadlessWorkerDashboardMapper.project(read,
+        WorkerWriteSnapshot(false,pending.copy(
+            observation=WorkerVisibility.NOT_OBSERVED_IN_PAGED_SCAN,
+            readFailure=null,pagedNextCursor=null,
+            pagedPagesChecked=36,pagedScanComplete=true)),
+        pagedReviewAvailable=true)
+    check(scan.reviewPagesChecked==36 && scan.reviewScanComplete)
+    check(!scan.reviewHasNextPage)
+    check(scan.observedVisibility==WorkerVisibility.NOT_OBSERVED_IN_PAGED_SCAN)
+    check(scan.mutation==WorkerMutationPhase.NEEDS_REVIEW)
+    check(WorkerDashboardAction.START_UNCERTAIN_PAGE_REVIEW in scan.actions)
+    check(!scan.toString().contains(cursor))
+    check(HeadlessWorkerDashboardMapper.project(
+        read.copy(login=LoginState.SignedOut),write,
+        pagedReviewAvailable=true)==WorkerDashboardState(WorkerProfilePhase.SIGNED_OUT))
+    check(HeadlessWorkerDashboardMapper.project(
+        read,write.copy(closed=true),
+        pagedReviewAvailable=true)==WorkerDashboardState(WorkerProfilePhase.CLOSED))
+}
+
 fun main() {
     signedOutAndUnknownNeverPublish()
     optedInWorkerShowsOnlyAuthenticatedOwnedRowsAndReadHints()
@@ -581,5 +758,7 @@ fun main() {
     optInPagedDashboardHidesUncertainMutationsAndSessionChanges()
     optInPagedDashboardLoadingAndErrorsAreReadOnlyAndFailClosed()
     optInPagedMapperRejectsMixedOrSignedOutSnapshots()
+    pagedUncertainReviewDashboardShowsProgressWithoutCursorOrExtraGets()
+    pagedReviewMapperKeepsRawCursorPrivateAndNeverClaimsSuccess()
     println("JODLO worker dashboard: private profile/own-listing states, uncertain writes, account epoch and no auto mutation OK")
 }

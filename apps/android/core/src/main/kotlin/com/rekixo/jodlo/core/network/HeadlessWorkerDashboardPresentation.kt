@@ -15,6 +15,10 @@ enum class WorkerDashboardAction {
     CHECK_PROFILE, LOAD_OWN_LISTINGS,
     START_OWNER_PAGE, LOAD_NEXT_OWNER_PAGE, REFRESH_OWNER_PAGE,
     RECHECK_UNCERTAIN_WRITE, ACKNOWLEDGE_UNCERTAINTY,
+    /** Inert hints: exactly ONE private GET only if caller invokes the
+     * corresponding explicit HeadlessWorkerWriteScope method.
+     */
+    START_UNCERTAIN_PAGE_REVIEW, NEXT_UNCERTAIN_PAGE_REVIEW,
 }
 
 /** No bearer, Google proof, account identifier, public Customer query,
@@ -38,6 +42,13 @@ data class WorkerDashboardState(
     val mutationFailure: FailureKind? = null,
     val mutationSessionFailure: SessionFailure? = null,
     val reviewReadFailure: SessionFailure? = null,
+    /** Optional read-only diagnosis of an unresolved write. Never a bearer,
+     * listing cursor, account ID, proof of a committed write or trust status.
+     * A completed nontransactional scan is still inconclusive.
+     */
+    val reviewPagesChecked: Int = 0,
+    val reviewHasNextPage: Boolean = false,
+    val reviewScanComplete: Boolean = false,
     /** Present only for the explicit owner-paged mode. Never an account ID,
      * bearer, server query token, or indication of worker verification.
      */
@@ -83,7 +94,10 @@ class HeadlessWorkerDashboardPresentation(
             return WorkerDashboardState(WorkerProfilePhase.SIGNED_OUT)
         if (beforeWrite != afterWrite || (ownerPage != null && ownerPage.login != read.login))
             return WorkerDashboardState(WorkerProfilePhase.REFRESH_REQUIRED)
-        return HeadlessWorkerDashboardMapper.project(read, write, ownerPage)
+        return HeadlessWorkerDashboardMapper.project(
+            read, write, ownerPage,
+            pagedReviewAvailable = session.supportsOwnerListingPages(),
+        )
     }
 }
 
@@ -100,6 +114,10 @@ object HeadlessWorkerDashboardMapper {
          * the session-fingerprint bracket around all three snapshots.
          */
         ownerPage: OwnerListingPageSnapshot? = null,
+        /** Optional capability hint; caller must use the *live* session-scoped
+         * presentation to prevent mixing private actors. Defaults to legacy.
+         */
+        pagedReviewAvailable: Boolean = false,
     ): WorkerDashboardState {
         if (read.closed || write.closed || ownerPage?.closed == true)
             return WorkerDashboardState(WorkerProfilePhase.CLOSED)
@@ -220,6 +238,13 @@ object HeadlessWorkerDashboardMapper {
             if (mutation == WorkerMutationPhase.NEEDS_REVIEW) {
                 add(WorkerDashboardAction.RECHECK_UNCERTAIN_WRITE)
                 add(WorkerDashboardAction.ACKNOWLEDGE_UNCERTAINTY)
+                // A cursor is never copied into the projection. A failed
+                // continuation can still be retried by a deliberate next.
+                if (pagedReviewAvailable) {
+                    add(if (review?.pagedNextCursor != null)
+                        WorkerDashboardAction.NEXT_UNCERTAIN_PAGE_REVIEW
+                    else WorkerDashboardAction.START_UNCERTAIN_PAGE_REVIEW)
+                }
             }
         }
         return WorkerDashboardState(
@@ -240,6 +265,12 @@ object HeadlessWorkerDashboardMapper {
             mutationSessionFailure = mutationSessionFailure,
             reviewReadFailure = if (mutation == WorkerMutationPhase.NEEDS_REVIEW)
                 review?.readFailure else null,
+            reviewPagesChecked = if (mutation == WorkerMutationPhase.NEEDS_REVIEW)
+                review?.pagedPagesChecked ?: 0 else 0,
+            reviewHasNextPage = mutation == WorkerMutationPhase.NEEDS_REVIEW &&
+                review?.pagedNextCursor != null,
+            reviewScanComplete = mutation == WorkerMutationPhase.NEEDS_REVIEW &&
+                review?.pagedScanComplete == true,
             ownerPageNumber = pageInfo?.pageNumber,
             ownerPageSize = pageInfo?.pageSize,
             ownerHasNextPage = nextPage,
