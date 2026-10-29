@@ -31,6 +31,26 @@ export const PUBLIC_LISTINGS_QUERY =
   "WHERE wl.category_id=? AND " + PUBLIC_LISTING_ELIGIBILITY +
   " ORDER BY wl.created_at,wl.id LIMIT 25";
 
+/** Opt-in bounded browse: the cursor is an already-public listing ID.
+ * Look up its ordering tuple INSIDE D1; never publish owner IDs/timestamps,
+ * accept a client-provided sort key, or vary the established 25-row GET.
+ * A deleted/unknown cursor is fail-closed (empty page; restart from page 1).
+ */
+const PUBLIC_LISTINGS_SELECT =
+  "SELECT wl.id,wl.category_id AS categoryId,wl.worker_account_id AS workerId " +
+  "FROM worker_listings AS wl JOIN accounts AS a ON a.id=wl.worker_account_id " +
+  "JOIN worker_profiles AS wp ON wp.account_id=a.id JOIN categories AS c ON c.id=wl.category_id " +
+  "WHERE wl.category_id=? AND " + PUBLIC_LISTING_ELIGIBILITY;
+
+export const PAGED_PUBLIC_LISTINGS_QUERY =
+  PUBLIC_LISTINGS_SELECT + " ORDER BY wl.created_at,wl.id LIMIT ?";
+
+export const CONTINUED_PUBLIC_LISTINGS_QUERY =
+  PUBLIC_LISTINGS_SELECT +
+  " AND (wl.created_at,wl.id) > (SELECT anchor.created_at,anchor.id " +
+  "FROM worker_listings AS anchor WHERE anchor.id=? AND anchor.category_id=?)" +
+  " ORDER BY wl.created_at,wl.id LIMIT ?";
+
 export const MY_LISTINGS_QUERY =
   "SELECT wl.id,wl.category_id AS categoryId, " +
   "CASE WHEN wl.status='published' AND wl.moderation_status='allowed' AND c.is_active=1 " +
@@ -63,12 +83,13 @@ export async function myListings(db:D1Database,actor:string) {
   return results.map(({id,categoryId,visible})=>({id,categoryId,visible:visible===1}));
 }
 
-/** DB joins CURRENT server-owned status; output never includes worker identity. */
-export async function publicListings(db:D1Database,categoryId:string):Promise<PublicListing[]> {
-  if(!validCategoryId(categoryId))return [];
-  const {results}=await db.prepare(PUBLIC_LISTINGS_QUERY).bind(categoryId)
-    .all<{id:string;categoryId:string;workerId:string}>();
-  return results.flatMap(row=>{
+type PublicListingDbRow = {id:string;categoryId:string;workerId:string};
+
+/** DB joins CURRENT server-owned status; output never includes worker identity.
+ * Shared two-field projection for legacy reads and the opt-in paged reader.
+ */
+function publicListingProjections(rows: PublicListingDbRow[]): PublicListing[] {
+  return rows.flatMap(row=>{
     const value=projectVisibleListing({
       listingId:row.id,listingOwnerAccountId:row.workerId,
       workerAccountId:row.workerId,categoryId:row.categoryId,
@@ -78,6 +99,38 @@ export async function publicListings(db:D1Database,categoryId:string):Promise<Pu
     });
     return value ? [value] : [];
   });
+}
+
+export async function publicListings(db:D1Database,categoryId:string):Promise<PublicListing[]> {
+  if(!validCategoryId(categoryId))return [];
+  const {results}=await db.prepare(PUBLIC_LISTINGS_QUERY).bind(categoryId)
+    .all<PublicListingDbRow>();
+  return publicListingProjections(results);
+}
+
+export type PublicListingPage = Readonly<{
+  listings: PublicListing[];
+  nextCursor: string | null;
+}>;
+
+/** Page size at most 25; SQL reads at most one additional eligible row.
+ * No offset scan, public timestamps, personal identifiers or worker scores.
+ */
+export async function pagePublicListings(
+  db:D1Database,categoryId:string,limit:number,after:string|null,
+):Promise<PublicListingPage> {
+  if(!validCategoryId(categoryId) ||
+     !Number.isSafeInteger(limit) || limit<1 || limit>25 ||
+     (after!==null && !validOpaqueId(after))) {
+    throw new Error("Invalid public listing page");
+  }
+  const query=after===null?PAGED_PUBLIC_LISTINGS_QUERY:CONTINUED_PUBLIC_LISTINGS_QUERY;
+  const parameters=after===null
+    ? [categoryId,limit+1]
+    : [categoryId,after,categoryId,limit+1];
+  const {results}=await db.prepare(query).bind(...parameters).all<PublicListingDbRow>();
+  const listings=publicListingProjections(results.slice(0,limit));
+  return {listings,nextCursor:results.length>limit ? listings.at(-1)?.id??null : null};
 }
 
 export async function unpublishListing(db:D1Database,actor:string,id:string):Promise<boolean> {

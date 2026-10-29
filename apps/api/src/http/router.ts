@@ -8,7 +8,7 @@ import { resolveGoogleAccount } from "../modules/identity/google-accounts.ts";
 import { issueSession, makeSessionVerifier, revokeAllSessions, revokeSession, SESSION_TTL_SECONDS } from "../modules/identity/sessions.ts";
 import { hasEmptyBody, readGoogleLoginBody, readServiceListingBody } from "./body.ts";
 import { validCategoryId } from "../modules/shared/identifiers.ts";
-import { publishListing, myListings, publicListings, unpublishListing } from "../modules/workers/listings.ts";
+import { publishListing, myListings, publicListings, pagePublicListings, unpublishListing } from "../modules/workers/listings.ts";
 import {
   allowGoogleAccountLogin, allowLoginBurst,
   LOGIN_BURST_RETRY_SECONDS, ACCOUNT_LOGIN_RETRY_SECONDS,
@@ -194,13 +194,29 @@ export async function handleRequest(
   if (url.pathname === "/api/v1/listings") {
     const methodError=getOnly(request);
     if(methodError)return methodError;
-    if(url.searchParams.size!==1||url.searchParams.getAll("categoryId").length!==1||
-        !validCategoryId(url.searchParams.get("categoryId"))) {
+    const params=url.searchParams;
+    const categoryId=params.get("categoryId");
+    const rawLimit=params.get("limit");
+    const after=params.get("after");
+    let invalid=false;
+    const allowed=new Set(["categoryId","limit","after"]);
+    params.forEach((_v,key)=>{
+      if(!allowed.has(key)||params.getAll(key).length!==1)invalid=true;
+    });
+    if(invalid||params.getAll("categoryId").length!==1||!validCategoryId(categoryId)||
+        (rawLimit===null && after!==null)||
+        (rawLimit!==null&&!/^(?:[1-9]|1[0-9]|2[0-5])$/.test(rawLimit))||
+        (after!==null && !validOpaqueId(after))) {
       return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid category query"}},400);
     }
     if(!env.DB)return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Listings unavailable"}},503);
     try {
-      const listings=await publicListings(env.DB,url.searchParams.get("categoryId")!);
+      if(rawLimit!==null) {
+        // Explicit paging is opt-in; never change the legacy unpaged DTO.
+        const page=await pagePublicListings(env.DB,categoryId!,Number(rawLimit),after);
+        return json({ok:true,data:page});
+      }
+      const listings=await publicListings(env.DB,categoryId!);
       return json({ok:true,data:{listings}});
     } catch {
       return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Listings unavailable"}},503);
