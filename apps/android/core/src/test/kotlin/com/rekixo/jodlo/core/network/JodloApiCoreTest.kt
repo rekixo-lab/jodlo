@@ -80,6 +80,26 @@ fun main() {
     rejects("invalid bearer") { JodloRoutes.publishListing("fake", "plumber") }
     check(JodloRoutes.optInWorker(TOKEN).bodyUtf8() == null)
     check(JodloRoutes.myListings(TOKEN).method == HttpMethod.GET)
+    // Authenticated owner pages are distinct from legacy /me/listings reads.
+    val ownPage = JodloRoutes.myListingPage(TOKEN, limit = 25,
+        after = "11111111-1111-4111-8111-111111111111")
+    check(ownPage.method == HttpMethod.GET)
+    check(ownPage.resource == "/api/v1/me/listings?limit=25&after=11111111-1111-4111-8111-111111111111")
+    check(ownPage.headers()["Authorization"] == "Bearer $TOKEN")
+    check(ownPage.bodyUtf8() == null && !ownPage.toString().contains(TOKEN))
+    check(JodloRoutes.myListingPage(TOKEN).resource == "/api/v1/me/listings?limit=20")
+    check(JodloRoutes.myListings(TOKEN).resource == "/api/v1/me/listings")
+    for (badLimit in listOf(0,-1,26,100)) {
+        rejects("owner listing bad limit $badLimit") {
+            JodloRoutes.myListingPage(TOKEN, limit = badLimit)
+        }
+    }
+    for (badAfter in listOf("", "tiny", "../outside", "bad%0A", "bad:sort")) {
+        rejects("owner listing bad cursor") {
+            JodloRoutes.myListingPage(TOKEN, after = badAfter)
+        }
+    }
+    rejects("owner listing needs a real bearer") { JodloRoutes.myListingPage("fake") }
     check(JodloRoutes.workerDraft(TOKEN).resource == "/api/v1/me/worker-profile")
     check(JodloRoutes.unpublishListing(TOKEN,
         "11111111-1111-4111-8111-111111111111").method == HttpMethod.DELETE)
