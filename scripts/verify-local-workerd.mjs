@@ -174,6 +174,23 @@ INSERT INTO auth_sessions(token_hash,account_id,expires_at) VALUES
     .data.listings;
   assert.deepEqual(nowVisible.map(x => x.id).sort(), [visible[0].id, published.id].sort());
   assert.ok(nowVisible.every(x => Object.keys(x).sort().join(",") === "categoryId,id"));
+  // Actual HTTP + native local D1 opt-in listing keyset pagination.
+  const firstPage=(await get("/api/v1/listings?categoryId=synthetic-fixture-active&limit=1"))
+    .data;
+  assert.equal(firstPage.listings.length,1);
+  assert.equal(firstPage.nextCursor,firstPage.listings[0].id);
+  const secondPage=(await get("/api/v1/listings?categoryId=synthetic-fixture-active&limit=1&after="+
+    encodeURIComponent(firstPage.nextCursor))).data;
+  assert.equal(secondPage.listings.length,1);
+  assert.equal(secondPage.nextCursor,null);
+  assert.deepEqual([firstPage.listings[0],secondPage.listings[0]],nowVisible);
+  assert.equal((await get("/api/v1/listings?categoryId=synthetic-fixture-active&after="+
+    firstPage.nextCursor,400)).error.code,"INVALID_QUERY");
+  assert.equal((await get("/api/v1/listings?categoryId=synthetic-fixture-active&limit=26",400))
+    .error.code,"INVALID_QUERY");
+  assert.deepEqual((await get("/api/v1/listings?categoryId=synthetic-fixture-hidden&limit=1"))
+    .data,{listings:[],nextCursor:null});
+
   assert.deepEqual((await authenticated("/api/v1/me/listings", "GET",
     localTokens.newWorker)).data.listings, [{ ...published, visible: true }]);
   assert.deepEqual((await authenticated("/api/v1/me/listings", "GET",
