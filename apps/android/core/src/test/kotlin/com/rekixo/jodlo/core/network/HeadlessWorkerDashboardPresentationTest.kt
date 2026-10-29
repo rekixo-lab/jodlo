@@ -318,6 +318,256 @@ private fun forgedActorSnapshotsFailClosedWithoutTrustingUnconfirmedWrites() {
         WorkerDashboardState(WorkerProfilePhase.CLOSED))
 }
 
+
+/** Exercises the real HTTPS-wire DTO parser through the fake sender and
+ * private scope, NOT a fabricated success snapshot or any Android UI.
+ */
+private fun optInPagedDashboardShowsExplicitActionsAndCurrentPageOnly() {
+    val requested=AtomicInteger()
+    val profileRequests=AtomicInteger()
+    val legacyRequests=AtomicInteger()
+    val secondId="22222222-2222-4222-8222-222222222222"
+    val thirdId="33333333-3333-4333-8333-333333333333"
+    val sender=RequestSender { call ->
+        when {
+            call.resource=="/api/v1/me/worker-profile" && call.method==HttpMethod.POST -> {
+                profileRequests.incrementAndGet()
+                TransportReply(200,"""{"ok":true,"data":{"profile":{"status":"draft"}}}""")
+            }
+            call.resource=="/api/v1/me/listings" -> {
+                legacyRequests.incrementAndGet()
+                TransportReply(200,"""{"ok":true,"data":{"listings":[{"id":"$thirdId","categoryId":"old","visible":true}]}}""")
+            }
+            call.resource.startsWith("/api/v1/me/listings?limit=2") -> {
+                check(call.method==HttpMethod.GET && call.bodyUtf8()==null)
+                check(call.headers()["Authorization"]=="Bearer $DASH_TOKEN_A")
+                check(!call.resource.contains(DASH_TOKEN_A))
+                requested.incrementAndGet()
+                val data=if(!call.resource.contains("&after=")) {
+                    """{"listings":[{"id":"$DASH_OWN_ID","categoryId":"plumber","visible":true},{"id":"$secondId","categoryId":"carpenter","visible":false}],"nextCursor":"$secondId"}"""
+                } else {
+                    check(call.resource.endsWith("&after=$secondId"))
+                    """{"listings":[{"id":"$thirdId","categoryId":"electrician","visible":false}],"nextCursor":null}"""
+                }
+                TransportReply(200,"""{"ok":true,"data":$data}""")
+            }
+            else -> error("Unexpected dashboard GET or write")
+        }
+    }
+    val worker=RemoteWorkerRepository(sender)
+    val session=InMemorySessionCoordinator(worker,sender,{0L})
+    val reads=HeadlessMarketplaceReadScope(DashboardCatalog(),session)
+    val writes=HeadlessWorkerWriteScope(session)
+    val pages=HeadlessOwnerListingPaginationScope(session,{0L})
+    val dashboard=HeadlessWorkerDashboardPresentation(session,reads,writes,pages)
+
+    check(dashboard.snapshot()==WorkerDashboardState(WorkerProfilePhase.SIGNED_OUT))
+    check(session.acceptIssuedSession(dashIssued()) is ApiOutcome.Ok)
+    check(session.optIn()==SessionResult.Success(WorkerState.DRAFT))
+    val initial=dashboard.snapshot()
+    check(initial.profile==WorkerProfilePhase.DRAFT)
+    // This page scope predates login and opt-in. Its private write revision
+    // changed, so it correctly requires a fresh first page, not cached data.
+    check(initial.owned==WorkerListingsPhase.REFRESH_REQUIRED)
+    check(initial.ownedListings.isEmpty() && initial.ownerPageNumber==null)
+    check(initial.actions==setOf(
+        WorkerDashboardAction.CHECK_PROFILE,WorkerDashboardAction.REFRESH_OWNER_PAGE))
+    check(requested.get()==0 && legacyRequests.get()==0 && profileRequests.get()==1)
+
+    // An unrelated old read must never be mixed into paged dashboard DTOs.
+    check(reads.ownListings()==ReadCompletion.APPLIED)
+    check(reads.workerSnapshot().ownListings is ReadState.Ready)
+    check(dashboard.snapshot()==initial)
+    check(legacyRequests.get()==1 && requested.get()==0)
+    check(pages.next()==PageCompletion.BLOCKED)
+    check(pages.start(2)==PageCompletion.APPLIED)
+    val first=dashboard.snapshot()
+    check(first.owned==WorkerListingsPhase.LISTINGS)
+    check(first.ownedListings==listOf(
+        OwnListing(DASH_OWN_ID,"plumber",true),
+        OwnListing(secondId,"carpenter",false)))
+    check(first.ownerPageNumber==1 && first.ownerPageSize==2 && first.ownerHasNextPage)
+    check(WorkerDashboardAction.LOAD_NEXT_OWNER_PAGE in first.actions)
+    check(WorkerDashboardAction.START_OWNER_PAGE in first.actions)
+    check(WorkerDashboardAction.LOAD_OWN_LISTINGS !in first.actions)
+    repeat(4){check(dashboard.snapshot()==first)}
+    check(requested.get()==1)
+
+    check(pages.next()==PageCompletion.APPLIED)
+    val second=dashboard.snapshot()
+    check(second.owned==WorkerListingsPhase.LISTINGS)
+    check(second.ownedListings==listOf(OwnListing(thirdId,"electrician",false)))
+    check(second.ownerPageNumber==2 && second.ownerPageSize==2 && !second.ownerHasNextPage)
+    check(WorkerDashboardAction.LOAD_NEXT_OWNER_PAGE !in second.actions)
+    check(pages.next()==PageCompletion.BLOCKED)
+    check(requested.get()==2)
+
+    check(pages.requestRefresh())
+    val refresh=dashboard.snapshot()
+    check(refresh.owned==WorkerListingsPhase.REFRESH_REQUIRED)
+    check(refresh.ownedListings.isEmpty())
+    check(refresh.ownerPageNumber==null && !refresh.ownerHasNextPage)
+    check(refresh.actions==setOf(
+        WorkerDashboardAction.CHECK_PROFILE,WorkerDashboardAction.REFRESH_OWNER_PAGE))
+    check(requested.get()==2) // hint is not an implicit GET
+    check(pages.start(2)==PageCompletion.APPLIED)
+    check(dashboard.snapshot().ownerPageNumber==1)
+    pages.close()
+    check(dashboard.snapshot()==WorkerDashboardState(WorkerProfilePhase.CLOSED))
+    check(requested.get()==3 && profileRequests.get()==1)
+}
+
+private fun optInPagedDashboardHidesUncertainMutationsAndSessionChanges() {
+    val count=AtomicInteger()
+    val sender=RequestSender { call ->
+        when {
+            call.resource=="/api/v1/me/worker-profile" && call.method==HttpMethod.POST ->
+                TransportReply(200,"""{"ok":true,"data":{"profile":{"status":"draft"}}}""")
+            call.resource.startsWith("/api/v1/me/listings?") -> {
+                count.incrementAndGet()
+                val id=if(call.headers()["Authorization"]=="Bearer $DASH_TOKEN_A")
+                    DASH_OWN_ID else "44444444-4444-4444-8444-444444444444"
+                TransportReply(200,
+                    """{"ok":true,"data":{"listings":[{"id":"$id","categoryId":"plumber","visible":true}],"nextCursor":null}}""")
+            }
+            call.method==HttpMethod.POST && call.resource=="/api/v1/me/listings" ->
+                TransportReply(503,
+                    """{"ok":false,"error":{"code":"SERVICE_UNAVAILABLE","message":"do-not-leak"}}""")
+            call.method==HttpMethod.POST && call.resource=="/api/v1/auth/logout" ->
+                TransportReply(200,"""{"ok":true,"data":{"revoked":true}}""")
+            else -> error("Unexpected dashboard action")
+        }
+    }
+    val session=InMemorySessionCoordinator(RemoteWorkerRepository(sender),sender,{0L})
+    val reads=HeadlessMarketplaceReadScope(DashboardCatalog(),session)
+    val writes=HeadlessWorkerWriteScope(session)
+    val pages=HeadlessOwnerListingPaginationScope(session,{0L})
+    val dashboard=HeadlessWorkerDashboardPresentation(session,reads,writes,pages)
+
+    check(session.acceptIssuedSession(dashIssued()) is ApiOutcome.Ok)
+    check(session.optIn()==SessionResult.Success(WorkerState.DRAFT))
+    check(pages.start(2)==PageCompletion.APPLIED)
+    check(dashboard.snapshot().ownedListings.single().id==DASH_OWN_ID)
+    check(writes.publishExplicitCategory("plumber")==WorkerWriteCompletion.APPLIED)
+    val uncertain=dashboard.snapshot()
+    check(uncertain.mutation==WorkerMutationPhase.NEEDS_REVIEW)
+    check(uncertain.owned==WorkerListingsPhase.HIDDEN)
+    check(uncertain.ownedListings.isEmpty())
+    check(uncertain.ownerPageNumber==null && !uncertain.ownerHasNextPage)
+    check(uncertain.actions==setOf(
+        WorkerDashboardAction.RECHECK_UNCERTAIN_WRITE,
+        WorkerDashboardAction.ACKNOWLEDGE_UNCERTAINTY))
+    check(!uncertain.toString().contains("do-not-leak"))
+    check(writes.acknowledgeUncertainty())
+    check(dashboard.snapshot().owned==WorkerListingsPhase.REFRESH_REQUIRED)
+    check(count.get()==1)
+    check(pages.start(2)==PageCompletion.APPLIED)
+    check(dashboard.snapshot().ownedListings.single().id==DASH_OWN_ID)
+    check(session.acceptIssuedSession(dashIssued(DASH_TOKEN_B)) is ApiOutcome.Ok)
+    val switched=dashboard.snapshot()
+    check(switched.profile==WorkerProfilePhase.UNKNOWN)
+    check(switched.owned==WorkerListingsPhase.HIDDEN && switched.ownedListings.isEmpty())
+    check(switched.ownerPageNumber==null && !switched.ownerHasNextPage)
+    check(!switched.toString().contains(DASH_OWN_ID))
+    check(session.optIn()==SessionResult.Success(WorkerState.DRAFT))
+    check(dashboard.snapshot().owned==WorkerListingsPhase.REFRESH_REQUIRED)
+    check(pages.start(2)==PageCompletion.APPLIED)
+    check(dashboard.snapshot().ownedListings.single().id==
+        "44444444-4444-4444-8444-444444444444")
+    check(session.logout()==SessionResult.Success(true))
+    check(dashboard.snapshot()==WorkerDashboardState(WorkerProfilePhase.SIGNED_OUT))
+    check(count.get()==3)
+}
+
+private fun optInPagedDashboardLoadingAndErrorsAreReadOnlyAndFailClosed() {
+    val entered=CountDownLatch(1)
+    val release=CountDownLatch(1)
+    val calls=AtomicInteger()
+    var bad=false
+    val sender=RequestSender {call ->
+        when {
+            call.resource=="/api/v1/me/worker-profile" && call.method==HttpMethod.POST ->
+                TransportReply(200,"""{"ok":true,"data":{"profile":{"status":"draft"}}}""")
+            call.resource.startsWith("/api/v1/me/listings?") -> {
+                calls.incrementAndGet()
+                if(!bad) {
+                    entered.countDown()
+                    check(release.await(5,TimeUnit.SECONDS))
+                }
+                if(bad)
+                    TransportReply(200,
+                        """{"ok":true,"data":{"listings":[{"id":"$DASH_OWN_ID","categoryId":"plumber","visible":true,"phone":"private"}],"nextCursor":null}}""")
+                else TransportReply(200,
+                    """{"ok":true,"data":{"listings":[{"id":"$DASH_OWN_ID","categoryId":"plumber","visible":true}],"nextCursor":null}}""")
+            }
+            else -> error("Unexpected dashboard call")
+        }
+    }
+    val session=InMemorySessionCoordinator(RemoteWorkerRepository(sender),sender,{0L})
+    val reads=HeadlessMarketplaceReadScope(DashboardCatalog(),session)
+    val writes=HeadlessWorkerWriteScope(session)
+    val pages=HeadlessOwnerListingPaginationScope(session,{0L})
+    val dashboard=HeadlessWorkerDashboardPresentation(session,reads,writes,pages)
+    check(session.acceptIssuedSession(dashIssued()) is ApiOutcome.Ok)
+    check(session.optIn()==SessionResult.Success(WorkerState.DRAFT))
+    val pending=dashAsync{ pages.start(2) }
+    try {
+        dashReached(entered)
+        val loading=dashboard.snapshot()
+        check(loading.owned==WorkerListingsPhase.LOADING)
+        check(loading.ownedListings.isEmpty())
+        check(WorkerDashboardAction.START_OWNER_PAGE !in loading.actions)
+        check(WorkerDashboardAction.LOAD_NEXT_OWNER_PAGE !in loading.actions)
+        check(calls.get()==1)
+    }finally {release.countDown()}
+    check(dashDone(pending)==PageCompletion.APPLIED)
+    check(dashboard.snapshot().owned==WorkerListingsPhase.LISTINGS)
+    bad=true
+    check(pages.start(2)==PageCompletion.APPLIED)
+    val error=dashboard.snapshot()
+    check(error.owned==WorkerListingsPhase.ERROR)
+    check(error.ownerFailure==FailureKind.BAD_RESPONSE)
+    check(error.ownerSessionFailure==SessionFailure.REMOTE_FAILURE)
+    check(error.ownedListings.isEmpty() && error.ownerPageNumber==null)
+    check(error.actions==setOf(WorkerDashboardAction.CHECK_PROFILE,
+        WorkerDashboardAction.REFRESH_OWNER_PAGE))
+    repeat(3) {check(dashboard.snapshot()==error)}
+    check(calls.get()==2)
+    check(!error.toString().contains("private"))
+}
+
+private fun optInPagedMapperRejectsMixedOrSignedOutSnapshots() {
+    val read=WorkerMarketplaceSnapshot(false,
+        LoginState.SignedIn(WorkerState.DRAFT),
+        ReadState.Ready(WorkerState.DRAFT),
+        ReadState.Ready(listOf(DASH_OWN_ROW)))
+    val write=WorkerWriteSnapshot(false,WorkerWriteState.Idle)
+    val page=OwnerListingPageSnapshot(false,
+        LoginState.SignedIn(WorkerState.DRAFT),
+        ReadState.Ready(OwnerListingPageView(
+            listOf(OwnListing("55555555-5555-4555-8555-555555555555","carpenter",false)),
+            null,2,1)))
+    val projection=HeadlessWorkerDashboardMapper.project(read,write,page)
+    check(projection.ownedListings==listOf(
+        OwnListing("55555555-5555-4555-8555-555555555555","carpenter",false)))
+    check(projection.ownerPageNumber==1 && !projection.ownerHasNextPage)
+    check(HeadlessWorkerDashboardMapper.project(read,write,page.copy(
+        login=LoginState.SignedOut))==
+        WorkerDashboardState(WorkerProfilePhase.SIGNED_OUT))
+    check(HeadlessWorkerDashboardMapper.project(read,write,page.copy(
+        login=LoginState.SignedIn(WorkerState.NO_DRAFT)))==
+        WorkerDashboardState(WorkerProfilePhase.REFRESH_REQUIRED))
+    check(HeadlessWorkerDashboardMapper.project(read,write,page.copy(closed=true))==
+        WorkerDashboardState(WorkerProfilePhase.CLOSED))
+    // The legacy 100-row projection remains the exact original DTO and actions.
+    val legacy=HeadlessWorkerDashboardMapper.project(read,write)
+    check(legacy.ownedListings==listOf(DASH_OWN_ROW))
+    check(legacy.ownerPageNumber==null && !legacy.ownerHasNextPage)
+    check(legacy.actions.contains(WorkerDashboardAction.LOAD_OWN_LISTINGS))
+    check(legacy.actions.none{it==WorkerDashboardAction.START_OWNER_PAGE ||
+        it==WorkerDashboardAction.LOAD_NEXT_OWNER_PAGE})
+}
+
 fun main() {
     signedOutAndUnknownNeverPublish()
     optedInWorkerShowsOnlyAuthenticatedOwnedRowsAndReadHints()
@@ -327,5 +577,9 @@ fun main() {
     rejectedWriteNeverPretendsToBeConfirmed()
     logoutAccountReplacementExpiryAndCloseNeverExposeOldRows()
     forgedActorSnapshotsFailClosedWithoutTrustingUnconfirmedWrites()
+    optInPagedDashboardShowsExplicitActionsAndCurrentPageOnly()
+    optInPagedDashboardHidesUncertainMutationsAndSessionChanges()
+    optInPagedDashboardLoadingAndErrorsAreReadOnlyAndFailClosed()
+    optInPagedMapperRejectsMixedOrSignedOutSnapshots()
     println("JODLO worker dashboard: private profile/own-listing states, uncertain writes, account epoch and no auto mutation OK")
 }

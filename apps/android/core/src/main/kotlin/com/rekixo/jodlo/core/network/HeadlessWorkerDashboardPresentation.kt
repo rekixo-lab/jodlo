@@ -6,13 +6,14 @@ package com.rekixo.jodlo.core.network
 enum class WorkerProfilePhase {
     CLOSED, SIGNED_OUT, UNKNOWN, NO_DRAFT, DRAFT, LOADING, ERROR, REFRESH_REQUIRED,
 }
-enum class WorkerListingsPhase { HIDDEN, IDLE, LOADING, EMPTY, LISTINGS, ERROR }
+enum class WorkerListingsPhase { HIDDEN, IDLE, LOADING, EMPTY, LISTINGS, ERROR, REFRESH_REQUIRED }
 enum class WorkerMutationPhase {
     IDLE, SENDING, CONFIRMED, REJECTED, NEEDS_REVIEW, RECHECKING,
 }
 enum class WorkerMutationKind { PUBLISH, UNPUBLISH }
 enum class WorkerDashboardAction {
     CHECK_PROFILE, LOAD_OWN_LISTINGS,
+    START_OWNER_PAGE, LOAD_NEXT_OWNER_PAGE, REFRESH_OWNER_PAGE,
     RECHECK_UNCERTAIN_WRITE, ACKNOWLEDGE_UNCERTAINTY,
 }
 
@@ -37,6 +38,12 @@ data class WorkerDashboardState(
     val mutationFailure: FailureKind? = null,
     val mutationSessionFailure: SessionFailure? = null,
     val reviewReadFailure: SessionFailure? = null,
+    /** Present only for the explicit owner-paged mode. Never an account ID,
+     * bearer, server query token, or indication of worker verification.
+     */
+    val ownerPageNumber: Int? = null,
+    val ownerPageSize: Int? = null,
+    val ownerHasNextPage: Boolean = false,
 )
 
 /** Read-only adapter around existing scopes; does NOT own their lifecycle.
@@ -51,21 +58,25 @@ class HeadlessWorkerDashboardPresentation(
     private val session: InMemorySessionCoordinator,
     private val reads: HeadlessMarketplaceReadScope,
     private val writes: HeadlessWorkerWriteScope,
+    /** Optional: original unpaged dashboard and callers remain unchanged. */
+    private val pages: HeadlessOwnerListingPaginationScope? = null,
 ) {
     fun snapshot(): WorkerDashboardState {
         val beforeEpoch = session.sessionEpoch()
         val beforeWrite = session.privateReadFingerprint()
         val read = reads.workerSnapshot()
         val write = writes.snapshot()
+        val ownerPage = pages?.snapshot()
         val afterWrite = session.privateReadFingerprint()
         val afterEpoch = session.sessionEpoch()
-        if (read.closed || write.closed)
+        if (read.closed || write.closed || ownerPage?.closed == true)
             return WorkerDashboardState(WorkerProfilePhase.CLOSED)
-        if (beforeEpoch != afterEpoch || read.login is LoginState.SignedOut)
+        if (beforeEpoch != afterEpoch || read.login is LoginState.SignedOut ||
+            ownerPage?.login is LoginState.SignedOut)
             return WorkerDashboardState(WorkerProfilePhase.SIGNED_OUT)
-        if (beforeWrite != afterWrite)
+        if (beforeWrite != afterWrite || (ownerPage != null && ownerPage.login != read.login))
             return WorkerDashboardState(WorkerProfilePhase.REFRESH_REQUIRED)
-        return HeadlessWorkerDashboardMapper.project(read, write)
+        return HeadlessWorkerDashboardMapper.project(read, write, ownerPage)
     }
 }
 
@@ -78,11 +89,20 @@ object HeadlessWorkerDashboardMapper {
     fun project(
         read: WorkerMarketplaceSnapshot,
         write: WorkerWriteSnapshot,
+        /** Do NOT pass unrelated worker scopes here: live presentation owns
+         * the session-fingerprint bracket around all three snapshots.
+         */
+        ownerPage: OwnerListingPageSnapshot? = null,
     ): WorkerDashboardState {
-        if (read.closed || write.closed)
+        if (read.closed || write.closed || ownerPage?.closed == true)
             return WorkerDashboardState(WorkerProfilePhase.CLOSED)
+        if (ownerPage?.login is LoginState.SignedOut)
+            return WorkerDashboardState(WorkerProfilePhase.SIGNED_OUT)
         val login = read.login as? LoginState.SignedIn
             ?: return WorkerDashboardState(WorkerProfilePhase.SIGNED_OUT)
+
+        if (ownerPage != null && ownerPage.login != login)
+            return WorkerDashboardState(WorkerProfilePhase.REFRESH_REQUIRED)
 
         val profile = when (val state = read.worker) {
             ReadState.Loading -> WorkerProfilePhase.LOADING
@@ -140,29 +160,56 @@ object HeadlessWorkerDashboardMapper {
             mutation != WorkerMutationPhase.SENDING &&
             mutation != WorkerMutationPhase.NEEDS_REVIEW &&
             mutation != WorkerMutationPhase.RECHECKING
-        val own = if (ownsMayDisplay) when (read.ownListings) {
-            ReadState.Idle, ReadState.RefreshRequired -> WorkerListingsPhase.IDLE
+        // In opt-in paged mode never mix legacy owner rows into page results.
+        // A page refresh/error cannot accidentally expose an older 100-row list.
+        val ownSource: ReadState<List<OwnListing>> = when (val page = ownerPage?.page) {
+            null -> read.ownListings
+            ReadState.Idle -> ReadState.Idle
+            ReadState.Loading -> ReadState.Loading
+            ReadState.RefreshRequired -> ReadState.RefreshRequired
+            is ReadState.ApiError -> page
+            is ReadState.SessionError -> page
+            is ReadState.Ready -> ReadState.Ready(page.value.listings)
+        }
+        val own = if (ownsMayDisplay) when (ownSource) {
+            ReadState.Idle -> WorkerListingsPhase.IDLE
+            ReadState.RefreshRequired -> if (ownerPage == null)
+                WorkerListingsPhase.IDLE else WorkerListingsPhase.REFRESH_REQUIRED
             ReadState.Loading -> WorkerListingsPhase.LOADING
             is ReadState.ApiError, is ReadState.SessionError -> WorkerListingsPhase.ERROR
-            is ReadState.Ready -> if (read.ownListings.value.isEmpty())
+            is ReadState.Ready -> if (ownSource.value.isEmpty())
                 WorkerListingsPhase.EMPTY else WorkerListingsPhase.LISTINGS
         } else WorkerListingsPhase.HIDDEN
         val rows = if (own == WorkerListingsPhase.LISTINGS)
-            (read.ownListings as ReadState.Ready).value.toList() else emptyList()
+            (ownSource as ReadState.Ready).value.toList() else emptyList()
         val ownerFailure = if (own == WorkerListingsPhase.ERROR)
-            (read.ownListings as? ReadState.ApiError)?.kind
-                ?: (read.ownListings as? ReadState.SessionError)?.networkKind
+            (ownSource as? ReadState.ApiError)?.kind
+                ?: (ownSource as? ReadState.SessionError)?.networkKind
         else null
         val ownerSessionFailure = if (own == WorkerListingsPhase.ERROR)
-            (read.ownListings as? ReadState.SessionError)?.reason else null
+            (ownSource as? ReadState.SessionError)?.reason else null
+        val pageInfo = if (ownsMayDisplay)
+            (ownerPage?.page as? ReadState.Ready<OwnerListingPageView>)?.value
+        else null
+        val nextPage = own == WorkerListingsPhase.LISTINGS &&
+            pageInfo?.nextCursor != null
         val actions = buildSet {
             if (profile != WorkerProfilePhase.LOADING &&
                 mutation != WorkerMutationPhase.SENDING &&
                 mutation != WorkerMutationPhase.RECHECKING &&
                 mutation != WorkerMutationPhase.NEEDS_REVIEW)
                 add(WorkerDashboardAction.CHECK_PROFILE)
-            if (ownsMayDisplay && own != WorkerListingsPhase.LOADING)
-                add(WorkerDashboardAction.LOAD_OWN_LISTINGS)
+            if (ownsMayDisplay && own != WorkerListingsPhase.LOADING) {
+                if (ownerPage == null) {
+                    add(WorkerDashboardAction.LOAD_OWN_LISTINGS)
+                } else {
+                    if (own == WorkerListingsPhase.REFRESH_REQUIRED ||
+                        own == WorkerListingsPhase.ERROR)
+                        add(WorkerDashboardAction.REFRESH_OWNER_PAGE)
+                    else add(WorkerDashboardAction.START_OWNER_PAGE)
+                    if (nextPage) add(WorkerDashboardAction.LOAD_NEXT_OWNER_PAGE)
+                }
+            }
             if (mutation == WorkerMutationPhase.NEEDS_REVIEW) {
                 add(WorkerDashboardAction.RECHECK_UNCERTAIN_WRITE)
                 add(WorkerDashboardAction.ACKNOWLEDGE_UNCERTAINTY)
@@ -186,6 +233,9 @@ object HeadlessWorkerDashboardMapper {
             mutationSessionFailure = mutationSessionFailure,
             reviewReadFailure = if (mutation == WorkerMutationPhase.NEEDS_REVIEW)
                 review?.readFailure else null,
+            ownerPageNumber = pageInfo?.pageNumber,
+            ownerPageSize = pageInfo?.pageSize,
+            ownerHasNextPage = nextPage,
         )
     }
 
