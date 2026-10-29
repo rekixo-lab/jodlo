@@ -431,6 +431,8 @@ private fun optInPagedDashboardHidesUncertainMutationsAndSessionChanges() {
             call.method==HttpMethod.POST && call.resource=="/api/v1/me/listings" ->
                 TransportReply(503,
                     """{"ok":false,"error":{"code":"SERVICE_UNAVAILABLE","message":"do-not-leak"}}""")
+            call.method==HttpMethod.POST && call.resource=="/api/v1/auth/logout" ->
+                TransportReply(200,"""{"ok":true,"data":{"revoked":true}}""")
             else -> error("Unexpected dashboard action")
         }
     }
@@ -470,7 +472,7 @@ private fun optInPagedDashboardHidesUncertainMutationsAndSessionChanges() {
     check(pages.start(2)==PageCompletion.APPLIED)
     check(dashboard.snapshot().ownedListings.single().id==
         "44444444-4444-4444-8444-444444444444")
-    check(session.logout() is SessionResult.Failed)
+    check(session.logout()==SessionResult.Success(true))
     check(dashboard.snapshot()==WorkerDashboardState(WorkerProfilePhase.SIGNED_OUT))
     check(count.get()==3)
 }
