@@ -170,9 +170,9 @@ test("cursor refuses competing literal trade hidden beyond first page of an acti
   try{
     const add=f.db.prepare(
       "INSERT INTO categories(id,slug,name_en,name_hi,is_active,sort_order) VALUES(?,?,?,?,?,?)");
-    add.run("plumber","plumber","Plumber","प्लंबर",1,0);
+    add.run("plumber","plumber","Tap Repair Plumber","प्लंबर",1,0);
     // No historical IDs or service names are activated: these are disposable
-    // synthetic rows, including a competing Category placed after 32 rows.
+    // synthetic rows, including a competing later-sorted Category.
     assert.deepEqual((await get(f.adapter,q+"&cursor=1&limit=1")).body.data.categories
       .map(c=>c.id),["plumber"]);
     add.run("tap-repair-team","tap-repair-team","Tap Repair Team","नल मरम्मत टीम",1,999);
@@ -191,6 +191,11 @@ test("cursor refuses competing literal trade hidden beyond first page of an acti
     const choice=(await get(f.adapter,q+"&includeChoices=1")).body.data;
     assert.equal(choice.needsChoice,true);
     assert.deepEqual(choice.choices.map(c=>c.id),["plumber","tap-repair-team"]);
+
+    // Also guard the case where only a fallback curated alias matches the
+    // user's phrase and the literal match belongs to another active trade.
+    f.db.prepare("UPDATE categories SET name_en='Plumber' WHERE id='plumber'").run();
+    assert.deepEqual((await get(f.adapter,q+"&cursor=1&limit=1")).body.data.categories,[]);
 
     // Inactive competing Categories do not suppress approved active aliases.
     f.db.prepare("UPDATE categories SET is_active=0 WHERE id='tap-repair-team'").run();
