@@ -96,6 +96,19 @@ object JodloRoutes {
         requireCategoryId(categoryId)
         return ApiCall.get("/api/v1/listings?categoryId=${enc(categoryId)}")
     }
+    /** Existing opt-in server pagination; the cursor is an already public
+     * Listing ID, not a private owner, timestamp, or client-provided rank.
+     * This never creates a user/listing or alters the original unpaged call.
+     */
+    fun publicListingPage(categoryId: String, limit: Int = 20,
+                          after: String? = null): ApiCall {
+        requireCategoryId(categoryId)
+        require(limit in 1..25) { "Invalid listing page size" }
+        if (after != null) requireListingId(after)
+        val params = mutableListOf("categoryId=${enc(categoryId)}", "limit=$limit")
+        if (after != null) params += "after=${enc(after)}"
+        return ApiCall.get("/api/v1/listings?${params.joinToString("&")}")
+    }
     /** A Google ID token is client proof, NOT a JODLO session. The backend
      * verifies the Google signature, issuer, audience, lifetime and subject.
      * Match the server's exact one-field JSON contract; never log this proof.
