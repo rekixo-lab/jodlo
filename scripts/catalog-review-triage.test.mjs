@@ -67,7 +67,9 @@ test("human-review attention order is stable, not a Category safety score or ten
   assert.deepEqual(keys,order);
   assert.ok(q.summary.categoriesByPrimaryAttentionLane.SPECIALIST_HOLD_REVIEW>=3);
   assert.ok(q.reviewQueue.some(x=>x.deskReviewOnly==="NOT_DESK_ASSESSED"));
-  assert.ok(q.reviewQueue.some(x=>x.attentionLane==="BASELINE_HUMAN_REVIEW"));
+  // All pinned historical Categories currently have source repair evidence;
+  // a review lane is valid even when the original fixture has zero matches.
+  assert.equal(q.summary.categoriesByPrimaryAttentionLane.BASELINE_HUMAN_REVIEW,0);
   assert.ok(q.reviewQueue.some(x=>x.attentionLane==="SOURCE_AND_EDITORIAL_REPAIR"));
   assert.ok(q.reviewQueue.some(x=>x.attentionLane==="AMBIGUOUS_PARENT_REVIEW"));
 });
@@ -113,15 +115,34 @@ test("original shared Service parents take precedence over non-urgent text clean
   }
 });
 
-test("no mechanical exception never means safe or completed",()=>{
-  const q=queue(),baseline=q.reviewQueue.filter(x=>
-    x.attentionLane==="BASELINE_HUMAN_REVIEW");
-  assert.ok(baseline.length>0);
-  for(const row of baseline){
-    assert.equal(row.stillRequiresHumanReview,true);
-    assert.equal(row.categoriesAuthorizedForActivation,0);
-    assert.equal(row.attentionReasonCodes.length,0);
-  }
+test("a synthetic no-diagnostic Category stays pending, even though actual source has none",()=>{
+  // Real historical records all carry at least one source signal. Exercise
+  // the baseline lane with a non-authorizing synthetic review fixture only.
+  const source=build();
+  const candidate=source.packets.flatMap(p=>p.categories).find(x=>
+    x.deskReviewOnly.assessment==="NOT_DESK_ASSESSED");
+  assert.ok(candidate);
+  candidate.sourceDiagnostics=[];
+  candidate.combinedHumanReviewChecks=[];
+  candidate.unresolvedProposedNameConflicts=[];
+  candidate.serviceScopeConcernRowsUnverified=0;
+  candidate.serviceScopeConcernCodesUnverified=0;
+  candidate.categoryMappingDraftStatus="NOT_SUBMITTED";
+  candidate.categoryMappingProposalUnverified=null;
+  candidate.categoryMappingEvidenceUrlUnverified=null;
+  candidate.serviceNameDraftsUnverified=0;
+  candidate.serviceScopeDraftsUnverified=0;
+  candidate.serviceNamesWithoutScopeDrafts=0;
+  candidate.serviceScopesWithoutNameDrafts=0;
+  candidate.submittedServiceReviewHandoff=[];
+  const q=makeReviewAttentionQueue(source);
+  const row=q.reviewQueue.find(x=>x.sourceCategoryId===candidate.sourceCategoryId);
+  assert.equal(row.attentionLane,"BASELINE_HUMAN_REVIEW");
+  assert.equal(row.stillRequiresHumanReview,true);
+  assert.equal(row.categoriesAuthorizedForActivation,0);
+  assert.deepEqual(row.attentionReasonCodes,[]);
+  assert.equal(q.summary.originalCategoriesStillAwaitingQualifiedReview,889);
+  assert.equal(q.summary.servicesAuthorizedForActivation,0);
 });
 
 test("source corruption, fake reviewer approvals, duplicate records or missing packets are rejected",()=>{
