@@ -38,6 +38,15 @@ interface PublicListingPageRepository {
                      after: String? = null): ApiOutcome<PublicListingPage>
 }
 
+/** Optional private owner pagination, distinct from legacy WorkerRepository
+ * so existing fake clients and implementations do not change.
+ * Server alone authenticates the bearer and validates same-owner cursor.
+ */
+interface OwnListingPageRepository {
+    fun pageMyListings(session: String, limit: Int = 20,
+                       after: String? = null): ApiOutcome<OwnListingPage>
+}
+
 /** A separate privileged surface: caller must possess a valid session and
  * explicitly supply a Category ID to publish; Search NEVER triggers posting.
  */
@@ -135,7 +144,8 @@ class RemoteCatalogRepository(private val sender: RequestSender) :
     }
 }
 
-class RemoteWorkerRepository(private val sender: RequestSender) : WorkerRepository {
+class RemoteWorkerRepository(private val sender: RequestSender) :
+    WorkerRepository, OwnListingPageRepository {
     override fun myDraft(session: String): ApiOutcome<WorkerDraft> =
         performOnce(JodloRoutes.workerDraft(session), sender::send, JodloReplyDecoder::workerDraft)
 
@@ -144,6 +154,24 @@ class RemoteWorkerRepository(private val sender: RequestSender) : WorkerReposito
 
     override fun myListings(session: String): ApiOutcome<List<OwnListing>> =
         performOnce(JodloRoutes.myListings(session), sender::send, JodloReplyDecoder::ownListings)
+
+    /** One authenticated owner page, no implicit fetching of subsequent pages.
+     * A cursor must match the LAST returned row; it cannot repeat the
+     * request anchor or be produced from a partial page.
+     */
+    override fun pageMyListings(session: String, limit: Int,
+                                after: String?): ApiOutcome<OwnListingPage> {
+        val call = JodloRoutes.myListingPage(session, limit, after)
+        return performOnce(call, sender::send, JodloReplyDecoder::ownListingPage)
+            .validated { page ->
+                page.listings.size <= limit &&
+                    (after == null || page.listings.none { it.id == after }) &&
+                    (page.nextCursor == null ||
+                        (page.listings.size == limit &&
+                            page.listings.last().id == page.nextCursor &&
+                            page.nextCursor != after))
+            }
+    }
 
     /** The server still verifies the active Category and the authenticated
      * opted-in worker; a syntactically valid ID is not an approval to publish.
