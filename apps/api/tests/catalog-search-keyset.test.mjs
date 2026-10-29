@@ -228,3 +228,69 @@ test("cursor refuses competing literal trade hidden beyond first page of an acti
       .map(c=>c.id),["tap-repair-team"]);
   }finally{f.db.close();}
 });
+
+test("Search continuation requires a current live anchor in this same matching query",async()=>{
+  const f=fixture(9);
+  try{
+    const one=(await get(f.adapter,"q=Service&cursor=1&limit=2")).body.data;
+    assert.deepEqual(one.categories.map(x=>x.id),["work-0000","work-0001"]);
+    const suffix="&cursor=1&limit=2&after="+encodeURIComponent(one.nextCursor);
+    const next=async(q="Service")=>(await get(f.adapter,"q="+encodeURIComponent(q)+suffix)).body.data;
+    assert.deepEqual((await next()).categories.map(x=>x.id),["work-0002","work-0003"]);
+    for(const bad of ["0:work-not-found","1:work-0001","0:work-0008"]){
+      const d=(await get(f.adapter,"q=Service&cursor=1&after="+encodeURIComponent(bad))).body.data;
+      assert.deepEqual(d.categories,[]);
+      assert.equal(d.nextCursor,null);
+    }
+    // A previously valid Category ID is not evidence it matched a NEW query.
+    const otherQuery=await next("0005");
+    assert.deepEqual(otherQuery.categories,[]);
+    assert.equal(otherQuery.nextCursor,null);
+    // Renaming the source so it no longer matches the original query makes
+    // the prior cursor stale even when its ID and sort order still exist.
+    f.db.prepare("UPDATE categories SET name_en='Other Work' WHERE id='work-0001'").run();
+    assert.deepEqual((await next()).categories,[]);
+    f.db.prepare("UPDATE categories SET name_en='Community Service Trade 1' WHERE id='work-0001'").run();
+    f.db.prepare("UPDATE categories SET is_active=0 WHERE id='work-0001'").run();
+    assert.deepEqual((await next()).categories,[]);
+    f.db.prepare("UPDATE categories SET is_active=1,sort_order=999 WHERE id='work-0001'").run();
+    assert.deepEqual((await next()).categories,[]);
+    f.db.prepare("UPDATE categories SET sort_order=0 WHERE id='work-0001'").run();
+    assert.deepEqual((await next()).categories.map(x=>x.id),["work-0002","work-0003"]);
+    f.db.prepare("DELETE FROM categories WHERE id='work-0001'").run();
+    assert.deepEqual((await next()).categories,[]);
+    const restart=(await get(f.adapter,"q=Service&cursor=1&limit=2")).body.data;
+    assert.deepEqual(restart.categories.map(x=>x.id),["work-0000","work-0002"]);
+  }finally{f.db.close();}
+});
+
+test("availableOnly Search cursor rejects a source whose listing loses public eligibility",async()=>{
+  const f=fixture(9);
+  try{
+    const add=(id,owner,listId)=>{
+      f.db.prepare("INSERT INTO accounts(id) VALUES(?)").run(owner);
+      f.db.prepare("INSERT INTO worker_profiles(account_id) VALUES(?)").run(owner);
+      f.db.prepare("INSERT INTO worker_listings(id,worker_account_id,category_id) VALUES(?,?,?)")
+        .run(listId,owner,id);
+    };
+    add("work-0001","search-owner-1","11111111-1111-4111-8111-111111111111");
+    add("work-0005","search-owner-5","55555555-5555-4555-8555-555555555555");
+    const root="q=Service&cursor=1&availableOnly=1&limit=1";
+    const first=(await get(f.adapter,root)).body.data;
+    assert.deepEqual(first.categories.map(x=>x.id),["work-0001"]);
+    const forward=root+"&after="+encodeURIComponent(first.nextCursor);
+    assert.deepEqual((await get(f.adapter,forward)).body.data.categories.map(x=>x.id),["work-0005"]);
+    const invented=await get(f.adapter,root+"&after=0:work-0000");
+    assert.deepEqual(invented.body.data.categories,[]);
+    assert.equal(invented.body.data.nextCursor,null);
+    f.db.prepare("UPDATE worker_listings SET moderation_status='hidden' WHERE category_id='work-0001'").run();
+    const stale=(await get(f.adapter,forward)).body.data;
+    assert.deepEqual(stale.categories,[]);
+    assert.equal(stale.nextCursor,null);
+    assert.deepEqual((await get(f.adapter,root)).body.data.categories.map(x=>x.id),["work-0005"]);
+    const redacted=JSON.stringify(stale);
+    for(const hidden of ["search-owner-1","worker_account_id","phone","latitude","longitude"]){
+      assert.equal(redacted.includes(hidden),false,hidden);
+    }
+  }finally{f.db.close();}
+});
