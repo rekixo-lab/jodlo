@@ -27,3 +27,7 @@
 ## 0004 — Immediate minimal worker service publication, local only
 
 D1 `worker_listings` records **only category and opaque owner/listing IDs**; owner remains `worker_profiles.status='draft'`. Unique owner/category, worker unpublish and moderator `hidden` guard public category lookup. No personal GPS/contact/price/media or automatic verification. No actual pilot category seeds or remote migrations until M-007. [ADR-0009](../../docs/decisions/0009-instant-service-publication.md).
+
+## Offline recovery rehearsal (2026-10-29)
+
+Run `node --experimental-strip-types --test apps/api/tests/local-backup-restore.test.mjs` (also included automatically by `npm test`). With only **synthetic** records and the existing four local migrations, this test creates a real SQLite point-in-time backup through Node's `backup` API, mutates its throwaway source, restores a separate temporary copy, checks SQLite integrity/foreign keys and calls real API routes through the shared fake D1 adapter. Restored Google-sub mapping, hashed sessions, private owner listings and moderated public projection are verified. Both temporary files are removed. It does not open or certify a production Cloudflare D1 database. Actual provider-managed backups, disaster-recovery objectives, restore credentials, production reconciliation and approval (M-007) remain mandatory before release.
