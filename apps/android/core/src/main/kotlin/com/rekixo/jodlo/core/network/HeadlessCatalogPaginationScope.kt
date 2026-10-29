@@ -19,6 +19,8 @@ sealed class PageState {
         val choices: List<PublicCategory> = emptyList(),
         val needsChoice: Boolean = false,
         val pageCount: Int = 1,
+        /** Separate from the legacy offset/choice Search contract. */
+        val searchCursorMode: Boolean = false,
     ) : PageState()
 }
 enum class PageCompletion { APPLIED, DISCARDED, DEFERRED, BLOCKED }
@@ -35,6 +37,7 @@ data class CustomerBrowseIntent(
 data class CustomerSearchIntent(
     val query: String, val language: Language,
     val availableOnly: Boolean, val pageSize: Int,
+    val cursorMode: Boolean = false,
 )
 data class CustomerDiscoveryIntent(
     val browse: CustomerBrowseIntent? = null,
@@ -81,8 +84,10 @@ data class CatalogPageSnapshot(
 
 /** Headless public pagination, always called off the future Android main thread.
  *
- * Browse uses the existing opaque cursor; Search uses the existing bounded
- * offset and only includes ambiguous choices on its first page. Each page
+ * Browse uses the existing opaque cursor; legacy Search uses the existing
+ * bounded offset and first-page-only ambiguity choices. Opt-in Search cursor
+ * pages reuse the same session/TTL/write/selection safety lanes without
+ * silently changing the legacy Search protocol. Each page
  * is one GET, never automatically fetched. A new first-page request supersedes
  * old in-flight replies. A duplicate category across pages, worker write,
  * explicit refresh or cache age expiry discards the accumulated result and
@@ -246,7 +251,10 @@ class HeadlessCatalogPaginationScope(
             JodloRoutes.browse(it.language, it.availableOnly, it.pageSize)
         }
         intent.search?.let {
-            JodloRoutes.search(it.query, it.language, it.availableOnly, true, it.pageSize, 0)
+            if (it.cursorMode)
+                JodloRoutes.searchCursor(it.query, it.language, it.availableOnly, it.pageSize)
+            else JodloRoutes.search(
+                it.query, it.language, it.availableOnly, true, it.pageSize, 0)
             require(it.query == Normalizer.normalize(it.query.trim(), Normalizer.Form.NFC)) {
                 "Search intent must be normalized"
             }
@@ -460,7 +468,8 @@ class HeadlessCatalogPaginationScope(
                     val combined = if (previous == null) page else {
                         // A category may move between offsets/cursors while the
                         // remote catalog changes. Never append a duplicate ID.
-                        if (page.categories.any { candidate ->
+                        if ((previous.searchCursorMode && page.categories.isEmpty()) ||
+                            page.categories.any { candidate ->
                                 previous.categories.any { it.id == candidate.id }
                             }) {
                             lane.invalidate()
@@ -582,18 +591,94 @@ class HeadlessCatalogPaginationScope(
             destinationOnFirst = CustomerDestination.SEARCH,
             newSearchIntent = intent, recoveryOnly = true,
         ) {
-            searchPage(intent.query, intent.language, intent.availableOnly, intent.pageSize,
-                0, true)
+            if (intent.cursorMode)
+                searchCursorPage(intent.query, intent.language,
+                    intent.availableOnly, intent.pageSize, null)
+            else searchPage(intent.query, intent.language,
+                intent.availableOnly, intent.pageSize, 0, true)
         }
     }
 
     fun nextSearch(): PageCompletion = run(
         search, first = false,
-        hasNext = { !it.needsChoice && it.nextOffset != null && it.nextOffset in 0..100 },
+        hasNext = { !it.searchCursorMode && !it.needsChoice &&
+            it.nextOffset != null && it.nextOffset in 0..100 },
     ) { previous ->
         val ready = requireNotNull(previous)
         searchPage(requireNotNull(ready.query), ready.language, ready.availableOnly,
             ready.pageSize, requireNotNull(ready.nextOffset), false)
+    }
+
+    /** Separate, explicit Search cursor flow: no offset/ambiguous-choice
+     * fallback. Existing startSearch/nextSearch are kept backward-compatible.
+     * A legacy fake CatalogRepository without cursor support remains usable.
+     */
+    fun startCursorSearch(
+        query: String, language: Language, availableOnly: Boolean = false,
+        pageSize: Int = 20,
+    ): PageCompletion {
+        JodloRoutes.searchCursor(query, language, availableOnly, pageSize)
+        if (catalog !is CatalogSearchCursorRepository) return PageCompletion.BLOCKED
+        val normalized = Normalizer.normalize(query.trim(), Normalizer.Form.NFC)
+        return run(
+            search, first = true, hasNext = { true },
+            destinationOnFirst = CustomerDestination.SEARCH,
+            newSearchIntent = CustomerSearchIntent(
+                normalized, language, availableOnly, pageSize, cursorMode = true,
+            ),
+        ) {
+            searchCursorPage(normalized, language, availableOnly, pageSize, null)
+        }
+    }
+
+    /** One caller-confirmed next page only; never a background loop.
+     * The original source dataset is not seeded or auto-authorized here.
+     */
+    fun nextCursorSearch(): PageCompletion {
+        if (catalog !is CatalogSearchCursorRepository) return PageCompletion.BLOCKED
+        return run(
+            search, first = false,
+            hasNext = { it.searchCursorMode && !it.needsChoice &&
+                it.nextCursor != null && it.pageCount < 1_000 },
+        ) { previous ->
+            val ready = requireNotNull(previous)
+            searchCursorPage(requireNotNull(ready.query), ready.language,
+                ready.availableOnly, ready.pageSize, requireNotNull(ready.nextCursor))
+        }
+    }
+
+    private fun searchCursorPage(
+        query: String, language: Language, availableOnly: Boolean,
+        pageSize: Int, after: String?,
+    ): ApiOutcome<PageState.Ready> {
+        JodloRoutes.searchCursor(query, language, availableOnly, pageSize, after)
+        val pages = catalog as? CatalogSearchCursorRepository
+            ?: return ApiOutcome.Failed(FailureKind.BAD_RESPONSE, false)
+        return when (val result = pages.searchCursor(
+            query, language, availableOnly, pageSize, after,
+        )) {
+            is ApiOutcome.Failed -> result
+            is ApiOutcome.Ok -> {
+                val page = result.value
+                val next = page.nextCursor
+                val valid = page.language == language && page.query == query &&
+                    page.categories.size <= pageSize &&
+                    page.categories.map { it.id }.distinct().size == page.categories.size &&
+                    (next == null || (
+                        page.categories.size == pageSize &&
+                        page.categories.lastOrNull()?.id == next.substringAfter(':') &&
+                        runCatching {
+                            JodloRoutes.searchCursor(query, language, availableOnly,
+                                pageSize, next)
+                        }.isSuccess && browseCursorAdvances(after, next)
+                    ))
+                if (!valid) ApiOutcome.Failed(FailureKind.BAD_RESPONSE, false)
+                else ApiOutcome.Ok(PageState.Ready(
+                    language, availableOnly, pageSize, page.categories,
+                    nextCursor = next, query = query, searchCursorMode = true,
+                ))
+            }
+        }
     }
 
     private fun searchPage(
