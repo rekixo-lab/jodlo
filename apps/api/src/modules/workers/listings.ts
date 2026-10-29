@@ -31,10 +31,11 @@ export const PUBLIC_LISTINGS_QUERY =
   "WHERE wl.category_id=? AND " + PUBLIC_LISTING_ELIGIBILITY +
   " ORDER BY wl.created_at,wl.id LIMIT 25";
 
-/** Opt-in bounded browse: the cursor is an already-public listing ID.
- * Look up its ordering tuple INSIDE D1; never publish owner IDs/timestamps,
- * accept a client-provided sort key, or vary the established 25-row GET.
- * A deleted/unknown cursor is fail-closed (empty page; restart from page 1).
+/** Opt-in bounded browse: the cursor must be a STILL-PUBLIC listing ID.
+ * Look up its ordering tuple INSIDE D1 and recheck exactly the same eligibility
+ * as returned public rows. A hidden/unpublished/disabled/deleted anchor must
+ * not be usable as an existence/order oracle. Never publish private columns
+ * or vary the established 25-row GET.
  */
 const PUBLIC_LISTINGS_SELECT =
   "SELECT wl.id,wl.category_id AS categoryId,wl.worker_account_id AS workerId " +
@@ -45,10 +46,18 @@ const PUBLIC_LISTINGS_SELECT =
 export const PAGED_PUBLIC_LISTINGS_QUERY =
   PUBLIC_LISTINGS_SELECT + " ORDER BY wl.created_at,wl.id LIMIT ?";
 
+/** Cursor eligibility is evaluated inside the SAME SQL statement as the
+ * page. Reuse the exact public listing predicate so moderation and account
+ * changes invalidate a previously public cursor without a race-prone pre-read.
+ * Inner aliases intentionally shadow outer aliases (a separate SQL scope).
+ */
 export const CONTINUED_PUBLIC_LISTINGS_QUERY =
   PUBLIC_LISTINGS_SELECT +
-  " AND (wl.created_at,wl.id) > (SELECT anchor.created_at,anchor.id " +
-  "FROM worker_listings AS anchor WHERE anchor.id=? AND anchor.category_id=?)" +
+  " AND (wl.created_at,wl.id) > (SELECT wl.created_at,wl.id " +
+  "FROM worker_listings AS wl JOIN accounts AS a ON a.id=wl.worker_account_id " +
+  "JOIN worker_profiles AS wp ON wp.account_id=a.id " +
+  "JOIN categories AS c ON c.id=wl.category_id " +
+  "WHERE wl.id=? AND wl.category_id=? AND " + PUBLIC_LISTING_ELIGIBILITY + ")" +
   " ORDER BY wl.created_at,wl.id LIMIT ?";
 
 export const MY_LISTINGS_QUERY =
