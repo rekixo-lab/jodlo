@@ -76,6 +76,32 @@ fun main() {
     val owner = JodloReplyDecoder.ownListings(TransportReply(200,
         envelope("""{"listings":[{"id":"11111111-1111-4111-8111-111111111111","categoryId":"plumber","visible":false}]}""")))
     check(owner is ApiOutcome.Ok && !owner.value.single().visible)
+    val ownedRow = """{"id":"11111111-1111-4111-8111-111111111111","categoryId":"plumber","visible":false}"""
+    val ownerPage = JodloReplyDecoder.ownListingPage(TransportReply(200,
+        envelope("""{"listings":[$ownedRow],"nextCursor":"11111111-1111-4111-8111-111111111111"}""")))
+    eq(ownerPage, ApiOutcome.Ok(OwnListingPage(listOf(
+        OwnListing("11111111-1111-4111-8111-111111111111","plumber",false)),
+        "11111111-1111-4111-8111-111111111111")))
+    eq(JodloReplyDecoder.ownListingPage(TransportReply(200,
+        envelope("""{"listings":[],"nextCursor":null}"""))),
+        ApiOutcome.Ok(OwnListingPage(emptyList(),null)))
+
+    // The old and new owner replies deliberately have INCOMPATIBLE shapes.
+    rejects(envelope("""{"listings":[$ownedRow]}"""),parse=JodloReplyDecoder::ownListingPage)
+    rejects(envelope("""{"listings":[$ownedRow],"nextCursor":null}"""),
+        parse=JodloReplyDecoder::ownListings)
+    for (data in listOf(
+        """{"listings":[$ownedRow],"nextCursor":"../escape"}""",
+        """{"listings":[$ownedRow],"nextCursor":123}""",
+        """{"listings":[$ownedRow,$ownedRow],"nextCursor":null}""",
+        """{"listings":[{"id":"11111111-1111-4111-8111-111111111111","categoryId":"plumber","visible":"true"}],"nextCursor":null}""",
+        """{"listings":[{"id":"11111111-1111-4111-8111-111111111111","categoryId":"plumber","visible":true,"phone":"private"}],"nextCursor":null}""",
+        """{"listings":[$ownedRow],"nextCursor":null,"ownerAccountId":"private"}""",
+        """{"listings":[$ownedRow],"nextCursor":null,"verified":true}""",
+        """{"listings":"wrong","nextCursor":null}""",
+        """{"listings":[$ownedRow],"nextCursor":null,"nextOffset":1}""",
+        """{"listings":[${List(26){ownedRow}.joinToString(",")}],"nextCursor":null}""",
+    )) rejects(envelope(data),parse=JodloReplyDecoder::ownListingPage)
     eq(JodloReplyDecoder.unpublished(TransportReply(200,
         envelope("""{"unpublished":true}"""))), ApiOutcome.Ok(true))
 

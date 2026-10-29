@@ -142,6 +142,16 @@ object JodloRoutes {
     private val GOOGLE_PROOF = Regex("""[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+""")
 
     fun myListings(token: String): ApiCall = ApiCall.getOwned("/api/v1/me/listings", token)
+    /** Owner-only, opt-in keyset continuation: limit 1..25, opaque listing ID.
+     * Never place a bearer or personal identifiers in URL/query.
+     */
+    fun myListingPage(token: String, limit: Int = 20, after: String? = null): ApiCall {
+        require(limit in 1..25) { "Invalid owner listing page size" }
+        if (after != null) requireListingId(after)
+        val path = "/api/v1/me/listings?limit=$limit" +
+            (if (after != null) "&after=${enc(after)}" else "")
+        return ApiCall.getOwned(path, token)
+    }
     fun workerDraft(token: String): ApiCall =
         ApiCall.getOwned("/api/v1/me/worker-profile", token)
     fun optInWorker(token: String): ApiCall =
