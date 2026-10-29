@@ -16,6 +16,14 @@ data class PublicListing(val id: String, val categoryId: String)
 /** Optional public Listing pagination: no owner, timestamp, location or contact. */
 data class PublicListingPage(val listings: List<PublicListing>, val nextCursor: String?)
 data class OwnListing(val id: String, val categoryId: String, val visible: Boolean)
+/** Public Search keyset page (not a Category approval, alias or choice).
+ * Separate from legacy Search's nextOffset to avoid a silent DTO migration.
+ */
+data class CatalogSearchCursorPage(
+    val language: Language, val query: String,
+    val categories: List<PublicCategory>, val nextCursor: String?,
+)
+
 /** The backend never returns a verified role from worker opt-in. */
 data class WorkerDraft(val status: String)
 
@@ -174,6 +182,21 @@ object JodloReplyDecoder {
         CatalogBrowse(language(data.required("language")),
             categories(data.required("categories"), 100), nextCursor(data))
     }
+    /** No offset/needsChoice/choices accepted in cursor Search mode. Require
+     * server's explicit nextCursor (null marks end), never an omitted token.
+     */
+    fun searchCursor(reply: TransportReply): ApiOutcome<CatalogSearchCursorPage> =
+        decode(reply) { data ->
+            data.keysOnly(setOf("language", "query", "categories", "nextCursor"))
+            val q = data.required("query").str()
+            if (q.codePointCount(0, q.length) !in 2..64 ||
+                q.any { Character.isISOControl(it) }) bad()
+            val selected = categories(data.required("categories"), 25)
+            CatalogSearchCursorPage(
+                language(data.required("language")), q, selected, nextCursor(data),
+            )
+        }
+
     fun search(reply: TransportReply): ApiOutcome<CatalogSearch> = decode(reply) { data ->
         data.keysOnly(setOf("language", "query", "categories", "nextOffset"),
             setOf("needsChoice", "choices"))

@@ -33,6 +33,31 @@ fun main() {
     check(URLDecoder.decode(composed.resource.substringAfter("&q=").substringBefore("&"),
         "UTF-8") == "électric")
 
+    // New opt-in keyset Search has NO offset/choice flag; the old route stays.
+    val cursorSearch = JodloRoutes.searchCursor("  प्लंबर  ", Language.HI,
+        availableOnly = true, limit = 25, after = "8:plumber")
+    check(cursorSearch.method == HttpMethod.GET)
+    check(cursorSearch.resource ==
+        "/api/v1/catalog/search?lang=hi&q=%E0%A4%AA%E0%A5%8D%E0%A4%B2%E0%A4%82%E0%A4%AC%E0%A4%B0&cursor=1&limit=25&availableOnly=1&after=8%3Aplumber")
+    check(!cursorSearch.resource.contains("offset=") &&
+        !cursorSearch.resource.contains("includeChoices"))
+    check(cursorSearch.headers()["Authorization"] == null)
+    check(JodloRoutes.searchCursor("service", Language.EN).resource.contains("&cursor=1&limit=20"))
+    for (badCursor in listOf("00:plumber", "1000001:plumber",
+        "-1:plumber", "8:../private", "8:नल", "8:plumber%0A")) {
+        rejects("unsafe Search cursor") {
+            JodloRoutes.searchCursor("service", Language.EN, after = badCursor)
+        }
+    }
+    rejects("zero cursor Search page") { JodloRoutes.searchCursor("service", Language.EN,limit=0) }
+    rejects("oversized cursor Search page") {
+        JodloRoutes.searchCursor("service", Language.EN,limit=26)
+    }
+    rejects("blank cursor Search query") { JodloRoutes.searchCursor(" ", Language.HI) }
+    rejects("search query control") {
+        JodloRoutes.searchCursor("plumb\u0000repair", Language.EN)
+    }
+
     val browse = JodloRoutes.browse(Language.EN, availableOnly = true,
         limit = 20, after = "0:plumber")
     check(browse.resource == "/api/v1/catalog?lang=en&availableOnly=1&limit=20&after=0%3Aplumber")
