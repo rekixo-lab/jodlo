@@ -217,6 +217,17 @@ function searchCursorQuery(termCount:number,availableOnly:boolean,hasCursor:bool
     " ORDER BY sort_order ASC, id ASC LIMIT ?";
 }
 
+/** An active curated alias must not silently mask a DIFFERENT active literal
+ * match anywhere in the full catalog, including beyond the current page.
+ * Query is one bounded existence check; every term and ID is bound.
+ */
+function searchCursorAliasConflictQuery(termCount:number,availableOnly:boolean):string {
+  return "SELECT 1 AS conflict FROM categories WHERE is_active = 1 AND "+
+    Array(termCount).fill(MATCH_PUBLIC_CATEGORY_TERM).join(" AND ")+
+    (availableOnly?" AND "+ELIGIBLE_LISTING_EXISTS:"")+
+    " AND id <> ? LIMIT 1";
+}
+
 /** Alias resolution may only return an already active, backend-approved
  * category; optional listing availability uses the same public eligibility.
  */
@@ -254,21 +265,34 @@ export async function searchPublicCategories(
     // Search, not a change to legacy offset pagination or choice confirmation.
     if(alias.kind==="ambiguous")return {categories:[],nextCursor:null};
     const terms=intent??[opts.query];
-    const args:(string|number)[]=[
-      opts.language,...terms.flatMap(term=>[term,term,term]),
-    ];
+    const values=terms.flatMap(term=>[term,term,term]);
+    // Cursor mode cannot emit the legacy includeChoices response. When the
+    // approved curated alias itself is active/available, a competing literal
+    // Category match must not be presented as the user's intended trade.
+    // Check the entire matching set, not merely the first 25 cursor rows.
+    // Explicit confirmation remains available through legacy includeChoices.
+    let activeAlias:PublicCategory[]=[];
+    if(alias.kind==="unique"){
+      const {results:aliasRows}=await db.prepare(curatedAliasQuery(opts.availableOnly))
+        .bind(opts.language,alias.categoryId,1,0).all<PublicCategory>();
+      activeAlias=aliasRows.map(({id,slug,name})=>({id,slug,name}));
+      if(activeAlias.length){
+        const {results:conflicts}=await db.prepare(
+          searchCursorAliasConflictQuery(terms.length,opts.availableOnly),
+        ).bind(...values,alias.categoryId).all<{conflict:number}>();
+        if(conflicts.length)return {categories:[],nextCursor:null};
+      }
+    }
+    const args:(string|number)[]=[opts.language,...values];
     if(opts.after)args.push(opts.after.sortOrder,opts.after.sortOrder,opts.after.id);
     args.push(opts.limit+1);
     const {results}=await db.prepare(searchCursorQuery(
       terms.length,opts.availableOnly,opts.after!==null,
     )).bind(...args).all<PublicCategory&{sortOrder:number}>();
     if(results.length===0&&alias.kind==="unique"&&opts.after===null){
-      // A curated one-trade suggestion is still restricted to a pre-approved,
-      // active (and optionally available) ID; it never repeats in later pages.
-      const {results:alternate}=await db.prepare(curatedAliasQuery(opts.availableOnly))
-        .bind(opts.language,alias.categoryId,1,0).all<PublicCategory>();
-      return {categories:alternate.map(({id,slug,name})=>({id,slug,name})),
-        nextCursor:null};
+      // A curated suggestion can only return the active, eligibility-checked
+      // Category itself, and never repeats on cursor continuation.
+      return {categories:activeAlias,nextCursor:null};
     }
     const selected=results.slice(0,opts.limit);
     const last=selected[selected.length-1];

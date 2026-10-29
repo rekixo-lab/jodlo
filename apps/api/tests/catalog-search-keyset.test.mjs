@@ -162,3 +162,69 @@ test("cursor SQL errors return 503 without disclosing internal exception",async(
   assert.equal(res.status,503);
   assert.equal((await res.text()).includes("PRIVATE_SQL_SECRET_EXAMPLE"),false);
 });
+
+test("cursor refuses competing literal trade hidden beyond first page of an active curated alias",async()=>{
+  const f=fixture(32);
+  const phrase="I need tap repair";
+  const q="q="+encodeURIComponent(phrase);
+  try{
+    const add=f.db.prepare(
+      "INSERT INTO categories(id,slug,name_en,name_hi,is_active,sort_order) VALUES(?,?,?,?,?,?)");
+    add.run("plumber","plumber","Tap Repair Plumber","प्लंबर",1,0);
+    // No historical IDs or service names are activated: these are disposable
+    // synthetic rows, including a competing later-sorted Category.
+    assert.deepEqual((await get(f.adapter,q+"&cursor=1&limit=1")).body.data.categories
+      .map(c=>c.id),["plumber"]);
+    add.run("tap-repair-team","tap-repair-team","Tap Repair Team","नल मरम्मत टीम",1,999);
+    for(const suffix of [
+      "&cursor=1&limit=1",
+      "&cursor=1&limit=25",
+      "&cursor=1&limit=1&after=0:work-0000",
+    ]){
+      const response=await get(f.adapter,q+suffix);
+      assert.equal(response.status,200);
+      assert.deepEqual(response.body.data.categories,[],suffix);
+      assert.equal(response.body.data.nextCursor,null,suffix);
+      assert.equal(Object.hasOwn(response.body.data,"needsChoice"),false);
+    }
+    // Existing explicit-choice flow remains an option for the same conflict.
+    const choice=(await get(f.adapter,q+"&includeChoices=1")).body.data;
+    assert.equal(choice.needsChoice,true);
+    assert.deepEqual(choice.choices.map(c=>c.id),["plumber","tap-repair-team"]);
+
+    // Also guard the case where only a fallback curated alias matches the
+    // user's phrase and the literal match belongs to another active trade.
+    f.db.prepare("UPDATE categories SET name_en='Plumber' WHERE id='plumber'").run();
+    assert.deepEqual((await get(f.adapter,q+"&cursor=1&limit=1")).body.data.categories,[]);
+
+    // Inactive competing Categories do not suppress approved active aliases.
+    f.db.prepare("UPDATE categories SET is_active=0 WHERE id='tap-repair-team'").run();
+    assert.deepEqual((await get(f.adapter,q+"&cursor=1")).body.data.categories
+      .map(c=>c.id),["plumber"]);
+    f.db.prepare("UPDATE categories SET is_active=1 WHERE id='tap-repair-team'").run();
+
+    // Availability is independently checked for BOTH sides. An ineligible
+    // competing listing must not veto an eligible curated suggestion.
+    const addListing=(id,account,listId)=>{
+      f.db.prepare("INSERT INTO accounts(id) VALUES(?)").run(account);
+      f.db.prepare("INSERT INTO worker_profiles(account_id) VALUES(?)").run(account);
+      f.db.prepare("INSERT INTO worker_listings(id,worker_account_id,category_id) VALUES(?,?,?)")
+        .run(listId,account,id);
+    };
+    addListing("plumber","worker-alias-1","11111111-1111-4111-8111-111111111111");
+    assert.deepEqual((await get(f.adapter,q+"&cursor=1&availableOnly=1")).body.data
+      .categories.map(c=>c.id),["plumber"]);
+    addListing("tap-repair-team","worker-alias-2","22222222-2222-4222-8222-222222222222");
+    assert.deepEqual((await get(f.adapter,q+"&cursor=1&availableOnly=1")).body.data
+      .categories,[]);
+    f.db.prepare("UPDATE worker_listings SET moderation_status='hidden' WHERE category_id='tap-repair-team'").run();
+    assert.deepEqual((await get(f.adapter,q+"&cursor=1&availableOnly=1")).body.data
+      .categories.map(c=>c.id),["plumber"]);
+
+    // Without an independently active curated ID, ordinary literal discovery
+    // continues to cover all independently approved public Categories.
+    f.db.prepare("UPDATE categories SET is_active=0 WHERE id='plumber'").run();
+    assert.deepEqual((await get(f.adapter,q+"&cursor=1")).body.data.categories
+      .map(c=>c.id),["tap-repair-team"]);
+  }finally{f.db.close();}
+});
