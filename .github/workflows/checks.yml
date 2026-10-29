@@ -32,6 +32,8 @@ jobs:
         run: npm run db:migrate:local
       - name: Bundle local D1 Worker (never deploy)
         run: npm run db:build:local
+      - name: Exercise isolated local workerd and D1 over HTTP (never deploy)
+        run: npm run test:workerd:local
       - name: TypeScript strict checks
         run: npm run typecheck
       - name: Install JDK 17 for nonvisual Kotlin protocol checks
