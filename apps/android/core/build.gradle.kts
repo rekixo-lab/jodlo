@@ -178,6 +178,14 @@ tasks.register<JavaExec>("verifyLifecycleRegression") {
     mainClass.set("com.rekixo.jodlo.core.network.CustomerWorkerLifecycleRegressionTestKt")
 }
 
+tasks.register<JavaExec>("verifyPrivateOwnerPages") {
+    group = "verification"
+    description = "Verify private owner page lifecycle, 889-entry traversal, session switching and write races"
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.rekixo.jodlo.core.network.HeadlessOwnerListingPaginationScopeTestKt")
+}
+
 /**
  * Release preflight: run EVERY explicit nonvisual Kotlin verification suite.
  * The matching task collection is lazy, so newly registered verify* JavaExec
