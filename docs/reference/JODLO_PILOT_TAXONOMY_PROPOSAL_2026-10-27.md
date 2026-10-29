@@ -1,5 +1,7 @@
 # JODLO pilot taxonomy proposal — 2026-10-27
 
+**SUPERSEDED AS LAUNCH-SCOPE GUIDANCE (2026-10-29):** Founder confirmed JODLO should cover **all 889 historical Category review candidates, not only the ten candidates below**. The ten are retained solely as traceable occupational-safety/language *sample reviews*, not a public activation cap. See [ADR-0011](../decisions/0011-all-category-coverage-smart-discovery.md). No broad unreviewed D1 seed or regulated-work authorization is implied.
+
 **Founder-selected city-name scope (ADR-0010): Bilaspur / बिलासपुर and Raipur / रायपुर.** Exact local areas/geofences and personal-location policy remain unapproved. The 10 categories below are not yet approved or seeded.
 
 > **NOT APPROVED. REFERENCE ONLY. NO D1 SEED, CLOUD DEPLOYMENT OR UI.** Worker self-publication in **already enabled** categories is approved; verified badges are never automatic (ADR-0009). This proposal neither enables a category nor changes that decision. Only Hindi (Devanagari) and English (ADR-0008).
