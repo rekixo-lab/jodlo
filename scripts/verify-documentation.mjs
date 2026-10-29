@@ -4,12 +4,27 @@ import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 const root=resolve(dirname(fileURLToPath(import.meta.url)),"..");
 const required=[
-"README.md","AGENTS.md","CONTRIBUTING.md","UPLOAD_INSTRUCTIONS.md","docs/PROJECT.md","docs/AI_HANDOFF.md","docs/STATUS.md","docs/ROADMAP.md","docs/ARCHITECTURE.md","docs/ARCHITECTURE_RESEARCH_20261027.md","docs/ANDROID_STRUCTURE.md","docs/CLOUDFLARE_INFRASTRUCTURE.md","docs/MODULE_BOUNDARIES.md","docs/PAYMENTS.md","docs/TESTING.md","docs/DESIGN_SYSTEM.md","docs/MOTION_3D.md","docs/REUSE_ASSET_POLICY.md","docs/RELEASE_READINESS.md","docs/MANUAL_ACTIONS.md","docs/reference/LEGACY_MAPPING.md","docs/reference/FINWORKAR_CATALOG_AUDIT_2026-10-27.md","docs/decisions/0001-cloudflare-modular-monolith.md","docs/decisions/0002-google-pay-and-play-billing.md","docs/decisions/0004-local-first-no-staging-until-production.md","docs/decisions/0005-reuse-tokens-premium-motion.md","docs/decisions/0003-native-android-single-activity.md","docs/decisions/0006-shared-account-opt-in-worker.md","docs/decisions/0007-google-signin-verified-session.md","docs/decisions/0008-hindi-english-only.md","docs/decisions/0009-instant-service-publication.md","docs/decisions/0010-bilaspur-raipur-pilot-city-names.md"
+"README.md","AGENTS.md","CONTRIBUTING.md","UPLOAD_INSTRUCTIONS.md","docs/PROJECT.md","docs/AI_HANDOFF.md","docs/STATUS.md","docs/ROADMAP.md","docs/ARCHITECTURE.md","docs/ARCHITECTURE_RESEARCH_20261027.md","docs/ANDROID_STRUCTURE.md","docs/CLOUDFLARE_INFRASTRUCTURE.md","docs/MODULE_BOUNDARIES.md","docs/PAYMENTS.md","docs/TESTING.md","docs/DESIGN_SYSTEM.md","docs/MOTION_3D.md","docs/REUSE_ASSET_POLICY.md","docs/RELEASE_READINESS.md","docs/MANUAL_ACTIONS.md","docs/reference/LEGACY_MAPPING.md","docs/reference/FINWORKAR_CATALOG_AUDIT_2026-10-27.md","docs/decisions/0001-cloudflare-modular-monolith.md","docs/decisions/0002-google-pay-and-play-billing.md","docs/decisions/0004-local-first-no-staging-until-production.md","docs/decisions/0005-reuse-tokens-premium-motion.md","docs/decisions/0003-native-android-single-activity.md","docs/decisions/0006-shared-account-opt-in-worker.md","docs/decisions/0007-google-signin-verified-session.md","docs/decisions/0008-hindi-english-only.md","docs/decisions/0009-instant-service-publication.md","docs/decisions/0010-bilaspur-raipur-pilot-city-names.md","docs/decisions/0011-all-category-coverage-smart-discovery.md"
 ];
 async function walk(dir){let all=[];for(const item of await readdir(dir,{withFileTypes:true})){if(item.name.startsWith(".git")||item.name==="node_modules")continue;const p=join(dir,item.name);if(item.isDirectory())all.push(...await walk(p));else if(item.isFile()&&extname(p)===".md")all.push(p);}return all;}
 async function main(){for(const p of required)assert.equal((await stat(join(root,p))).isFile(),true,"Missing "+p);
 for(const path of ["README.md","AGENTS.md","docs/AI_HANDOFF.md","docs/STATUS.md"]){let t=await readFile(join(root,path),"utf8");for(const id of ["JODLO","com.rekixo.jodlo","jodlo.rekixo.com"])assert.ok(t.includes(id),path+" missing "+id);}
 for(const path of ["README.md","AGENTS.md","docs/AI_HANDOFF.md"]){let t=await readFile(join(root,path),"utf8");assert.ok(t.includes("Google Pay")&&t.includes("Razorpay")&&/UI/.test(t)&&/approval|approve|consent|सहमति/.test(t),path+" missing owner gates");}
+// Founder explicitly rejected a ten-category public scope. Keep the binding
+// correction visible in the canonical entry points; old ten-trade review
+// samples can remain as historical evidence, never as a launch restriction.
+for(const path of ["AGENTS.md","README.md","docs/MANUAL_ACTIONS.md",
+                   "docs/STATUS.md","docs/AI_HANDOFF.md","docs/ROADMAP.md"]){
+  const doc=await readFile(join(root,path),"utf8");
+  assert.ok(doc.includes("ADR-0011") && doc.includes("889"),
+    path+" must retain founder all-category/no-ten-limit scope");
+}
+const breadth=await readFile(join(root,
+  "docs/decisions/0011-all-category-coverage-smart-discovery.md"),"utf8");
+assert.ok(breadth.includes("No arbitrary ten-category limit") &&
+  breadth.includes("NOT") && breadth.includes("889") &&
+  breadth.includes("45") && breadth.includes("M-005"),
+  "All-category ADR must retain breadth AND human safety boundaries");
 // Prevent future handoffs from silently dropping founder-action escalation rules.
 for (const [path, mandatory] of Object.entries({
   "AGENTS.md": ["MANUAL-GATE", "docs/MANUAL_ACTIONS.md"],

@@ -1,5 +1,7 @@
 # JODLO — Human-sized review packets for all 889 old Categories (2026-10-28)
 
+**Founder correction (2026-10-29, ADR-0011):** All 45 packets/889 Categories are in the intended full-catalog review scope, **not** an instruction to launch only ten categories or to stagger public category activation by packet. Review packets are an efficient human QA process; any legally unsafe/regulated source work still needs a category-specific policy/verification, and none of these packets by itself enables D1. [Binding decision](../decisions/0011-all-category-coverage-smart-discovery.md).
+
 **Review-only. No actual Categories approved, inserted, indexed or activated.** This workflow makes the next Founder M-005 decision actionable, without turning the historical Finworkar snapshot into a launch catalog.
 
 ## Commands (local only)

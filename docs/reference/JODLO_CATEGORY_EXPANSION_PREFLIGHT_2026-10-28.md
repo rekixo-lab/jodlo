@@ -1,5 +1,7 @@
 # JODLO — Full 889-Category Activation Preflight (2026-10-28)
 
+**Founder correction (2026-10-29, ADR-0011):** Product coverage includes **ALL 889** old Category review candidates; **ten is NOT a public launch allowlist**. Coverage/launch-breadth decision is DONE. This existing preflight remains **review-only**, and its per-row human-language, occupational safety, final ID and allowed-work checks remain necessary before real D1 activation. [Binding decision](../decisions/0011-all-category-coverage-smart-discovery.md).
+
 **All 889 historical Categories included. Zero approved, zero activated.** This is the offline engineering safety boundary between historical reference and *future separately authorized* real JODLO categories. It is intentionally not an activation script or a migration plan.
 
 ## How to run locally

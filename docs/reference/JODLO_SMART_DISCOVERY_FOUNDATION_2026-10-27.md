@@ -1,5 +1,7 @@
 # JODLO — Read-only availability-aware category discovery foundation (2026-10-27)
 
+**Current binding founder breadth decision (2026-10-29, ADR-0011):** Full all-889-category coverage is the product objective, **not a ten-trade pilot cap**. This document's original 2026-10-27 stages describe historical implementation progress; remaining safety/language/ID mapping and activation review still apply. The 889-row paging, availability facet and ambiguous choice logic already exist, but no actual 889 D1 seed or full reviewed service-alias index exists. [Decision](../decisions/0011-all-category-coverage-smart-discovery.md).
+
 **Founder direction:** avoid leaving legitimate workers out solely because of a ten-item pilot shortlist; let them find work by typing/speaking, while customers should see real relevant available listings rather than empty category walls. This is a technical **first slice**, not a completed intelligent matcher or approval to seed/activate the 889 historical categories.
 
 ## Implemented contract, no new route or table
