@@ -109,6 +109,11 @@ export async function browsePublicCategories(
   if (opts.limit === null) {
     return {categories:await listPublicCategories(db,opts.language,opts.availableOnly),nextCursor:null};
   }
+  if(opts.after && !await isCurrentPublicCategoryAnchor(db,opts.after,opts.availableOnly,[])){
+    // A stale, forged or no-longer-eligible source row cannot silently skip
+    // later public Categories. A caller can deliberately restart page ONE.
+    return {categories:[],nextCursor:null};
+  }
   const args: (string | number)[] = [opts.language];
   if(opts.after) args.push(opts.after.sortOrder,opts.after.sortOrder,opts.after.id);
   args.push(opts.limit + 1);
@@ -191,6 +196,24 @@ export function parseCatalogSearch(params: URLSearchParams): CatalogSearchOption
 const MATCH_PUBLIC_CATEGORY_TERM =
   "(instr(lower(name_en), lower(?)) > 0 " +
   "OR instr(name_hi, ?) > 0 OR instr(slug, lower(?)) > 0)";
+
+/** A plain cursor is not a credential or a trusted snapshot: confirm the exact
+ * original page anchor still exists in the SAME active public result set.
+ * Uses primary-key lookup, bound sort-order and optional bound search terms;
+ * availability uses the unchanged server-authoritative listing policy.
+ */
+async function isCurrentPublicCategoryAnchor(
+  db:D1Database,after:{sortOrder:number;id:string},
+  availableOnly:boolean,terms:readonly string[],
+):Promise<boolean> {
+  const sql="SELECT 1 AS found FROM categories WHERE id = ? AND sort_order = ? AND is_active = 1"+
+    (terms.length?" AND "+Array(terms.length).fill(MATCH_PUBLIC_CATEGORY_TERM).join(" AND "):"")+
+    (availableOnly?" AND "+ELIGIBLE_LISTING_EXISTS:"")+" LIMIT 1";
+  const {results}=await db.prepare(sql)
+    .bind(after.id,after.sortOrder,...terms.flatMap(term=>[term,term,term]))
+    .all<{found:number}>();
+  return results.length===1;
+}
 const PUBLIC_CATEGORY_SORT_PAGE = " ORDER BY sort_order ASC, id ASC LIMIT ? OFFSET ?";
 
 function searchQuery(termCount: number, availableOnly = false): string {
@@ -266,6 +289,9 @@ export async function searchPublicCategories(
     if(alias.kind==="ambiguous")return {categories:[],nextCursor:null};
     const terms=intent??[opts.query];
     const values=terms.flatMap(term=>[term,term,term]);
+    if(opts.after && !await isCurrentPublicCategoryAnchor(
+      db,opts.after,opts.availableOnly,terms,
+    )) return {categories:[],nextCursor:null};
     // Cursor mode cannot emit the legacy includeChoices response. When the
     // approved curated alias itself is active/available, a competing literal
     // Category match must not be presented as the user's intended trade.
