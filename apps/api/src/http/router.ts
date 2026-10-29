@@ -6,7 +6,7 @@ import { optInAsWorker, ownWorkerDraft } from "../modules/workers/profile.ts";
 import { validGoogleClientId, verifyGoogleIdToken } from "../modules/identity/google.ts";
 import { resolveGoogleAccount } from "../modules/identity/google-accounts.ts";
 import { issueSession, makeSessionVerifier, revokeAllSessions, revokeSession, SESSION_TTL_SECONDS } from "../modules/identity/sessions.ts";
-import { readGoogleLoginBody, readServiceListingBody } from "./body.ts";
+import { hasEmptyBody, readGoogleLoginBody, readServiceListingBody } from "./body.ts";
 import { validCategoryId } from "../modules/shared/identifiers.ts";
 import { publishListing, myListings, publicListings, unpublishListing } from "../modules/workers/listings.ts";
 import {
@@ -38,26 +38,6 @@ function bearerToken(request: Request): string | null {
   const header = request.headers.get("Authorization");
   const match = header?.match(/^Bearer ([A-Za-z0-9_-]{1,2048})$/);
   return match?.[1] ?? null;
-}
-
-/** Local workerd/HTTP may represent an empty POST or DELETE as an empty
- * ReadableStream rather than null. Check actual bytes, not stream presence.
- * Fail closed on unreadable bodies; never buffer, log, or accept extra data.
- */
-async function hasEmptyBody(request: Request): Promise<boolean> {
-  if (request.body === null) return true;
-  const reader = request.body.getReader();
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) return true;
-      if (value.byteLength > 0) return false;
-    }
-  } catch {
-    return false;
-  } finally {
-    reader.releaseLock();
-  }
 }
 
 function getOnly(request: Request): Response | null {
