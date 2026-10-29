@@ -34,3 +34,20 @@ The generated Category record includes the unmodified `sourceCategoryId` and an 
 - No new API route, D1 table/migration, public service synonyms, Category seed, Android UI, Cloudflare resource or Finworkar write is made by this work.
 
 **Still gated:** full human occupational/legal review, meaning/quality of Hindi and English labels, final collision-free mappings and founder's precise M-005 Category/Contact/moderation approval, then separate M-003 privacy, M-004 design and M-007 controlled production release. Full catalog coverage is the approved **goal**, not a claim that 889 Categories are already active.
+
+## Combined 45-packet collision reconciliation (2026-10-29; CI pending)
+
+A valid packet in isolation can propose the same new ID or slug as a DIFFERENT packet. The new `catalog:correction-reconcile` offline guard requires exactly all **45 packets** in original order, with all **889** source rows retained, and rejects cross-packet proposed-to-proposed ID/slug collisions. It reuses each existing SHA-locked packet validator; it is **not** a full mapping or occupational/editorial/founder approval.
+
+```bash
+mkdir -p .local-category-review
+for n in $(seq 1 45); do
+  number=$(printf "%02d" "$n")
+  node scripts/catalog-correction-evidence.mjs --packet="$n" > ".local-category-review/packet-$number.json"
+done
+# Make evidence-backed corrections locally, preserving every source row.
+npm run catalog:correction-reconcile -- --directory=.local-category-review
+npm run catalog:correction-reconcile -- --check
+```
+
+The directory is gitignored and must contain `packet-01.json` through `packet-45.json` (no extra JSON files, symbolic links or files above 100 KB). A passing result is ONLY collision-free, source-locked proposed syntax. Every evidence link remains unverified; no human/founder approval, automatic correction, D1 seed/SQL, alias or Android/Worker/public Category activation results. M-003, M-004, M-005 final safety/translation/ID/contact/moderation, M-007 and M-008 all remain separately gated.

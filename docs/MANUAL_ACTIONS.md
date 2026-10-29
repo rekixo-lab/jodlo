@@ -203,3 +203,7 @@ Kotlin [Catalog and Worker repository interfaces](../apps/android/README.md) now
 ### 2026-10-28 — Nonvisual Kotlin session lifecycle tests, no external account setup
 
 The [headless Kotlin session controller](../apps/android/README.md) gates worker requests using a private in-memory session, handles backend-issued one-hour expiry, local-first logout and stale responses, and clearly distinguishes unconfirmed network revocation. It does not do real Android Google authentication, live provider setup, approved visual UI or actual Category activation. M-008 mobile OAuth integration and M-004 UI design approvals remain pending; M-003 location, M-005 catalog/contact and M-007 deployment remain separate. No credential sharing or console action is needed now.
+
+### 2026-10-29 — Full 45-packet offline Category proposal reconciliation (no new manual account task)
+
+This cross-packet syntax check is safe local-first engineering. It does not turn submitted JODLO PR evidence URLs into authenticated qualified reviewers or an M-005 Founder authorization. Separate occupational/legal/human bilingual editorial, final mapping and first contact/moderation decisions are still pending. M-003 area/privacy, M-004 visual design, M-007 release and M-008 Google OAuth stay separate; no Cloudflare/Google credentials or console steps needed now.

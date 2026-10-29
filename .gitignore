@@ -18,3 +18,5 @@ apps/android/local.properties
 *.p12
 *.pem
 *service-account*.json
+.local-category-review/
+.jodlo-correction-test-*/
