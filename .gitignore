@@ -22,3 +22,5 @@ apps/android/local.properties
 .jodlo-correction-test-*/
 
 .jodlo-service-correction-test-*/
+
+.jodlo-service-reconcile-test-*/
