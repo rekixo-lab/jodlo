@@ -16,6 +16,8 @@ data class PublicListing(val id: String, val categoryId: String)
 /** Optional public Listing pagination: no owner, timestamp, location or contact. */
 data class PublicListingPage(val listings: List<PublicListing>, val nextCursor: String?)
 data class OwnListing(val id: String, val categoryId: String, val visible: Boolean)
+/** Separate opt-in PRIVATE owner page. No worker account or moderation fields. */
+data class OwnListingPage(val listings: List<OwnListing>, val nextCursor: String?)
 /** Public Search keyset page (not a Category approval, alias or choice).
  * Separate from legacy Search's nextOffset to avoid a silent DTO migration.
  */
@@ -235,10 +237,12 @@ object JodloReplyDecoder {
         data.keysOnly(setOf("listing"))
         listing(data.required("listing"))
     }
-    fun ownListings(reply: TransportReply): ApiOutcome<List<OwnListing>> = decode(reply) { data ->
-        data.keysOnly(setOf("listings"))
-        val raw = data.required("listings").arr()
-        if (raw.size > 100) bad()
+    /** Reuse the exact owner row validation in BOTH legacy and paged replies;
+     * hidden/unpublished records remain private visible=false values.
+     */
+    private fun ownerRows(input: JsonElement, max: Int): List<OwnListing> {
+        val raw = input.arr()
+        if (raw.size > max) bad()
         val rows = raw.map { element ->
             val row = element.obj()
             row.keysOnly(setOf("id", "categoryId", "visible"))
@@ -248,7 +252,21 @@ object JodloReplyDecoder {
             OwnListing(value.id, value.categoryId, row.required("visible").bool())
         }
         if (rows.map { it.id }.toSet().size != rows.size) bad()
-        rows
+        return rows
+    }
+    fun ownListings(reply: TransportReply): ApiOutcome<List<OwnListing>> = decode(reply) { data ->
+        data.keysOnly(setOf("listings"))
+        ownerRows(data.required("listings"), 100)
+    }
+    /** Mandatory nextCursor key only on opt-in page; the backend uses an
+     * opaque Listing ID, NOT the public Category sort-order:id cursor.
+     */
+    fun ownListingPage(reply: TransportReply): ApiOutcome<OwnListingPage> = decode(reply) { data ->
+        data.keysOnly(setOf("listings", "nextCursor"))
+        val rows = ownerRows(data.required("listings"), 25)
+        val next = data.optionalString("nextCursor")
+        if (next != null && !opaqueId.matches(next)) bad()
+        OwnListingPage(rows, next)
     }
     /** Exact /auth/google success body, only for a trusted HTTPS exchange. */
     fun issuedSession(reply: TransportReply): ApiOutcome<IssuedSession> = decode(reply) { data ->
