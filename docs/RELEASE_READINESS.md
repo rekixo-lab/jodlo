@@ -27,3 +27,7 @@
 - [ ] Launch to controlled traffic and monitor; no invented green validations.
 
 See [ADR-0004](decisions/0004-local-first-no-staging-until-production.md), [Status](STATUS.md), [Manual Actions](MANUAL_ACTIONS.md), [Testing](TESTING.md).
+
+## Uncertain write diagnosis — code-only preflight (2026-10-30, PR CI pending)
+
+A worker might eventually own more than 100 approved Category listings; the legacy private `GET /me/listings` and its recheck remain bounded to first 100 for compatibility. The proposed Kotlin `HeadlessWorkerWriteScope.recheckOwnListingsPage()` explicitly requests **one 25-row owner keyset page per action**, so the complete approved catalog can be inspected without automatic POST/DELETE, implicit 36-request bursts or memory accumulation. A matching owner record is **current visibility**, not evidence that the uncertain write caused it. A nonmatch—even after all pages—is **not proof of no remote commit**, especially across concurrently changing keysets. Malformed/stale anchors, offline reads, session loss and in-flight races must fail closed. This adds **code tests only**, not release acceptance or actual historic catalog approval. CI on exact PR-head and independent main SHA must be verified; all checkboxes above stay open and M-003/M-004/M-005/M-007/M-008 remain blocking at their own boundaries.
