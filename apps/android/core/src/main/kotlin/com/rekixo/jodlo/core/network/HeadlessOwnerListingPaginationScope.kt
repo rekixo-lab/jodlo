@@ -127,14 +127,15 @@ class HeadlessOwnerListingPaginationScope(
                 deferred = true
                 return@synchronized null
             }
-            val previous = if (first) null else state as? ReadState.Ready
-                ?: return@synchronized null
+            val previous = if (first) null else
+                (state as? ReadState.Ready<OwnerListingPageView>
+                    ?: return@synchronized null)
             val old = previous?.value
-            val after = if (first) null else old?.nextCursor
-                ?: return@synchronized null
+            val after = if (first) null else
+                (old?.nextCursor ?: return@synchronized null)
             val limit = pageSize ?: old?.pageSize ?: return@synchronized null
-            val began = if (first) elapsedMillis() else firstStartedAt
-                ?: return@synchronized null
+            val began = if (first) elapsedMillis() else
+                (firstStartedAt ?: return@synchronized null)
             val count = if (first) 1 else (old?.pageNumber ?: 0) + 1
             if (count < 1) return@synchronized null
             signal?.cancel()
