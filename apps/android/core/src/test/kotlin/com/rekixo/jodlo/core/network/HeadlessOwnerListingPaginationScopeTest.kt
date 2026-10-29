@@ -115,7 +115,7 @@ private fun testSessionReplacementAndLogoutWipeRowsBeforeRecheck() {
     check(coordinator.logout()==SessionResult.Success(true))
     val snap=scope.snapshot()
     check(snap.login==LoginState.SignedOut && snap.page==ReadState.Idle)
-    check(scope.start()==PageCompletion.APPLIED)
+    check(scope.start()==PageCompletion.DISCARDED)
     check(scope.snapshot().page==ReadState.Idle)
     check(calls.get()==2)
 }
