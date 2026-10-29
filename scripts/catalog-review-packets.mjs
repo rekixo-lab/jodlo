@@ -26,10 +26,6 @@ export function createReviewPackets(preflight,leaves,phrases,packetSize=20){
   if(!Number.isInteger(packetSize)||packetSize<1||packetSize>25)
     throw Error("Review packet size must be 1..25");
   checkSource(preflight,leaves,phrases);
-  // Reuse the existing full-889 D1 compatibility audit. It validates the
-  // source-pinned preflight and cannot grant any category approval or seed.
-  const mapping=buildCatalogMappingReadiness(preflight);
-  const mappingById=new Map(mapping.categories.map(row=>[row.sourceCategoryId,row]));
   const parents=new Map();
   for(const row of preflight.categories){
     if(typeof row.sourceCategoryId!=="string"||!row.sourceCategoryId ||
@@ -41,6 +37,10 @@ export function createReviewPackets(preflight,leaves,phrases,packetSize=20){
       throw Error("Duplicate or deceptively authorized Category");
     parents.set(row.sourceCategoryId,row);
   }
+  // Keep the existing "approved row" rejection ahead of the more thorough
+  // source-compatibility check; reuse the same independent all-889 audit.
+  const mapping=buildCatalogMappingReadiness(preflight);
+  const mappingById=new Map(mapping.categories.map(row=>[row.sourceCategoryId,row]));
   const services=new Map([...parents.keys()].map(id=>[id,[]]));
   for(const leaf of leaves.services){
     const parent=parents.get(leaf.categoryId);
