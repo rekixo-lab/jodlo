@@ -119,6 +119,58 @@ test("pages filter current category, moderation and account status; cursor never
   }finally{f.db.close();}
 });
 
+test("a former public cursor must stop pagination as soon as it loses public eligibility",async()=>{
+  const f=fixture();
+  try {
+    const anchor=f.expected[4];
+    const next=path+"&limit=3&after="+anchor.id;
+    const page=await f.get(path+"&limit=5");
+    assert.equal(page.status,200);
+    assert.equal(page.body.data.nextCursor,anchor.id);
+    const follow=await f.get(next);
+    assert.deepEqual(follow.body.data.listings,f.expected.slice(5,8));
+    const denied={listings:[],nextCursor:null};
+    const noData=async()=>{
+      const reply=await f.get(next);
+      assert.equal(reply.status,200);
+      assert.deepEqual(reply.body.data,denied);
+      assert.equal(JSON.stringify(reply.body).includes("account-list-page"),false);
+    };
+
+    // The original implementation checked the category and ID only, so a
+    // moderator-hidden cursor could still reveal later pages as an ordering
+    // oracle. All current server eligibility facts must gate the ANCHOR too.
+    f.db.prepare("UPDATE worker_listings SET moderation_status='hidden' WHERE id=?")
+      .run(anchor.id);
+    await noData();
+    f.db.prepare("UPDATE worker_listings SET moderation_status='allowed' WHERE id=?")
+      .run(anchor.id);
+    assert.deepEqual((await f.get(next)).body.data.listings,f.expected.slice(5,8));
+
+    f.db.prepare("UPDATE worker_listings SET status='unpublished' WHERE id=?").run(anchor.id);
+    await noData();
+    f.db.prepare("UPDATE worker_listings SET status='published' WHERE id=?").run(anchor.id);
+    assert.deepEqual((await f.get(next)).body.data.listings,f.expected.slice(5,8));
+
+    f.db.prepare("UPDATE accounts SET status='disabled' WHERE id=?")
+      .run("account-list-page-004");
+    await noData();
+    f.db.prepare("UPDATE accounts SET status='active' WHERE id=?")
+      .run("account-list-page-004");
+    assert.deepEqual((await f.get(next)).body.data.listings,f.expected.slice(5,8));
+
+    // A hidden listing never qualifies as a cursor, even when the ID format
+    // and Category ID are valid. A deleted profile cascades the anchor.
+    assert.deepEqual((await f.get(path+"&limit=2&after="+f.hidden.id)).body.data,denied);
+    f.db.prepare("DELETE FROM worker_profiles WHERE account_id=?")
+      .run("account-list-page-004");
+    await noData();
+    // A page without a cursor still works for other eligible workers.
+    const first=await f.get(path+"&limit=5");
+    assert.deepEqual(first.body.data.listings,f.expected.slice(0,4).concat(f.expected[5]));
+  } finally {f.db.close();}
+});
+
 test("strict opt-in parameter handling does not break original unpaged API",async()=>{
   const f=fixture();
   try{
