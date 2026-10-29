@@ -22,6 +22,10 @@
 | Data | **New, independent data stores; no migration** |
 | UI | **Founder review and suggestions before any layout, theme or screen is implemented** |
 
+## Founder-approved all-category direction — 2026-10-29
+
+**JODLO is NOT a ten-trade-only marketplace.** Founder reaffirmed **all kinds of legitimate work together**: the full historical **889-Category** inventory is in scope for structured safety/language review and future broadly available smart discovery. The old ten-trade proposal is an **editorial review sample only**. Do not ask the founder to choose ten versus all again. Existing synthetic 889-row keyset Browse, Hindi/English active Catalog Search, `availableOnly=1` and 45 source-backed review packets are already present. **They are not a live 889-category D1 import or completed semantic matcher**; source label, legal/safety, Category-ID and real contact/area/UI/production gates still apply. Read [ADR-0011](docs/decisions/0011-all-category-coverage-smart-discovery.md) and [Manual Actions](docs/MANUAL_ACTIONS.md).
+
 ## हमारा मकसद
 
 भारत में लोगों को आसपास के सही वर्कर या सर्विस देने वाले व्यक्ति को आसानी से खोजने में मदद करना, और काम करने वालों को अपनी वास्तविक सेवा दिखाने का सुविधाजनक माध्यम देना। सिर्फ हिंदी और English तथा कम क्षमता वाले Android फ़ोन का ध्यान रखा जाएगा। सुरक्षा, भरोसा, जवाब देने की विश्वसनीयता और वास्तविक काम मिलने के परिणाम डाउनलोड की संख्या से ज़्यादा महत्वपूर्ण हैं।
