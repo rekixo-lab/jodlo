@@ -40,6 +40,31 @@ fun main() {
     check(validLastSearchOffset is ApiOutcome.Ok &&
         validLastSearchOffset.value.nextOffset == 100)
 
+    val keyset = JodloReplyDecoder.searchCursor(TransportReply(200,
+        envelope("""{"language":"hi","query":"मरम्मत","categories":[$plumber],"nextCursor":"8:plumber"}""")))
+    check(keyset is ApiOutcome.Ok)
+    eq(keyset.value, CatalogSearchCursorPage(Language.HI, "मरम्मत",
+        listOf(PublicCategory("plumber","plumber","प्लंबर")), "8:plumber"))
+    val done = JodloReplyDecoder.searchCursor(TransportReply(200,
+        envelope("""{"language":"en","query":"repair","categories":[],"nextCursor":null}""")))
+    check(done is ApiOutcome.Ok && done.value.nextCursor == null)
+    // Legacy and cursor Search are different strict protocols.
+    rejects(envelope("""{"language":"hi","query":"मरम्मत","categories":[],"nextCursor":null}"""),
+        parse=JodloReplyDecoder::search)
+    rejects(envelope("""{"language":"en","query":"repair","categories":[],"nextOffset":null}"""),
+        parse=JodloReplyDecoder::searchCursor)
+    for (data in listOf(
+        """{"language":"en","query":"repair","categories":[]}""",
+        """{"language":"en","query":"repair","categories":[],"nextCursor":"8:../../private"}""",
+        """{"language":"en","query":"repair","categories":[],"nextCursor":"1000001:plumber"}""",
+        """{"language":"en","query":"repair","categories":[],"nextCursor":null,"nextOffset":0}""",
+        """{"language":"en","query":"repair","categories":[],"nextCursor":null,"choices":[$plumber]}""",
+        """{"language":"en","query":"repair","categories":[],"nextCursor":null,"needsChoice":true}""",
+        """{"language":"hi-Latn","query":"repair","categories":[],"nextCursor":null}""",
+        """{"language":"en","query":"repair","categories":[$plumber,$plumber],"nextCursor":null}""",
+        """{"language":"en","query":"repair","categories":[{"id":"plumber","slug":"plumber","name":"Plumber","phone":"private"}],"nextCursor":null}""",
+    )) rejects(envelope(data),parse=JodloReplyDecoder::searchCursor)
+
     val public = JodloReplyDecoder.publicListings(TransportReply(200,
         envelope("""{"listings":[$listing]}""")))
     check(public is ApiOutcome.Ok)

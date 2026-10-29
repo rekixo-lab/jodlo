@@ -215,5 +215,88 @@ fun main() {
     // Legacy callers cannot accidentally parse paged DTOs.
     check(RemoteCatalogRepository(RequestSender { ok(firstPayload) }).listings("carpenter")==bad())
 
+    // The same real repository/decoder supports ALL 889 synthetic approved
+    // matches, one opt-in keyset page at a time. No real D1 Category seed.
+    val synthetic = (0 until 889).map { i ->
+        val id = "work-" + i.toString().padStart(4,'0')
+        Triple(id, i/3, "सार्वजनिक सेवा $i")
+    }
+    var cursorRequests = 0
+    val cursorRepository: CatalogSearchCursorRepository =
+        RemoteCatalogRepository(RequestSender { call ->
+            check(call.method == HttpMethod.GET &&
+                call.resource.startsWith("/api/v1/catalog/search?lang=hi&q="))
+            check(call.resource.contains("&cursor=1&limit=25"))
+            check(!call.resource.contains("offset=") &&
+                !call.resource.contains("includeChoices=") &&
+                call.headers()["Authorization"] == null)
+            cursorRequests++
+            val encodedAfter = call.resource.substringAfter("&after=", "")
+            val after = if(encodedAfter.isBlank()) null else
+                java.net.URLDecoder.decode(encodedAfter.substringBefore('&'), "UTF-8")
+            val start = if(after == null) 0 else synthetic.indexOfFirst {
+                "${it.second}:${it.first}" == after
+            } + 1
+            check(start >= 0)
+            val pageRows = synthetic.drop(start).take(25)
+            val rowsJson = pageRows.joinToString(",") {
+                """{"id":"${it.first}","slug":"${it.first}","name":"${it.third}"}"""
+            }
+            val next = if(start + pageRows.size < synthetic.size) {
+                val last = pageRows.last()
+                """"${last.second}:${last.first}""""
+            } else "null"
+            ok("""{"language":"hi","query":"सेवा","categories":[$rowsJson],"nextCursor":$next}""")
+        })
+    val found = mutableListOf<PublicCategory>()
+    var searchAfter: String? = null
+    do {
+        val result = cursorRepository.searchCursor("  सेवा  ", Language.HI,
+            limit=25, after=searchAfter)
+        check(result is ApiOutcome.Ok)
+        val page = result.value
+        check(page.categories.size in 1..25)
+        found.addAll(page.categories)
+        searchAfter=page.nextCursor
+    } while (searchAfter != null)
+    check(found.size == 889 && found.map { it.id }.distinct().size == 889)
+    check(found.first().id == "work-0000" && found.last().id == "work-0888")
+    check(cursorRequests == 36)
+
+    val validatedFirst = RemoteCatalogRepository(RequestSender {
+        ok("""{"language":"hi","query":"मरम्मत","categories":[$PLUMBER],"nextCursor":"8:plumber"}""")
+    })
+    check(validatedFirst.searchCursor("मरम्मत",Language.HI,limit=1)==
+        ApiOutcome.Ok(CatalogSearchCursorPage(Language.HI,"मरम्मत",
+            listOf(PublicCategory("plumber","plumber","प्लंबर")),"8:plumber")))
+    val invalidCursorReplies = listOf(
+        """{"language":"hi","query":"मरम्मत","categories":[$PLUMBER],"nextOffset":1}""",
+        """{"language":"hi","query":"मरम्मत","categories":[],"nextCursor":"8:plumber"}""",
+        """{"language":"hi","query":"मरम्मत","categories":[$PLUMBER],"nextCursor":"8:carpenter"}""",
+        """{"language":"hi","query":"मरम्मत","categories":[$PLUMBER],"nextCursor":"7:plumber"}""",
+        """{"language":"hi","query":"दूसरा शब्द","categories":[$PLUMBER],"nextCursor":null}""",
+        """{"language":"en","query":"मरम्मत","categories":[$PLUMBER],"nextCursor":null}""",
+        """{"language":"hi","query":"मरम्मत","categories":[$PLUMBER],"nextCursor":null,"verified":true}""",
+        """{"language":"hi","query":"मरम्मत","categories":[$PLUMBER],"nextCursor":null,"choices":[$CARPENTER]}""",
+    )
+    for((index,payload) in invalidCursorReplies.withIndex()) {
+        val badRepo=RemoteCatalogRepository(RequestSender {ok(payload)})
+        val earlier=if(index==3) "8:carpenter" else null
+        check(badRepo.searchCursor("मरम्मत",Language.HI,limit=1,after=earlier)==bad()) {
+            "Forged Search cursor response accepted: $index"
+        }
+    }
+    val fullButPartial = RemoteCatalogRepository(RequestSender {
+        ok("""{"language":"hi","query":"मरम्मत","categories":[$PLUMBER],"nextCursor":"8:plumber"}""")
+    })
+    check(fullButPartial.searchCursor("मरम्मत",Language.HI,limit=25)==bad())
+    val actualIo=RemoteCatalogRepository(RequestSender {
+        throw IOException("REDACTED_PRIVATE_FAILURE_DETAIL")
+    })
+    check(actualIo.searchCursor("मरम्मत",Language.HI)==
+        ApiOutcome.Failed(FailureKind.OFFLINE_OR_TIMEOUT,false))
+    // Cursor Search must never auto-publish a selected Category.
+    check(seen.count { it.method == HttpMethod.POST && it.resource == "/api/v1/me/listings" } == 1)
+
     println("JODLO repositories: typed browse/search, explicit worker publishing, mismatched response rejection and no auto-retry and public Listing pagination OK")
 }

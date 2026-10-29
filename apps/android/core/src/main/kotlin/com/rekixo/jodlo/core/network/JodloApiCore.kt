@@ -92,6 +92,27 @@ object JodloRoutes {
         return ApiCall.get("/api/v1/catalog/search?${p.joinToString("&")}")
     }
 
+    /** Opt-in Search keyset for ALL already-active Categories. Distinct from
+     * legacy offset/choice Search: one bounded, public-only page per call.
+     * Caller passes only a previously returned cursor for the same filters.
+     */
+    fun searchCursor(raw: String, lang: Language, availableOnly: Boolean = false,
+                     limit: Int = 20, after: String? = null): ApiCall {
+        val q = Normalizer.normalize(raw.trim(), Normalizer.Form.NFC)
+        require(q.codePointCount(0, q.length) in 2..64 &&
+                !CONTROL.containsMatchIn(q)) { "Invalid search query" }
+        require(limit in 1..25) { "Invalid Search page size" }
+        require(after == null || (CURSOR.matches(after) &&
+                after.substringBefore(':').toInt() <= 1_000_000)) {
+            "Invalid Search cursor"
+        }
+        val p = mutableListOf("lang=${lang.code}", "q=${enc(q)}",
+            "cursor=1", "limit=$limit")
+        if (availableOnly) p += "availableOnly=1"
+        if (after != null) p += "after=${enc(after)}"
+        return ApiCall.get("/api/v1/catalog/search?${p.joinToString("&")}")
+    }
+
     fun publicListings(categoryId: String): ApiCall {
         requireCategoryId(categoryId)
         return ApiCall.get("/api/v1/listings?categoryId=${enc(categoryId)}")

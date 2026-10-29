@@ -20,6 +20,15 @@ interface CatalogRepository {
     fun listings(categoryId: String): ApiOutcome<List<PublicListing>>
 }
 
+/** Opt-in exhaustive Search pagination, deliberately separate from legacy
+ * CatalogRepository.search offset/choice contract and preexisting fake clients.
+ * The backend still returns ONLY approved active, public Categories.
+ */
+interface CatalogSearchCursorRepository {
+    fun searchCursor(query: String, language: Language, availableOnly: Boolean = false,
+                     limit: Int = 20, after: String? = null): ApiOutcome<CatalogSearchCursorPage>
+}
+
 /** Opt-in public Listing pagination. Kept separate from CatalogRepository
  * so existing headless flows, fake adapters and legacy 25-row reads are stable.
  * The backend alone authorizes cursor eligibility at its current D1 state.
@@ -57,7 +66,7 @@ private fun browseCursorAdvances(after: String?, next: String): Boolean {
 }
 
 class RemoteCatalogRepository(private val sender: RequestSender) :
-    CatalogRepository, PublicListingPageRepository {
+    CatalogRepository, PublicListingPageRepository, CatalogSearchCursorRepository {
     override fun browse(language: Language, availableOnly: Boolean,
                         limit: Int, after: String?): ApiOutcome<CatalogBrowse> {
         val call = JodloRoutes.browse(language, availableOnly, limit, after)
@@ -83,6 +92,24 @@ class RemoteCatalogRepository(private val sender: RequestSender) :
                     (dto.nextOffset == null ||
                         (dto.nextOffset == offset + limit &&
                             dto.categories.size == limit && !dto.needsChoice))
+            }
+    }
+
+    /** One explicit public GET; no auto-traversal, cached tokens or posting.
+     * A forged/stale cursor or mismatched response fails closed.
+     */
+    override fun searchCursor(query: String, language: Language, availableOnly: Boolean,
+                              limit: Int, after: String?): ApiOutcome<CatalogSearchCursorPage> {
+        val call = JodloRoutes.searchCursor(query, language, availableOnly, limit, after)
+        val expected = Normalizer.normalize(query.trim(), Normalizer.Form.NFC)
+        return performOnce(call, sender::send, JodloReplyDecoder::searchCursor)
+            .validated { dto ->
+                dto.language == language && dto.query == expected &&
+                    dto.categories.size <= limit &&
+                    (dto.nextCursor == null ||
+                        (dto.categories.size == limit && dto.categories.isNotEmpty() &&
+                            dto.categories.last().id == dto.nextCursor.substringAfter(':') &&
+                            browseCursorAdvances(after, dto.nextCursor)))
             }
     }
 
