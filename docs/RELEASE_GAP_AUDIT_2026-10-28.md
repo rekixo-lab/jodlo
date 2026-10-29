@@ -7,7 +7,7 @@
 | Area | Verified source and CI scope | Release gap / no completion claim |
 |---|---|---|
 | Cloudflare Worker API | `apps/api/src/modules/` includes identity/session, Catalog, Worker Draft/Listing, public discovery and restricted interaction contracts; 211 Node tests previously green | Full contact workflow and operational moderation/abuse/admin protections, verified billing/RTC/notifications and production authorization review **not shown complete** by the current tests |
-| D1 | `infra/migrations/0001`–`0004` applied locally; local Worker bundling in CI | No disaster restore rehearsal, production backup evidence, realistic load/performance, cross-device end-to-end or production D1 availability proof |
+| D1 | `infra/migrations/0001`–`0004` applied locally; local Worker bundling in CI | A synthetic local SQLite backup/independent-restore rehearsal is now executable in Node CI (PR #85); **still no Cloudflare D1 managed recovery rehearsal**, production backup evidence, defined RTO/RPO, realistic load/performance, cross-device end-to-end or production D1 availability proof |
 | Android Core | `apps/android/core` has typed networking/session, explicit Worker writes, Customer Discovery, safe presentation and lifecycle tests; 21 executable Kotlin suites previously green | Only Kotlin/JVM core; **no Android `:app` APK**, Manifest, approved visual UI/theme, real device scheduler, actual provider Sign-In, on-device or accessibility/performance evidence |
 | Contract integration | Local shared-fake Customer–Worker publication, uncertainty, logout/account-switch/expiry races tested | No actual backend rollout, Play policy review, real device network/latency testing or end-to-end remote transaction/queue evidence |
 | Security and privacy | Founder guard, strict Hindi (Devanagari) and English, explicit Category selection; no precise GPS/contact/data exposure allowed | Pending founder M-003 locality/privacy, M-004 visual design, M-005 active taxonomy/interaction, M-008 provider setup, M-007 later production-only approval |
@@ -29,3 +29,8 @@ Before this audit, the workflow manually listed every `:core:verify*` Kotlin JVM
 6. **Founder M-007, only at product-ready production release:** review final release candidate, budget, policy, backup/recovery, release protection, DNS and credentials. A green CI alone never approves deployment.
 
 **Current action:** no new founder manual intervention is required for this specific source-only audit. The pending gates remain unresolved and will be raised when their dependent implementation reaches its actual decision point. Never request secrets or authorize staging/deployment from this document.
+
+
+## 2026-10-29 — Narrow local backup/restore gap closure (PR #85)
+
+PR #85 adds a real Node `node:sqlite` point-in-time backup and separate-file restore test for the **existing four disposable local migrations**. The test verifies database integrity and FK relationships plus restored signed-in/anonymous HTTP behaviors (including moderator-hidden listing and Google session-hash boundaries). This supersedes only the earlier statement that **no local backup/restore rehearsal exists**. It does not create a backup tool or emergency runbook for Cloudflare's managed D1, restore production data, demonstrate provider or cross-region reliability, set RTO/RPO or resolve privacy, legal, Android-device and launch gates. Preserve the unchecked production release items in `RELEASE_READINESS.md`; verify PR and exact merged-main CI before treating the test as installed.
