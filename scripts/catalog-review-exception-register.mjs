@@ -146,7 +146,8 @@ export function makeAllCategoryExceptionRegister(full,scope){
         total.affectedServiceRows+=issue.affectedServiceIds.length;
         return issue;
       });
-      if(!issues.length)noMechanicalFlags++;
+      if(!issues.some(issue=>issue.code!=="DESK_EXTRA_REVIEW"&&
+        issue.code!=="DESK_SPECIALIST_HOLD"))noMechanicalFlags++;
       return {
         packetNumber:p.packetNumber,sourceCategoryId:cat.sourceCategoryId,
         sourceGroupId:cat.sourceGroupId,sourceFamilyId:cat.sourceFamilyId,
