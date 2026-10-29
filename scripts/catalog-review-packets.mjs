@@ -2,6 +2,7 @@
 import {resolve} from "node:path";
 import {fileURLToPath} from "node:url";
 import {loadPinnedExpansionPreflight} from "./catalog-activation-preflight.mjs";
+import {buildCatalogMappingReadiness} from "./catalog-mapping-readiness.mjs";
 import {loadPinnedLegacyServiceReview,assertPinnedServiceReview} from "./legacy-service-review.mjs";
 import {loadPinnedLegacyPhraseReview,assertPinnedLegacyPhraseReview} from "./legacy-phrase-review.mjs";
 
@@ -36,6 +37,10 @@ export function createReviewPackets(preflight,leaves,phrases,packetSize=20){
       throw Error("Duplicate or deceptively authorized Category");
     parents.set(row.sourceCategoryId,row);
   }
+  // Keep the existing "approved row" rejection ahead of the more thorough
+  // source-compatibility check; reuse the same independent all-889 audit.
+  const mapping=buildCatalogMappingReadiness(preflight);
+  const mappingById=new Map(mapping.categories.map(row=>[row.sourceCategoryId,row]));
   const services=new Map([...parents.keys()].map(id=>[id,[]]));
   for(const leaf of leaves.services){
     const parent=parents.get(leaf.categoryId);
@@ -70,6 +75,18 @@ export function createReviewPackets(preflight,leaves,phrases,packetSize=20){
   for(let start=0;start<ordered.length;start+=packetSize){
     const categories=ordered.slice(start,start+packetSize).map(parent=>{
       const id=parent.sourceCategoryId;
+      const compatibility=mappingById.get(id);
+      if(!compatibility||
+        compatibility.sourceGroupId!==parent.sourceGroupId||
+        compatibility.sourceFamilyId!==parent.sourceFamilyId||
+        compatibility.historicalNameEn!==parent.historicalNameEn||
+        compatibility.historicalNameHi!==parent.historicalNameHi||
+        JSON.stringify(compatibility.historicalReviewFlags)!==
+          JSON.stringify(parent.sourceReviewFlags)||
+        JSON.stringify(compatibility.mandatoryHumanAndFounderGates)!==
+          JSON.stringify(parent.mandatoryHumanAndFounderGates)||
+        compatibility.reviewState!=="HUMAN_ID_SLUG_LABEL_AND_SAFETY_REVIEW_REQUIRED")
+        throw Error("Mapping review must match exact source Category and human gates");
       if(seen.has(id))throw Error("Duplicate Category across packets");
       seen.add(id);
       const leavesFor=services.get(id).slice().sort((a,b)=>cmp(a.serviceId,b.serviceId));
@@ -85,6 +102,13 @@ export function createReviewPackets(preflight,leaves,phrases,packetSize=20){
         historicalSafetyTier:parent.historicalSafetyTier,
         sourceServiceCount:parent.sourceServiceCount,
         sourceReviewFlags:parent.sourceReviewFlags.slice(),
+        // Syntax-only candidates; NEVER a final, approved JODLO ID/slug.
+        mappingCompatibility:{
+          categoryIdCandidate:compatibility.categoryIdCandidate,
+          slugCandidate:compatibility.slugCandidate,
+          syntaxIssues:compatibility.syntaxIssues.slice(),
+          reviewState:compatibility.reviewState,
+        },
         serviceNamesWithLatinInHindi:leavesFor.filter(x=>
           x.flags.includes("HINDI_LABEL_LATIN_SCRIPT_REVIEW")).length,
         ambiguousCrossCategoryPhraseCount:clashes.length,
@@ -103,23 +127,50 @@ export function createReviewPackets(preflight,leaves,phrases,packetSize=20){
       packetNumber:packets.length+1,categoryCount:categories.length,
       groupIds:[...new Set(categories.map(x=>x.sourceGroupId))].sort(cmp),
       flaggedCategoryCount:categories.filter(x=>x.sourceReviewFlags.length>0).length,
+      categoriesWithIdSyntaxIssues:categories.filter(x=>
+        x.mappingCompatibility.categoryIdCandidate===null).length,
+      categoriesWithSlugSyntaxIssues:categories.filter(x=>
+        x.mappingCompatibility.slugCandidate===null).length,
+      categoriesWithLabelSyntaxIssues:categories.filter(x=>
+        x.mappingCompatibility.syntaxIssues.some(issue=>issue.includes("LABEL"))).length,
+      categoriesWithMappingSyntaxIssues:categories.filter(x=>
+        x.mappingCompatibility.syntaxIssues.length>0).length,
       categoriesWithAmbiguousPhrases:categories.filter(x=>
         x.ambiguousCrossCategoryPhraseCount>0).length,
       categories,
     });
   }
-  if(seen.size!==parents.size)throw Error("Incomplete Category review coverage");
+  if(seen.size!==parents.size||seen.size!==mapping.summary.sourceCategories)
+    throw Error("Incomplete Category/mapping review coverage");
+  const issueTotals={
+    id:packets.reduce((n,p)=>n+p.categoriesWithIdSyntaxIssues,0),
+    slug:packets.reduce((n,p)=>n+p.categoriesWithSlugSyntaxIssues,0),
+    label:packets.reduce((n,p)=>n+p.categoriesWithLabelSyntaxIssues,0),
+  };
+  if(issueTotals.id!==mapping.summary.categoryIdsRequiringHumanMapping||
+    issueTotals.slug!==mapping.summary.slugsRequiringHumanMapping||
+    issueTotals.label!==mapping.summary.categoryLabelsRequiringHumanCorrection)
+    throw Error("Review packet mapping totals diverge from source compatibility");
   const manifest={
     kind:"JODLO_ALL_CATEGORY_REVIEW_PACKET_MANIFEST_ONLY",state:STATE,
     sourceJsonSha256:SHA,languages:["en","hi"],
     summary:{
       categories:seen.size,packetSize,packetCount:packets.length,
+      categoriesWithIdSyntaxIssues:issueTotals.id,
+      categoriesWithSlugSyntaxIssues:issueTotals.slug,
+      categoriesWithLabelSyntaxIssues:issueTotals.label,
+      categoriesWithMappingSyntaxIssues:packets.reduce(
+        (n,p)=>n+p.categoriesWithMappingSyntaxIssues,0),
       categoriesAuthorizedForActivation:0,
       categoriesStillNeedingHumanAndFounderReview:seen.size,
     },
     packets:packets.map(p=>({
       packetNumber:p.packetNumber,categoryCount:p.categoryCount,
       groupIds:p.groupIds,flaggedCategoryCount:p.flaggedCategoryCount,
+      categoriesWithIdSyntaxIssues:p.categoriesWithIdSyntaxIssues,
+      categoriesWithSlugSyntaxIssues:p.categoriesWithSlugSyntaxIssues,
+      categoriesWithLabelSyntaxIssues:p.categoriesWithLabelSyntaxIssues,
+      categoriesWithMappingSyntaxIssues:p.categoriesWithMappingSyntaxIssues,
       categoriesWithAmbiguousPhrases:p.categoriesWithAmbiguousPhrases,
       firstSourceCategoryId:p.categories[0].sourceCategoryId,
       lastSourceCategoryId:p.categories.at(-1).sourceCategoryId,
@@ -142,6 +193,7 @@ export function loadPinnedReviewPackets(){
   verifyReviewPackets(preflight,leaves,phrases,result);
   if(result.manifest.summary.categories!==889||
      result.manifest.summary.packetCount!==45||
+     result.manifest.summary.categoriesWithIdSyntaxIssues!==1||
      result.manifest.summary.categoriesAuthorizedForActivation!==0)
     throw Error("Pinned 889-Category review boundary changed");
   return result;

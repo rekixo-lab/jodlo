@@ -13,6 +13,19 @@
 
 Packets sort by **original Group → Family → Category**. A packet can cross Group boundaries at a size limit; Group IDs remain explicitly recorded. Every Category appears **exactly once**, including the one with an incompatible legacy Category ID. Its original ID is never silently fixed, dropped or approved.
 
+## 2026-10-29 — D1 mapping readiness shown inside all 45 existing review packets
+
+[PR #94's full-889 mapping compatibility audit](JODLO_ALL_CATEGORY_MAPPING_READINESS_2026-10-29.md) is now **reused by this existing 45-packet generator**, not copied into a second review process. `npm run catalog:review-packet -- --packet=N` includes a `mappingCompatibility` field alongside each original Category's source evidence:
+
+- `categoryIdCandidate`: unchanged source ID only if its **syntax** is compatible with the current D1 Category ID rule; otherwise `null`
+- `slugCandidate`: unchanged source ID only if it meets the stricter public slug syntax; otherwise `null`
+- `syntaxIssues`: exact reasons for manual ID, slug or bilingual Category-title correction, without automatic rewriting
+- `reviewState`: `HUMAN_ID_SLUG_LABEL_AND_SAFETY_REVIEW_REQUIRED` for **every** Category, including those with no flagged syntax issues
+
+The existing packet manifest and per-packet summaries now count Categories with ID, slug and Category-title syntax issues, plus the **union** of any such problems. These counts are recomputed from actual per-Category rows and checked against the independent mapping audit so missing work cannot be silently hidden. The known historical `farmer-helper-मजदूर` ID remains in one of the 45 packets with **null ID/slug candidates**, never auto-transliterated or removed.
+
+**No category is approved or activated** by a non-null syntax candidate. The previous safety, language, regulated-work, full Service-leaf review, source lineage, original ambiguity, and four human/founder M-005 gates remain. Human reviewers can now resolve mapping compatibility while reading the **same** old-category packet instead of reconciling two independently maintained queues. No live D1 seed, SQL generation, search alias activation, Android UI or Cloudflare deployment.
+
 ## Per-Category task evidence
 
 Every review item includes pinned source Group, Family, Category ID; historical English and Hindi display names; historical safety tier as **non-authoritative evidence only**; child Service count; existing quality flags; count of Hindi Service labels containing Latin letters; count of ambiguous Service phrases spanning distinct Categories; up to **three original service-label examples** and **three cross-Category phrase examples** preserving the other possible parent IDs; and all four mandatory Founder/human review gates from the preceding [all-Category preflight](JODLO_CATEGORY_EXPANSION_PREFLIGHT_2026-10-28.md).
