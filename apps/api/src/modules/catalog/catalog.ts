@@ -60,6 +60,13 @@ export type CatalogBrowsePage = {
   nextCursor: string | null;
 };
 
+/** Shared syntax for nonpersonal public Category browse and Search cursors. */
+function parsePublicCategoryCursor(raw: string): {sortOrder:number;id:string} | null {
+  const match=/^(0|[1-9][0-9]{0,6}):([a-zA-Z0-9_-]{1,64})$/.exec(raw);
+  if(!match||Number(match[1])>1_000_000||!validCategoryId(match[2]))return null;
+  return {sortOrder:Number(match[1]),id:match[2]};
+}
+
 /** Strict public cursor: sort-order and an already public category ID, not a
  * personal identifier. Server still independently filters active/eligible rows.
  */
@@ -80,9 +87,8 @@ export function parseCatalogBrowse(params: URLSearchParams): CatalogBrowseOption
   if (limitRaw !== null && !/^(?:[1-9]|1[0-9]|2[0-5])$/.test(limitRaw)) return null;
   let after: CatalogBrowseOptions["after"] = null;
   if (afterRaw !== null) {
-    const match = /^(0|[1-9][0-9]{0,6}):([a-zA-Z0-9_-]{1,64})$/.exec(afterRaw);
-    if (!match || Number(match[1]) > 1_000_000 || !validCategoryId(match[2])) return null;
-    after = {sortOrder:Number(match[1]),id:match[2]};
+    after=parsePublicCategoryCursor(afterRaw);
+    if(!after)return null;
   }
   return {language,availableOnly:availability === "1",
     limit:limitRaw === null ? null : Number(limitRaw),after};
@@ -124,10 +130,14 @@ export interface CatalogSearchOptions {
   offset: number;
   availableOnly: boolean;
   includeChoices: boolean;
+  /** Keyset opt-in; keeps the old 0..100 offset path byte-for-byte compatible. */
+  cursor: boolean;
+  after: {sortOrder:number;id:string}|null;
 }
 export type CatalogSearchPage = {
   categories: PublicCategory[];
-  nextOffset: number | null;
+  nextOffset?: number | null;
+  nextCursor?: string | null;
   /** Only emitted after explicit includeChoices=1 and multi-trade evidence. */
   needsChoice?: boolean;
   choices?: PublicCategory[];
@@ -137,7 +147,7 @@ export type CatalogSearchPage = {
  * NFC retains correct Hindi search while eliminating equivalent Unicode spellings.
  */
 export function parseCatalogSearch(params: URLSearchParams): CatalogSearchOptions | null {
-  const allowed = new Set(["lang", "q", "limit", "offset", "availableOnly", "includeChoices"]);
+  const allowed = new Set(["lang", "q", "limit", "offset", "availableOnly", "includeChoices", "cursor", "after"]);
   let unknown = false;
   params.forEach((_value, key) => {
     if (!allowed.has(key) || params.getAll(key).length !== 1) unknown = true;
@@ -149,6 +159,14 @@ export function parseCatalogSearch(params: URLSearchParams): CatalogSearchOption
   if (availability !== null && availability !== "1") return null;
   const choices = params.get("includeChoices");
   if(choices !== null && choices !== "1") return null;
+  const cursorRaw=params.get("cursor");
+  const afterRaw=params.get("after");
+  if(cursorRaw!==null&&cursorRaw!=="1")return null;
+  if(afterRaw!==null&&cursorRaw!=="1")return null;
+  // The curated choice UI is a single explicit user decision, never paginated.
+  if(cursorRaw==="1"&&(params.has("offset")||choices==="1"))return null;
+  const after=afterRaw===null?null:parsePublicCategoryCursor(afterRaw);
+  if(afterRaw!==null&&!after)return null;
 
   const query = (params.get("q") ?? "").trim().normalize("NFC");
   const length = [...query].length;
@@ -163,7 +181,7 @@ export function parseCatalogSearch(params: URLSearchParams): CatalogSearchOption
   return { language, query, limit: limitRaw === null ? 20 : Number(limitRaw),
     offset: offsetRaw === null ? 0 : Number(offsetRaw),
     availableOnly: availability === "1",
-    includeChoices: choices === "1" };
+    includeChoices: choices === "1",cursor:cursorRaw==="1",after };
 }
 
 /** Search ONLY the approved public category taxonomy: no workers, contact,
@@ -186,6 +204,18 @@ function searchQuery(termCount: number, availableOnly = false): string {
 
 export const SEARCH_PUBLIC_CATEGORIES_QUERY = searchQuery(1);
 export const SEARCH_AVAILABLE_PUBLIC_CATEGORIES_QUERY = searchQuery(1, true);
+
+/** Opt-in, bounded all-trade discovery: keyset traverses matches after the
+ * legacy Search offset=100 ceiling. Same active-only and availableOnly guards.
+ * Every search term and cursor component is bound, never string-interpolated.
+ */
+function searchCursorQuery(termCount:number,availableOnly:boolean,hasCursor:boolean):string {
+  return PUBLIC_PAGE_FIELDS+"FROM categories WHERE is_active = 1 AND "+
+    Array(termCount).fill(MATCH_PUBLIC_CATEGORY_TERM).join(" AND ")+
+    (availableOnly?" AND "+ELIGIBLE_LISTING_EXISTS:"")+
+    (hasCursor?" AND (sort_order > ? OR (sort_order = ? AND id > ?))":"")+
+    " ORDER BY sort_order ASC, id ASC LIMIT ?";
+}
 
 /** Alias resolution may only return an already active, backend-approved
  * category; optional listing availability uses the same public eligibility.
@@ -215,8 +245,39 @@ export async function searchPublicCategories(
   const intent = categoryIntentTerms(opts.query);
   // A generic sentence such as "मुझे काम चाहिए" must not reveal the first
   // category as a false-positive best match.
-  if (intent?.length === 0) return { categories: [], nextOffset: null };
+  if (intent?.length === 0) return opts.cursor
+    ? {categories:[],nextCursor:null}
+    : {categories:[],nextOffset:null};
   const alias = resolveConservativeWorkIntent(opts.query);
+  if(opts.cursor){
+    // This is a separate optional transport for exhaustive large-catalog
+    // Search, not a change to legacy offset pagination or choice confirmation.
+    if(alias.kind==="ambiguous")return {categories:[],nextCursor:null};
+    const terms=intent??[opts.query];
+    const args:(string|number)[]=[
+      opts.language,...terms.flatMap(term=>[term,term,term]),
+    ];
+    if(opts.after)args.push(opts.after.sortOrder,opts.after.sortOrder,opts.after.id);
+    args.push(opts.limit+1);
+    const {results}=await db.prepare(searchCursorQuery(
+      terms.length,opts.availableOnly,opts.after!==null,
+    )).bind(...args).all<PublicCategory&{sortOrder:number}>();
+    if(results.length===0&&alias.kind==="unique"&&opts.after===null){
+      // A curated one-trade suggestion is still restricted to a pre-approved,
+      // active (and optionally available) ID; it never repeats in later pages.
+      const {results:alternate}=await db.prepare(curatedAliasQuery(opts.availableOnly))
+        .bind(opts.language,alias.categoryId,1,0).all<PublicCategory>();
+      return {categories:alternate.map(({id,slug,name})=>({id,slug,name})),
+        nextCursor:null};
+    }
+    const selected=results.slice(0,opts.limit);
+    const last=selected[selected.length-1];
+    return {
+      categories:selected.map(({id,slug,name})=>({id,slug,name})),
+      nextCursor:results.length>opts.limit&&last
+        ? String(last.sortOrder)+":"+last.id:null,
+    };
+  }
   // Default remains unchanged. Explicit callers can request bounded,
   // D1-validated options; this does NOT choose/post on the user's behalf.
   if (alias.kind === "ambiguous") {
