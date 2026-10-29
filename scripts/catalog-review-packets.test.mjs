@@ -182,4 +182,3 @@ test("human correction evidence is presented beside original trade, not auto-app
   assert.equal(result.manifest.summary.categoriesAuthorizedForActivation,0);
   verifyReviewPackets(input.preflight,input.services,input.phrases,result);
 });
-});
