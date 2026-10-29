@@ -40,3 +40,9 @@ See [889-category review](JODLO_LEGACY_889_CATEGORY_REVIEW_2026-10-27.md), [sour
 ## Phrase-first disambiguation companion (2026-10-28)
 
 For actual human-language cleanup and future category-scoped aliases, consult the [offline full parent-scoped phrase review](JODLO_LEGACY_PARENT_SCOPED_PHRASE_REVIEW_2026-10-28.md). It groups all 14,534 en/hi source label occurrences by exact normalized language+phrase while preserving every parent Category, avoiding the false assumption that a shared label uniquely identifies a worker trade. Every phrase remains unapproved and not imported into the JODLO API.
+
+## Full parent-scoped 45-packet Service evidence, 2026-10-29
+
+`npm run catalog:full-service-evidence -- --packet=N` (1–45) now presents **every** historical Service under each selected 20-Category packet, not only the old three per-Category examples. Use `--category=OLD_ID` to inspect an exact old Category (even an incompatible Unicode source ID), or `--summary` to obtain packet-by-packet totals. The implementation crosschecks all 7,267 Services and 14,534 localized phrase occurrences, Group/Family ancestry, original source flags, three original examples and other parent Category choices for ambiguous labels. It creates **review evidence**, not approved synonyms, public Categories or regulated-task authorization.
+
+All 889 Categories and 7,267 Services retain their required human reviews, even those with no mechanical flag. The 4,928 Hindi-label Latin-script occurrences, 1,784 historical Service-ID policy flags and any ambiguous phrase context are for qualified editorial/occupational review only; do not auto-transliterate, infer validity or auto-pick an ambiguous Category. No new D1, Android/UI, contact/location, SQL, Cloudflare resources or Finworkar changes.

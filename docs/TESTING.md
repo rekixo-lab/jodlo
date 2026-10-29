@@ -216,3 +216,7 @@ See [full correction intake runbook](reference/JODLO_ALL_CATEGORY_CORRECTION_EVI
 ## 2026-10-29 — Offline 889-Category full-packet reconciliation guard (pending CI)
 
 `npm run catalog:correction-reconcile -- --check` requires all 45 pristine original packets, all 889 Category rows and zero activation. `npm test` now includes cross-packet proposed ID/slug collision regressions, forged or dropped packet failures and bounded/symlink-safe local JSON directory checks. `npm run reference:check` includes the no-approval guard. This is source syntax coverage only, NOT real editor/legal sign-off, production integration or permitted Category activation. See [reviewer runbook](reference/JODLO_ALL_CATEGORY_CORRECTION_EVIDENCE_2026-10-29.md).
+
+## 2026-10-29 — Full historical Service detail for every Category, review-only (pending CI)
+
+`npm run catalog:full-service-evidence -- --check` verifies the same 45 packets/889 Category parents, **all 7,267 original Service labels**, the 14,534 en/hi phrase occurrences, full Group/Family ancestry and per-Service source flags. New `scripts/catalog-service-evidence-packets.test.mjs` checks coverage once, preserved three-example continuity, other parent IDs for ambiguous labels and failures for duplicate/orphan/missing/renamed/false-approved records. This is an offline review lane, NOT an alias import, qualified bilingual language certification, occupational authorization or production action. Run exact PR CI and independently merged-main CI.
