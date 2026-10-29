@@ -90,6 +90,11 @@ INSERT INTO worker_profiles(account_id) VALUES ('account-fixture-001'),('account
 INSERT INTO worker_listings(id,worker_account_id,category_id,moderation_status) VALUES
  ('11111111-1111-4111-8111-111111111111','account-fixture-001','synthetic-fixture-active','allowed'),
  ('22222222-2222-4222-8222-222222222222','account-fixture-002','synthetic-fixture-hidden','hidden');
+-- Hidden same-Category anchor sorts BEFORE eligible rows: it must never
+-- unlock later public pages when passed as a forged after= ID.
+INSERT INTO worker_listings(id,worker_account_id,category_id,moderation_status,created_at)
+VALUES ('33333333-3333-4333-8333-333333333333','account-fixture-002',
+        'synthetic-fixture-active','hidden','2020-01-01T00:00:00.000Z');
 -- Pre-hashed ephemeral bearer tokens, not Google credentials or personal data.
 INSERT INTO auth_sessions(token_hash,account_id,expires_at) VALUES
  ('${tokenHash(localTokens.first)}','account-fixture-001',${expiresAt}),
@@ -184,6 +189,11 @@ INSERT INTO auth_sessions(token_hash,account_id,expires_at) VALUES
   assert.equal(secondPage.listings.length,1);
   assert.equal(secondPage.nextCursor,null);
   assert.deepEqual([firstPage.listings[0],secondPage.listings[0]],nowVisible);
+  assert.deepEqual((await get("/api/v1/listings?categoryId=synthetic-fixture-active&limit=1&after="+
+    "33333333-3333-4333-8333-333333333333")).data,
+    {listings:[],nextCursor:null},
+    "moderator-hidden anchor cannot unlock subsequent eligible public rows");
+
   assert.equal((await get("/api/v1/listings?categoryId=synthetic-fixture-active&after="+
     firstPage.nextCursor,400)).error.code,"INVALID_QUERY");
   assert.equal((await get("/api/v1/listings?categoryId=synthetic-fixture-active&limit=26",400))
