@@ -116,7 +116,7 @@ test("missing source Service, duplicate Service, tampered ancestry or source fin
   f(p=>p.categories[0].services[0].sourceServiceSha256="a".repeat(64));
   f(p=>p.categories[0].services[0].historicalNameEn="invented old English label");
   f(p=>p.categories[0].services[0].historicalNameHi="बदला हुआ पुराना नाम");
-  f(p=>p.categories[0].services[0].sourceFlags.push("FAKE_CERTIFIED");
+  f(p=>p.categories[0].services[0].sourceFlags.push("FAKE_CERTIFIED"));
   f(p=>p.categories[0].services[0].otherSourceCategoryChoices.en.push("invented"));
   f(p=>p.categories[0].services[0].reviewState="APPROVED");
   f(p=>p.categories[0].services[0].approved=true);
