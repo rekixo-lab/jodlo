@@ -175,29 +175,29 @@ class HeadlessWorkerWriteScope(private val session: InMemorySessionCoordinator) 
     fun recheckOwnListings(): WorkerWriteCompletion = recheck(paged = false)
 
     private data class ReviewRows(val listings: List<OwnListing>, val nextCursor: String?)
+    private data class ReviewTicket(val signal: CancellationSignal, val after: String?)
 
     /** Exactly one authenticated GET per explicit call. Never replay POST or
      * DELETE. The same single-flight + session-epoch gate owns both modes.
      */
     private fun recheck(paged: Boolean): WorkerWriteCompletion {
-        val captured = synchronized(lock) {
+        val ticket = synchronized(lock) {
             checkSessionLocked()
             if (closed) return@synchronized null
             val review = state as? WorkerWriteState.NeedsReview ?: return@synchronized null
-            CancellationSignal().also {
-                signal = it
+            ReviewTicket(CancellationSignal(), if (paged) review.pagedNextCursor else null).also {
+                signal = it.signal
                 state = WorkerWriteState.Rechecking(review)
             }
         } ?: return synchronized(lock) {
             if (closed) WorkerWriteCompletion.DISCARDED else WorkerWriteCompletion.BLOCKED
         }
+        val captured = ticket.signal
 
         val reply: SessionResult<ReviewRows> = try {
             if (captured.isCancelled) SessionResult.Failed(SessionFailure.CANCELLED)
             else if (paged) {
-                val prior = (synchronized(lock) { state } as? WorkerWriteState.Rechecking)?.prior
-                val after = prior?.pagedNextCursor
-                when (val page = session.pageMyListings(25, after, captured)) {
+                when (val page = session.pageMyListings(25, ticket.after, captured)) {
                     is SessionResult.Success ->
                         SessionResult.Success(ReviewRows(page.value.listings, page.value.nextCursor))
                     is SessionResult.Failed -> page
@@ -258,9 +258,10 @@ class HeadlessWorkerWriteScope(private val session: InMemorySessionCoordinator) 
                     }
                     is SessionResult.Failed ->
                         prior.copy(readFailure = reply.reason, observation = null,
-                            pagedNextCursor = if (paged) prior.pagedNextCursor else null,
-                            pagedPagesChecked = if (paged) prior.pagedPagesChecked else 0,
-                            pagedScanComplete = paged && prior.pagedScanComplete)
+                            pagedNextCursor = if (paged) ticket.after else null,
+                            pagedPagesChecked = if (paged && ticket.after != null)
+                                prior.pagedPagesChecked else 0,
+                            pagedScanComplete = false)
                 }
                 signal = null
                 WorkerWriteCompletion.APPLIED
