@@ -48,6 +48,18 @@ test("all 889 source Categories included exactly once in 45 packets with immutab
   assert.ok(all.every(x=>x.reviewState==="BLOCKED_PENDING_HUMAN_AND_FOUNDER_REVIEW"));
   assert.equal(packets.reduce((n,p)=>n+p.categoryCount,0),889);
   assert.equal(manifest.packets.length,45);
+  assert.equal(manifest.summary.categoriesWithIdSyntaxIssues,1);
+  const incompatible=all.find(x=>x.sourceCategoryId==="farmer-helper-मजदूर");
+  assert.equal(incompatible.mappingCompatibility.categoryIdCandidate,null);
+  assert.equal(incompatible.mappingCompatibility.slugCandidate,null);
+  assert.ok(incompatible.mappingCompatibility.syntaxIssues.includes(
+    "SOURCE_CATEGORY_ID_INCOMPATIBLE"));
+  assert.ok(incompatible.mappingCompatibility.syntaxIssues.includes(
+    "SOURCE_CATEGORY_SLUG_INCOMPATIBLE"));
+  assert.equal(incompatible.mappingCompatibility.reviewState,
+    "HUMAN_ID_SLUG_LABEL_AND_SAFETY_REVIEW_REQUIRED");
+  assert.equal(packets.reduce((n,p)=>n+p.categoriesWithIdSyntaxIssues,0),1);
+  assert.equal(manifest.packets.reduce((n,p)=>n+p.categoriesWithIdSyntaxIssues,0),1);
 });
 test("same phrase in two trades retains both contexts; neither is authorized",()=>{
   const {preflight,services,phrases}=sample();
@@ -63,6 +75,9 @@ test("same phrase in two trades retains both contexts; neither is authorized",()
       [id==="plumber"?"carpenter":"plumber"]);
     assert.ok(row.sourceReviewFlags.includes("CROSS_CATEGORY_SERVICE_LABEL_REVIEW"));
     assert.equal(row.mandatoryHumanAndFounderGates.length,4);
+    assert.equal(row.mappingCompatibility.categoryIdCandidate,id);
+    assert.equal(row.mappingCompatibility.slugCandidate,id);
+    assert.deepEqual(row.mappingCompatibility.syntaxIssues,[]);
   }
   verifyReviewPackets(preflight,services,phrases,result);
 });
@@ -76,6 +91,9 @@ test("service examples are bounded and source lineage preserved",()=>{
     assert.equal(item.sourceFamilyId,"repairs");
     assert.equal(item.sourceServiceCount,1);
     assert.equal(item.reviewState,"BLOCKED_PENDING_HUMAN_AND_FOUNDER_REVIEW");
+    assert.deepEqual(item.mappingCompatibility.syntaxIssues,[]);
+    assert.equal(item.mappingCompatibility.reviewState,
+      "HUMAN_ID_SLUG_LABEL_AND_SAFETY_REVIEW_REQUIRED");
     assert.ok(!Object.hasOwn(item,"approved"));
     assert.ok(!Object.hasOwn(item,"is_active"));
   }
@@ -88,6 +106,11 @@ test("modified packet or fabricated approved status cannot validate",()=>{
     x=>{x.packets[0].categories[0].mandatoryHumanAndFounderGates=[];},
     x=>{x.packets[0].categories[0].sourceCategoryId="invented";},
     x=>{x.packets[0].categories[0].serviceExamples[0].nameHi="wrong";},
+    x=>{x.packets[0].categories[0].mappingCompatibility.slugCandidate="invented";},
+    x=>{x.packets[0].categories[0].mappingCompatibility.syntaxIssues.push("APPROVED");},
+    x=>{x.packets[0].categories[0].mappingCompatibility.reviewState="APPROVED";},
+    x=>{x.manifest.summary.categoriesWithSlugSyntaxIssues=1;},
+    x=>{x.manifest.packets[0].categoriesWithIdSyntaxIssues=1;},
     x=>{x.manifest.summary.categoriesAuthorizedForActivation=1;},
     x=>{x.packets.pop();},
   ]){
@@ -125,4 +148,38 @@ test("full source supports 25-item packets without missing a single Category",()
   assert.equal(ids.length,889);
   assert.ok(first.packets.every(p=>p.categoryCount<=20));
   assert.equal(first.manifest.summary.categoriesStillNeedingHumanAndFounderReview,889);
+  const individual=first.packets.flatMap(p=>p.categories);
+  assert.equal(individual.filter(c=>c.mappingCompatibility.categoryIdCandidate===null).length,1);
+  assert.equal(individual.filter(c=>c.mappingCompatibility.slugCandidate===null).length,
+    first.manifest.summary.categoriesWithSlugSyntaxIssues);
+  assert.equal(individual.filter(c=>c.mappingCompatibility.syntaxIssues.some(
+    issue=>issue.includes("LABEL"))).length,
+    first.manifest.summary.categoriesWithLabelSyntaxIssues);
+  assert.equal(individual.filter(c=>c.mappingCompatibility.syntaxIssues.length>0).length,
+    first.manifest.summary.categoriesWithMappingSyntaxIssues);
+  assert.equal(first.packets.reduce((n,p)=>n+p.categoriesWithMappingSyntaxIssues,0),
+    first.manifest.summary.categoriesWithMappingSyntaxIssues);
+  assert.ok(first.manifest.summary.categoriesWithMappingSyntaxIssues>=1);
+  assert.ok(first.manifest.packets.every(row=>
+    row.categoriesWithMappingSyntaxIssues<=row.categoryCount));
+});
+test("human correction evidence is presented beside original trade, not auto-applied",()=>{
+  const input=sample();
+  const row=input.preflight.categories.find(x=>x.sourceCategoryId==="painter");
+  row.historicalNameEn="A".repeat(121);
+  row.historicalNameHi="काम English";
+  const result=createReviewPackets(input.preflight,input.services,input.phrases);
+  const shown=result.packets.flatMap(p=>p.categories)
+    .find(x=>x.sourceCategoryId==="painter");
+  assert.ok(shown.mappingCompatibility.syntaxIssues.includes(
+    "EN_LABEL_NEEDS_D1_LENGTH_OR_CONTROL_REVIEW"));
+  assert.ok(shown.mappingCompatibility.syntaxIssues.includes(
+    "HI_CATEGORY_LABEL_LATIN_SCRIPT_REVIEW"));
+  assert.equal(shown.historicalNameEn,"A".repeat(121));
+  assert.equal(shown.historicalNameHi,"काम English"); // never rewrite source
+  assert.equal(shown.mappingCompatibility.categoryIdCandidate,"painter");
+  assert.equal(result.manifest.summary.categoriesWithLabelSyntaxIssues,1);
+  assert.equal(result.manifest.summary.categoriesAuthorizedForActivation,0);
+  verifyReviewPackets(input.preflight,input.services,input.phrases,result);
+});
 });
