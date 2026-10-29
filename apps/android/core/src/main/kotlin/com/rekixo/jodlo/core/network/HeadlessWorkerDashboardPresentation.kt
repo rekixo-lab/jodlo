@@ -62,10 +62,12 @@ class HeadlessWorkerDashboardPresentation(
     private val pages: HeadlessOwnerListingPaginationScope? = null,
 ) {
     fun snapshot(): WorkerDashboardState {
-        // A role-only SignedIn(DRAFT) equality check cannot detect a page
-        // accidentally wired from another live session/account. Fail closed
-        // without even reading that unrelated private page's snapshot.
-        if (pages != null && !pages.belongsTo(session))
+        // SignedIn(DRAFT) is a *role*, not an account identifier. Check
+        // process-local identity for EVERY private scope before composing a
+        // live Worker view, or unrelated workers with the same role can leak
+        // a cached page, owner list or unverified write observation.
+        if (!reads.belongsTo(session) || !writes.belongsTo(session) ||
+            (pages != null && !pages.belongsTo(session)))
             return WorkerDashboardState(WorkerProfilePhase.REFRESH_REQUIRED)
         val beforeEpoch = session.sessionEpoch()
         val beforeWrite = session.privateReadFingerprint()
