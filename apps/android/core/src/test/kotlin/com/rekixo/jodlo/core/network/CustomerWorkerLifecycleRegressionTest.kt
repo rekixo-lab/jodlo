@@ -332,6 +332,186 @@ private fun logoutWhileUncertainWriteRecheckIsPendingCannotResurrectReview() {
     check(h.worker.publishCalls.get()==1)
 }
 
+
+/** An owner continuation and a visible worker publication may overlap. The
+ * published result invalidates both PRIVATE page and PUBLIC Customer browse.
+ * Neither old private rows nor old Category availability can be restored.
+ */
+private fun ownerContinuationOverlappingPublishInvalidatesBothActorScopes() {
+    val h=LifeHarness()
+    h.login()
+    h.optIn()
+    val customer=h.customer()
+    val owner=h.owner()
+    val dashboard=h.pagedDashboard(owner)
+    check(customer.startBrowse(Language.HI,availableOnly=true,pageSize=2)==PageCompletion.APPLIED)
+    check(owner.start(2)==PageCompletion.APPLIED)
+    val first=dashboard.snapshot()
+    check(first.owned==WorkerListingsPhase.LISTINGS)
+    check(first.ownedListings.size==2 && first.ownerHasNextPage)
+    check(first.ownerPageNumber==1)
+    check(!customer.presentation().toString().contains(LIFE_PAGE_LAST))
+    check(h.worker.pageCalls.get()==1 && h.worker.publishCalls.get()==0)
+
+    val entered=CountDownLatch(1)
+    val release=CountDownLatch(1)
+    h.worker.beforePage={
+        entered.countDown()
+        check(release.await(5,TimeUnit.SECONDS))
+    }
+    val pending=lifeThread { owner.next() }
+    try {
+        lifeEntered(entered)
+        check(dashboard.snapshot().owned==WorkerListingsPhase.LOADING)
+        check(h.writes.publishExplicitCategory("plumber")==WorkerWriteCompletion.APPLIED)
+        val current=dashboard.snapshot()
+        check(current.mutation==WorkerMutationPhase.CONFIRMED)
+        check(current.owned==WorkerListingsPhase.REFRESH_REQUIRED)
+        check(current.ownedListings.isEmpty() && !current.ownerHasNextPage)
+        check(customer.presentation().phase==CustomerViewPhase.REFRESH_REQUIRED)
+        check(owner.next()==PageCompletion.BLOCKED)
+        val beforeBrowse=h.catalog.browseCalls.get()
+        check(customer.retryBrowse()==PageCompletion.APPLIED)
+        check(h.catalog.browseCalls.get()==beforeBrowse+1)
+        check(customer.selectCategory(CustomerCategorySource.BROWSE,"plumber")==
+            PageCompletion.APPLIED)
+        check(customer.loadSelectedListings()==PageCompletion.APPLIED)
+        check(customer.presentation().phase==CustomerViewPhase.LISTINGS)
+    } finally {release.countDown()}
+    check(lifeDone(pending)==PageCompletion.DISCARDED)
+    check(dashboard.snapshot().owned==WorkerListingsPhase.REFRESH_REQUIRED)
+    h.worker.beforePage=null
+    check(owner.start(2)==PageCompletion.APPLIED)
+    val updated=dashboard.snapshot()
+    check(updated.owned==WorkerListingsPhase.LISTINGS)
+    check(updated.ownerPageNumber==1 && updated.ownerHasNextPage)
+    check(updated.ownedListings.first().visible)
+    check(h.worker.pageCalls.get()==3 && h.worker.publishCalls.get()==1)
+    check(h.catalog.publicCalls.get()==1)
+}
+
+/** Two separate accounts can both have DRAFT roles, so checking only their
+ * worker statuses cannot establish that a private page belongs to this actor.
+ * An accidental cross-session injection must fail closed without reading the
+ * other owner's private page, even when both login states look identical.
+ */
+private fun dashboardRefusesPrivatePagesFromDifferentLiveSession() {
+    val left=LifeHarness()
+    val right=LifeHarness()
+    left.login(LIFE_TOKEN_A)
+    left.optIn()
+    right.login(LIFE_TOKEN_B)
+    right.optIn()
+    val foreignPage=right.owner()
+    check(foreignPage.start(2)==PageCompletion.APPLIED)
+    check((foreignPage.snapshot().page as ReadState.Ready).value.listings.isNotEmpty())
+    check(left.session.snapshot()==right.session.snapshot()) // both DRAFT
+    val wrong=left.pagedDashboard(foreignPage)
+    val denied=wrong.snapshot()
+    check(denied==WorkerDashboardState(WorkerProfilePhase.REFRESH_REQUIRED))
+    check(denied.ownedListings.isEmpty() && denied.ownerPageNumber==null)
+    check(right.worker.pageCalls.get()==1 && left.worker.pageCalls.get()==0)
+    repeat(4) {check(wrong.snapshot()==denied)}
+    val valid=left.owner()
+    check(valid.start(2)==PageCompletion.APPLIED)
+    check(left.pagedDashboard(valid).snapshot().owned==WorkerListingsPhase.LISTINGS)
+    check(left.worker.pageCalls.get()==1)
+}
+
+/** A future Android host may close Customer and Worker destinations together
+ * while both independent GETs are on wire. No late result may resurrect either.
+ */
+private fun customerSearchAndPrivateNextBothDiscardedOnLifecycleClose() {
+    val h=LifeHarness()
+    h.login()
+    h.optIn()
+    val customer=h.customer()
+    val owner=h.owner()
+    val dashboard=h.pagedDashboard(owner)
+    check(owner.start(2)==PageCompletion.APPLIED)
+    val searchEntered=CountDownLatch(1)
+    val searchRelease=CountDownLatch(1)
+    val ownerEntered=CountDownLatch(1)
+    val ownerRelease=CountDownLatch(1)
+    h.catalog.beforeSearch={
+        searchEntered.countDown()
+        check(searchRelease.await(5,TimeUnit.SECONDS))
+    }
+    h.worker.beforePage={
+        ownerEntered.countDown()
+        check(ownerRelease.await(5,TimeUnit.SECONDS))
+    }
+    val search=lifeThread { customer.startSearch("प्लंबर",Language.HI) }
+    val next=lifeThread { owner.next() }
+    try {
+        lifeEntered(searchEntered)
+        lifeEntered(ownerEntered)
+        check(dashboard.snapshot().owned==WorkerListingsPhase.LOADING)
+        check(customer.snapshot().search==PageState.Loading)
+        owner.close()
+        customer.close()
+        check(dashboard.snapshot()==WorkerDashboardState(WorkerProfilePhase.CLOSED))
+        check(customer.snapshot().closed)
+        check(owner.snapshot().closed && owner.snapshot().page==ReadState.Idle)
+    } finally {
+        searchRelease.countDown()
+        ownerRelease.countDown()
+    }
+    check(lifeDone(search)==PageCompletion.DISCARDED)
+    check(lifeDone(next)==PageCompletion.DISCARDED)
+    check(h.catalog.searchCalls.get()==1 && h.worker.pageCalls.get()==2)
+    check(h.worker.publishCalls.get()==0)
+    check(owner.start(2)==PageCompletion.DISCARDED)
+    check(customer.retrySearch()==PageCompletion.DISCARDED)
+}
+
+/** The old server may still commit a POST after local logout/re-login. The
+ * public write barrier and private page read deferral must remain in effect
+ * until that old wire request finishes, even for a new signed-in account.
+ */
+private fun logoutAndReplacementDuringOldPublishBlockPrivatePagesUntilWireEnd() {
+    val h=LifeHarness()
+    h.login(LIFE_TOKEN_A)
+    h.optIn()
+    val owner=h.owner()
+    val customer=h.customer()
+    val dashboard=h.pagedDashboard(owner)
+    check(owner.start(2)==PageCompletion.APPLIED)
+    check(customer.startBrowse(Language.HI,pageSize=2)==PageCompletion.APPLIED)
+    val entered=CountDownLatch(1)
+    val release=CountDownLatch(1)
+    h.worker.beforePublish={
+        entered.countDown()
+        check(release.await(5,TimeUnit.SECONDS))
+    }
+    val writing=lifeThread {h.writes.publishExplicitCategory("plumber")}
+    try {
+        lifeEntered(entered)
+        check(dashboard.snapshot().owned==WorkerListingsPhase.HIDDEN)
+        check(owner.snapshot().page==ReadState.RefreshRequired)
+        check(owner.start(2)==PageCompletion.DEFERRED)
+        check(customer.retryBrowse()==PageCompletion.DEFERRED)
+        check(h.worker.pageCalls.get()==1)
+        check(h.session.logout() is SessionResult.Failed)
+        check(dashboard.snapshot()==WorkerDashboardState(WorkerProfilePhase.SIGNED_OUT))
+        check(owner.snapshot().page==ReadState.Idle)
+        h.login(LIFE_TOKEN_B)
+        check(dashboard.snapshot().profile==WorkerProfilePhase.UNKNOWN)
+        check(dashboard.snapshot().ownedListings.isEmpty())
+        check(owner.start(2)==PageCompletion.DEFERRED)
+        check(customer.retryBrowse()==PageCompletion.DEFERRED)
+        check(h.worker.pageCalls.get()==1)
+    } finally {release.countDown()}
+    check(lifeDone(writing)==WorkerWriteCompletion.DISCARDED)
+    check(h.worker.publishCalls.get()==1)
+    check(customer.retryBrowse()==PageCompletion.APPLIED)
+    check(owner.start(2)==PageCompletion.APPLIED)
+    check(owner.snapshot().page is ReadState.Ready)
+    check(dashboard.snapshot().owned==WorkerListingsPhase.HIDDEN)
+    check(h.worker.pageCalls.get()==2 && h.worker.publishCalls.get()==1)
+    check(!dashboard.snapshot().toString().contains(LIFE_TOKEN_A))
+}
+
 fun main() {
     emptySearchDestinationSurvivesLifecycleWithoutGET()
     logoutDuringOldPublishKeepsPublicWriteBarrierUntilWireEnds()
@@ -339,5 +519,9 @@ fun main() {
     expiryWhileOldPrivateGETCannotResurrectWorkerRows()
     lifecycleRecreationDuringWriteRestoresIntentNotResultsOrSelection()
     logoutWhileUncertainWriteRecheckIsPendingCannotResurrectReview()
+    ownerContinuationOverlappingPublishInvalidatesBothActorScopes()
+    dashboardRefusesPrivatePagesFromDifferentLiveSession()
+    customerSearchAndPrivateNextBothDiscardedOnLifecycleClose()
+    logoutAndReplacementDuringOldPublishBlockPrivatePagesUntilWireEnd()
     println("JODLO lifecycle regression: empty Search, logout/replacement, expiry, write barrier, recheck and no replay OK")
 }
