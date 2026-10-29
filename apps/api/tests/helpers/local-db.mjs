@@ -1,14 +1,11 @@
 import { DatabaseSync } from "node:sqlite";
 import { readFileSync } from "node:fs";
 
-/** Shared synthetic SQLite/D1 adapter. Never connect tests to any remote Cloudflare D1. */
-export function openLocalDatabase() {
-  const db = new DatabaseSync(":memory:");
-  db.exec("PRAGMA foreign_keys = ON");
-  for (const name of ["0001_public_catalog.sql", "0002_shared_accounts_worker_drafts.sql", "0003_google_identity_sessions.sql", "0004_worker_service_listings.sql"]) {
-    db.exec(readFileSync(new URL("../../../../infra/migrations/" + name, import.meta.url), "utf8"));
-  }
-  const adapter = {
+/** Existing test-only D1 facade, also usable on a recovered SQLite file.
+ * No Cloudflare resource, HTTP endpoint, or production database is opened.
+ */
+export function localD1Adapter(db) {
+  return {
     async batch(statements) {
       db.exec("BEGIN");
       try {
@@ -34,5 +31,14 @@ export function openLocalDatabase() {
       return stmt;
     },
   };
-  return { db, adapter };
+}
+
+/** Shared synthetic SQLite/D1 adapter. Never connect tests to any remote Cloudflare D1. */
+export function openLocalDatabase() {
+  const db = new DatabaseSync(":memory:");
+  db.exec("PRAGMA foreign_keys = ON");
+  for (const name of ["0001_public_catalog.sql", "0002_shared_accounts_worker_drafts.sql", "0003_google_identity_sessions.sql", "0004_worker_service_listings.sql"]) {
+    db.exec(readFileSync(new URL("../../../../infra/migrations/" + name, import.meta.url), "utf8"));
+  }
+  return { db, adapter: localD1Adapter(db) };
 }
