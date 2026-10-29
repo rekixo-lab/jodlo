@@ -17,7 +17,7 @@ private fun <T> completedCustomer(task: FutureTask<T>): T = task.get(5, TimeUnit
 private fun awaitCustomer(latch: CountDownLatch) =
     check(latch.await(5, TimeUnit.SECONDS)) { "Fake request did not start" }
 
-private class CustomerFakeCatalog : CatalogRepository {
+private class CustomerFakeCatalog : CatalogRepository, PublicListingPageRepository {
     var searchResponse: (String, Language) -> CatalogSearch = { query, lang ->
         CatalogSearch(lang, query, listOf(PLUMBER_CHOICE, CARPENTER_CHOICE),
             null, false, emptyList())
@@ -26,6 +26,10 @@ private class CustomerFakeCatalog : CatalogRepository {
         ApiOutcome.Ok(listOf(PublicListing(CUSTOMER_LISTING_ID, id)))
     }
     var onPublicGET: (() -> Unit)? = null
+    var pagedResponse: (String, Int, String?) -> ApiOutcome<PublicListingPage> =
+        { category, _, _ -> ApiOutcome.Ok(PublicListingPage(
+            listOf(PublicListing(CUSTOMER_LISTING_ID,category)), null)) }
+    val observedPages = CopyOnWriteArrayList<Pair<Int, String?>>()
     val observedIDs = CopyOnWriteArrayList<String>()
     val searchCalls = AtomicInteger()
     val browseCalls = AtomicInteger()
@@ -44,6 +48,13 @@ private class CustomerFakeCatalog : CatalogRepository {
         observedIDs.add(categoryId)
         onPublicGET?.invoke()
         return publicResponse(categoryId)
+    }
+    override fun pageListings(categoryId: String, limit: Int,
+                              after: String?): ApiOutcome<PublicListingPage> {
+        observedIDs.add(categoryId)
+        observedPages.add(Pair(limit, after))
+        onPublicGET?.invoke()
+        return pagedResponse(categoryId, limit, after)
     }
 }
 private class CustomerFakeWorker : WorkerRepository {
@@ -315,6 +326,125 @@ private fun testDuplicateSearchChoicesNotAcceptedAndCloseClearsLateGET() {
     check(scope.snapshot().selection == CustomerSelectionState.Idle)
 }
 
+private fun testSelectedPublicListingPaginationAndErrorRecovery() {
+    val fake = CustomerFakeCatalog()
+    val scope = customerScope(fake)
+    val second = "22222222-2222-4222-8222-222222222222"
+    val third = "33333333-3333-4333-8333-333333333333"
+    fake.pagedResponse = { category, limit, after ->
+        check(category == "plumber" && limit == 1)
+        when (after) {
+            null -> ApiOutcome.Ok(PublicListingPage(
+                listOf(PublicListing(CUSTOMER_LISTING_ID,category)), CUSTOMER_LISTING_ID))
+            CUSTOMER_LISTING_ID -> ApiOutcome.Ok(PublicListingPage(
+                listOf(PublicListing(second,category)), second))
+            second -> ApiOutcome.Ok(PublicListingPage(listOf(PublicListing(third,category)),null))
+            else -> error("Unexpected request cursor")
+        }
+    }
+    check(scope.startSelectedListingPages(1) == PageCompletion.BLOCKED)
+    check(scope.nextSelectedListingPage() == PageCompletion.BLOCKED)
+    check(scope.startSearch("plumber",Language.EN) == PageCompletion.APPLIED)
+    check(scope.selectCategory(CustomerCategorySource.SEARCH,"plumber") == PageCompletion.APPLIED)
+    check(fake.observedPages.isEmpty()) // Choosing alone NEVER sends any GET.
+    check(runCatching { scope.startSelectedListingPages(0) }.isFailure)
+    check(runCatching { scope.startSelectedListingPages(26) }.isFailure)
+    check(fake.observedPages.isEmpty())
+    check(scope.startSelectedListingPages(1) == PageCompletion.APPLIED)
+    val first = scope.snapshot().selection as CustomerSelectionState.Ready
+    check(first.pageSize == 1 && first.pageCount == 1 &&
+        first.nextCursor == CUSTOMER_LISTING_ID && first.listings.size == 1)
+    check(scope.nextSelectedListingPage() == PageCompletion.APPLIED)
+    val secondPage = scope.snapshot().selection as CustomerSelectionState.Ready
+    check(secondPage.listings.map { it.id } == listOf(CUSTOMER_LISTING_ID,second))
+    check(secondPage.nextCursor == second && secondPage.pageCount == 2)
+    check(scope.nextSelectedListingPage() == PageCompletion.APPLIED)
+    val complete = scope.snapshot().selection as CustomerSelectionState.Ready
+    check(complete.listings.map { it.id } == listOf(CUSTOMER_LISTING_ID,second,third))
+    check(complete.nextCursor == null && complete.pageCount == 3)
+    check(scope.nextSelectedListingPage() == PageCompletion.BLOCKED)
+    check(fake.observedPages.toList() == listOf(
+        Pair(1,null), Pair(1,CUSTOMER_LISTING_ID), Pair(1,second)))
+    check(scope.captureRevisitIntent()?.destination == CustomerDestination.SEARCH)
+    // Switch to legacy. It remains an independent, unpaged API.
+    check(scope.loadSelectedListings() == PageCompletion.APPLIED)
+    val legacy = scope.snapshot().selection as CustomerSelectionState.Ready
+    check(legacy.pageSize == null && legacy.nextCursor == null && legacy.pageCount == 1)
+    check(scope.nextSelectedListingPage() == PageCompletion.BLOCKED)
+}
+
+private fun testHiddenAnchorAndDuplicatePagesFailClosed() {
+    val fake = CustomerFakeCatalog()
+    val scope = customerScope(fake)
+    check(scope.startBrowse(Language.HI) == PageCompletion.APPLIED)
+    check(scope.selectCategory(CustomerCategorySource.BROWSE,"plumber") == PageCompletion.APPLIED)
+    val first = PublicListing(CUSTOMER_LISTING_ID,"plumber")
+    fake.pagedResponse = { _, _, after ->
+        if (after == null) ApiOutcome.Ok(PublicListingPage(listOf(first),first.id))
+        else ApiOutcome.Ok(PublicListingPage(emptyList(),null))
+    }
+    check(scope.startSelectedListingPages(1) == PageCompletion.APPLIED)
+    check(scope.nextSelectedListingPage() == PageCompletion.APPLIED)
+    // The backend reports an empty continuation for removed or hidden anchor.
+    // No old cached Listing or selection can look fresh after this event.
+    check(scope.snapshot().selection == CustomerSelectionState.RefreshRequired)
+    check(scope.snapshot().navigation.destination == CustomerDestination.BROWSE)
+    check(scope.nextSelectedListingPage() == PageCompletion.BLOCKED)
+    check(scope.startSelectedListingPages(1) == PageCompletion.BLOCKED)
+    check(fake.observedPages.size == 2)
+    check(scope.selectCategory(CustomerCategorySource.BROWSE,"plumber") == PageCompletion.APPLIED)
+    fake.pagedResponse = { category, _, _ ->
+        ApiOutcome.Ok(PublicListingPage(listOf(PublicListing(CUSTOMER_LISTING_ID,category)),
+            CUSTOMER_LISTING_ID))
+    }
+    check(scope.startSelectedListingPages(1) == PageCompletion.APPLIED)
+    check(scope.nextSelectedListingPage() == PageCompletion.APPLIED)
+    check(scope.snapshot().selection == CustomerSelectionState.Error(
+        PLUMBER_CHOICE,CustomerCategorySource.BROWSE,FailureKind.BAD_RESPONSE))
+    check(scope.nextSelectedListingPage() == PageCompletion.BLOCKED)
+    // Explicit re-request starts anew, never reuses a now-untrusted cursor.
+    check(scope.startSelectedListingPages(1) == PageCompletion.APPLIED)
+    check((scope.snapshot().selection as CustomerSelectionState.Ready).pageCount == 1)
+}
+
+private fun testPagedListingLateResponseAndWorkerWriteBarrier() {
+    val clock = AtomicLong(100)
+    val worker = CustomerFakeWorker()
+    val session = signedWorker(worker,clock)
+    val fake = CustomerFakeCatalog()
+    val scope = customerScope(fake,worker,clock,session=session)
+    check(scope.startSearch("plumber",Language.EN) == PageCompletion.APPLIED)
+    check(scope.selectCategory(CustomerCategorySource.SEARCH,"plumber") == PageCompletion.APPLIED)
+    fake.pagedResponse = { cat, _, _ -> ApiOutcome.Ok(
+        PublicListingPage(listOf(PublicListing(CUSTOMER_LISTING_ID,cat)),CUSTOMER_LISTING_ID)) }
+    check(scope.startSelectedListingPages(1) == PageCompletion.APPLIED)
+    val started=CountDownLatch(1)
+    val release=CountDownLatch(1)
+    fake.onPublicGET = {
+        started.countDown()
+        check(release.await(5, TimeUnit.SECONDS))
+    }
+    val pending = asyncCustomer { scope.nextSelectedListingPage() }
+    try {
+        awaitCustomer(started)
+        check(scope.snapshot().selection is CustomerSelectionState.Loading)
+        check(session.publishExplicitCategory("plumber") is SessionResult.Success)
+        check(scope.snapshot().selection == CustomerSelectionState.RefreshRequired)
+    } finally { release.countDown() }
+    check(completedCustomer(pending) == PageCompletion.DISCARDED)
+    check(scope.nextSelectedListingPage() == PageCompletion.BLOCKED)
+    check(fake.observedPages.size == 2)
+    fake.onPublicGET=null
+    check(scope.startSearch("plumber",Language.EN) == PageCompletion.APPLIED)
+    check(scope.selectCategory(CustomerCategorySource.SEARCH,"plumber") == PageCompletion.APPLIED)
+    check(scope.startSelectedListingPages(1) == PageCompletion.APPLIED)
+    check(scope.back() == PageCompletion.APPLIED)
+    check(scope.snapshot().selection == CustomerSelectionState.Idle)
+    check(scope.nextSelectedListingPage() == PageCompletion.BLOCKED)
+    clock.set(1_101)
+    check(scope.startSelectedListingPages(1) == PageCompletion.BLOCKED)
+}
+
 fun main() {
     testAmbiguousSearchNeedsExplicitExactSelectionAndGET()
     testBrowseAndNormalSearchOnlyAllowDisplayedItems()
@@ -323,5 +453,8 @@ fun main() {
     testTTLAndManualRefreshRemoveSelectionWithoutGET()
     testInvalidListingRepliesAreTypedAndNeverReused()
     testDuplicateSearchChoicesNotAcceptedAndCloseClearsLateGET()
-    println("JODLO customer selection: explicit Category choice, scoped Listings GET, TTL/write/lifecycle safety OK")
+    testSelectedPublicListingPaginationAndErrorRecovery()
+    testHiddenAnchorAndDuplicatePagesFailClosed()
+    testPagedListingLateResponseAndWorkerWriteBarrier()
+    println("JODLO customer selection: explicit Category, paged public Listings, stale-cursor, write/lifecycle safety OK")
 }
