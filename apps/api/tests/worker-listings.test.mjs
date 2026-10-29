@@ -223,6 +223,30 @@ test("session is required; method/query validation and DB outages fail closed",a
   } finally {f.db.close();}
 });
 
+test("HTTP byte-empty request streams are accepted, but nonempty worker write bodies are rejected",async()=>{
+  const f=setup();
+  try {
+    const bodylessStream=()=>new ReadableStream({start(controller){controller.close();}});
+    const req=(method,path,body)=>worker.fetch(new Request(origin+path,{
+      method,headers:{Authorization:"Bearer signed-owner"},
+      body,duplex:"half",
+    }),f.env);
+    const opted=await req("POST","/api/v1/me/worker-profile",bodylessStream());
+    assert.equal(opted.status,200);
+    assert.deepEqual((await opted.json()).data.profile,{status:"draft"});
+    const malformed=await req("POST","/api/v1/me/worker-profile"," ");
+    assert.equal(malformed.status,400);
+    const listing=(await (await publish(f)).json()).data.listing;
+    const nonemptyDelete=await req("DELETE",own+"?id="+listing.id," ");
+    assert.equal(nonemptyDelete.status,400);
+    assert.deepEqual((await (await list(f)).json()).data.listings,[listing]);
+    const removed=await req("DELETE",own+"?id="+listing.id,bodylessStream());
+    assert.equal(removed.status,200);
+    assert.deepEqual((await removed.json()).data,{unpublished:true});
+    assert.deepEqual((await (await list(f)).json()).data.listings,[]);
+  }finally{f.db.close();}
+});
+
 test("public lookup capped at 25, preserves opaque IDs only and uses partial index",async()=>{
   const f=setup();
   try {
