@@ -136,3 +136,9 @@ Use disposable local tempfile to validate owner-read and policy decision within 
 ## Complete historical catalog reference integrity, 2026-10-27
 
 - `npm run reference:check` (node built-in zlib/crypto, no deps) verifies bilingual gzip SHA-256, uncompressed JSON SHA-256, original source SHA, **28/206/889/7267** collection counts, complete en/hi name presence, unique IDs, no orphans or cross-parent mismatches, all per-category service totals and known ID/status exceptions. No external credentials or Firebase access, and no D1 seed/deployment. [Source audit](reference/FINWORKAR_CATALOG_AUDIT_2026-10-27.md).
+
+## 2026-10-29 — Real local workerd HTTP/D1 boundary smoke (PR #86)
+
+`npm run test:workerd:local` starts **installed Wrangler in local-only mode**, with its own automatically deleted temporary persistence directory, applies the **existing four migrations**, inserts only clearly named **synthetic** fixture categories and two fake worker rows, then starts the local workerd server on `127.0.0.1:8797`. The test makes actual HTTP requests through `apps/api/src/index.ts` and the local D1 binding: Hindi catalogue projections, public listing eligibility, active/hidden/inactive categories, available-only search, absent bearer, malformed offset/language and unconfigured Google sign-in denial. All processes and the directory are discarded after the test; no real users, approved Category seeds, provider secrets, cloud resources, staging or remote deploy are involved. CI runs this **after** the existing local D1 migration and bundle checks, independent of fake-D1 Node tests.
+
+This closes only the absence of a real **local workerd runtime** smoke, not production Cloudflare D1/WAF/JWKS/provider availability, latency/load, backup/restore, mobile device testing or release authorization (M-007). A successful local runtime check does not license a launch.
