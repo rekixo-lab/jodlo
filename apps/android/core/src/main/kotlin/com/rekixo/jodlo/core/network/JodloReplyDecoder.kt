@@ -13,6 +13,8 @@ import kotlinx.serialization.json.intOrNull
 /** Typed DTOs for the CURRENT public API. No worker trust, phone, location or permission fields. */
 data class PublicCategory(val id: String, val slug: String, val name: String)
 data class PublicListing(val id: String, val categoryId: String)
+/** Optional public Listing pagination: no owner, timestamp, location or contact. */
+data class PublicListingPage(val listings: List<PublicListing>, val nextCursor: String?)
 data class OwnListing(val id: String, val categoryId: String, val visible: Boolean)
 /** The backend never returns a verified role from worker opt-in. */
 data class WorkerDraft(val status: String)
@@ -195,6 +197,16 @@ object JodloReplyDecoder {
     fun publicListings(reply: TransportReply): ApiOutcome<List<PublicListing>> = decode(reply) { data ->
         data.keysOnly(setOf("listings"))
         listings(data.required("listings"), 25)
+    }
+    /** Separate from legacy publicListings: pagination MUST use its own
+     * exact wire DTO, never silently accept a missing/extra cursor field.
+     */
+    fun publicListingPage(reply: TransportReply): ApiOutcome<PublicListingPage> = decode(reply) { data ->
+        data.keysOnly(setOf("listings", "nextCursor"))
+        val rows = listings(data.required("listings"), 25)
+        val after = data.optionalString("nextCursor")
+        if (after != null && !opaqueId.matches(after)) bad()
+        PublicListingPage(rows, after)
     }
     fun published(reply: TransportReply): ApiOutcome<PublicListing> = decode(reply) { data ->
         data.keysOnly(setOf("listing"))

@@ -20,6 +20,15 @@ interface CatalogRepository {
     fun listings(categoryId: String): ApiOutcome<List<PublicListing>>
 }
 
+/** Opt-in public Listing pagination. Kept separate from CatalogRepository
+ * so existing headless flows, fake adapters and legacy 25-row reads are stable.
+ * The backend alone authorizes cursor eligibility at its current D1 state.
+ */
+interface PublicListingPageRepository {
+    fun pageListings(categoryId: String, limit: Int = 20,
+                     after: String? = null): ApiOutcome<PublicListingPage>
+}
+
 /** A separate privileged surface: caller must possess a valid session and
  * explicitly supply a Category ID to publish; Search NEVER triggers posting.
  */
@@ -47,7 +56,8 @@ private fun browseCursorAdvances(after: String?, next: String): Boolean {
             next.substringAfter(':') > after.substringAfter(':'))
 }
 
-class RemoteCatalogRepository(private val sender: RequestSender) : CatalogRepository {
+class RemoteCatalogRepository(private val sender: RequestSender) :
+    CatalogRepository, PublicListingPageRepository {
     override fun browse(language: Language, availableOnly: Boolean,
                         limit: Int, after: String?): ApiOutcome<CatalogBrowse> {
         val call = JodloRoutes.browse(language, availableOnly, limit, after)
@@ -80,6 +90,21 @@ class RemoteCatalogRepository(private val sender: RequestSender) : CatalogReposi
         val call = JodloRoutes.publicListings(categoryId)
         return performOnce(call, sender::send, JodloReplyDecoder::publicListings)
             .validated { rows -> rows.all { it.categoryId == categoryId } }
+    }
+
+    override fun pageListings(categoryId: String, limit: Int,
+                              after: String?): ApiOutcome<PublicListingPage> {
+        val call = JodloRoutes.publicListingPage(categoryId, limit, after)
+        return performOnce(call, sender::send, JodloReplyDecoder::publicListingPage)
+            .validated { page ->
+                page.listings.size <= limit &&
+                    page.listings.all { it.categoryId == categoryId } &&
+                    (after == null || page.listings.none { it.id == after }) &&
+                    (page.nextCursor == null ||
+                        (page.listings.size == limit &&
+                            page.listings.last().id == page.nextCursor &&
+                            page.nextCursor != after))
+            }
     }
 }
 

@@ -155,5 +155,65 @@ fun main() {
         TransportReply(401,"""{"ok":false,"error":{"code":"UNAUTHORIZED","message":"internal secret"}}""")
     })
     check(unauthorized.myListings(TOKEN)==bad(FailureKind.UNAUTHORIZED))
-    println("JODLO repositories: typed browse/search, explicit worker publishing, mismatched response rejection and no auto-retry OK")
+    // PR #89/#90 backend opt-in Listing pages: no private fields or
+    // UI changes, original catalog.listings() remains byte-for-byte unchanged.
+    val nextListing = "22222222-2222-4222-8222-222222222222"
+    val firstPayload = """{"listings":[{"id":"$LISTING_ID","categoryId":"carpenter"}],"nextCursor":"$LISTING_ID"}"""
+    val laterPayload = """{"listings":[{"id":"$nextListing","categoryId":"carpenter"}],"nextCursor":null}"""
+    val pageSender = RequestSender { call ->
+        check(call.method == HttpMethod.GET)
+        check(!call.headers().containsKey("Authorization"))
+        check(call.bodyUtf8() == null)
+        when (call.resource) {
+            "/api/v1/listings?categoryId=carpenter&limit=1" -> ok(firstPayload)
+            "/api/v1/listings?categoryId=carpenter&limit=1&after=$LISTING_ID" -> ok(laterPayload)
+            else -> error("Unexpected public Listing page route")
+        }
+    }
+    val pageRepository: PublicListingPageRepository = RemoteCatalogRepository(pageSender)
+    val firstPage = pageRepository.pageListings("carpenter", limit = 1)
+    check(firstPage == ApiOutcome.Ok(PublicListingPage(
+        listOf(PublicListing(LISTING_ID,"carpenter")), LISTING_ID)))
+    val secondPage = pageRepository.pageListings("carpenter",limit=1,after=LISTING_ID)
+    check(secondPage == ApiOutcome.Ok(PublicListingPage(
+        listOf(PublicListing(nextListing,"carpenter")), null)))
+    requireRejected("page size zero") { pageRepository.pageListings("carpenter",limit=0) }
+    requireRejected("page size over 25") { pageRepository.pageListings("carpenter",limit=26) }
+    requireRejected("invalid page category") { pageRepository.pageListings("../unsafe",limit=1) }
+    requireRejected("unsafe cursor") {
+        pageRepository.pageListings("carpenter",limit=1,after="../unsafe")
+    }
+
+    // The backend's cursor can go stale after hidden/unpublish/disabled edits.
+    // Treat a closed empty page as valid; never silently restart or auto-retry.
+    val stalePage = RemoteCatalogRepository(RequestSender {
+        ok("""{"listings":[],"nextCursor":null}""")
+    })
+    check(stalePage.pageListings("carpenter",limit=1,after=LISTING_ID)==
+        ApiOutcome.Ok(PublicListingPage(emptyList(),null)))
+
+    val invalidPagePayloads = listOf(
+        """{"listings":[{"id":"$LISTING_ID","categoryId":"carpenter"}]}""",
+        """{"listings":[{"id":"$LISTING_ID","categoryId":"carpenter"}],"nextCursor":null,"ownerAccountId":"private"}""",
+        """{"listings":[{"id":"$LISTING_ID","categoryId":"carpenter","phone":"private"}],"nextCursor":null}""",
+        """{"listings":[{"id":"$LISTING_ID","categoryId":"plumber"}],"nextCursor":null}""",
+        """{"listings":[{"id":"$LISTING_ID","categoryId":"carpenter"},{"id":"$LISTING_ID","categoryId":"carpenter"}],"nextCursor":null}""",
+        """{"listings":[{"id":"$LISTING_ID","categoryId":"carpenter"}],"nextCursor":"$nextListing"}""",
+        """{"listings":[],"nextCursor":"$LISTING_ID"}""",
+        """{"listings":[],"nextCursor":"not a safe ID"}""",
+        """{"listings":[{"id":"$LISTING_ID","categoryId":"carpenter"}],"nextCursor":"$LISTING_ID"}""",
+    )
+    for ((index,payload) in invalidPagePayloads.withIndex()) {
+        val invalid = RemoteCatalogRepository(RequestSender { ok(payload) })
+        val cursor = if (index == invalidPagePayloads.lastIndex) LISTING_ID else null
+        check(invalid.pageListings("carpenter",limit=1,after=cursor)==bad()) {
+            "Invalid paged public DTO was accepted: $index"
+        }
+    }
+    val partialWithCursor = RemoteCatalogRepository(RequestSender { ok(firstPayload) })
+    check(partialWithCursor.pageListings("carpenter",limit=2)==bad())
+    // Legacy callers cannot accidentally parse paged DTOs.
+    check(RemoteCatalogRepository(RequestSender { ok(firstPayload) }).listings("carpenter")==bad())
+
+    println("JODLO repositories: typed browse/search, explicit worker publishing, mismatched response rejection and no auto-retry and public Listing pagination OK")
 }
