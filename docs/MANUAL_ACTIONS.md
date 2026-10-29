@@ -11,6 +11,10 @@
 5. **On founder answer or changed readiness:** update this register (ID, outcome, date/evidence), `STATUS.md`, `AI_HANDOFF.md`, `ROADMAP.md` and `README.md` via an isolated PR; run tests and verify **real PR + main CI** before claiming done. The AI continues all other non-blocked development.
 6. **Honest notification boundary:** An ordinary chat cannot spontaneously message the founder after the chat ends or continuously monitor providers. Notify proactively **within ongoing sessions** when a gate arises; do not promise background alerts without an explicitly configured automation.
 
+## General continuation instruction — 2026-10-29
+
+In the current JODLO chat, the founder instructed the assistant to **choose the best sequence and continue all automatable work**. This permits independently prioritizing, coding, testing, documenting and merging compliant local-first tasks. It does **not specify exact Category IDs, a concrete first-contact policy, privacy/retention terms, final visual design tokens or layouts, cloud deployment, provider credentials or payment release**. Therefore **M-003/M-004/M-005/M-006/M-007/M-008 keep their existing statuses**. Request a single narrowly scoped founder choice at its actual dependency boundary; do not stall safe work or assume the general go-ahead overrides previously explicit restrictions.
+
 ## Action register
 
 | ID | State | Owner / trigger | Exact manual decision or action | What is gated / safe work until then |
