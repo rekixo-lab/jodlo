@@ -1,5 +1,7 @@
 # M-005 — publication decision recorded, remaining pilot choices
 
+**BINDING CATEGORY-BREADTH UPDATE (2026-10-29):** Founder explicitly reaffirmed **all 889 Category review candidates** as the platform's full-scope objective and rejected a ten-trade launch restriction. The earlier proposed ten are only human desk-review examples, NOT a pilot limitation. See [ADR-0011](decisions/0011-all-category-coverage-smart-discovery.md). Exact final eligible IDs/labels, human safety/regulatory/ID mapping and actual D1 activation still pending; customer contact, moderation, areas, UI and deployment require separate decisions.
+
 **FOUNDER APPROVED on 2026-10-27:** workers **immediately self-publish** a minimal service listing. **No automatic verification badge.** The earlier proposed manual pre-publication review is **superseded**; do not ask it again. See [ADR-0009](decisions/0009-instant-service-publication.md).
 
 ## Still unapproved
