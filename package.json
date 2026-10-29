@@ -11,7 +11,7 @@
     "apps/api"
   ],
   "scripts": {
-    "test": "node --experimental-strip-types --test apps/api/tests/*.test.mjs scripts/verify-design-guards.test.mjs scripts/verify-founder-gates.test.mjs scripts/legacy-category-review.test.mjs scripts/legacy-service-review.test.mjs scripts/legacy-phrase-review.test.mjs scripts/editorial-phrase-proposals.test.mjs scripts/catalog-activation-preflight.test.mjs scripts/catalog-review-packets.test.mjs scripts/verify-m005-first-scope-review.test.mjs scripts/verify-m005-official-evidence.test.mjs scripts/m005-scope-bound-review-intake.test.mjs scripts/verify-kotlin-suite-coverage.test.mjs scripts/catalog-mapping-readiness.test.mjs scripts/catalog-correction-evidence.test.mjs",
+    "test": "node --experimental-strip-types --test apps/api/tests/*.test.mjs scripts/verify-design-guards.test.mjs scripts/verify-founder-gates.test.mjs scripts/legacy-category-review.test.mjs scripts/legacy-service-review.test.mjs scripts/legacy-phrase-review.test.mjs scripts/editorial-phrase-proposals.test.mjs scripts/catalog-activation-preflight.test.mjs scripts/catalog-review-packets.test.mjs scripts/verify-m005-first-scope-review.test.mjs scripts/verify-m005-official-evidence.test.mjs scripts/m005-scope-bound-review-intake.test.mjs scripts/verify-kotlin-suite-coverage.test.mjs scripts/catalog-mapping-readiness.test.mjs scripts/catalog-correction-evidence.test.mjs scripts/catalog-cross-packet-reconcile.test.mjs",
     "typecheck": "tsc --noEmit -p apps/api/tsconfig.json",
     "check": "npm run docs:check && npm run design:check && npm run founder:check && npm run reference:check && npm run test && npm run typecheck",
     "dev:api": "wrangler dev --config apps/api/wrangler.local.jsonc --local",
@@ -22,7 +22,7 @@
     "build:api": "wrangler deploy --dry-run --config apps/api/wrangler.jsonc",
     "design:check": "node scripts/verify-design-guards.mjs",
     "founder:check": "node scripts/verify-founder-gates.mjs",
-    "reference:check": "node scripts/verify-legacy-catalog-reference.mjs && node scripts/verify-pilot-taxonomy-proposal.mjs && node scripts/legacy-category-review.mjs --check && node scripts/legacy-service-review.mjs --check && node scripts/legacy-phrase-review.mjs --check && node scripts/editorial-phrase-proposals.mjs --check && node scripts/catalog-activation-preflight.mjs --check && node scripts/catalog-mapping-readiness.mjs --check && node scripts/catalog-review-packets.mjs --check && node scripts/verify-m005-first-scope-review.mjs --check && node scripts/verify-m005-official-evidence.mjs --check && node scripts/m005-scope-bound-review-intake.mjs --check && node scripts/catalog-correction-evidence.mjs --check",
+    "reference:check": "node scripts/verify-legacy-catalog-reference.mjs && node scripts/verify-pilot-taxonomy-proposal.mjs && node scripts/legacy-category-review.mjs --check && node scripts/legacy-service-review.mjs --check && node scripts/legacy-phrase-review.mjs --check && node scripts/editorial-phrase-proposals.mjs --check && node scripts/catalog-activation-preflight.mjs --check && node scripts/catalog-mapping-readiness.mjs --check && node scripts/catalog-review-packets.mjs --check && node scripts/verify-m005-first-scope-review.mjs --check && node scripts/verify-m005-official-evidence.mjs --check && node scripts/m005-scope-bound-review-intake.mjs --check && node scripts/catalog-correction-evidence.mjs --check && node scripts/catalog-cross-packet-reconcile.mjs --check",
     "reference:review": "node scripts/legacy-category-review.mjs --json",
     "reference:services": "node scripts/legacy-service-review.mjs --json",
     "reference:service-summary": "node scripts/legacy-service-review.mjs --summary",
@@ -44,7 +44,8 @@
     "catalog:mapping-summary": "node scripts/catalog-mapping-readiness.mjs --summary",
     "catalog:mapping-review": "node scripts/catalog-mapping-readiness.mjs --json",
     "catalog:correction-summary": "node scripts/catalog-correction-evidence.mjs --summary",
-    "catalog:correction-template": "node scripts/catalog-correction-evidence.mjs"
+    "catalog:correction-template": "node scripts/catalog-correction-evidence.mjs",
+    "catalog:correction-reconcile": "node scripts/catalog-cross-packet-reconcile.mjs"
   },
   "devDependencies": {
     "typescript": "~5.8.3",
