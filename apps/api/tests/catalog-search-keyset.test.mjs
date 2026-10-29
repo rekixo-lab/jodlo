@@ -243,9 +243,11 @@ test("Search continuation requires a current live anchor in this same matching q
       assert.equal(d.nextCursor,null);
     }
     // A previously valid Category ID is not evidence it matched a NEW query.
-    const otherQuery=await next("0005");
+    const otherQuery=await next("Trade 5");
     assert.deepEqual(otherQuery.categories,[]);
     assert.equal(otherQuery.nextCursor,null);
+    assert.deepEqual((await get(f.adapter,"q="+encodeURIComponent("Trade 5")+"&cursor=1"))
+      .body.data.categories.map(x=>x.id),["work-0005"]);
     // Renaming the source so it no longer matches the original query makes
     // the prior cursor stale even when its ID and sort order still exist.
     f.db.prepare("UPDATE categories SET name_en='Other Work' WHERE id='work-0001'").run();
