@@ -305,3 +305,7 @@ Founder-provided complete legacy Firestore catalog is safely archived: original 
 **Nonvisual Kotlin Repository Layer (2026-10-28):** [Android Core](apps/android/README.md) now has separately injected Catalog and Worker repository interfaces, strict typed backend response coherence, explicit Category selection for posting, and fake-network Kotlin tests. No Android screen or APK, actual Google mobile login, personal GPS or approved active historical Categories are implied.
 
 **Session state (2026-10-28):** The [headless Kotlin Android core](apps/android/README.md) now has in-memory expiry, draft-only worker state and local-first logout with stale-response isolation. No APK or live Google mobile integration exists.
+
+## 2026-10-29 — All-Service Category reviewer detail (non-public, CI pending)
+
+The 889 historical Categories in 45 original review packets now have an **optional complete 7,267-Service evidence view** (`npm run catalog:full-service-evidence -- --packet=1` or `--category=OLD_ID`). This preserves original bilingual labels, source lineage and conflicting cross-Category phrase parent choices for qualified review—not public synonyms, live D1 seeds, translation approval, or permission to activate regulated work. See [Service reviewer guide](docs/reference/JODLO_CATEGORY_HUMAN_REVIEW_PACKETS_2026-10-28.md). All founder M-003/M-004/M-005/M-007/M-008 restrictions still apply; no deployment.

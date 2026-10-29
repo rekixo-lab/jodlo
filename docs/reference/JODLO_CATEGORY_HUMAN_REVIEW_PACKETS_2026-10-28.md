@@ -43,3 +43,16 @@ Review in practical batches while keeping legitimate work eligible for considera
 This is not a new UI and it never writes to Cloudflare or old Finworkar. M-003 location/consent, M-004 visible UX, M-005 real safe category activation and M-007 production release remain separately gated. ADR-0008 Hindi+English and ADR-0009 immediate self-publication only in **previously approved-active** Categories remain in force. These packets are implementation preparation, not language/safety certification.
 
 Exact PR and separately merged-main CI green required before completion claims.
+
+## 2026-10-29 — Open EVERY Service under each of the same 889 Category review rows
+
+The original 45 review packets intentionally show **only the first three Service examples** for each Category. These are insufficient for final Hindi/English Service language, parent trade meaning or overlapping-work review. New **optional offline-only** full-detail view reuses the same 45 Category packet boundaries and the separately SHA-pinned 7,267-Service and 14,534-localized-phrase evidence:
+
+```bash
+npm run catalog:full-service-evidence -- --check
+npm run catalog:full-service-evidence -- --summary
+npm run catalog:full-service-evidence -- --packet=1
+npm run catalog:full-service-evidence -- --category=farmer-helper-मजदूर
+```
+
+Each full row preserves original Service ID, original English/Hindi names, source section reference and flags, exact parent Group/Family/Category lineage and **the other parent Categories sharing the same normalized English or Hindi Service name**. It never picks one ambiguous parent, normalizes an old ID into a final JODLO ID, automatically translates mixed Hindi/Latin text or creates a public alias. No single trade is skipped because it was absent from the historical ten-example assessment. Every original Category and Service remains unapproved pending M-005 occupational/legal/human Hindi-English review, final ID mapping and explicit Founder authorization. Zero D1 seeding, public Search import, UI or deployment. See [complete Service source review](JODLO_LEGACY_7267_SERVICE_REVIEW_2026-10-28.md).
