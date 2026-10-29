@@ -28,6 +28,12 @@ A non-null `categoryIdCandidate` or `slugCandidate` means only that **reusing th
 - Every generated row remains `HUMAN_ID_SLUG_LABEL_AND_SAFETY_REVIEW_REQUIRED`. The summary has `categoriesAuthorizedForActivation: 0` and `sqlStatementsGenerated: 0`. The Node negative tests alter source evidence, gates, IDs, result counts, authorization fields and language modes to prove denial.
 - The script is deliberately under `scripts/` and **never imported by Worker/Android code**, SQL migrations, real search aliases or deployment tools. No production data, PII, real areas, OAuth secrets, call/payment, UI or remote Cloudflare resources.
 
+## 2026-10-29 — Same mapping evidence surfaced inside the 45 human review packets
+
+The existing `scripts/catalog-review-packets.mjs` now **calls `buildCatalogMappingReadiness(preflight)` directly** to attach source-pinned `mappingCompatibility` ID/slug syntax-only candidates and D1 Category-title issues to each of the **same 889 review items**. Its per-packet and global manifest summaries count ID/slug/label issue Categories; all totals are cross-checked against this mapping audit. Reviewers use `npm run catalog:review-packet -- --packet=N` and `npm run catalog:review-packets`, without separately reconciling two lists. [Reviewer packet details](JODLO_CATEGORY_HUMAN_REVIEW_PACKETS_2026-10-28.md).
+
+This is still **pure offline review**, with four pending gates per Category, no final ID/slug selection, no D1 migration/seed, no activation, no worker contact and no Cloudflare deployment.
+
 ## What remains
 
 M-005 **breadth** is approved for all legitimate work (ADR-0011). **Final** JODLO Category IDs/slugs, corrected bilingual labels, occupational/legal/safety and regulated-work policy, reviewer signatures/Founder M-005 category-specific authorization, plus contact/moderation policy still require actual decisions/evidence. The 45 [existing reviewer packets](JODLO_CATEGORY_HUMAN_REVIEW_PACKETS_2026-10-28.md) remain the human workflow for every Category; this syntax report is a companion, not a second approval process. M-003 area/privacy, M-004 visual UI and M-007 production-only release are unchanged.
