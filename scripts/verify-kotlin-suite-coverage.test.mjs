@@ -8,7 +8,7 @@ const check = (data = base) => auditKotlinSuiteCoverage(data);
 test("every executable Kotlin JVM test is registered and CI runs the entire aggregate", () => {
   const outcome = check();
   assert.equal(outcome.ok, true, outcome.problems.join("; "));
-  assert.equal(outcome.suiteCount, 21);
+  assert.equal(outcome.suiteCount, 22);
   assert.equal(outcome.registeredCount, outcome.suiteCount);
 });
 
@@ -60,5 +60,5 @@ test("a deleted executable Kotlin suite cannot silently shrink existing coverage
   delete tests["CustomerWorkerLifecycleRegressionTest.kt"];
   const result=check({ ...base, tests });
   assert.equal(result.ok,false);
-  assert.match(result.problems.join("\n"), /Expected at least 21 executable Kotlin suites/);
+  assert.match(result.problems.join("\n"), /Expected at least 22 executable Kotlin suites/);
 });
