@@ -47,6 +47,14 @@ class HeadlessOwnerListingPaginationScope(
         val pageNumber: Int,
     )
 
+    /** Bind a private page source to the SAME in-memory session as its
+     * Worker Dashboard. Two signed-in workers can both report DRAFT; the
+     * public LoginState alone cannot prove actor identity across instances.
+     * Identity never leaves the process and exposes no account/token.
+     */
+    internal fun belongsTo(coordinator: InMemorySessionCoordinator): Boolean =
+        session === coordinator
+
     private val lock = Any()
     private var closed = false
     private var fingerprint = session.privateReadFingerprint()

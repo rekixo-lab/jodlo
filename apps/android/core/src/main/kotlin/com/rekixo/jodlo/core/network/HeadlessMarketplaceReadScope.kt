@@ -115,6 +115,13 @@ class HeadlessMarketplaceReadScope(
         }
     }
 
+    /** Do not wire another account's private read/write controller into a
+     * Worker Dashboard just because both accounts have the same worker role.
+     * This is process-local object identity, not a credential or actor ID.
+     */
+    internal fun belongsTo(coordinator: InMemorySessionCoordinator): Boolean =
+        session === coordinator
+
     private val lock = Any()
     private var closed = false
     private var workerFingerprint = session.privateReadFingerprint()
