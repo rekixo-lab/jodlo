@@ -10,6 +10,8 @@ import java.util.concurrent.atomic.AtomicLong
  * controllers. Fake transport only; no Android UI, provider, network or deploy.
  */
 private const val LIFE_LISTING = "11111111-1111-4111-8111-111111111111"
+private const val LIFE_PAGE_LAST = "22222222-2222-4222-8222-222222222222"
+private const val LIFE_PAGE_FINAL = "33333333-3333-4333-8333-333333333333"
 private val LIFE_CATEGORY = PublicCategory("plumber", "plumber", "प्लंबर")
 private val LIFE_TOKEN_A = "a".repeat(43)
 private val LIFE_TOKEN_B = "b".repeat(43)
@@ -21,9 +23,11 @@ private fun <T> lifeDone(task: FutureTask<T>): T = task.get(5, TimeUnit.SECONDS)
 private fun lifeEntered(latch: CountDownLatch) =
     check(latch.await(5, TimeUnit.SECONDS)) { "Expected fake transport not reached" }
 
-private class LifeWorker : WorkerRepository {
+private class LifeWorker : WorkerRepository, OwnListingPageRepository {
     val publishCalls = AtomicInteger()
     val ownCalls = AtomicInteger()
+    val pageCalls = AtomicInteger()
+    @Volatile var beforePage: (() -> Unit)? = null
     @Volatile var beforePublish: (() -> Unit)? = null
     @Volatile var beforeOwn: (() -> Unit)? = null
     @Volatile var uncertainPublish = false
@@ -37,6 +41,29 @@ private class LifeWorker : WorkerRepository {
         return ApiOutcome.Ok(if (visible)
             listOf(OwnListing(LIFE_LISTING, "plumber", true)) else emptyList())
     }
+    /** Fake approved active Categories only; no original historical seed.
+     * Request structure is already independently covered by real decoder
+     * tests. This tests session/write/lifecycle crossings across scopes.
+     */
+    override fun pageMyListings(
+        session: String, limit: Int, after: String?,
+    ): ApiOutcome<OwnListingPage> {
+        check(session == LIFE_TOKEN_A || session == LIFE_TOKEN_B)
+        check(limit == 2)
+        pageCalls.incrementAndGet()
+        beforePage?.invoke()
+        return when (after) {
+            null -> ApiOutcome.Ok(OwnListingPage(listOf(
+                OwnListing(LIFE_LISTING, "plumber", visible),
+                OwnListing(LIFE_PAGE_LAST, "carpenter", false),
+            ), LIFE_PAGE_LAST))
+            LIFE_PAGE_LAST -> ApiOutcome.Ok(OwnListingPage(listOf(
+                OwnListing(LIFE_PAGE_FINAL, "plumber", visible),
+            ), null))
+            else -> error("Unexpected private continuation cursor")
+        }
+    }
+
     override fun publishExplicitCategory(session: String,
         confirmedCategoryId: String): ApiOutcome<PublicListing> {
         check(confirmedCategoryId == "plumber")
@@ -53,6 +80,7 @@ private class LifeWorker : WorkerRepository {
 }
 private class LifeCatalog(private val worker: LifeWorker) : CatalogRepository {
     val browseCalls=AtomicInteger()
+    @Volatile var beforeSearch: (() -> Unit)? = null
     val searchCalls=AtomicInteger()
     val publicCalls=AtomicInteger()
     override fun browse(language: Language, availableOnly: Boolean, limit: Int,
@@ -64,6 +92,7 @@ private class LifeCatalog(private val worker: LifeWorker) : CatalogRepository {
     override fun search(query: String, language: Language, availableOnly: Boolean,
         includeChoices: Boolean, limit: Int, offset: Int): ApiOutcome<CatalogSearch> {
         searchCalls.incrementAndGet()
+        beforeSearch?.invoke()
         check(query == "प्लंबर" && language == Language.HI && includeChoices && offset == 0)
         return ApiOutcome.Ok(CatalogSearch(language, query,
             listOf(LIFE_CATEGORY), null, false, emptyList()))
@@ -88,6 +117,9 @@ private class LifeHarness {
     val writes=HeadlessWorkerWriteScope(session)
     val dashboard=HeadlessWorkerDashboardPresentation(session,reads,writes)
     fun customer()=HeadlessCatalogPaginationScope(catalog,session,{clock.get()},60_000L)
+    fun owner()=HeadlessOwnerListingPaginationScope(session,{clock.get()},60_000L)
+    fun pagedDashboard(owner: HeadlessOwnerListingPaginationScope) =
+        HeadlessWorkerDashboardPresentation(session,reads,writes,owner)
     fun login(token: String = LIFE_TOKEN_A) {
         check(session.acceptIssuedSession(lifeSessionReply(token)) is ApiOutcome.Ok)
     }
