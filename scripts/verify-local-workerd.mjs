@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash, randomBytes } from "node:crypto";
 import { spawn, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
@@ -18,6 +19,16 @@ const dataDir = join(temp, "state");
 const fixture = join(temp, "synthetic-only.sql");
 const baseUrl = "http://127.0.0.1:8797";
 const exec = promisify(execFile);
+// Fresh synthetic sessions exist only in the disposable local D1 fixture.
+// No Google credentials or real personal data are involved.
+const localTokens = {
+  first: randomBytes(32).toString("base64url"),
+  firstSibling: randomBytes(32).toString("base64url"),
+  second: randomBytes(32).toString("base64url"),
+  newWorker: randomBytes(32).toString("base64url"),
+};
+const tokenHash = token => createHash("sha256").update(token).digest("hex");
+const expiresAt = Math.floor(Date.now() / 1000) + 3600;
 let dev;
 let logs = "";
 
@@ -54,6 +65,18 @@ async function get(path, status = 200) {
   assert.equal(response.headers.get("Cache-Control"), "no-store", path);
   return response.json();
 }
+async function authenticated(path, method, token, status = 200, body) {
+  const response = await fetch(baseUrl + path, {
+    method,
+    headers: { Authorization: "Bearer " + token,
+      ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    signal: AbortSignal.timeout(8000),
+  });
+  assert.equal(response.status, status, method + " " + path);
+  assert.equal(response.headers.get("Cache-Control"), "no-store", path);
+  return response.json();
+}
 
 try {
   writeFileSync(fixture, `
@@ -62,11 +85,17 @@ INSERT INTO categories(id,slug,name_en,name_hi,is_active,sort_order) VALUES
  ('synthetic-fixture-active','synthetic-fixture-active','Fixture Plumber','परीक्षण प्लंबर',1,10),
  ('synthetic-fixture-hidden','synthetic-fixture-hidden','Fixture Carpenter','परीक्षण बढ़ई',1,20),
  ('synthetic-fixture-inactive','synthetic-fixture-inactive','Fixture Painter','परीक्षण पेंटर',0,30);
-INSERT INTO accounts(id) VALUES ('account-fixture-001'),('account-fixture-002');
+INSERT INTO accounts(id) VALUES ('account-fixture-001'),('account-fixture-002'),('account-fixture-003');
 INSERT INTO worker_profiles(account_id) VALUES ('account-fixture-001'),('account-fixture-002');
 INSERT INTO worker_listings(id,worker_account_id,category_id,moderation_status) VALUES
  ('11111111-1111-4111-8111-111111111111','account-fixture-001','synthetic-fixture-active','allowed'),
  ('22222222-2222-4222-8222-222222222222','account-fixture-002','synthetic-fixture-hidden','hidden');
+-- Pre-hashed ephemeral bearer tokens, not Google credentials or personal data.
+INSERT INTO auth_sessions(token_hash,account_id,expires_at) VALUES
+ ('${tokenHash(localTokens.first)}','account-fixture-001',${expiresAt}),
+ ('${tokenHash(localTokens.firstSibling)}','account-fixture-001',${expiresAt}),
+ ('${tokenHash(localTokens.second)}','account-fixture-002',${expiresAt}),
+ ('${tokenHash(localTokens.newWorker)}','account-fixture-003',${expiresAt});
 `, "utf8");
 
   const local = ["--config", config, "--local", "--persist-to", dataDir];
