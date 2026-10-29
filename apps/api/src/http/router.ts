@@ -40,6 +40,26 @@ function bearerToken(request: Request): string | null {
   return match?.[1] ?? null;
 }
 
+/** Local workerd/HTTP may represent an empty POST or DELETE as an empty
+ * ReadableStream rather than null. Check actual bytes, not stream presence.
+ * Fail closed on unreadable bodies; never buffer, log, or accept extra data.
+ */
+async function hasEmptyBody(request: Request): Promise<boolean> {
+  if (request.body === null) return true;
+  const reader = request.body.getReader();
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) return true;
+      if (value.byteLength > 0) return false;
+    }
+  } catch {
+    return false;
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 function getOnly(request: Request): Response | null {
   if (request.method === "GET") return null;
   return json({ ok: false, error: { code: "METHOD_NOT_ALLOWED", message: "Method not allowed" } }, 405, { Allow: "GET" });
@@ -138,7 +158,7 @@ export async function handleRequest(
     if (request.method !== "POST") {
       return json({ ok: false, error: { code: "METHOD_NOT_ALLOWED", message: "Method not allowed" } }, 405, { Allow: "POST" });
     }
-    if (url.search || request.body !== null) {
+    if (url.search || !(await hasEmptyBody(request))) {
       return json({ ok: false, error: { code: "INVALID_QUERY", message: "Unexpected input" } }, 400);
     }
     if (!env.DB) return json({ ok: false, error: { code: "SERVICE_UNAVAILABLE", message: "Identity unavailable" } }, 503);
@@ -161,7 +181,7 @@ export async function handleRequest(
       return json({ ok: false, error: { code: "METHOD_NOT_ALLOWED", message: "Method not allowed" } }, 405, { Allow: allowed });
     }
     // Query parameters and client-selected account IDs cannot control ownership.
-    if (url.search || (request.method === "POST" && request.body !== null)) {
+    if (url.search || (request.method === "POST" && !(await hasEmptyBody(request)))) {
       return json({ ok: false, error: { code: "INVALID_QUERY", message: "Unexpected input" } }, 400);
     }
     if (!env.DB) {
@@ -220,7 +240,7 @@ export async function handleRequest(
         return json({ok:false,error:{code:"UNAUTHORIZED",message:"Authentication required"}},401);
       }
       if(request.method==="GET") {
-        if(url.search||request.body!==null)
+        if(url.search||!(await hasEmptyBody(request)))
           return json({ok:false,error:{code:"INVALID_QUERY",message:"Unexpected input"}},400);
         return json({ok:true,data:{listings:await myListings(env.DB,actor.accountId)}});
       }
@@ -233,7 +253,7 @@ export async function handleRequest(
         if(!listing)return json({ok:false,error:{code:"FORBIDDEN",message:"Listing not eligible"}},403);
         return json({ok:true,data:{listing}});
       }
-      if(request.body!==null||url.searchParams.size!==1||
+      if(!(await hasEmptyBody(request))||url.searchParams.size!==1||
           url.searchParams.getAll("id").length!==1||
           !validOpaqueId(url.searchParams.get("id"))) {
         return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid listing ID"}},400);
