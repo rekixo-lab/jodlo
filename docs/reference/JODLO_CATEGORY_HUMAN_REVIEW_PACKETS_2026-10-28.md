@@ -26,6 +26,10 @@ The existing packet manifest and per-packet summaries now count Categories with 
 
 **No category is approved or activated** by a non-null syntax candidate. The previous safety, language, regulated-work, full Service-leaf review, source lineage, original ambiguity, and four human/founder M-005 gates remain. Human reviewers can now resolve mapping compatibility while reading the **same** old-category packet instead of reconciling two independently maintained queues. No live D1 seed, SQL generation, search alias activation, Android UI or Cloudflare deployment.
 
+## 2026-10-29 — Optional correction-evidence intake for every packet
+
+[The all-889 Category correction-evidence CLI](JODLO_ALL_CATEGORY_CORRECTION_EVIDENCE_2026-10-29.md) now creates source-fingerprinted, **unapproved** correction templates for **any existing packet 1..45**. It can check proposed corrected ID, slug, English/Hindi Category title and JODLO PR evidence link against each original Category, without altering the old packet, historical data or D1. Run `npm run catalog:correction-template -- --packet=N` for a template and `npm run catalog:correction-template -- --validate-file=RELATIVE_PATH` for a local submitted copy. It does not authenticate a reviewer and cannot approve or activate even one Category. This is **not** the separate 17-category occupational/legal evidence signoff process.
+
 ## Per-Category task evidence
 
 Every review item includes pinned source Group, Family, Category ID; historical English and Hindi display names; historical safety tier as **non-authoritative evidence only**; child Service count; existing quality flags; count of Hindi Service labels containing Latin letters; count of ambiguous Service phrases spanning distinct Categories; up to **three original service-label examples** and **three cross-Category phrase examples** preserving the other possible parent IDs; and all four mandatory Founder/human review gates from the preceding [all-Category preflight](JODLO_CATEGORY_EXPANSION_PREFLIGHT_2026-10-28.md).

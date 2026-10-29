@@ -5,6 +5,7 @@ import {resolve,dirname,join,relative,isAbsolute} from "node:path";
 import {fileURLToPath} from "node:url";
 import {loadPinnedM005ScopeReview} from "./verify-m005-first-scope-review.mjs";
 import {loadM005GovernmentEvidence} from "./verify-m005-official-evidence.mjs";
+import {validJodloReviewUrl} from "./review-evidence-url.mjs";
 const ROOT=resolve(dirname(fileURLToPath(import.meta.url)),"..");
 const KIND="JODLO_M005_SCOPE_BOUND_EVIDENCE_INTAKE_ONLY";
 const STATE="SUBMISSIONS_UNVERIFIED_ZERO_CATEGORY_ACTIVATION";
@@ -18,8 +19,6 @@ const cmp=(a,b)=>a<b?-1:a>b?1:0;
 const exact=(v,keys)=>v&&typeof v==="object"&&!Array.isArray(v)&&
  Object.keys(v).sort().join("|")===keys.slice().sort().join("|");
 const sha=value=>createHash("sha256").update(JSON.stringify(value)).digest("hex");
-const validUrl=u=>typeof u==="string"&&
- /^https:\/\/github\.com\/rekixo-lab\/jodlo\/pull\/[1-9][0-9]{0,7}(?:#issuecomment-[1-9][0-9]*)?$/u.test(u);
 function context(scopes,government){
  if(scopes?.kind!=="JODLO_M005_SOURCE_BACKED_SCOPE_RECOMMENDATIONS_ONLY"||
     scopes.state!=="NO_HUMAN_CERTIFICATION_NO_FOUNDER_CATEGORY_APPROVAL_NO_D1_SEED"||
@@ -98,7 +97,7 @@ export function validateM005EvidenceIntake(input,scopes,government){
         entry.gate!==GATES[i]||entry.scopeSha256!==row.scopeSha256||
         !["NOT_SUBMITTED","EVIDENCE_LINKED_UNVERIFIED"].includes(entry.status)||
         (entry.status==="NOT_SUBMITTED"&&entry.evidenceUrl!==null)||
-        (entry.status==="EVIDENCE_LINKED_UNVERIFIED"&&!validUrl(entry.evidenceUrl)))
+        (entry.status==="EVIDENCE_LINKED_UNVERIFIED"&&!validJodloReviewUrl(entry.evidenceUrl)))
        throw Error("Invalid reviewer gate, untrusted link or false signoff");
      if(entry.status==="EVIDENCE_LINKED_UNVERIFIED"){linked++;evidenceCount++;}
    }
