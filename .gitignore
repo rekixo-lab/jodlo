@@ -20,3 +20,5 @@ apps/android/local.properties
 *service-account*.json
 .local-category-review/
 .jodlo-correction-test-*/
+
+.jodlo-service-correction-test-*/

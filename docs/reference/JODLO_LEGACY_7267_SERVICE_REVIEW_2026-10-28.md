@@ -46,3 +46,16 @@ For actual human-language cleanup and future category-scoped aliases, consult th
 `npm run catalog:full-service-evidence -- --packet=N` (1–45) now presents **every** historical Service under each selected 20-Category packet, not only the old three per-Category examples. Use `--category=OLD_ID` to inspect an exact old Category (even an incompatible Unicode source ID), or `--summary` to obtain packet-by-packet totals. The implementation crosschecks all 7,267 Services and 14,534 localized phrase occurrences, Group/Family ancestry, original source flags, three original examples and other parent Category choices for ambiguous labels. It creates **review evidence**, not approved synonyms, public Categories or regulated-task authorization.
 
 All 889 Categories and 7,267 Services retain their required human reviews, even those with no mechanical flag. The 4,928 Hindi-label Latin-script occurrences, 1,784 historical Service-ID policy flags and any ambiguous phrase context are for qualified editorial/occupational review only; do not auto-transliterate, infer validity or auto-pick an ambiguous Category. No new D1, Android/UI, contact/location, SQL, Cloudflare resources or Finworkar changes.
+
+## 2026-10-29 — Bilingual correction proposals for all original Services
+
+The new **review-only** `catalog:service-corrections` CLI generates an unchanged-source, hashed **Service-level Hindi/English correction intake** for any one of the original 45 Category packets. It retains every historical leaf (not just examples), the source text, parent Group/Family/Category and already known ambiguous parent choices. Edits must specify a corrected `proposedNameEn` and/or `proposedNameHi`, a JODLO Pull Request evidence URL and `EVIDENCE_LINKED_UNVERIFIED`; all other rows remain `NOT_SUBMITTED`.
+
+Example:
+
+```bash
+npm run catalog:service-corrections -- --packet=1 > .local-category-review/service-packet-01.json
+npm run catalog:service-corrections -- --validate-file=.local-category-review/service-packet-01.json
+```
+
+**Important:** The tool checks script/length, original SHA fingerprints, every Service's source ancestry, proposed-vs-existing cross-Category phrase conflicts and missing evidence, but **does not** authenticate reviewer identity, accept the Hindi/English meaning, approve an alias or decide occupational scope. A proposed name that now matches another Category's original Service name is explicitly counted as an **unverified conflict**, not silently resolved. Approval and runtime Search import remain entirely separate M-005 gates. [Complete reviewer runbook](JODLO_ALL_SERVICE_CORRECTION_EVIDENCE_2026-10-29.md).
