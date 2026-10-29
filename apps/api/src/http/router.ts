@@ -8,7 +8,7 @@ import { resolveGoogleAccount } from "../modules/identity/google-accounts.ts";
 import { issueSession, makeSessionVerifier, revokeAllSessions, revokeSession, SESSION_TTL_SECONDS } from "../modules/identity/sessions.ts";
 import { hasEmptyBody, readGoogleLoginBody, readServiceListingBody } from "./body.ts";
 import { validCategoryId } from "../modules/shared/identifiers.ts";
-import { publishListing, myListings, publicListings, pagePublicListings, unpublishListing } from "../modules/workers/listings.ts";
+import { publishListing, myListings, pageMyListings, parseOwnListingsPage, publicListings, pagePublicListings, unpublishListing } from "../modules/workers/listings.ts";
 import {
   allowGoogleAccountLogin, allowLoginBurst,
   LOGIN_BURST_RETRY_SECONDS, ACCOUNT_LOGIN_RETRY_SECONDS,
@@ -236,9 +236,16 @@ export async function handleRequest(
         return json({ok:false,error:{code:"UNAUTHORIZED",message:"Authentication required"}},401);
       }
       if(request.method==="GET") {
-        if(url.search||!(await hasEmptyBody(request)))
+        const page=parseOwnListingsPage(url.searchParams);
+        if(!page||!(await hasEmptyBody(request)))
           return json({ok:false,error:{code:"INVALID_QUERY",message:"Unexpected input"}},400);
-        return json({ok:true,data:{listings:await myListings(env.DB,actor.accountId)}});
+        // No query parameters means the exact legacy owner response (100 cap).
+        // Only an explicit limit enables bounded pages across all approved
+        // worker Categories; no implicit prefetch or personal-data projection.
+        const data=page.limit===null
+          ? {listings:await myListings(env.DB,actor.accountId)}
+          : await pageMyListings(env.DB,actor.accountId,page.limit,page.after);
+        return json({ok:true,data});
       }
       if(request.method==="POST") {
         if(url.search)return json({ok:false,error:{code:"INVALID_QUERY",message:"Unexpected query"}},400);
