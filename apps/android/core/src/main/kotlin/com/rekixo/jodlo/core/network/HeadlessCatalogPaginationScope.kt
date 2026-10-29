@@ -60,6 +60,12 @@ sealed class CustomerSelectionState {
     data class Ready(
         val category: PublicCategory, val source: CustomerCategorySource,
         val listings: List<PublicListing>,
+        /** Null for the original, unpaged 25-row GET; non-null only when the
+         * selected Category explicitly opted into server keyset pagination.
+         */
+        val pageSize: Int? = null,
+        val nextCursor: String? = null,
+        val pageCount: Int = 1,
     ) : CustomerSelectionState()
     data class Error(
         val category: PublicCategory, val source: CustomerCategorySource,
@@ -652,14 +658,41 @@ class HeadlessCatalogPaginationScope(
         }
     }
 
-    /** No GET is dispatched by selection alone. An explicit caller action
-     * fetches only the chosen Category's public Listings. A later category
-     * selection, new source page, worker write, TTL or close discards the
-     * late response. No personal worker data is returned.
+    /** Legacy first-25 GET remains exactly the existing DTO and behavior.
+     * No implicit page request is made while selecting a Category.
      */
-    fun loadSelectedListings(): PageCompletion {
-        data class Request(val category: PublicCategory, val source: CustomerCategorySource,
-                           val signal: CancellationSignal)
+    fun loadSelectedListings(): PageCompletion = loadListingsPage(pageSize = null, continued = false)
+
+    /** Explicitly switch the current, user-chosen Category to the opt-in
+     * 1..25-row keyset API. Old Category/worker mocks retain their legacy read.
+     * No page can be obtained for an unchosen Category or inferred search hit.
+     */
+    fun startSelectedListingPages(pageSize: Int = 20): PageCompletion {
+        require(pageSize in 1..25) { "Invalid public Listing page size" }
+        return loadListingsPage(pageSize, continued = false)
+    }
+
+    /** One explicit next-page request. A stale, hidden/deleted cursor, a
+     * duplicate across pages, a worker mutation, TTL expiry or navigation
+     * invalidation NEVER silently refetches or retains a mixed snapshot.
+     */
+    fun nextSelectedListingPage(): PageCompletion =
+        loadListingsPage(pageSize = null, continued = true)
+
+    private fun loadListingsPage(pageSize: Int?, continued: Boolean): PageCompletion {
+        data class Request(
+            val category: PublicCategory,
+            val source: CustomerCategorySource,
+            val signal: CancellationSignal,
+            val limit: Int?,
+            val after: String?,
+            val previous: CustomerSelectionState.Ready?,
+        )
+
+        // A legacy CatalogRepository does not need to implement paging.
+        // Never fall back to its unpaged first 25 rows for a next-page call.
+        val pages = catalog as? PublicListingPageRepository
+        if ((continued || pageSize != null) && pages == null) return PageCompletion.BLOCKED
         var deferred = false
         val request = synchronized(lock) {
             if (closed) return@synchronized null
@@ -673,49 +706,86 @@ class HeadlessCatalogPaginationScope(
             val source = selectedSource ?: return@synchronized null
             if (selectionState is CustomerSelectionState.Loading)
                 return@synchronized null
-            val page = when (source) {
+            val sourcePage = when (source) {
                 CustomerCategorySource.BROWSE -> browse.state
                 CustomerCategorySource.SEARCH -> search.state
             }
-            if (page !is PageState.Ready) {
+            if (sourcePage !is PageState.Ready) {
                 resetSelectionLocked(refresh = true)
                 return@synchronized null
             }
+            val previous = if (continued) {
+                (selectionState as? CustomerSelectionState.Ready)
+                    ?.takeIf { it.pageSize != null && it.nextCursor != null &&
+                        it.pageCount < 20 && it.category == category && it.source == source }
+                    ?: return@synchronized null
+            } else null
+            val limit = previous?.pageSize ?: pageSize
+            val after = previous?.nextCursor
+            // Only server-returned public IDs are ever sent as cursors.
+            // Verify the complete request before changing customer state.
+            if (limit != null) JodloRoutes.publicListingPage(category.id, limit, after)
             val signal = CancellationSignal()
             listingsSignal?.cancel()
             listingsSignal = signal
             selectionState = CustomerSelectionState.Loading(category, source)
-            Request(category, source, signal)
+            Request(category, source, signal, limit, after, previous)
         } ?: return if (deferred) PageCompletion.DEFERRED else synchronized(lock) {
             if (closed) PageCompletion.DISCARDED else PageCompletion.BLOCKED
         }
-        val result = if (request.signal.isCancelled)
-            ApiOutcome.Failed(FailureKind.BAD_RESPONSE, false)
-        else try {
-            catalog.listings(request.category.id)
-        } catch (_: Exception) {
-            ApiOutcome.Failed(FailureKind.BAD_RESPONSE, false)
-        }
+
+        val result: ApiOutcome<PublicListingPage> =
+            if (request.signal.isCancelled)
+                ApiOutcome.Failed(FailureKind.BAD_RESPONSE, false)
+            else try {
+                if (request.limit == null) when (val plain = catalog.listings(request.category.id)) {
+                    is ApiOutcome.Failed -> plain
+                    is ApiOutcome.Ok -> ApiOutcome.Ok(PublicListingPage(plain.value, null))
+                }
+                else requireNotNull(pages).pageListings(
+                    request.category.id, request.limit, request.after)
+            } catch (_: Exception) {
+                ApiOutcome.Failed(FailureKind.BAD_RESPONSE, false)
+            }
+
         return synchronized(lock) {
             if (!closed) reconcileLocked()
             if (closed || listingsSignal !== request.signal ||
                 request.signal.isCancelled || marker.writeInFlight ||
-                selectedCategory != request.category || selectedSource != request.source) {
+                selectedCategory != request.category || selectedSource != request.source)
                 return@synchronized PageCompletion.DISCARDED
-            }
             selectionState = when (result) {
                 is ApiOutcome.Failed -> CustomerSelectionState.Error(
                     request.category, request.source, result.kind)
                 is ApiOutcome.Ok -> {
-                    // Existing strict repository/decoder also validates this.
-                    // Defend the headless coordination layer against fakes.
-                    val rows = result.value
-                    if (rows.size > 25 || rows.any { it.categoryId != request.category.id } ||
-                        rows.map { it.id }.distinct().size != rows.size) {
-                        CustomerSelectionState.Error(
-                            request.category, request.source, FailureKind.BAD_RESPONSE)
+                    val page = result.value
+                    val rows = page.listings
+                    val limit = request.limit ?: 25
+                    val earlier = request.previous?.listings.orEmpty()
+                    val combined = earlier + rows
+                    // Even a trusted injected fake must respect the current
+                    // server's minimal, bounded, per-Category response shape.
+                    val valid = rows.size <= limit &&
+                        rows.all { it.categoryId == request.category.id } &&
+                        combined.map { it.id }.distinct().size == combined.size &&
+                        (page.nextCursor == null ||
+                            (request.limit != null && rows.size == limit &&
+                                rows.last().id == page.nextCursor &&
+                                page.nextCursor != request.after))
+                    if (!valid) CustomerSelectionState.Error(
+                        request.category, request.source, FailureKind.BAD_RESPONSE)
+                    else if (request.previous != null && rows.isEmpty()) {
+                        // Backend deliberately yields empty/null when a once
+                        // public cursor became hidden, disabled or deleted.
+                        // Do not retain an earlier page with stale visibility.
+                        resetSelectionLocked(refresh = true)
+                        CustomerSelectionState.RefreshRequired
                     } else CustomerSelectionState.Ready(
-                        request.category, request.source, rows.toList())
+                        request.category, request.source, combined.toList(),
+                        pageSize = request.limit,
+                        nextCursor = page.nextCursor,
+                        pageCount = (request.previous?.pageCount ?: 0) + 1,
+                    )
                 }
             }
             listingsSignal = null
