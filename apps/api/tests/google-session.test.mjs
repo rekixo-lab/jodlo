@@ -65,6 +65,27 @@ test("Google sign-in binds stable subject exactly once and returns random one-ho
   } finally { db.close(); }
 });
 
+test("logout accepts truly byte-empty HTTP streams and rejects nonempty bodies",async()=>{
+  const {db,env,fakeGoogle}=fixture();
+  try {
+    const one=(await (await postLogin(env,fakeGoogle)).json()).data.accessToken;
+    const two=(await (await postLogin(env,fakeGoogle)).json()).data.accessToken;
+    const noBytes=()=>new ReadableStream({start(controller){controller.close();}});
+    const send=(endpoint,token,body)=>worker.fetch(new Request(origin+"/api/v1/auth/"+endpoint,{
+      method:"POST",headers:{Authorization:"Bearer "+token},
+      body,duplex:"half",
+    }),env);
+    assert.equal((await send("logout",one," ")).status,400);
+    assert.ok(await findSessionAccount(env.DB,one));
+    assert.equal((await send("logout",one,noBytes())).status,200);
+    assert.equal(await findSessionAccount(env.DB,one),null);
+    assert.ok(await findSessionAccount(env.DB,two));
+    assert.equal((await send("logout-all",two,"x")).status,400);
+    assert.equal((await send("logout-all",two,noBytes())).status,200);
+    assert.equal(await findSessionAccount(env.DB,two),null);
+  }finally{db.close();}
+});
+
 test("two simultaneous first Google logins link to one stable account without orphan rows", async()=>{
   const {db,env,fakeGoogle}=fixture();
   try {
