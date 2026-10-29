@@ -13,6 +13,10 @@ enum class WorkerVisibility {
     NOT_VISIBLE,
     /** The API returns at most 100 rows; absence proves nothing about a write. */
     NOT_IN_FIRST_100,
+    /** No match in the deliberately scanned page(s). Even a terminal keyset
+     * page is NOT proof of absence: other devices may change rows mid-scan.
+     */
+    NOT_OBSERVED_IN_PAGED_SCAN,
 }
 
 sealed class WorkerWriteState {
@@ -32,6 +36,12 @@ sealed class WorkerWriteState {
         val networkKind: FailureKind? = null,
         val observation: WorkerVisibility? = null,
         val readFailure: SessionFailure? = null,
+        /** Private, opaque continuation for an explicit read-only scan.
+         * This is never a public Customer cursor or a worker identity.
+         */
+        val pagedNextCursor: String? = null,
+        val pagedPagesChecked: Int = 0,
+        val pagedScanComplete: Boolean = false,
     ) : WorkerWriteState()
     data class Rechecking(val prior: NeedsReview) : WorkerWriteState()
 }
@@ -150,29 +160,56 @@ class HeadlessWorkerWriteScope(private val session: InMemorySessionCoordinator) 
         }
     }
 
-    /** One read-only, authenticated check; never calls publish/unpublish.
-     * An observation is NOT a write acknowledgement. Rechecking may be repeated
-     * manually after offline failures; the first 100 owned rows are a limit.
+    /** Explicit one-page read-only uncertainty recheck.
+     *
+     * Legacy recheckOwnListings() intentionally keeps its first-100 API for
+     * older fake WorkerRepository clients. This opt-in path consumes exactly
+     * ONE 25-row owner page per user invocation, so a listing in the 889th
+     * approved Category can be inspected without auto-fetching 36 pages.
+     * A match is only an observation, never write confirmation; nonmatches
+     * after ANY number of keyset pages never prove the write did not commit.
      */
-    fun recheckOwnListings(): WorkerWriteCompletion {
-        val captured = synchronized(lock) {
+    fun recheckOwnListingsPage(): WorkerWriteCompletion = recheck(paged = true)
+
+    /** Old single-GET diagnostic, still bounded to first 100 owner rows. */
+    fun recheckOwnListings(): WorkerWriteCompletion = recheck(paged = false)
+
+    private data class ReviewRows(val listings: List<OwnListing>, val nextCursor: String?)
+    private data class ReviewTicket(val signal: CancellationSignal, val after: String?)
+
+    /** Exactly one authenticated GET per explicit call. Never replay POST or
+     * DELETE. The same single-flight + session-epoch gate owns both modes.
+     */
+    private fun recheck(paged: Boolean): WorkerWriteCompletion {
+        val ticket = synchronized(lock) {
             checkSessionLocked()
             if (closed) return@synchronized null
             val review = state as? WorkerWriteState.NeedsReview ?: return@synchronized null
-            CancellationSignal().also {
-                signal = it
+            ReviewTicket(CancellationSignal(), if (paged) review.pagedNextCursor else null).also {
+                signal = it.signal
                 state = WorkerWriteState.Rechecking(review)
             }
         } ?: return synchronized(lock) {
             if (closed) WorkerWriteCompletion.DISCARDED else WorkerWriteCompletion.BLOCKED
         }
+        val captured = ticket.signal
 
-        val reply: SessionResult<List<OwnListing>> = try {
+        val reply: SessionResult<ReviewRows> = try {
             if (captured.isCancelled) SessionResult.Failed(SessionFailure.CANCELLED)
-            else session.myListings(captured)
+            else if (paged) {
+                when (val page = session.pageMyListings(25, ticket.after, captured)) {
+                    is SessionResult.Success ->
+                        SessionResult.Success(ReviewRows(page.value.listings, page.value.nextCursor))
+                    is SessionResult.Failed -> page
+                }
+            } else when (val old = session.myListings(captured)) {
+                is SessionResult.Success -> SessionResult.Success(ReviewRows(old.value, null))
+                is SessionResult.Failed -> old
+            }
         } catch (_: Exception) {
             SessionResult.Failed(SessionFailure.REMOTE_FAILURE, FailureKind.BAD_RESPONSE)
         }
+
         return synchronized(lock) {
             checkSessionLocked()
             val checking = state as? WorkerWriteState.Rechecking
@@ -184,19 +221,47 @@ class HeadlessWorkerWriteScope(private val session: InMemorySessionCoordinator) 
                     is SessionResult.Success -> {
                         val match = when (val action = prior.action) {
                             is WorkerWriteAction.Publish ->
-                                reply.value.firstOrNull { it.categoryId == action.confirmedCategoryId }
+                                reply.value.listings.firstOrNull {
+                                    it.categoryId == action.confirmedCategoryId
+                                }
                             is WorkerWriteAction.Unpublish ->
-                                reply.value.firstOrNull { it.id == action.listingId }
+                                reply.value.listings.firstOrNull { it.id == action.listingId }
                         }
-                        val observation = when {
-                            match == null -> WorkerVisibility.NOT_IN_FIRST_100
-                            match.visible -> WorkerVisibility.VISIBLE
-                            else -> WorkerVisibility.NOT_VISIBLE
+                        if (paged && prior.pagedNextCursor != null &&
+                            reply.value.listings.isEmpty()) {
+                            // A deleted/inactive/foreign keyset anchor can return
+                            // an empty terminal reply. Do not treat that as a
+                            // completed scan; restart explicitly from page one.
+                            prior.copy(observation = null,
+                                readFailure = SessionFailure.STALE_RESULT,
+                                pagedNextCursor = null, pagedPagesChecked = 0,
+                                pagedScanComplete = false)
+                        } else {
+                            val observation = when {
+                                match == null -> if (paged)
+                                    WorkerVisibility.NOT_OBSERVED_IN_PAGED_SCAN
+                                else WorkerVisibility.NOT_IN_FIRST_100
+                                match.visible -> WorkerVisibility.VISIBLE
+                                else -> WorkerVisibility.NOT_VISIBLE
+                            }
+                            prior.copy(
+                                observation = observation, readFailure = null,
+                                pagedNextCursor = if (paged && match == null)
+                                    reply.value.nextCursor else null,
+                                pagedPagesChecked = if (paged)
+                                    (if (prior.pagedNextCursor == null) 1
+                                     else prior.pagedPagesChecked + 1) else 0,
+                                pagedScanComplete = paged &&
+                                    (match != null || reply.value.nextCursor == null),
+                            )
                         }
-                        prior.copy(observation = observation, readFailure = null)
                     }
                     is SessionResult.Failed ->
-                        prior.copy(readFailure = reply.reason, observation = null)
+                        prior.copy(readFailure = reply.reason, observation = null,
+                            pagedNextCursor = if (paged) ticket.after else null,
+                            pagedPagesChecked = if (paged && ticket.after != null)
+                                prior.pagedPagesChecked else 0,
+                            pagedScanComplete = false)
                 }
                 signal = null
                 WorkerWriteCompletion.APPLIED
