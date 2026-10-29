@@ -37,3 +37,24 @@ The correction intake is deliberately **not** imported by the Worker, Kotlin/And
 Review resources: [all Service evidence](JODLO_LEGACY_7267_SERVICE_REVIEW_2026-10-28.md), [45 original Category reviewer packets](JODLO_CATEGORY_HUMAN_REVIEW_PACKETS_2026-10-28.md), [Category ID/name correction intake](JODLO_ALL_CATEGORY_CORRECTION_EVIDENCE_2026-10-29.md) and [exception diagnostic register](JODLO_FULL_CATALOG_EXCEPTION_REGISTER_2026-10-29.md).
 
 **Further independent gate (not implemented here):** if human reviewers submit corrections across several packets, jointly reconcile new-proposal vs new-proposal phrase overlaps and review every ambiguous parent before any future separately authorized Search alias import. This local validator reports collisions against original catalog phrases and within a packet; it does not assert that all 45 future submitted edits were approved or conflict-free.
+
+## 2026-10-29 — Full 45-packet proposed Service name collision reconciliation
+
+Single-packet Service correction validation cannot see an **identical new English/Hindi phrase proposed in ANOTHER packet for a different trade**. Added a source-locked **all-45-packet** reconciliation step, keeping every original Category and Service in the original packet order.
+
+```bash
+mkdir -p .local-category-review/services
+for n in $(seq 1 45); do
+  number=$(printf "%02d" "$n")
+  node scripts/catalog-service-correction-evidence.mjs --packet="$n" > ".local-category-review/services/service-packet-$number.json"
+done
+# Make reviewed editorial proposals to relevant Service rows; preserve other rows.
+npm run catalog:service-reconcile -- --directory=.local-category-review/services
+npm run catalog:service-reconcile -- --check
+npm run reference:check
+npm test
+```
+
+The directory must contain **exactly** `service-packet-01.json` through `service-packet-45.json`. No symlinks, outside-repository paths, missing or out-of-order packets, forged approval or >1 MB packet files. The validator checks the previous strict source fingerprints and bilingual syntax for each packet, then groups **new proposed phrases** by language and NFKC/case-normalized exact string. It reports unresolved phrase conflicts if a proposal overlaps an old *different* parent Category, another proposal in the **same** packet, or another proposal in a **different** packet. Multiple source-Category parents remain visible for explicit human disambiguation; **collisions are reported, never silently fixed, approved or auto-selected**. Same-Category duplicate Service names are not cross-trade collisions. English and Hindi are kept separate.
+
+The JSON summary retains 889 original Categories, 7,267 Services, 45 validated packets and zero human/founder authentication, approved aliases, activated Services, SQL or Category activation. An edited name is a **proposed label**, not a certified synonym, safety rule or final public Catalog mapping. Editors may use the output to resolve actual ambiguity with qualified occupational, legal and Hindi/English reviewers under M-005. No new runtime API, D1 seed, UI or Cloudflare deployment. Founder M-003/M-004/M-005/M-007/M-008 gates unchanged.
