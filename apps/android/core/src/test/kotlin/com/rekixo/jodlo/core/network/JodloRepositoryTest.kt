@@ -298,5 +298,99 @@ fun main() {
     // Cursor Search must never auto-publish a selected Category.
     check(seen.count { it.method == HttpMethod.POST && it.resource == "/api/v1/me/listings" } == 1)
 
+
+    // The previous WorkerRepository.myListings() remains an unpaged legacy
+    // contract. The optional owner page interface does not break fake workers.
+    val ownedIds = (0 until 889).map { i ->
+        "00000000-0000-4000-8000-" + i.toString().padStart(12,'0')
+    }
+    val ownedCalls=mutableListOf<ApiCall>()
+    val ownPages: OwnListingPageRepository = RemoteWorkerRepository(RequestSender { call ->
+        ownedCalls.add(call)
+        check(call.method==HttpMethod.GET)
+        check(call.resource.startsWith("/api/v1/me/listings?limit=25"))
+        check(call.headers()["Authorization"]=="Bearer $TOKEN")
+        check(!call.resource.contains("token") && call.bodyUtf8()==null)
+        val raw=call.resource.substringAfter("&after=", "")
+        val after=if(raw.isBlank())null else java.net.URLDecoder.decode(raw,"UTF-8")
+        val start=if(after==null) 0 else {
+            val previous=ownedIds.indexOf(after)
+            if(previous<0)ownedIds.size else previous+1
+        }
+        val end=minOf(start+25,ownedIds.size)
+        val rows=(start until end).joinToString(",") { i ->
+            val id=ownedIds[i]
+            val category="work-" + i.toString().padStart(4,'0')
+            val visible=i%2==0
+            """{"id":"$id","categoryId":"$category","visible":$visible}"""
+        }
+        val next=if(end<ownedIds.size) "\"" + ownedIds[end-1] + "\"" else "null"
+        ok("""{"listings":[$rows],"nextCursor":$next}""")
+    })
+    val allOwned=mutableListOf<OwnListing>()
+    var ownerAfter:String?=null
+    do {
+        val previousCalls=ownedCalls.size
+        val response=ownPages.pageMyListings(TOKEN,limit=25,after=ownerAfter)
+        check(ownedCalls.size==previousCalls+1) // No hidden prefetch/retry.
+        check(response is ApiOutcome.Ok)
+        val page=response.value
+        check(page.listings.size in 1..25)
+        allOwned.addAll(page.listings)
+        ownerAfter=page.nextCursor
+        check(ownedCalls.size<=36)
+    } while(ownerAfter!=null)
+    check(ownedCalls.size==36)
+    check(allOwned.size==889 && allOwned.map{it.id}.toSet().size==889)
+    check(allOwned.first()==OwnListing(ownedIds.first(),"work-0000",true))
+    check(allOwned.last()==OwnListing(ownedIds.last(),"work-0888",true))
+    check(allOwned[1]==OwnListing(ownedIds[1],"work-0001",false))
+    check(!allOwned.toString().contains(TOKEN))
+    check(!allOwned.toString().contains("ownerAccountId"))
+    check(seen.count{it.method==HttpMethod.POST && it.resource=="/api/v1/me/listings"}==1)
+
+    val ownerBadResponses=listOf(
+        """{"listings":[],"nextCursor":"$LISTING_ID"}""",
+        """{"listings":[{"id":"$LISTING_ID","categoryId":"carpenter","visible":true}],"nextCursor":"$LISTING_ID"}""",
+        """{"listings":[{"id":"$LISTING_ID","categoryId":"carpenter","visible":true}],"nextCursor":"22222222-2222-4222-8222-222222222222"}""",
+        """{"listings":[{"id":"$LISTING_ID","categoryId":"carpenter","visible":true}],"nextCursor":null,"workerAccountId":"secret"}""",
+        """{"listings":[{"id":"$LISTING_ID","categoryId":"carpenter","visible":true}],"nextOffset":1}""",
+    )
+    for ((index,payload) in ownerBadResponses.withIndex()) {
+        val badRepo: OwnListingPageRepository=RemoteWorkerRepository(RequestSender { ok(payload) })
+        val offset=if(index==1) LISTING_ID else null
+        check(badRepo.pageMyListings(TOKEN,limit=1,after=offset)==bad()) {
+            "Unsafe owner page accepted: $index"
+        }
+    }
+    val repeatedAnchor: OwnListingPageRepository=RemoteWorkerRepository(RequestSender {
+        ok("""{"listings":[{"id":"$LISTING_ID","categoryId":"carpenter","visible":false}],"nextCursor":null}""")
+    })
+    check(repeatedAnchor.pageMyListings(TOKEN,limit=1,after=LISTING_ID)==bad())
+    var validationCalls=0
+    val invalidOwner: OwnListingPageRepository=RemoteWorkerRepository(RequestSender {
+        validationCalls++
+        ok("""{"listings":[],"nextCursor":null}""")
+    })
+    requireRejected("owner page cannot exceed 25") {
+        invalidOwner.pageMyListings(TOKEN,limit=26)
+    }
+    requireRejected("owner page cursor may not contain paths") {
+        invalidOwner.pageMyListings(TOKEN,after="../private")
+    }
+    requireRejected("owner page bearer must be valid") {
+        invalidOwner.pageMyListings("bad")
+    }
+    check(validationCalls==0)
+    val offlineOwner:OwnListingPageRepository=RemoteWorkerRepository(RequestSender {
+        throw IOException("PRIVATE_OWNER_NETWORK_SECRET")
+    })
+    check(offlineOwner.pageMyListings(TOKEN)==bad(FailureKind.OFFLINE_OR_TIMEOUT))
+    val deniedOwner:OwnListingPageRepository=RemoteWorkerRepository(RequestSender {
+        TransportReply(401,
+            """{"ok":false,"error":{"code":"UNAUTHORIZED","message":"private"}}""")
+    })
+    check(deniedOwner.pageMyListings(TOKEN)==bad(FailureKind.UNAUTHORIZED))
+
     println("JODLO repositories: typed browse/search, explicit worker publishing, mismatched response rejection and no auto-retry and public Listing pagination OK")
 }
