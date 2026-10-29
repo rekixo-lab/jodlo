@@ -188,8 +188,9 @@ object HeadlessWorkerDashboardMapper {
         else null
         val ownerSessionFailure = if (own == WorkerListingsPhase.ERROR)
             (ownSource as? ReadState.SessionError)?.reason else null
-        val pageInfo = if (ownsMayDisplay && ownerPage?.page is ReadState.Ready)
-            ownerPage.page.value else null
+        val pageInfo = if (ownsMayDisplay)
+            (ownerPage?.page as? ReadState.Ready<OwnerListingPageView>)?.value
+        else null
         val nextPage = own == WorkerListingsPhase.LISTINGS &&
             pageInfo?.nextCursor != null
         val actions = buildSet {
