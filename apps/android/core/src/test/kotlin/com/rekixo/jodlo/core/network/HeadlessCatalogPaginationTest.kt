@@ -19,10 +19,19 @@ private fun <T> finished(task: FutureTask<T>): T = task.get(5, TimeUnit.SECONDS)
 private fun reached(latch: CountDownLatch) =
     check(latch.await(5, TimeUnit.SECONDS)) { "Fake HTTP request never started" }
 
-private class PagingFakeCatalog : CatalogRepository {
+private class PagingFakeCatalog : CatalogRepository, CatalogSearchCursorRepository {
     val browseCalls = CopyOnWriteArrayList<String?>()
     data class SearchCall(val query: String, val choice: Boolean, val offset: Int)
     val searchCalls = CopyOnWriteArrayList<SearchCall>()
+    data class CursorCall(val query: String, val availableOnly: Boolean,
+                          val limit: Int, val after: String?)
+    val cursorCalls = CopyOnWriteArrayList<CursorCall>()
+    var cursorReply: (String, Language, Boolean, Int, String?) ->
+        ApiOutcome<CatalogSearchCursorPage> = { q, lang, _, _, after ->
+            ApiOutcome.Ok(CatalogSearchCursorPage(lang,q,
+                if(after==null) listOf(ONE,TWO) else listOf(THREE),
+                if(after==null) "2:carpenter" else null))
+        }
     var browseReply: (String?, Language, Int) -> ApiOutcome<CatalogBrowse> =
         { after, lang, _ -> ApiOutcome.Ok(CatalogBrowse(lang,
             if (after == null) listOf(ONE, TWO) else listOf(THREE),
@@ -44,6 +53,11 @@ private class PagingFakeCatalog : CatalogRepository {
                         offset: Int): ApiOutcome<CatalogSearch> {
         searchCalls.add(SearchCall(query, includeChoices, offset))
         return searchReply(query, language, includeChoices, limit, offset)
+    }
+    override fun searchCursor(query: String, language: Language, availableOnly: Boolean,
+                              limit: Int, after: String?): ApiOutcome<CatalogSearchCursorPage> {
+        cursorCalls.add(CursorCall(query,availableOnly,limit,after))
+        return cursorReply(query,language,availableOnly,limit,after)
     }
     override fun listings(categoryId: String): ApiOutcome<List<PublicListing>> =
         error("No listing GET in a Category pagination test")
@@ -288,6 +302,136 @@ private fun testBadInputDoesNotReplaceValidPageAndNoUnsupportedOffset() {
     check(scope.nextSearch()==PageCompletion.BLOCKED)
 }
 
+
+private fun testAll889CursorSearchAndLegacyIsolation() {
+    val fake=PagingFakeCatalog()
+    val clock=AtomicLong(0)
+    val all=(0 until 889).map {i->
+        val id="cat-"+i.toString().padStart(4,'0')
+        PublicCategory(id,id,"काम $i")
+    }
+    val positions=all.mapIndexed { i,c -> "${i/3}:${c.id}" }
+    fake.cursorReply={q,lang,available,limit,after->
+        check(q=="सेवा" && lang==Language.HI && available && limit==25)
+        val start=if(after==null) 0 else positions.indexOf(after)+1
+        check(start in 0..889 && (after==null||start>0))
+        val rows=all.drop(start).take(limit)
+        val next=if(start+rows.size<all.size) positions[start+rows.size-1] else null
+        ApiOutcome.Ok(CatalogSearchCursorPage(lang,q,rows,next))
+    }
+    val scope=HeadlessCatalogPaginationScope(fake,
+        session(PagingFakeWorker(),clock),{clock.get()},1_000)
+    check(scope.startCursorSearch(" सेवा ",Language.HI,availableOnly=true,pageSize=25)==
+        PageCompletion.APPLIED)
+    check(scope.snapshot().intent.search?.cursorMode==true)
+    check(scope.nextSearch()==PageCompletion.BLOCKED)
+    repeat(35){check(scope.nextCursorSearch()==PageCompletion.APPLIED)}
+    val ready=scope.snapshot().search as PageState.Ready
+    check(ready.searchCursorMode && !ready.needsChoice && ready.nextOffset==null)
+    check(ready.categories.size==889 && ready.categories.map{it.id}.distinct().size==889)
+    check(ready.categories.first().id=="cat-0000"&&ready.categories.last().id=="cat-0888")
+    check(ready.nextCursor==null && ready.pageCount==36)
+    check(fake.cursorCalls.size==36 && fake.searchCalls.isEmpty())
+    check(scope.nextCursorSearch()==PageCompletion.BLOCKED)
+    check(scope.selectCategory(CustomerCategorySource.SEARCH,"cat-0888")==PageCompletion.APPLIED)
+    check(scope.snapshot().selection is CustomerSelectionState.Chosen)
+    check(scope.showSearch()==PageCompletion.APPLIED)
+    check(scope.startSearch("प्लंबर",Language.HI,pageSize=2)==PageCompletion.APPLIED)
+    check((scope.snapshot().search as PageState.Ready).searchCursorMode==false)
+    check(scope.nextCursorSearch()==PageCompletion.BLOCKED)
+    check(fake.searchCalls.single().offset==0)
+}
+
+private fun testCursorSearchTamperFallbackRetryAndRestore() {
+    val fake=PagingFakeCatalog()
+    val clock=AtomicLong()
+    val scope=HeadlessCatalogPaginationScope(fake,
+        session(PagingFakeWorker(),clock),{clock.get()},1_000)
+    val old:CatalogRepository=object:CatalogRepository by fake {}
+    val legacy=HeadlessCatalogPaginationScope(old,
+        session(PagingFakeWorker(),clock),{clock.get()})
+    check(legacy.startSearch("प्लंबर",Language.HI,pageSize=2)==PageCompletion.APPLIED)
+    check(legacy.startCursorSearch("सेवा",Language.HI)==PageCompletion.BLOCKED)
+    check((legacy.snapshot().search as PageState.Ready).query=="प्लंबर")
+    check(scope.startCursorSearch("सेवा",Language.HI,pageSize=2)==PageCompletion.APPLIED)
+    check(runCatching{scope.startCursorSearch("x",Language.HI)}.isFailure)
+    check((scope.snapshot().search as PageState.Ready).query=="सेवा")
+    fake.cursorReply={q,lang,_,_,after->
+        ApiOutcome.Ok(CatalogSearchCursorPage(lang,q,
+            if(after==null) listOf(ONE,TWO) else listOf(TWO,THREE),
+            if(after==null) "2:carpenter" else null))
+    }
+    check(scope.startCursorSearch("सेवा",Language.HI,pageSize=2)==PageCompletion.APPLIED)
+    check(scope.nextCursorSearch()==PageCompletion.DISCARDED)
+    check(scope.snapshot().search==PageState.RefreshRequired)
+    for(page in listOf(
+        CatalogSearchCursorPage(Language.EN,"सेवा",listOf(ONE),null),
+        CatalogSearchCursorPage(Language.HI,"गलत",listOf(ONE),null),
+        CatalogSearchCursorPage(Language.HI,"सेवा",listOf(ONE,ONE),null),
+        CatalogSearchCursorPage(Language.HI,"सेवा",listOf(ONE),"3:carpenter"),
+        CatalogSearchCursorPage(Language.HI,"सेवा",listOf(ONE),"3:plumber"),
+    )){
+        fake.cursorReply={_,_,_,_,_->ApiOutcome.Ok(page)}
+        check(scope.startCursorSearch("सेवा",Language.HI,pageSize=2)==PageCompletion.APPLIED)
+        check(scope.snapshot().search==PageState.Error(FailureKind.BAD_RESPONSE))
+    }
+    fake.cursorReply={q,lang,_,_,_->
+        ApiOutcome.Ok(CatalogSearchCursorPage(lang,q,listOf(ONE),null))
+    }
+    val oldCalls=fake.searchCalls.size
+    check(scope.retrySearch()==PageCompletion.APPLIED)
+    check(fake.searchCalls.size==oldCalls)
+    check((scope.snapshot().search as PageState.Ready).searchCursorMode)
+    val intent=scope.captureRevisitIntent()!!
+    check(intent.search?.cursorMode==true)
+    val fresh=HeadlessCatalogPaginationScope(fake,
+        session(PagingFakeWorker(),clock),{clock.get()},1_000)
+    val before=fake.cursorCalls.size
+    check(fresh.restoreRevisitIntent(intent)==PageCompletion.APPLIED)
+    check(fake.cursorCalls.size==before)
+    check(fresh.retrySearch()==PageCompletion.APPLIED)
+    check(fake.cursorCalls.last().after==null)
+    clock.set(1_000)
+    check(fresh.snapshot().search==PageState.RefreshRequired)
+    check(fresh.nextCursorSearch()==PageCompletion.BLOCKED)
+}
+
+private fun testCursorSearchWorkerBarrierAndSlowReply() {
+    val clock=AtomicLong()
+    val worker=PagingFakeWorker()
+    val coordinator=signedIn(worker,clock)
+    val fake=PagingFakeCatalog()
+    val scope=HeadlessCatalogPaginationScope(fake,coordinator,{clock.get()})
+    check(scope.startCursorSearch("सेवा",Language.HI,pageSize=2)==PageCompletion.APPLIED)
+    val began=CountDownLatch(1)
+    val finish=CountDownLatch(1)
+    worker.writeStarted={began.countDown();check(finish.await(5,TimeUnit.SECONDS))}
+    val writing=threaded{coordinator.publishExplicitCategory("plumber")}
+    try{
+        reached(began)
+        check(scope.snapshot().search==PageState.RefreshRequired)
+        check(scope.nextCursorSearch()==PageCompletion.DEFERRED)
+        check(scope.startCursorSearch("सेवा",Language.HI,pageSize=2)==PageCompletion.DEFERRED)
+    }finally{finish.countDown()}
+    check(finished(writing) is SessionResult.Success)
+    check(scope.retrySearch()==PageCompletion.APPLIED)
+    // Another Search wins before the old network response is delivered.
+    val slowStart=CountDownLatch(1)
+    val slowFinish=CountDownLatch(1)
+    fake.cursorReply={q,lang,_,_,_->
+        slowStart.countDown()
+        check(slowFinish.await(5,TimeUnit.SECONDS))
+        ApiOutcome.Ok(CatalogSearchCursorPage(lang,q,listOf(ONE),null))
+    }
+    val slow=threaded{scope.startCursorSearch("old search",Language.EN)}
+    try{
+        reached(slowStart)
+        check(scope.startSearch("प्लंबर",Language.HI,pageSize=2)==PageCompletion.APPLIED)
+    }finally{slowFinish.countDown()}
+    check(finished(slow)==PageCompletion.DISCARDED)
+    check((scope.snapshot().search as PageState.Ready).query=="प्लंबर")
+}
+
 fun main() {
     testCursorAppendWithDistinctIDsAndNoHiddenGET()
     testOffsetAppendAndFirstPageOnlyChoices()
@@ -297,5 +441,8 @@ fun main() {
     testWorkerWriteDefersNewPageAndDiscardsOld()
     testManualRefreshAndCloseRejectLateContinuation()
     testBadInputDoesNotReplaceValidPageAndNoUnsupportedOffset()
+    testAll889CursorSearchAndLegacyIsolation()
+    testCursorSearchTamperFallbackRetryAndRestore()
+    testCursorSearchWorkerBarrierAndSlowReply()
     println("JODLO pagination: cursor/offset isolation, duplicate fail-close, TTL and worker write safety OK")
 }

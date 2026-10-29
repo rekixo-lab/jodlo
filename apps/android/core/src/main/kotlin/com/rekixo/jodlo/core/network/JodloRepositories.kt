@@ -56,7 +56,7 @@ interface WorkerRepository {
  * Match the server's SQLite (sort_order, id) keyset ordering using only the
  * nonpersonal public cursor; a stale/backward anchor is not a valid page.
  */
-private fun browseCursorAdvances(after: String?, next: String): Boolean {
+internal fun browseCursorAdvances(after: String?, next: String): Boolean {
     if (after == null) return true
     val previousOrder = after.substringBefore(':').toInt()
     val nextOrder = next.substringBefore(':').toInt()
