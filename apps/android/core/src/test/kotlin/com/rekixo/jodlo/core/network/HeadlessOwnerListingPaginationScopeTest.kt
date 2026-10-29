@@ -247,7 +247,8 @@ private fun test401ExpiryAndInvalidRepliesFailClosed() {
     check(scope.snapshot().page is ReadState.Ready)
     bad=true
     check(scope.start(1)==PageCompletion.APPLIED)
-    check(scope.snapshot().page==ReadState.ApiError(FailureKind.BAD_RESPONSE))
+    check(scope.snapshot().page==ReadState.SessionError(
+        SessionFailure.REMOTE_FAILURE,FailureKind.BAD_RESPONSE))
     bad=false
     check(scope.start(1)==PageCompletion.APPLIED)
     clock.set(1_000)
