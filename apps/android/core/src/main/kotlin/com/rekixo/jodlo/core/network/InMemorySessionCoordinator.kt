@@ -57,6 +57,13 @@ class InMemorySessionCoordinator(
     private var writesOnWire: Int = 0
     private val googleBackend = BackendGoogleSessionExchange(authSender)
 
+    /** Non-secret optional contract capability, not an authorization check.
+     * Legacy WorkerRepository fakes cannot run the paged diagnostic, so a
+     * headless Dashboard should not advertise its action hint to them.
+     */
+    internal fun supportsOwnerListingPages(): Boolean =
+        workers is OwnListingPageRepository
+
     private fun forget() {
         generation += 1
         active = null
