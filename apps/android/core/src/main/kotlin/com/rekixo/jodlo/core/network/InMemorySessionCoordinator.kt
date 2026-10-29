@@ -304,6 +304,30 @@ class InMemorySessionCoordinator(
         update = { reply, _ -> outcome(reply) }
     )
 
+    /** Optional PRIVATE listing pagination behind the existing session gate.
+     * The old WorkerRepository contract remains unchanged; only workers with
+     * the opt-in paging interface can read this route. No bearer escapes.
+     * Concurrent local worker writes block this read; a result overtaken by
+     * logout, replacement, expiry or a write cannot be accepted.
+     */
+    fun pageMyListings(
+        limit: Int = 20, after: String? = null,
+        cancellation: CancellationSignal? = null,
+    ): SessionResult<OwnListingPage> {
+        require(limit in 1..25) { "Invalid private page size" }
+        if (after != null) JodloRoutes.requireListingId(after)
+        val pages = workers as? OwnListingPageRepository
+            ?: return SessionResult.Failed(
+                SessionFailure.REMOTE_FAILURE, FailureKind.SERVICE_UNAVAILABLE,
+            )
+        return withSession(
+            call = { pages.pageMyListings(it, limit, after) },
+            update = { reply, _ -> outcome(reply) },
+            consistentRead = true,
+            cancellation = cancellation,
+        )
+    }
+
     /** The Category ID must have been explicitly confirmed outside this
      * layer. Server-side active-Category and worker checks remain authoritative.
      */
