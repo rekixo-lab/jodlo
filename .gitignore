@@ -26,3 +26,5 @@ apps/android/local.properties
 .jodlo-service-reconcile-test-*/
 
 .jodlo-scope-test-*/
+
+.jodlo-unified-review-test-*/
