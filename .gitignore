@@ -28,3 +28,5 @@ apps/android/local.properties
 .jodlo-scope-test-*/
 
 .jodlo-unified-review-test-*/
+
+.jodlo-review-progress-test-*/
