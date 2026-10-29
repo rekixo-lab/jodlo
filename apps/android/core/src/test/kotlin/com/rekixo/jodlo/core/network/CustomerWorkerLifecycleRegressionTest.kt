@@ -412,6 +412,17 @@ private fun dashboardRefusesPrivatePagesFromDifferentLiveSession() {
     check(denied.ownedListings.isEmpty() && denied.ownerPageNumber==null)
     check(right.worker.pageCalls.get()==1 && left.worker.pageCalls.get()==0)
     repeat(4) {check(wrong.snapshot()==denied)}
+    // The same isolation must cover legacy private reads and uncertain writes,
+    // not only the optional owner page. Both accounts still report DRAFT.
+    right.worker.visible=true
+    check(right.reads.ownListings()==ReadCompletion.APPLIED)
+    check(right.reads.workerSnapshot().ownListings is ReadState.Ready)
+    check(HeadlessWorkerDashboardPresentation(
+        left.session,right.reads,left.writes).snapshot()==denied)
+    check(HeadlessWorkerDashboardPresentation(
+        left.session,left.reads,right.writes).snapshot()==denied)
+    check(HeadlessWorkerDashboardPresentation(
+        left.session,right.reads,right.writes,foreignPage).snapshot()==denied)
     val valid=left.owner()
     check(valid.start(2)==PageCompletion.APPLIED)
     check(left.pagedDashboard(valid).snapshot().owned==WorkerListingsPhase.LISTINGS)
