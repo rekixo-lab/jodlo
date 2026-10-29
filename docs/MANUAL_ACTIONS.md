@@ -211,3 +211,7 @@ This cross-packet syntax check is safe local-first engineering. It does not turn
 ### 2026-10-29 — Full Service evidence accessible for all 889 Categories; no new manual access action
 
 All **7,267** original Service leaves are now prepared for inspection within the same **45** Category review packets, not truncated to three examples. This is automatable source/phrase consistency work, not an expert or founder signoff; M-005 human language, occupational/legal, final mapping and first contact/moderation decisions are still needed before real Categories are activated. M-003 area privacy, M-004 design, M-007 production and M-008 live Google OAuth stay unchanged. **No GitHub/cloud/merchant/Google credentials are required for this check.**
+
+### 2026-10-29 — Unified all-Category exception register (no new account action)
+
+Existing all-work 889/7,267 full source review now yields a single offline diagnostic exception register. Historic safety tiers and first-17 desk notes are **not** certified risk classifications. The other 872 Categories must still undergo qualified review, including Categories with no mechanical issues. Founder M-005 broad coverage remains DONE; exact regulated-work eligibility/exclusions, final trade mapping, human Hindi-English quality, contact/report/moderation and independent authorized activation remain NEEDS_DECISION_NOW only at their actual approval boundary. M-003/M-004/M-007/M-008 unchanged. No Cloudflare, GitHub secrets, device keys or payment onboarding needed for offline work.
