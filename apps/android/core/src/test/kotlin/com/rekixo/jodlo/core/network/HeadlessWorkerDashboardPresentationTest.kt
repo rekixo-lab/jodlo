@@ -366,10 +366,12 @@ private fun optInPagedDashboardShowsExplicitActionsAndCurrentPageOnly() {
     check(session.optIn()==SessionResult.Success(WorkerState.DRAFT))
     val initial=dashboard.snapshot()
     check(initial.profile==WorkerProfilePhase.DRAFT)
-    check(initial.owned==WorkerListingsPhase.IDLE)
+    // This page scope predates login and opt-in. Its private write revision
+    // changed, so it correctly requires a fresh first page, not cached data.
+    check(initial.owned==WorkerListingsPhase.REFRESH_REQUIRED)
     check(initial.ownedListings.isEmpty() && initial.ownerPageNumber==null)
     check(initial.actions==setOf(
-        WorkerDashboardAction.CHECK_PROFILE,WorkerDashboardAction.START_OWNER_PAGE))
+        WorkerDashboardAction.CHECK_PROFILE,WorkerDashboardAction.REFRESH_OWNER_PAGE))
     check(requested.get()==0 && legacyRequests.get()==0 && profileRequests.get()==1)
 
     // An unrelated old read must never be mixed into paged dashboard DTOs.
