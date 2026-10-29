@@ -205,7 +205,12 @@ INSERT INTO auth_sessions(token_hash,account_id,expires_at) VALUES
     localTokens.newWorker)).data.listings, [{ ...published, visible: true }]);
   assert.deepEqual((await authenticated("/api/v1/me/listings", "GET",
     localTokens.first)).data.listings, [{ ...visible[0], visible: true }]);
+  // Owner-only results intentionally include the hidden same-Category
+  // fixture; it must never appear in public reads or act as a public cursor.
   const secondOwnerListings = [{
+    id: "33333333-3333-4333-8333-333333333333",
+    categoryId: "synthetic-fixture-active", visible: false,
+  }, {
     id: "22222222-2222-4222-8222-222222222222",
     categoryId: "synthetic-fixture-hidden", visible: false,
   }];
