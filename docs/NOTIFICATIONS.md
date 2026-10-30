@@ -1,21 +1,20 @@
-# JODLO notification delivery core — local-only, provider-neutral
+# JODLO — Cloudflare-first notification delivery foundation
 
-**As of 2026-10-30:** real source exists at apps/api/src/modules/notifications/delivery.ts. This is a new Cloudflare Queue-compatible processing engine, **not** Finworkar/Firebase code and **not** a deployed notification integration. No FCM binding, device token, live Queue, HTTP notification route, user-visible notification or enabled event type exists.
+**2026-10-30: locally implemented, NOT a live push feature.** JODLO is an original, lean, separate product, not a Finworkar/Firebase port. No external Cloudflare Queue, production D1, FCM, registered device tokens, approved event policy, real send, UI or remote deploy exists.
 
-## Actual source behavior
+## Source that actually runs
 
-deliverNotificationMessage accepts a Queue-like message with body, real delivery attempts, ack() and retry(). Body has exactly six fields: kind (notification_delivery_v1), server-owned opaque eventId and recipientAccountId, machine-only eventType, createdAtMs and expiresAtMs (maximum 24h). **No free-form message content, device token, address, phone, GPS or monetary fields** are allowed. Malformed, extra-field and expired messages are discarded without invoking any provider.
+- `apps/api/src/modules/notifications/delivery.ts` — generic Cloudflare Queue-shaped `ack/retry` processor. Exactly six minimal machine fields in each event, no content, phone, location or device token; checks fresh trusted recipient/consent/event/destination permission on **every attempt**, absolute provider call limit 5s, 24h event maximum, up to five attempts with bounded delay. Requires dead-letter acknowledgement for permanent or exhausted messages. Not connected to a consumer.
+- `infra/migrations/0005_notification_delivery_receipts.sql` — versioned, locally applied D1-compatible SQLite table storing **only opaque event ID, claim/completed state, claim token, lease expiry and completion time**. No recipient ID, personal profile, Google subject, payment, message body, device token or real Category seed. Event-ID retention/deletion, if this ever goes live, remains a future privacy and operations decision.
+- `apps/api/src/modules/notifications/d1-receipts.ts` — real D1 receipt adapter using a *single prepared SQLite UPSERT* to claim a new or expired event; fresh random UUID claim token; 15-second lease. A competing active lease blocks sending, a completed event remains completed, and a crashed claimant's expired lease can be reclaimed.
+- **Fencing:** the delivery processor now passes the returned claim token to both completion and release. SQL completion requires the exact token **and** an unexpired lease, while release deletes only a matching token. A former worker cannot mark a stolen lease complete or delete its replacement. A stolen/expired completion fails, is never acknowledged as delivered, and may require retry.
 
-Every attempt checks four **fresh server-trusted facts**: active recipient, granted consent, founder-approved event type and approved destination. All must be strictly true; revoked permission fails closed without retry, but unavailable policy source retries. No event kind or delivery channel is approved by this module itself.
+## Evidence and boundaries
 
-Injected NotificationReceiptStore.acquire must be **atomic and durable**, returning acquired, busy or completed. A completed event is never resent; a busy claim is retried. Only provider acceptance followed by successful markCompleted is acknowledged. Provider results are accepted/transient/permanent; its call has an absolute 5-second deadline. Retry delays grow 5–300 seconds. After five attempts, or permanent refusal, a **durable dead-letter record** must succeed before the message can be acknowledged. The dead-letter record contains only an event ID and enum reason.
+The existing eleven generic delivery tests now use the **actual migrated D1 receipt adapter** over disposable local SQLite instead of duplicating a fake receipt engine. Eight additional tests exercise migration shape, two independent file-backed SQLite connections, simultaneous claims, lease expiry and takeover, stale-worker fencing, completion persistence across new connections, restricted event isolation, bad input and a live delivery-processor stale-completion scenario. The local backup/restore test additionally asserts persisted completion survives an independent restored database file.
 
-**No exactly-once guarantee:** a push provider may have accepted a request when its response or receipt write times out. Later redelivery can emit a duplicate. An accepted provider response is not evidence a phone received a push.
+**At-least-once only:** D1 leases prevent two simultaneously active holders under the tested database semantics, but cannot guarantee exactly-once external push delivery. A provider may accept while the acknowledgement is lost or while a lease expires. A completed record means *provider accepted plus D1 receipt committed*, **not** delivery to the phone. A pending dead-letter store failure remains a retry, never a false acknowledgement.
 
-## Actual verification and missing integration
+**Still missing before any real notification:** founder-approved event types and recipient preferences/consent and deletion/retention (M-003/M-005), durable dead-letter store, Queue producer/consumer/bindings and local Queue runtime test, FCM provider and Android registration/permission handling (M-006/M-004), device delivery and operational checks, M-007 controlled production approval. This module is **not connected to `src/index.ts`**, so no push can be emitted.
 
-Eleven tests at apps/api/tests/notification-delivery-core.test.mjs exercise the TypeScript module, real disposable in-process SQLite unique receipt claims, fake Queue messages, fake provider, consent rejection, replays, concurrent claims, transient/permanent failures, expiration, deadlines and dead-letter outages. No remote or live provider calls, user records or Cloudflare resources.
-
-**Still not implemented:** actual durable D1 receipt/lease schema, Cloudflare Queue producer/consumer binding, FCM SDK provider, registration-token lifecycle, notification preference and retention model, recipient/event approval (M-003/M-005/M-006), real dead-letter storage, metrics and Android device permission/delivery integration. Nothing is wired to a live API or trigger.
-
-M-004 UI, M-007 production deployment, M-008 real OAuth, unreviewed 889-Category activation and all Finworkar repositories remain untouched.
+No location/area schema, unreviewed 889 Category activation, customer contact API, real Google OAuth, visual UI, production deploy or Finworkar modification.
