@@ -111,3 +111,7 @@ Active `accounts` implicitly have customer capability; optional `worker_profiles
 ## Notifications module source boundary (2026-10-30)
 
 Actual apps/api/src/modules/notifications/delivery.ts is a **provider-neutral Queue-compatible processing engine**, not a wired live notification. Trusted backend must supply current consent, event policy and recipient/destination status plus an atomic durable receipt store and dead-letter adapter. Only a disposable single-process SQLite receipt adapter and fake Queue/provider exist in Node tests; no Cloudflare Queue bindings, D1 migration or live FCM provider. Provider acceptance is not device delivery; exactly-once is not guaranteed. See docs/NOTIFICATIONS.md. Do not copy the Finworkar Firebase/FCM flow.
+
+## Notification D1 lease adapter implemented locally (2026-10-30)
+
+The earlier injectable `NotificationReceiptStore` now has a real D1 implementation in `notifications/d1-receipts.ts` backed by local migration 0005. Each successful acquisition returns a unique fencing token, which completion/release must present; expiry recovery uses one atomic SQL UPSERT and completed records remain immutable. The delivery processor consumes the new token-safe interface. The generic tests run the actual D1 adapter and separate-handle SQLite tests verify old worker claim fencing. This does **not** connect any Cloudflare Queue trigger, FCM provider, approved recipient preferences, event types, dead-letter store, consent collection or live API. See `docs/NOTIFICATIONS.md`; never bring Finworkar/Firebase code into JODLO.
