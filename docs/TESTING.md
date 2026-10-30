@@ -318,3 +318,14 @@ The checker is a **narrow static tripwire**, not a shell/YAML interpreter or a c
 The root `package-lock.json` is a committed npm v3 workspace lockfile for the root package and `apps/api`. The no-dependency `npm run lock:check` validates manifest-dependency spec alignment, root/workspace identity and link, and that each registry dependency has a pinned version, registry resolution URL and recorded SRI integrity. `npm test` has fixture tests for missing/stale locks, altered dependency spec, broken workspace and missing/untrusted integrity metadata.
 
 GitHub Actions now runs `npm run lock:check` and then **`npm ci --no-audit --no-fund`**, not `npm install`, before tests, local D1/workerd runs and Wrangler dry-run builds. `npm ci` fails if package manifests and lockfile diverge, and verifies actual downloaded package integrity. Recreate the lockfile only as a reviewed dependency change, then validate on a clean CI runner. This improves reproducibility of npm dependencies, not Android runtime/device behavior, package vulnerability posture, security of dependencies, or live Cloudflare behavior. Actual independent PR/main CI evidence must be checked.
+
+## Locked-dependency npm registry security audit (2026-10-30)
+
+After `npm run lock:check` and clean `npm ci --no-audit --no-fund`, the existing GitHub PR/main no-deployment workflow runs **two separate advisory queries**:
+
+- `npm run audit:prod`: `npm audit --omit=dev --audit-level=moderate`, blocks moderate or worse findings in production dependency graph.
+- `npm run audit:all`: `npm audit --audit-level=high`, blocks high or critical findings in the entire locked dependency graph (including development tooling).
+
+A transient branch-only read-only scan on 2026-10-30 reported zero npm advisories in both scopes. This result is not a security warranty or a forecast. Registry/network outages and missing audit data must fail the required CI commands; do **not** use `--offline`, `|| true`, suppressed statuses or broad automatic fixes. Audit packages/reachability and remediation in explicit reviewed dependency/lockfile PRs, then rerun exact clean PR and main checks.
+
+The dependency-free `npm run audit:policy-check` statically checks the mandated npm scripts, their severity thresholds and their order after `npm ci` and before Node tests. It runs before install and has positive/negative Node fixture tests via `npm test`; it is a tripwire rather than a YAML interpreter. npm audit covers published package advisories in the locked npm graph, **not** malicious unreported packages, code/runtime vulnerabilities, Kotlin/Gradle dependencies, Android device security, Cloudflare WAF, privileged third-party Actions or a complete release security audit. The whole project is still local-first and not approved for staging/production.
