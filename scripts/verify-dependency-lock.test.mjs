@@ -21,8 +21,8 @@ function baseline() {
     name: manifest.name, version: manifest.version, lockfileVersion: 3,
     packages: {
       "": { name: manifest.name, version: manifest.version,
-        workspaces: ["apps/api"], dependencies: manifest.dependencies,
-        devDependencies: manifest.devDependencies },
+        workspaces: ["apps/api"], dependencies: { ...manifest.dependencies },
+        devDependencies: { ...manifest.devDependencies } },
       "apps/api": { name: workspace.name, version: workspace.version },
       "node_modules/@jodlo/api": { resolved: "apps/api", link: true },
       "node_modules/jose": external("jose"),
