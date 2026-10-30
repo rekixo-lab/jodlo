@@ -89,7 +89,7 @@ export async function auditFounderGates(root = rootDefault) {
       // this narrow allowlist from becoming a backdoor for personal identifiers.
       const match=content.match(/CREATE\s+TABLE\s+notification_delivery_receipts\s*\(([\s\S]*?)\)\s*;/i);
       const fields=match===null?[]:[...match[1].matchAll(
-        /^\s*([a-z][a-z0-9_]*)\s+(?:TEXT|INTEGER|REAL|BLOB)\b/gim,
+        /(?:^|[,(])\s*([a-z][a-z0-9_]*)\s+(?:TEXT|INTEGER|REAL|BLOB)\b/gim,
       )].map(m=>m[1].toLowerCase());
       if(fields.join(",")!==RECEIPT_FIELDS.join(",") ||
          !/\bCHECK\s*\(/i.test(content) ||
