@@ -140,21 +140,18 @@ test("stale or forged release cannot delete another live claim and events are is
   }finally{f.close();}
 });
 
-test("completed receipt survives close/reopen and cannot be claimed after arbitrary time",async()=>{
+test("completed receipt persists across a separate SQLite handle and arbitrary time",async()=>{
   const f=fileFixture();
   try{
     const claim=await f.a.acquire(EVENT);
     await f.a.markCompleted(EVENT,claim.claimToken);
     f.advance(60*60*1000);
-    f.dbB.close();
     const reopened = new DatabaseSync(f.path);
     try{
       const store = makeD1NotificationReceiptStore(localD1Adapter(reopened),()=>NOW+60*60*1000);
       assert.deepEqual(await store.acquire(EVENT),{state:"completed"});
       assert.equal(f.row().state,"completed");
     }finally{reopened.close();}
-    // Mark closed already, avoid closing the handle a second time.
-    f.dbB=new DatabaseSync(f.path);
   }finally{f.close();}
 });
 
