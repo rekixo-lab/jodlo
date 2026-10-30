@@ -28,6 +28,10 @@ jobs:
         run: npm run lock:check
       - name: Clean install exactly locked dependencies (no deployment)
         run: npm ci --no-audit --no-fund
+      - name: Audit locked production dependencies (moderate or higher blocks CI)
+        run: npm run audit:prod
+      - name: Audit all locked dependencies (high or critical blocks CI)
+        run: npm run audit:all
       - name: Node API and design-guard fixture tests
         run: npm test
       - name: Apply catalog D1 migrations locally (no remote resources)
