@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { hasEmptyBody, readGoogleLoginBody, readServiceListingBody } from "../src/http/body.ts";
+import { hasEmptyBody, readGoogleLoginBody, readServiceListingBody, readBodyChunkUntil, BODY_READ_DEADLINE_MS } from "../src/http/body.ts";
 
 const origin = "https://jodlo.rekixo.com/api/v1/me/listings";
 const utf8 = new TextEncoder();
@@ -80,4 +80,55 @@ test("oversized JSON never waits indefinitely for an uncooperative stream cancel
   } finally {
     clearTimeout(timer);
   }
+});
+
+
+function stalledRequest(prefix, cancel = () => new Promise(() => {})) {
+  let pushed = false;
+  const body = new ReadableStream({
+    pull(controller) {
+      if (!pushed && prefix !== null) {
+        pushed = true;
+        controller.enqueue(prefix);
+      }
+      // Never deliver a terminal chunk, even when the caller cancels.
+      return new Promise(() => {});
+    },
+    cancel,
+  });
+  return new Request(origin, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body, duplex: "half",
+  });
+}
+
+test("body reader has a total deadline even when no new chunk ever arrives", async () => {
+  const stream = new ReadableStream({pull() { return new Promise(() => {}); }});
+  const reader = stream.getReader();
+  try {
+    await assert.rejects(readBodyChunkUntil(reader, Date.now() - 1), /deadline exceeded/);
+    await assert.rejects(readBodyChunkUntil(reader, Date.now() + 35), /deadline exceeded/);
+  } finally { reader.releaseLock(); }
+});
+
+test("a peer that stops sending body bytes cannot hold auth/listing handlers forever", {
+  timeout: BODY_READ_DEADLINE_MS + 8_000,
+}, async () => {
+  const start = Date.now();
+  // Run concurrently to avoid tripling the time needed for this regression.
+  const responses = await Promise.all([
+    hasEmptyBody(stalledRequest(empty())),
+    readServiceListingBody(stalledRequest(bytes('{"categoryId":'))),
+    readGoogleLoginBody(stalledRequest(bytes('{"idToken":'))),
+  ]);
+  assert.deepEqual(responses, [false, null, null]);
+  assert.ok(Date.now() - start <= BODY_READ_DEADLINE_MS + 5_000);
+});
+
+test("normal complete requests remain accepted after adding a body deadline", async () => {
+  assert.equal(await hasEmptyBody(streamingRequest([empty()])), true);
+  assert.equal(await readServiceListingBody(
+    streamingRequest([empty(), bytes('{"categoryId":"fixture-only"}')])), "fixture-only");
+  assert.equal(await readGoogleLoginBody(
+    streamingRequest([bytes('{"idToken":"synthetic"}')])), "synthetic");
 });

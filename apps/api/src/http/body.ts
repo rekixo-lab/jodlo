@@ -3,6 +3,34 @@
  */
 const MAX_EMPTY_CHUNKS = 8;
 
+/**
+ * A hostile client can pause forever between bytes without sending any empty
+ * chunks. Bound the COMPLETE body read, not each chunk separately: a peer
+ * trickling one byte at a time must never extend the budget indefinitely.
+ * These small identity/listing JSON routes do not accept file uploads.
+ */
+export const BODY_READ_DEADLINE_MS = 10_000;
+
+export async function readBodyChunkUntil(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  deadline: number,
+): Promise<ReadableStreamReadResult<Uint8Array>> {
+  const remaining = deadline - Date.now();
+  if (!Number.isFinite(remaining) || remaining <= 0)
+    throw new Error("Request body deadline exceeded");
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      reader.read(),
+      new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(() => reject(new Error("Request body deadline exceeded")), remaining);
+      }),
+    ]);
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
+  }
+}
+
 /** Real workerd can deliver a zero-byte POST/DELETE as a readable empty stream.
  * Never confuse a stream's presence with data. Fail closed on malformed,
  * locked, unreadable, or repeatedly empty streams.
@@ -13,14 +41,17 @@ export async function hasEmptyBody(request: Request): Promise<boolean> {
   try {
     reader = request.body.getReader();
     let emptyChunks = 0;
+    const deadline = Date.now() + BODY_READ_DEADLINE_MS;
     while (true) {
-      const { done, value } = await reader.read();
+      const { done, value } = await readBodyChunkUntil(reader, deadline);
       if (done) return true;
       if (!value || value.byteLength > 0 || ++emptyChunks > MAX_EMPTY_CHUNKS) {
         return false;
       }
     }
   } catch {
+    // Never await hostile cancel() implementations; returning the error is bounded.
+    if (reader) void reader.cancel().catch(() => {});
     return false;
   } finally {
     reader?.releaseLock();
@@ -52,10 +83,11 @@ async function readBoundedObject(request: Request, maxBytes: number):
   const chunks: Uint8Array[] = [];
   let size = 0;
   let emptyChunks = 0;
+  const deadline = Date.now() + BODY_READ_DEADLINE_MS;
   try {
     reader = request.body.getReader();
     while (true) {
-      const { done, value } = await reader.read();
+      const { done, value } = await readBodyChunkUntil(reader, deadline);
       if (done) break;
       if (!value) return null;
       if (value.byteLength === 0) {
@@ -79,6 +111,7 @@ async function readBoundedObject(request: Request, maxBytes: number):
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
     return parsed as Record<string, unknown>;
   } catch {
+    if (reader) void reader.cancel().catch(() => {});
     return null;
   } finally {
     reader?.releaseLock();
