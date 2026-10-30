@@ -55,7 +55,9 @@
     "catalog:review-triage": "node scripts/catalog-review-triage.mjs",
     "catalog:review-progress": "node scripts/catalog-human-review-progress.mjs",
     "catalog:review-evidence-audit": "node scripts/catalog-human-review-evidence-audit.mjs",
-    "lock:check": "node scripts/verify-dependency-lock.mjs"
+    "lock:check": "node scripts/verify-dependency-lock.mjs",
+    "audit:prod": "npm audit --omit=dev --audit-level=moderate",
+    "audit:all": "npm audit --audit-level=high"
   },
   "devDependencies": {
     "typescript": "~5.8.3",
