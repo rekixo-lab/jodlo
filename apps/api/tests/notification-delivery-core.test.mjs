@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { DatabaseSync } from "node:sqlite";
+import { openLocalDatabase } from "./helpers/local-db.mjs";
+import { makeD1NotificationReceiptStore } from "../src/modules/notifications/d1-receipts.ts";
 import {
   deliverNotificationMessage, MAX_NOTIFICATION_ATTEMPTS,
   notificationRetryDelaySeconds, NOTIFICATION_PROVIDER_TIMEOUT_MS,
@@ -23,10 +24,9 @@ function queue(body=job,attempts=1) {
   };
 }
 function fixture(options={}) {
-  // This is a disposable, actual SQLite atomic receipt ledger for TESTS ONLY.
-  // No new production migration or identity/PII data is authorized here.
-  const db=new DatabaseSync(":memory:");
-  db.exec("CREATE TABLE receipts(event_id TEXT PRIMARY KEY, status TEXT NOT NULL)");
+  // Exercise the ACTUAL D1 receipt adapter over disposable migrated SQLite.
+  // No Queue producer, real FCM or remote Cloudflare resource.
+  const {db,adapter}=openLocalDatabase();
   let sends=0,checks=0;
   const dead=[];
   let currentEligibility=()=>{
@@ -35,20 +35,7 @@ function fixture(options={}) {
   };
   const deps={
     async eligibility(event){checks++;return currentEligibility(event);},
-    receipts:{
-      async acquire(id){
-        const inserted=db.prepare("INSERT OR IGNORE INTO receipts VALUES(?,'claimed')").run(id);
-        if(inserted.changes===1)return "acquired";
-        const state=db.prepare("SELECT status FROM receipts WHERE event_id=?").get(id);
-        return state.status==="completed"?"completed":"busy";
-      },
-      async markCompleted(id){
-        db.prepare("UPDATE receipts SET status='completed' WHERE event_id=?").run(id);
-      },
-      async release(id){
-        db.prepare("DELETE FROM receipts WHERE event_id=? AND status='claimed'").run(id);
-      },
-    },
+    receipts:makeD1NotificationReceiptStore(adapter,()=>NOW),
     provider:{
       async send(event){sends++;return options.send?options.send(event):"accepted";},
     },
@@ -59,7 +46,7 @@ function fixture(options={}) {
   return {db,deps,dead, get sends(){return sends;},
     get checks(){return checks;},
     setEligibility(fn){currentEligibility=fn;},
-    rows(){return db.prepare("SELECT event_id AS id, status FROM receipts ORDER BY event_id")
+    rows(){return db.prepare("SELECT event_id AS id, state AS status FROM notification_delivery_receipts ORDER BY event_id")
       .all().map(row=>({...row}));},
   };
 }

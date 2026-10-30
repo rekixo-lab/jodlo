@@ -43,10 +43,16 @@ export interface NotificationProvider {
  * A lost acknowledgement after a provider accepted still permits a duplicate;
  * exactly-once external effects are NOT promised by this contract.
  */
+export type NotificationReceiptClaim =
+  | Readonly<{ state: "acquired"; claimToken: string }>
+  | Readonly<{ state: "completed" | "busy" }>;
+
 export interface NotificationReceiptStore {
-  acquire(eventId: string): Promise<"acquired" | "completed" | "busy">;
-  markCompleted(eventId: string): Promise<void>;
-  release(eventId: string): Promise<void>;
+  /** Each acquisition returns a NEW opaque fencing token owned by this attempt. */
+  acquire(eventId: string): Promise<NotificationReceiptClaim>;
+  /** Old/expired claims must NOT complete or release a newer worker's claim. */
+  markCompleted(eventId: string, claimToken: string): Promise<void>;
+  release(eventId: string, claimToken: string): Promise<void>;
 }
 
 /** A durable dead-letter audit must complete before an exhausted message is
@@ -167,36 +173,37 @@ export async function deliverNotificationMessage(
     return retry();
   }
 
-  let acquired = false;
+  let claimToken: string | null = null;
   try {
-    const state = await deps.receipts.acquire(job.eventId);
-    if (state === "completed") {
+    const claim = await deps.receipts.acquire(job.eventId);
+    if (claim.state === "completed") {
       message.ack();
       return "duplicate";
     }
-    if (state !== "acquired") return retry();
-    acquired = true;
+    if (claim.state !== "acquired") return retry();
+    if (!validOpaqueId(claim.claimToken)) return retry();
+    claimToken = claim.claimToken;
 
     // Provider call is bounded; if it times out, the external side effect
     // remains uncertain and the retry/idempotency store is essential.
     const delivered = await withDeadline(deps.provider.send(job), providerTimeoutMs);
     if (delivered === "accepted") {
-      await deps.receipts.markCompleted(job.eventId);
-      acquired = false;
+      await deps.receipts.markCompleted(job.eventId, claimToken);
+      claimToken = null;
       message.ack();
       return "delivered";
     }
     if (delivered === "permanent") {
-      await deps.receipts.release(job.eventId);
-      acquired = false;
+      await deps.receipts.release(job.eventId, claimToken);
+      claimToken = null;
       return fail("PERMANENT_FAILURE");
     }
     // Unknown provider replies are never treated as success.
   } catch {
     // Deliberately sanitized: never return provider/recipient details.
   }
-  if (acquired) {
-    try { await deps.receipts.release(job.eventId); } catch { /* retry fails closed */ }
+  if (claimToken !== null) {
+    try { await deps.receipts.release(job.eventId, claimToken); } catch { /* retry fails closed */ }
   }
   return retry();
 }

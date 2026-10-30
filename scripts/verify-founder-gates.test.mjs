@@ -21,6 +21,10 @@ function baseline() {
     "infra/migrations/0004_worker_service_listings.sql":"CREATE TABLE worker_listings (id TEXT);",
     "infra/migrations/0003_google_identity_sessions.sql":
       "CREATE TABLE google_identities (id TEXT); CREATE TABLE auth_sessions (id TEXT);",
+    "infra/migrations/0005_notification_delivery_receipts.sql":
+      "CREATE TABLE notification_delivery_receipts (event_id TEXT, state TEXT, " +
+      "claim_token TEXT, lease_until_ms INTEGER, completed_at_ms INTEGER, " +
+      "CHECK(state IN ('claimed','completed')));",
     "docs/decisions/0008-hindi-english-only.md":"Hinglish is NOT a supported language",
     ".github/workflows/checks.yml":"run: npm run build:api",
     "package.json":JSON.stringify({scripts:{"build:api":"wrangler deploy --dry-run --config apps/api/wrangler.jsonc"}}),
@@ -43,7 +47,7 @@ test("approved routes, tables, draft state and languages pass",async()=>{
   const result=await fixture();
   assert.deepEqual(result.errors,[]);
   assert.equal(result.routes.length,9);
-  assert.equal(result.tables.length,6);
+  assert.equal(result.tables.length,7);
 });
 test("unapproved workers, requests, area and listing routes fail",async()=>{
   for(const p of ["/api/v1/workers","/api/v1/requests","/api/v1/areas","/api/v1/contact"]){
@@ -144,4 +148,32 @@ test("symlinked workflow files are rejected rather than inspected through a link
 test("actual source tree passes narrow founder gate audit",async()=>{
   const result=await auditFounderGates();
   assert.deepEqual(result.errors,[],result.errors.join("\n"));
+});
+
+test("notification receipt permission never admits recipient, push token, contact or rogue migration",async()=>{
+  for(const extra of [
+    "recipient_account_id TEXT", "device_token TEXT", "phone TEXT",
+    "location TEXT", "message_body TEXT",
+  ]) {
+    const result=await fixture(files=>{
+      files["infra/migrations/0005_notification_delivery_receipts.sql"]=
+        files["infra/migrations/0005_notification_delivery_receipts.sql"]
+          .replace("completed_at_ms INTEGER,",
+            "completed_at_ms INTEGER, "+extra+",");
+    });
+    assert.match(result.errors.join("\n"),
+      /Notification receipt migration must keep only five bounded machine fields/,extra);
+  }
+  const altered=await fixture(files=>{
+    files["infra/migrations/0005_notification_delivery_receipts.sql"]+=
+      "\nALTER TABLE notification_delivery_receipts ADD COLUMN payload TEXT;";
+  });
+  assert.match(altered.errors.join("\n"),
+    /Notification receipt migration must keep only five bounded machine fields/);
+  const moved=await fixture(files=>{
+    files["infra/migrations/0006_rogue.sql"]=
+      "CREATE TABLE notification_delivery_receipts (event_id TEXT);";
+  });
+  assert.match(moved.errors.join("\n"),
+    /Notification receipt table must use its reviewed migration/);
 });
