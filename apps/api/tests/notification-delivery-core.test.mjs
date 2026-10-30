@@ -59,7 +59,8 @@ function fixture(options={}) {
   return {db,deps,dead, get sends(){return sends;},
     get checks(){return checks;},
     setEligibility(fn){currentEligibility=fn;},
-    rows(){return db.prepare("SELECT event_id AS id, status FROM receipts ORDER BY event_id").all();},
+    rows(){return db.prepare("SELECT event_id AS id, status FROM receipts ORDER BY event_id")
+      .all().map(row=>({...row}));},
   };
 }
 
