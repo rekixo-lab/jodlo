@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { auditFounderGates } from "./verify-founder-gates.mjs";
@@ -106,6 +106,41 @@ test("Android locale resources allow hi/en and disallow third language",async()=
   });
   assert.match(out.errors.join(" "),/Unsupported Android locale: values-fr/);
 });
+
+test("every added .yml and .yaml GitHub workflow is audited, not only checks.yml",async()=>{
+  const wrong=await fixture(f=>{
+    f[".github/workflows/another.yml"]=
+      "name: unexpected\nsteps:\n  - run: npx wrangler deploy --config apps/api/wrangler.jsonc\n";
+    f[".github/workflows/provision.yaml"]=
+      "name: remote\nsteps:\n  - run: wrangler d1 migrations apply database --remote\n";
+  });
+  assert.match(wrong.errors.join("\n"),/CI workflow another.yml: remote Wrangler deployment/);
+  assert.match(wrong.errors.join("\n"),/CI workflow provision.yaml: remote infrastructure/);
+  const safe=await fixture(f=>{
+    f[".github/workflows/local.yaml"]=
+      "name: local checks\nsteps:\n  - run: npx wrangler deploy --dry-run --config apps/api/wrangler.jsonc\n";
+  });
+  assert.deepEqual(safe.errors,[]);
+});
+test("a dry-run earlier on the same shell line cannot hide a later real deploy",async()=>{
+  const bad=await fixture(f=>{
+    f[".github/workflows/checks.yml"]=
+      "run: wrangler deploy --dry-run && wrangler deploy --env production\n";
+    f["package.json"]=JSON.stringify({scripts:{
+      "mixed":"wrangler deploy --dry-run; wrangler deploy --env production",
+    }});
+  });
+  assert.match(bad.errors.join("\n"),/CI workflow checks.yml: remote Wrangler deployment/);
+  assert.match(bad.errors.join("\n"),/npm script mixed: remote Wrangler deployment/);
+});
+test("symlinked workflow files are rejected rather than inspected through a link",async()=>{
+  const result=await fixture(null,async root=>{
+    await symlink(join(root,"package.json"),join(root,".github/workflows","hidden.yml"));
+    return auditFounderGates(root);
+  });
+  assert.match(result.errors.join("\n"),/Unsafe CI workflow entry: hidden.yml/);
+});
+
 test("actual source tree passes narrow founder gate audit",async()=>{
   const result=await auditFounderGates();
   assert.deepEqual(result.errors,[],result.errors.join("\n"));
