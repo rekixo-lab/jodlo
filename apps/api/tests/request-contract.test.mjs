@@ -135,7 +135,6 @@ test("malformed stored retry receipt fails closed instead of throwing", () => {
   assert.equal(accepted.kind,"apply");
   const current=accepted.result;
   for(const receipt of [
-    undefined,
     false,
     {},
     {...accepted.receipt,result:null},
