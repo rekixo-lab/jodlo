@@ -36,7 +36,7 @@ export async function auditNpmSecurityPolicy(root = defaultRoot) {
   if (workflow !== undefined) {
     // This workflow uses single-line run commands for these steps.
     // Exact matching rejects || true, --audit-level=critical and other bypasses.
-    const commands = [...workflow.matchAll(/^\s+run:\s*(.+?)\s*$/gm)]
+    const commands = [...workflow.matchAll(/^\s+(?:-\s*)?run:\s*(.+?)\s*$/gm)]
       .map(match => match[1].trim());
     let last = -1;
     for (const command of expectedCommands) {
