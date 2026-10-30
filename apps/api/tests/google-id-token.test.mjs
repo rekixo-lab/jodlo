@@ -62,3 +62,34 @@ test("missing required claims, invalid tokens and resolver outage fail closed", 
   assert.equal(await verifyGoogleIdToken("not.jwt", client, resolver),null);
   await assert.rejects(verifyGoogleIdToken(await token(), client, async()=>{throw Error("OFFLINE")}),/OFFLINE/);
 });
+
+
+test("OIDC authorized-party must match JODLO's sole configured client", async () => {
+  const { resolver, token } = await signer();
+  const other = "12345678901-unapproved.apps.googleusercontent.com";
+  assert.equal(await verifyGoogleIdToken(await token({ azp: client }),client,resolver),sub);
+  for(const azp of [other, "", null, 123, true, {client}]) {
+    assert.equal(await verifyGoogleIdToken(await token({ azp }),client,resolver),
+      null, "rejected azp="+JSON.stringify(azp));
+  }
+  // Omission is valid for the usual single-client Google ID token.
+  assert.equal(await verifyGoogleIdToken(await token(),client,resolver),sub);
+});
+
+test("Google OIDC multi-audience and unapproved client recipients never create a trusted subject", async () => {
+  const {resolver,token}=await signer();
+  const other="12345678901-unapproved.apps.googleusercontent.com";
+  // A one-element audience array is still a single intended client.
+  assert.equal(await verifyGoogleIdToken(await token({aud:[client]}),client,resolver),sub);
+  for(const claims of [
+    {aud:[client,other]},
+    {aud:[other,client],azp:client},
+    {aud:[client,other],azp:other},
+    {aud:[client,client],azp:client},
+    {aud:[other],azp:client},
+    {aud:other,azp:client},
+  ]) {
+    assert.equal(await verifyGoogleIdToken(await token(claims),client,resolver),
+      null,"rejected claims="+JSON.stringify(claims));
+  }
+});
