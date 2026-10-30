@@ -17,12 +17,15 @@ async function required(root, path, errors) {
 }
 function localOnlyCommands(text, label, errors) {
   for (const line of text.split("\n")) {
-    if (/\bwrangler\s+(?:deploy|publish)\b/i.test(line) && !/--dry-run\b/.test(line))
-      errors.push(label + ": remote Wrangler deployment forbidden until M-007");
-    if (/\bwrangler\s+(?:d1\s+[^\n]*--remote|pages\s+deploy|secret\s+put)\b/i.test(line) ||
-        /\bfirebase\s+deploy\b/i.test(line) ||
-        /cloudflare\/(?:wrangler|pages)-action/i.test(line))
-      errors.push(label + ": remote infrastructure forbidden until M-007");
+    // A dry-run in one command cannot authorize another deploy on the same line.
+    for (const command of line.split(/&&|\|\||[;|]/)) {
+      if (/\bwrangler\s+(?:deploy|publish)\b/i.test(command) && !/--dry-run\b/.test(command))
+        errors.push(label + ": remote Wrangler deployment forbidden until M-007");
+      if (/\bwrangler\s+(?:d1\s+[^\n]*--remote|pages\s+deploy|secret\s+put)\b/i.test(command) ||
+          /\bfirebase\s+deploy\b/i.test(command) ||
+          /cloudflare\/(?:wrangler|pages)-action/i.test(command))
+        errors.push(label + ": remote infrastructure forbidden until M-007");
+    }
   }
 }
 export async function auditFounderGates(root = rootDefault) {
@@ -78,7 +81,23 @@ export async function auditFounderGates(root = rootDefault) {
   }
   for(const table of allowedTables)
     if(!tables.includes(table)) errors.push("Expected D1 table missing: "+table);
-  if(workflow!==null) localOnlyCommands(workflow,"CI workflow",errors);
+  // GitHub can execute ANY YAML workflow here; checking checks.yml alone is not enough.
+  let workflowFiles=[];
+  try {
+    for(const entry of await readdir(join(root,".github/workflows"),{withFileTypes:true})) {
+      if(!/\.ya?ml$/i.test(entry.name))continue;
+      if(!entry.isFile()){
+        errors.push("Unsafe CI workflow entry: "+entry.name);
+        continue;
+      }
+      workflowFiles.push(entry.name);
+    }
+  } catch { errors.push("CI workflows directory unavailable"); }
+  for(const name of workflowFiles) {
+    const source=name==="checks.yml"?workflow:
+      await required(root,".github/workflows/"+name,errors);
+    if(source!==null)localOnlyCommands(source,"CI workflow "+name,errors);
+  }
   if(pkg!==null) {
     try {
       for(const [key,val] of Object.entries(JSON.parse(pkg).scripts??{}))
