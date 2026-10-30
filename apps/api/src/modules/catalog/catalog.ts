@@ -98,7 +98,8 @@ const PUBLIC_PAGE_FIELDS = PUBLIC_CATEGORY_FIELDS.trimEnd() + ", sort_order AS s
 function browsePageSql(availableOnly: boolean, hasCursor: boolean): string {
   return PUBLIC_PAGE_FIELDS + "FROM categories WHERE is_active = 1 " +
     (availableOnly ? "AND " + ELIGIBLE_LISTING_EXISTS + " " : "") +
-    (hasCursor ? "AND (sort_order > ? OR (sort_order = ? AND id > ?)) " : "") +
+    (hasCursor ? "AND " + currentAnchorSql(availableOnly,0) + " " +
+      "AND (sort_order > ? OR (sort_order = ? AND id > ?)) " : "") +
     "ORDER BY sort_order ASC, id ASC LIMIT ?";
 }
 
@@ -109,13 +110,12 @@ export async function browsePublicCategories(
   if (opts.limit === null) {
     return {categories:await listPublicCategories(db,opts.language,opts.availableOnly),nextCursor:null};
   }
-  if(opts.after && !await isCurrentPublicCategoryAnchor(db,opts.after,opts.availableOnly,[])){
-    // A stale, forged or no-longer-eligible source row cannot silently skip
-    // later public Categories. A caller can deliberately restart page ONE.
-    return {categories:[],nextCursor:null};
-  }
+  // Validate the anchor INSIDE the same SQL statement as the returned page:
+  // a category disabled between two previous independent reads cannot skip
+  // the current active result set.
   const args: (string | number)[] = [opts.language];
-  if(opts.after) args.push(opts.after.sortOrder,opts.after.sortOrder,opts.after.id);
+  if(opts.after) args.push(opts.after.id,opts.after.sortOrder,
+    opts.after.sortOrder,opts.after.sortOrder,opts.after.id);
   args.push(opts.limit + 1);
   const {results} = await db.prepare(browsePageSql(opts.availableOnly,opts.after !== null))
     .bind(...args).all<PublicCategory & {sortOrder:number}>();
@@ -197,22 +197,23 @@ const MATCH_PUBLIC_CATEGORY_TERM =
   "(instr(lower(name_en), lower(?)) > 0 " +
   "OR instr(name_hi, ?) > 0 OR instr(slug, lower(?)) > 0)";
 
-/** A plain cursor is not a credential or a trusted snapshot: confirm the exact
- * original page anchor still exists in the SAME active public result set.
- * Uses primary-key lookup, bound sort-order and optional bound search terms;
- * availability uses the unchanged server-authoritative listing policy.
+/** One SQL statement must both validate a continuation anchor and fetch the
+ * next public Category page. The earlier separate anchor SELECT permitted a
+ * time-of-check/time-of-use gap if the Category or its listing eligibility
+ * changed before the page SELECT. All IDs, ordering tuples and search terms
+ * remain SQL bind values, never interpolated into a query.
+ *
+ * This subquery uses the alias 'anchor' so the eligibility EXISTS must be
+ * scoped to anchor.id, rather than the outer candidate Category row.
  */
-async function isCurrentPublicCategoryAnchor(
-  db:D1Database,after:{sortOrder:number;id:string},
-  availableOnly:boolean,terms:readonly string[],
-):Promise<boolean> {
-  const sql="SELECT 1 AS found FROM categories WHERE id = ? AND sort_order = ? AND is_active = 1"+
-    (terms.length?" AND "+Array(terms.length).fill(MATCH_PUBLIC_CATEGORY_TERM).join(" AND "):"")+
-    (availableOnly?" AND "+ELIGIBLE_LISTING_EXISTS:"")+" LIMIT 1";
-  const {results}=await db.prepare(sql)
-    .bind(after.id,after.sortOrder,...terms.flatMap(term=>[term,term,term]))
-    .all<{found:number}>();
-  return results.length===1;
+function currentAnchorSql(availableOnly:boolean,termCount:number):string {
+  const eligibility = ELIGIBLE_LISTING_EXISTS.replace(
+    "wl.category_id=categories.id","wl.category_id=anchor.id");
+  return "EXISTS (SELECT 1 FROM categories AS anchor " +
+    "WHERE anchor.id=? AND anchor.sort_order=? AND anchor.is_active=1" +
+    (termCount ? " AND " +
+      Array(termCount).fill(MATCH_PUBLIC_CATEGORY_TERM).join(" AND ") : "") +
+    (availableOnly ? " AND " + eligibility : "") + ")";
 }
 const PUBLIC_CATEGORY_SORT_PAGE = " ORDER BY sort_order ASC, id ASC LIMIT ? OFFSET ?";
 
@@ -236,7 +237,8 @@ function searchCursorQuery(termCount:number,availableOnly:boolean,hasCursor:bool
   return PUBLIC_PAGE_FIELDS+"FROM categories WHERE is_active = 1 AND "+
     Array(termCount).fill(MATCH_PUBLIC_CATEGORY_TERM).join(" AND ")+
     (availableOnly?" AND "+ELIGIBLE_LISTING_EXISTS:"")+
-    (hasCursor?" AND (sort_order > ? OR (sort_order = ? AND id > ?))":"")+
+    (hasCursor?" AND "+currentAnchorSql(availableOnly,termCount)+
+      " AND (sort_order > ? OR (sort_order = ? AND id > ?))":"")+
     " ORDER BY sort_order ASC, id ASC LIMIT ?";
 }
 
@@ -289,9 +291,8 @@ export async function searchPublicCategories(
     if(alias.kind==="ambiguous")return {categories:[],nextCursor:null};
     const terms=intent??[opts.query];
     const values=terms.flatMap(term=>[term,term,term]);
-    if(opts.after && !await isCurrentPublicCategoryAnchor(
-      db,opts.after,opts.availableOnly,terms,
-    )) return {categories:[],nextCursor:null};
+    // For continuation, the page SQL rechecks this source Category and all
+    // search/availability terms atomically with the page itself.
     // Cursor mode cannot emit the legacy includeChoices response. When the
     // approved curated alias itself is active/available, a competing literal
     // Category match must not be presented as the user's intended trade.
@@ -310,7 +311,8 @@ export async function searchPublicCategories(
       }
     }
     const args:(string|number)[]=[opts.language,...values];
-    if(opts.after)args.push(opts.after.sortOrder,opts.after.sortOrder,opts.after.id);
+    if(opts.after)args.push(opts.after.id,opts.after.sortOrder,...values,
+      opts.after.sortOrder,opts.after.sortOrder,opts.after.id);
     args.push(opts.limit+1);
     const {results}=await db.prepare(searchCursorQuery(
       terms.length,opts.availableOnly,opts.after!==null,
