@@ -1,0 +1,22 @@
+name: Temporary JODLO npm audit discovery (no deployment)
+on:
+  push:
+    branches: [security/npm-audit-locked-deps-20261030]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Resolve exact locked packages without running audit implicitly
+        run: npm ci --no-audit --no-fund
+      - name: Read-only npm advisory queries (no deploy, no mutation)
+        run: |
+          npm audit --json --omit=dev > "$RUNNER_TEMP/audit-prod.json" || true
+          npm audit --json > "$RUNNER_TEMP/audit-all.json" || true
+          node -e 'for(const scope of ["prod","all"]){const x=JSON.parse(require("node:fs").readFileSync(process.env.RUNNER_TEMP+"/audit-"+scope+".json","utf8"));const out={scope,error:x.error?.code||null,metadata:x.metadata?.vulnerabilities||null,packages:Object.entries(x.vulnerabilities||{}).map(([name,v])=>({name,severity:v.severity,fixAvailable:v.fixAvailable,via:v.via?.filter(y=>typeof y==="object").map(y=>({name:y.name,range:y.range,url:y.url,severity:y.severity}))}))};console.log("JODLO_AUDIT_SUMMARY "+JSON.stringify(out))}'
