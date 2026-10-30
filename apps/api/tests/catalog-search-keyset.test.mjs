@@ -321,7 +321,7 @@ test("continued Search checks its live matching anchor in the same SQL as the re
     assert.match(readQueries[0],/EXISTS \(SELECT 1 FROM categories AS anchor/);
     // The cursor's Category still exists, but its prior search membership is gone.
     f.db.prepare("UPDATE categories SET name_en='Another Occupation',name_hi='अन्य कार्य',slug='renamed' WHERE id='work-0000'").run();
-    assert.deepEqual(await next(),{categories:[],nextCursor:null});
+    assert.deepEqual(await next(),{language:"en",query:"Service",categories:[],nextCursor:null});
     assert.equal(readQueries.length,1);
     f.db.prepare("UPDATE categories SET name_en='Community Service Trade 0',slug='work-0000' WHERE id='work-0000'").run();
     assert.deepEqual((await next()).categories.map(x=>x.id),["work-0001"]);
@@ -349,7 +349,7 @@ test("available-only Search cursor checks anchor listing, not the NEXT Category'
     assert.deepEqual((await follow()).categories.map(x=>x.id),["work-0004"]);
     assert.match(sql,/wl\.category_id=anchor\.id/);
     f.db.prepare("UPDATE worker_listings SET moderation_status='hidden' WHERE category_id='work-0001'").run();
-    assert.deepEqual(await follow(),{categories:[],nextCursor:null});
+    assert.deepEqual(await follow(),{language:"en",query:"Service",categories:[],nextCursor:null});
     f.db.prepare("UPDATE worker_listings SET moderation_status='allowed' WHERE category_id='work-0001'").run();
     assert.deepEqual((await follow()).categories.map(x=>x.id),["work-0004"]);
   }finally{f.db.close();}
