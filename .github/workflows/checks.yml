@@ -26,6 +26,8 @@ jobs:
         run: npm run kotlin:coverage-check
       - name: Verify npm workspace lockfile metadata before network install
         run: npm run lock:check
+      - name: Fail if required npm audit policy is weakened or bypassed
+        run: npm run audit:policy-check
       - name: Clean install exactly locked dependencies (no deployment)
         run: npm ci --no-audit --no-fund
       - name: Audit locked production dependencies (moderate or higher blocks CI)
