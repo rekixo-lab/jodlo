@@ -296,3 +296,61 @@ test("availableOnly Search cursor rejects a source whose listing loses public el
     }
   }finally{f.db.close();}
 });
+
+
+test("continued Search checks its live matching anchor in the same SQL as the returned page",async()=>{
+  const f=fixture(7);
+  try {
+    const base="q=Service&cursor=1&limit=1";
+    const first=(await get(f.adapter,base)).body.data;
+    assert.deepEqual(first.categories.map(x=>x.id),["work-0000"]);
+    const continuation=base+"&after="+encodeURIComponent(first.nextCursor);
+    let readQueries=[];
+    const observed={...f.adapter,prepare(query){
+      readQueries.push(query);
+      return f.adapter.prepare(query);
+    }};
+    async function next(){
+      readQueries=[];
+      const r=await get(observed,continuation);
+      assert.equal(r.status,200);
+      return r.body.data;
+    }
+    assert.deepEqual((await next()).categories.map(x=>x.id),["work-0001"]);
+    assert.equal(readQueries.length,1,"anchor and page must be one D1 read");
+    assert.match(readQueries[0],/EXISTS \(SELECT 1 FROM categories AS anchor/);
+    // The cursor's Category still exists, but its prior search membership is gone.
+    f.db.prepare("UPDATE categories SET name_en='Another Occupation',name_hi='अन्य कार्य',slug='renamed' WHERE id='work-0000'").run();
+    assert.deepEqual(await next(),{language:"en",query:"Service",categories:[],nextCursor:null});
+    assert.equal(readQueries.length,1);
+    f.db.prepare("UPDATE categories SET name_en='Community Service Trade 0',slug='work-0000' WHERE id='work-0000'").run();
+    assert.deepEqual((await next()).categories.map(x=>x.id),["work-0001"]);
+  }finally{f.db.close();}
+});
+
+test("available-only Search cursor checks anchor listing, not the NEXT Category's listing",async()=>{
+  const f=fixture(6);
+  try {
+    const add=(category,account,id)=>{
+      f.db.prepare("INSERT INTO accounts(id) VALUES(?)").run(account);
+      f.db.prepare("INSERT INTO worker_profiles(account_id) VALUES(?)").run(account);
+      f.db.prepare("INSERT INTO worker_listings(id,worker_account_id,category_id) VALUES(?,?,?)")
+        .run(id,account,category);
+    };
+    add("work-0001","atomic-search-owner1","11111111-1111-4111-8111-111111111111");
+    add("work-0004","atomic-search-owner4","44444444-4444-4444-8444-444444444444");
+    const base="q=Service&cursor=1&limit=1&availableOnly=1";
+    const first=(await get(f.adapter,base)).body.data;
+    assert.deepEqual(first.categories.map(x=>x.id),["work-0001"]);
+    const next=base+"&after="+encodeURIComponent(first.nextCursor);
+    let sql="";
+    const observed={...f.adapter,prepare(query){sql=query;return f.adapter.prepare(query);}};
+    const follow=async()=>(await get(observed,next)).body.data;
+    assert.deepEqual((await follow()).categories.map(x=>x.id),["work-0004"]);
+    assert.match(sql,/wl\.category_id=anchor\.id/);
+    f.db.prepare("UPDATE worker_listings SET moderation_status='hidden' WHERE category_id='work-0001'").run();
+    assert.deepEqual(await follow(),{language:"en",query:"Service",categories:[],nextCursor:null});
+    f.db.prepare("UPDATE worker_listings SET moderation_status='allowed' WHERE category_id='work-0001'").run();
+    assert.deepEqual((await follow()).categories.map(x=>x.id),["work-0004"]);
+  }finally{f.db.close();}
+});
