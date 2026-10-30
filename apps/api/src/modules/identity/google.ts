@@ -31,6 +31,13 @@ export async function verifyGoogleIdToken(
       maxTokenAge: "1h",
       requiredClaims: ["sub", "iat", "exp"],
     });
+    // jose confirms the audience CONTAINS this client, but OIDC also requires
+    // checking additional audiences and the authorized-party (azp) claim.
+    // JODLO currently trusts exactly one server OAuth client ID; don't accept
+    // a token simultaneously issued to another, unapproved client/application.
+    const solelyForClient = payload.aud === audience ||
+      (Array.isArray(payload.aud) && payload.aud.length === 1 && payload.aud[0] === audience);
+    if (!solelyForClient || (payload.azp !== undefined && payload.azp !== audience)) return null;
     if (typeof payload.sub !== "string" || !/^[0-9]{6,255}$/.test(payload.sub)) return null;
     return payload.sub;
   } catch (error) {
