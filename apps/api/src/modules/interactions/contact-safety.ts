@@ -14,6 +14,7 @@ export type ContactSafetyFacts = Readonly<{
   requesterActive: boolean;
   workerActive: boolean;
   workerOptedIn: boolean;
+  categoryActive: boolean;
   listingPublished: boolean;
   listingAvailable: boolean;
   moderationApproved: boolean;
@@ -31,7 +32,7 @@ export type ContactDecision =
     "RELATIONSHIP_BLOCKED" | "CHANNEL_NOT_APPROVED" }>;
 
 const REQUIRED_BOOLEAN_FIELDS = [
-  "requesterActive", "workerActive", "workerOptedIn", "listingPublished",
+  "requesterActive", "workerActive", "workerOptedIn", "categoryActive", "listingPublished",
   "listingAvailable", "moderationApproved", "blockedByRequester",
   "blockedByWorker", "channelApprovedByPolicy",
 ] as const;
@@ -62,7 +63,9 @@ export function decideContactSafety(facts: ContactSafetyFacts): ContactDecision 
   if (!facts.workerOptedIn || !facts.listingPublished) {
     return { allowed: false, reason: "WORKER_NOT_PUBLISHED" };
   }
-  if (!facts.listingAvailable) {
+  // A Category deactivated after a search preview must never be contactable.
+  // Re-read this server-owned status inside a future approved D1 transaction.
+  if (!facts.categoryActive || !facts.listingAvailable) {
     return { allowed: false, reason: "SERVICE_UNAVAILABLE" };
   }
   if (!facts.moderationApproved) {
