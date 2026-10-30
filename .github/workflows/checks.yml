@@ -24,8 +24,10 @@ jobs:
         run: npm run reference:check
       - name: Enforce exhaustive Kotlin JVM suite wiring (no deps)
         run: npm run kotlin:coverage-check
-      - name: Install dependencies (jose verified JWT library; no deployment)
-        run: npm install --no-audit --no-fund
+      - name: Verify npm workspace lockfile metadata before network install
+        run: npm run lock:check
+      - name: Clean install exactly locked dependencies (no deployment)
+        run: npm ci --no-audit --no-fund
       - name: Node API and design-guard fixture tests
         run: npm test
       - name: Apply catalog D1 migrations locally (no remote resources)
