@@ -193,3 +193,63 @@ test("availability-only browse refuses an anchor after its public listing is hid
     }
   }finally{f.db.close();}
 });
+
+
+test("continued browse validates Category cursor inside its one page SQL statement",async()=>{
+  const f=setup(7);
+  try {
+    const first=(await f.get("?limit=1")).json.data;
+    assert.deepEqual(first.categories.map(x=>x.id),["cat-0000"]);
+    const next="?limit=1&after="+encodeURIComponent(first.nextCursor);
+    const recorded=[];
+    const {localD1Adapter}=await import("./helpers/local-db.mjs");
+    const native=localD1Adapter(f.db);
+    const observed={...native,prepare(sql){
+      recorded.push(sql);
+      return native.prepare(sql);
+    }};
+    async function read(){
+      recorded.length=0;
+      const response=await worker.fetch(new Request(origin+path+next),{DB:observed});
+      assert.equal(response.status,200);
+      return (await response.json()).data;
+    }
+    assert.deepEqual((await read()).categories.map(x=>x.id),["cat-0001"]);
+    assert.equal(recorded.length,1,"no gap between anchor check and continued page");
+    assert.match(recorded[0],/EXISTS \(SELECT 1 FROM categories AS anchor/);
+    f.db.prepare("UPDATE categories SET is_active=0 WHERE id='cat-0000'").run();
+    assert.deepEqual(await read(),{language:"en",categories:[],nextCursor:null});
+    assert.equal(recorded.length,1);
+  }finally{f.db.close();}
+});
+
+test("available-only browse subquery rechecks SOURCE Category's public listing",async()=>{
+  const f=setup(5);
+  try{
+    const add=(id,owner,listId)=>{
+      f.db.prepare("INSERT INTO accounts(id) VALUES(?)").run(owner);
+      f.db.prepare("INSERT INTO worker_profiles(account_id) VALUES(?)").run(owner);
+      f.db.prepare("INSERT INTO worker_listings(id,worker_account_id,category_id) VALUES(?,?,?)")
+        .run(listId,owner,id);
+    };
+    add("cat-0001","atomic-anchor-owner-1","11111111-1111-4111-8111-111111111111");
+    add("cat-0004","atomic-anchor-owner-4","44444444-4444-4444-8444-444444444444");
+    const start=(await f.get("?availableOnly=1&limit=1")).json.data;
+    assert.deepEqual(start.categories.map(x=>x.id),["cat-0001"]);
+    const native=(await import("./helpers/local-db.mjs")).localD1Adapter(f.db);
+    let sql="";
+    const observed={...native,prepare(text){sql=text;return native.prepare(text);}};
+    const request="?availableOnly=1&limit=1&after="+encodeURIComponent(start.nextCursor);
+    async function next() {
+      const response=await worker.fetch(new Request(origin+path+request),{DB:observed});
+      assert.equal(response.status,200);
+      return (await response.json()).data;
+    }
+    assert.deepEqual((await next()).categories.map(x=>x.id),["cat-0004"]);
+    assert.match(sql,/wl\.category_id=anchor\.id/);
+    f.db.prepare("UPDATE worker_listings SET moderation_status='hidden' WHERE category_id='cat-0001'").run();
+    assert.deepEqual(await next(),{language:"en",categories:[],nextCursor:null});
+    f.db.prepare("UPDATE worker_listings SET moderation_status='allowed' WHERE category_id='cat-0001'").run();
+    assert.deepEqual((await next()).categories.map(x=>x.id),["cat-0004"]);
+  }finally{f.db.close();}
+});
