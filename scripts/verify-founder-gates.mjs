@@ -10,7 +10,14 @@ const allowedRoutes = new Set([
 ]);
 const allowedTables = new Set([
   "categories", "accounts", "worker_profiles", "google_identities", "auth_sessions", "worker_listings",
+  // Exactly one newly engineered, non-recipient delivery receipt; never a
+  // blanket permission for contact, notification preference or token storage.
+  "notification_delivery_receipts",
 ]);
+const RECEIPT_MIGRATION = "0005_notification_delivery_receipts.sql";
+const RECEIPT_FIELDS = [
+  "event_id", "state", "claim_token", "lease_until_ms", "completed_at_ms",
+];
 async function required(root, path, errors) {
   try { return await readFile(join(root, path), "utf8"); }
   catch { errors.push("Missing required source: " + path); return null; }
@@ -74,6 +81,20 @@ export async function auditFounderGates(root = rootDefault) {
       const table=match[1].toLowerCase();
       tables.push(table);
       if(!allowedTables.has(table)) errors.push("Unapproved D1 table: "+table+" ("+name+")");
+      if(table==="notification_delivery_receipts" && name!==RECEIPT_MIGRATION)
+        errors.push("Notification receipt table must use its reviewed migration: "+name);
+    }
+    if(name===RECEIPT_MIGRATION) {
+      // The receipt store is strictly an opaque machine-event lease. Prevent
+      // this narrow allowlist from becoming a backdoor for personal identifiers.
+      const match=content.match(/CREATE\s+TABLE\s+notification_delivery_receipts\s*\(([\s\S]*?)\)\s*;/i);
+      const fields=match===null?[]:[...match[1].matchAll(
+        /^\s*([a-z][a-z0-9_]*)\s+(?:TEXT|INTEGER|REAL|BLOB)\b/gim,
+      )].map(m=>m[1].toLowerCase());
+      if(fields.join(",")!==RECEIPT_FIELDS.join(",") ||
+         !/\bCHECK\s*\(/i.test(content) ||
+         /\b(?:ALTER|DROP)\s+TABLE\s+notification_delivery_receipts\b/i.test(content))
+        errors.push("Notification receipt migration must keep only five bounded machine fields");
     }
     if(name!=="0002_shared_accounts_worker_drafts.sql" &&
        /\b(?:ALTER|DROP)\s+TABLE\s+worker_profiles\b/i.test(content))
