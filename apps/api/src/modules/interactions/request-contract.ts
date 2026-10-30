@@ -55,7 +55,11 @@ export function decideRequestTransition<S extends string>(
   policy: TransitionPolicy<S>,
   priorReceipt: RequestReceipt<S> | null = null,
 ): TransitionDecision<S> {
-  if (!validOpaqueId(current.requestId) ||
+  // SQLite rows and adapter inputs are runtime values, regardless of their
+  // TypeScript declaration. Reject absent snapshots/commands without throwing.
+  if (!current || typeof current !== "object" ||
+      !command || typeof command !== "object" ||
+      !validOpaqueId(current.requestId) ||
       !validOpaqueId(current.ownerAccountId) ||
       !validCategoryId(current.categoryId) ||
       !validState(current.state) || !validRevision(current.revision) ||
@@ -72,6 +76,22 @@ export function decideRequestTransition<S extends string>(
   }
 
   if (priorReceipt !== null) {
+    // A receipt is hydrated from storage at runtime. A malformed result must
+    // never throw or be mistaken for a successful idempotent replay.
+    if (!priorReceipt || typeof priorReceipt !== "object" ||
+        !priorReceipt.result || typeof priorReceipt.result !== "object" ||
+        !validOpaqueId(priorReceipt.requestId) ||
+        !validOpaqueId(priorReceipt.actorAccountId) ||
+        !validIdempotencyKey(priorReceipt.idempotencyKey) ||
+        !validRevision(priorReceipt.expectedRevision) ||
+        !validState(priorReceipt.toState) ||
+        !validOpaqueId(priorReceipt.result.requestId) ||
+        !validOpaqueId(priorReceipt.result.ownerAccountId) ||
+        !validCategoryId(priorReceipt.result.categoryId) ||
+        !validState(priorReceipt.result.state) ||
+        !validRevision(priorReceipt.result.revision)) {
+      return { kind: "reject", code: "KEY_CONFLICT" };
+    }
     if (priorReceipt.requestId !== current.requestId ||
         priorReceipt.actorAccountId !== command.actorAccountId ||
         priorReceipt.idempotencyKey !== command.idempotencyKey ||
@@ -84,7 +104,11 @@ export function decideRequestTransition<S extends string>(
         priorReceipt.result.revision !== command.expectedRevision + 1 ||
         // A replay must never authenticate a receipt from a future revision.
         // A genuine replay may occur AFTER further legitimate revisions.
-        current.revision < priorReceipt.result.revision) {
+        current.revision < priorReceipt.result.revision ||
+        // Same revision must describe the same state. An out-of-band change
+        // without a revision increment cannot replay an outdated success.
+        (current.revision === priorReceipt.result.revision &&
+          current.state !== priorReceipt.result.state)) {
       return { kind: "reject", code: "KEY_CONFLICT" };
     }
     return { kind: "replay", receipt: priorReceipt };

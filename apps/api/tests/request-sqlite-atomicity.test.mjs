@@ -262,3 +262,35 @@ test("test journal creates no public request, worker, location or calling API",a
     assert.equal(receipts(t.a).length,0);
   } finally {t.close();}
 });
+
+test("same-revision state divergence rejects persisted retry without mutating journal",()=>{
+  const t=openTrial();
+  try {
+    assert.equal(dispatch(t.a,command()).kind,"apply");
+    // Simulate a non-CAS repair/import that changed state without incrementing
+    // the version. The older successful receipt must not be reused as-is.
+    t.a.prepare("UPDATE synthetic_request SET state='cancelled' WHERE request_id=?")
+      .run(requestId);
+    const previous=receipts(t.a);
+    assert.deepEqual(dispatch(t.b,command()),
+      {kind:"reject",code:"KEY_CONFLICT"});
+    assert.equal(row(t.a).state,"cancelled");
+    assert.equal(row(t.a).revision,1);
+    assert.deepEqual(receipts(t.b),previous);
+  } finally {t.close();}
+});
+
+test("malformed stored receipt state cannot replay or add a new journal row",()=>{
+  const t=openTrial();
+  try {
+    assert.equal(dispatch(t.a,command()).kind,"apply");
+    t.a.prepare("UPDATE synthetic_receipt SET result_state='__invalid__' "+
+      "WHERE request_id=? AND retry_key=?").run(requestId,key1);
+    const before=receipts(t.b);
+    assert.deepEqual(dispatch(t.b,command()),
+      {kind:"reject",code:"KEY_CONFLICT"});
+    assert.equal(row(t.a).revision,1);
+    assert.equal(row(t.b).state,"submitted");
+    assert.deepEqual(receipts(t.a),before);
+  } finally {t.close();}
+});

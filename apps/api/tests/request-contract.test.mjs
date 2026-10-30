@@ -129,3 +129,46 @@ test("future-version receipt cannot be replayed against a rolled-back snapshot",
   // Correct forward state can replay, as can a later valid revision.
   assert.equal(decideRequestTransition(first.result,attempt(),policy,first.receipt).kind,"replay");
 });
+
+test("malformed stored retry receipt fails closed instead of throwing", () => {
+  const accepted=decideRequestTransition(baseline(),attempt(),policy);
+  assert.equal(accepted.kind,"apply");
+  const current=accepted.result;
+  for(const receipt of [
+    false,
+    {},
+    {...accepted.receipt,result:null},
+    {...accepted.receipt,result:undefined},
+    {...accepted.receipt,result:false},
+    {...accepted.receipt,result:{}},
+    {...accepted.receipt,result:{...accepted.result,revision:-1}},
+    {...accepted.receipt,result:{...accepted.result,state:null}},
+  ]) {
+    assert.deepEqual(decideRequestTransition(current,attempt(),policy,receipt),
+      {kind:"reject",code:"KEY_CONFLICT"});
+  }
+  assert.deepEqual(decideRequestTransition(null,attempt(),policy),
+    {kind:"reject",code:"INVALID_INPUT"});
+  assert.deepEqual(decideRequestTransition(baseline(),null,policy),
+    {kind:"reject",code:"INVALID_INPUT"});
+});
+
+test("same-revision out-of-band state change invalidates a stored success receipt", () => {
+  const first=decideRequestTransition(baseline(),attempt(),policy);
+  assert.equal(first.kind,"apply");
+  const wrong={...first.result,state:"cancelled"};
+  assert.deepEqual(decideRequestTransition(wrong,attempt(),policy,first.receipt),
+    {kind:"reject",code:"KEY_CONFLICT"});
+  assert.equal(decideRequestTransition(first.result,attempt(),policy,first.receipt).kind,"replay");
+});
+
+test("valid historical receipts still replay after later legitimate revisions", () => {
+  const first=decideRequestTransition(baseline(),attempt(),policy);
+  assert.equal(first.kind,"apply");
+  const second=decideRequestTransition(first.result,
+    attempt({idempotencyKey:"retrykey-00000002",expectedRevision:1,toState:"reviewed"}),policy);
+  assert.equal(second.kind,"apply");
+  assert.deepEqual(decideRequestTransition(second.result,attempt(),policy,first.receipt),
+    {kind:"replay",receipt:first.receipt});
+  assert.equal(second.result.revision,2);
+});
