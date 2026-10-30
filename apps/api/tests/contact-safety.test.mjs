@@ -2,12 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import worker from "../src/index.ts";
 import { decideContactSafety } from "../src/modules/interactions/contact-safety.ts";
+import { openLocalDatabase } from "./helpers/local-db.mjs";
+import { ensureAccount } from "../src/modules/identity/accounts.ts";
+import { optInAsWorker } from "../src/modules/workers/profile.ts";
+import { publishListing } from "../src/modules/workers/listings.ts";
 
 const base = () => ({
   requesterAccountId: "account-customer1", workerAccountId: "account-worker1",
   listingId: "listing-000001", listingOwnerAccountId: "account-worker1",
   categoryId: "cat1", requesterActive: true, workerActive: true,
-  workerOptedIn: true, listingPublished: true, listingAvailable: true,
+  workerOptedIn: true, categoryActive: true, listingPublished: true, listingAvailable: true,
   moderationApproved: true, blockedByRequester: false, blockedByWorker: false,
   channelApprovedByPolicy: true,
 });
@@ -40,6 +44,7 @@ test("disabled requester or worker and unpublished opt-in draft fail closed", ()
 test("mod-locked, unavailable, either-way blocked and unapproved channel all deny", () => {
   const cases = [
     ["listingAvailable", "SERVICE_UNAVAILABLE"],
+    ["categoryActive", "SERVICE_UNAVAILABLE"],
     ["moderationApproved", "MODERATION_RESTRICTED"],
     ["channelApprovedByPolicy", "CHANNEL_NOT_APPROVED"],
   ];
@@ -64,7 +69,7 @@ test("missing boolean facts, forged ID, bad category, booleans as strings are in
   assert.deepEqual(decideContactSafety({...base(),categoryId:"../secret"}),
     denied("INVALID_FACTS"));
   for (const field of ["requesterActive","workerActive","workerOptedIn",
-      "listingPublished","listingAvailable","moderationApproved",
+      "categoryActive","listingPublished","listingAvailable","moderationApproved",
       "blockedByRequester","blockedByWorker","channelApprovedByPolicy"]) {
     assert.deepEqual(decideContactSafety({...base(),[field]:undefined}),
       denied("INVALID_FACTS"),field);
@@ -77,7 +82,7 @@ test("fresh transaction facts override stale eligible search snapshot", () => {
   const browseFacts = base();
   assert.deepEqual(decideContactSafety(browseFacts),{allowed:true});
   for (const mutation of [
-    {workerActive:false}, {listingAvailable:false}, {listingPublished:false},
+    {workerActive:false}, {categoryActive:false}, {listingAvailable:false}, {listingPublished:false},
     {blockedByWorker:true}, {blockedByRequester:true},
     {moderationApproved:false}, {channelApprovedByPolicy:false},
   ]) {
@@ -103,4 +108,60 @@ test("no public contact, Nok-Nok, direct-call, listing or worker routes were add
     const response=await worker.fetch(new Request("https://jodlo.rekixo.com"+route));
     assert.equal(response.status,404,route);
   }
+});
+
+
+test("current SQLite Category activation is mandatory for future contact, not just listing publication", async () => {
+  const {db,adapter} = openLocalDatabase();
+  try {
+    const requester="account-customer1",workerId="account-worker1";
+    await ensureAccount(adapter,requester);
+    await ensureAccount(adapter,workerId);
+    await optInAsWorker(adapter,workerId);
+    db.prepare("INSERT INTO categories(id,slug,name_en,name_hi,is_active) VALUES(?,?,?,?,1)")
+      .run("cat1","fixture","Synthetic fixture","परीक्षण श्रेणी");
+    const listing=await publishListing(adapter,workerId,"cat1");
+    assert.ok(listing);
+
+    // Read current server-owned rows instead of trusting a prior public browse.
+    // This is an isolated local rehearsal, NOT a live contact/request transaction.
+    function freshFacts() {
+      const row=db.prepare(
+        "SELECT wl.id AS listingId,wl.worker_account_id AS listingOwnerAccountId,"+
+        "wl.category_id AS categoryId,wl.status AS listingStatus,"+
+        "wl.moderation_status AS moderationStatus,c.is_active AS categoryActive,"+
+        "a.status AS workerStatus,wp.status AS profileStatus "+
+        "FROM worker_listings AS wl "+
+        "JOIN categories AS c ON c.id=wl.category_id "+
+        "JOIN accounts AS a ON a.id=wl.worker_account_id "+
+        "JOIN worker_profiles AS wp ON wp.account_id=a.id WHERE wl.id=?"
+      ).get(listing.id);
+      const customer=db.prepare("SELECT status FROM accounts WHERE id=?").get(requester);
+      return {
+        requesterAccountId:requester,workerAccountId:workerId,
+        listingId:row.listingId,listingOwnerAccountId:row.listingOwnerAccountId,
+        categoryId:row.categoryId,requesterActive:customer.status==="active",
+        workerActive:row.workerStatus==="active",workerOptedIn:row.profileStatus==="draft",
+        categoryActive:row.categoryActive===1,listingPublished:row.listingStatus==="published",
+        listingAvailable:row.listingStatus==="published",
+        moderationApproved:row.moderationStatus==="allowed",
+        blockedByRequester:false,blockedByWorker:false,channelApprovedByPolicy:true,
+      };
+    }
+    const earlier=freshFacts();
+    assert.deepEqual(decideContactSafety(earlier),{allowed:true});
+    db.prepare("UPDATE categories SET is_active=0 WHERE id=?").run("cat1");
+    assert.deepEqual(decideContactSafety(freshFacts()),
+      {allowed:false,reason:"SERVICE_UNAVAILABLE"});
+    // An old allowed result is not an authorization to contact after deactivation.
+    assert.equal(earlier.categoryActive,true);
+    assert.equal(freshFacts().categoryActive,false);
+    db.prepare("UPDATE categories SET is_active=1 WHERE id=?").run("cat1");
+    assert.deepEqual(decideContactSafety(freshFacts()),{allowed:true});
+    db.prepare("UPDATE worker_listings SET moderation_status='hidden' WHERE id=?")
+      .run(listing.id);
+    assert.deepEqual(decideContactSafety(freshFacts()),
+      {allowed:false,reason:"MODERATION_RESTRICTED"});
+    assert.deepEqual(db.prepare("PRAGMA foreign_key_check").all(),[]);
+  } finally { db.close(); }
 });
