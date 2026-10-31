@@ -3,11 +3,12 @@ import { decideContactSafety } from "./contact-safety.ts";
 import type { RequestTargetFacts } from "./request-target.ts";
 
 /**
- * ADR-0012: the founder approved DIRECT PHONE CALL as the initial customer
- * contact, NOT a required in-app request/accept/decline workflow.
+ * ADR-0012 and binding clarification ADR-0013: initial contact is an
+ * IN-APP AGORA RTC INTERNET AUDIO CALL, NOT a carrier/SIM telephone call
+ * or a mandatory service request/accept-before-call workflow.
  *
- * Product channel approval is NOT permission to disclose a worker's number,
- * select carrier vs relay, open a dialer, or collect/retain phone information.
+ * Agora routes by server-authorized channel and participant IDs; worker
+ * telephone numbers are not required, collected, disclosed or routed.
  * All additional facts below lack approved production sources today.
  */
 export type DirectCallPolicyFacts = Readonly<{
@@ -17,15 +18,15 @@ export type DirectCallPolicyFacts = Readonly<{
   blockedByWorker: boolean;
   /** Explicit worker consent to receiving calls; listing publication != consent. */
   workerConsentedToCalls: boolean;
-  /** A future trusted source checked the call destination (never pass its value). */
+  /** Future trusted source checked the Agora recipient's eligible account/RTC UID; never pass the UID. */
   callDestinationVerified: boolean;
-  /** Separately approved phone-number disclosure OR approved private connection. */
+  /** Future server-authorized Agora channel/participant privacy and token access policy, NOT phone-number disclosure. */
   connectionPrivacyApproved: boolean;
   /** Caller is not blocked by abuse/rate-limiting safeguards. */
   abuseLimitPassed: boolean;
 }>;
 
-/** NEVER returns a phone number, worker ID, contact destination or tel: URL.
+/** NEVER returns a phone number, worker ID, Agora channel/UID, RTC token, tel: URL or connection credential.
  * "candidate" is a synthetic policy result, NOT a live-call authorization.
  */
 export type DirectCallCandidateDecision =
