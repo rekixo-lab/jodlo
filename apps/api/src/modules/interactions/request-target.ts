@@ -47,11 +47,26 @@ export const READ_CURRENT_REQUEST_TARGET_QUERY =
  * Still only a read; future disclosure/connect requires additional M-003/M-005
  * policy and race-safe enforcement at the actual contact boundary.
  */
-export const READ_SESSION_BOUND_CALL_TARGET_QUERY =
+const SESSION_BOUND_TARGET_QUERY =
   REQUEST_TARGET_SOURCE_QUERY +
   "JOIN auth_sessions AS session ON session.token_hash=? AND session.expires_at>? " +
   "JOIN accounts AS requester ON requester.id=session.account_id " +
-  "WHERE wl.id=? AND requester.status='active' LIMIT 1";
+  "WHERE wl.id=? AND requester.status='active' ";
+
+/** Existing caller-only preview, preserving the three-parameter contract. */
+export const READ_SESSION_BOUND_CALL_TARGET_QUERY =
+  SESSION_BOUND_TARGET_QUERY + "LIMIT 1";
+
+/** Two current bearer proofs must match their DIFFERENT actual accounts
+ * inside the same SQLite/D1 statement. The worker token is compared only
+ * against the worker owning this listing, never a body-selected worker ID.
+ * This is NOT atomic RTC credential issuance or an approved call.
+ */
+export const READ_TWO_SESSION_BOUND_CALL_TARGET_QUERY =
+  SESSION_BOUND_TARGET_QUERY +
+  "AND EXISTS (SELECT 1 FROM auth_sessions AS worker_session " +
+  "WHERE worker_session.account_id=worker.id " +
+  "AND worker_session.token_hash=? AND worker_session.expires_at>?) LIMIT 1";
 
 type RequestTargetRow = {
   requesterId: unknown;
@@ -143,4 +158,37 @@ export async function readSessionBoundCallTarget(
   // The SQL requires active status. Fail closed even if a malformed fake
   // adapter bypasses that WHERE predicate.
   return result?.requesterActive ? result : null;
+}
+
+
+/**
+ * LOCAL-ONLY preflight for future Agora RTC participant authorization.
+ * One consistent D1 SELECT rechecks BOTH sessions and the current listing,
+ * worker owner, Category, and moderation. Caller and worker bearer secrets
+ * are never logged, returned or sent to SQL (only their SHA-256 hashes).
+ *
+ * This does NOT issue an RTC/Signaling token, provision a channel, store
+ * call data or establish real authorization to connect. A future issuer must
+ * recheck eligibility AT its race-safe token-grant boundary and honor M-003,
+ * M-005, M-006 and M-007 gates. The worker session alone does not prove
+ * worker call opt-in, notification/push consent or device availability.
+ */
+export async function readTwoSessionBoundCallTarget(
+  db: D1Database,
+  callerToken: string,
+  workerToken: string,
+  listingId: string,
+): Promise<RequestTargetFacts | null> {
+  if (!validSessionToken(callerToken) ||
+      !validSessionToken(workerToken) ||
+      callerToken === workerToken ||
+      !validOpaqueId(listingId)) return null;
+  const now = Math.floor(Date.now() / 1000);
+  const { results } = await db.prepare(READ_TWO_SESSION_BOUND_CALL_TARGET_QUERY)
+    .bind(await sessionHash(callerToken), now, listingId,
+      await sessionHash(workerToken), now)
+    .all<RequestTargetRow>();
+  const facts = projectRequestTarget(results, listingId, null);
+  return facts?.requesterActive && facts.workerActive &&
+    facts.requesterAccountId !== facts.workerAccountId ? facts : null;
 }
