@@ -4,6 +4,7 @@ import worker from "../src/index.ts";
 import { openLocalDatabase } from "./helpers/local-db.mjs";
 import { ensureAccount } from "../src/modules/identity/accounts.ts";
 import { optInAsWorker } from "../src/modules/workers/profile.ts";
+import { setOwnWorkerAgoraCallPreference } from "../src/modules/workers/agora-call-preference.ts";
 import { publishListing } from "../src/modules/workers/listings.ts";
 import {
   issueSession, revokeSession, revokeAllSessions, sessionHash,
@@ -52,6 +53,10 @@ async function fixture(){
   const workerToken=(await issueSession(adapter,WORKER))?.accessToken;
   const otherToken=(await issueSession(adapter,OTHER))?.accessToken;
   assert.ok(callerToken&&workerToken&&otherToken);
+  // This fixture models the worker's EXPLICIT opt-in for the earlier RTC
+  // prerequisites; separate new tests verify default OFF and revocation.
+  assert.equal((await setOwnWorkerAgoraCallPreference(
+    adapter,workerToken,true,0)).kind,"updated");
   const target=()=>readTwoSessionBoundCallTarget(adapter,callerToken,workerToken,listing.id);
   const invite=async()=>prepareSyntheticAgoraInvite(await target(),ready(),
     "call-rtc-synthetic-0001",NOW,DEADLINE);

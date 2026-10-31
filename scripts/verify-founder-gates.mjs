@@ -15,10 +15,14 @@ const allowedTables = new Set([
   "notification_delivery_receipts",
   // This is a second *machine-only* notification table, not a recipient/token store.
   "notification_delivery_dead_letters",
+  // Founder ADR-0014 explicitly approved this ONE private worker call switch.
+  "worker_agora_call_preferences",
 ]);
 const RECEIPT_MIGRATION = "0005_notification_delivery_receipts.sql";
 const DEAD_LETTER_MIGRATION = "0006_notification_dead_letters.sql";
 const DEAD_LETTER_FIELDS = ["event_id", "reason", "recorded_at_ms"];
+const AGORA_PREFERENCE_MIGRATION = "0007_worker_agora_call_preferences.sql";
+const AGORA_PREFERENCE_FIELDS = ["account_id", "calls_enabled", "revision"];
 const RECEIPT_FIELDS = [
   "event_id", "state", "claim_token", "lease_until_ms", "completed_at_ms",
 ];
@@ -89,6 +93,8 @@ export async function auditFounderGates(root = rootDefault) {
         errors.push("Notification receipt table must use its reviewed migration: "+name);
       if(table==="notification_delivery_dead_letters" && name!==DEAD_LETTER_MIGRATION)
         errors.push("Notification dead-letter table must use its reviewed migration: "+name);
+      if(table==="worker_agora_call_preferences" && name!==AGORA_PREFERENCE_MIGRATION)
+        errors.push("Agora preference table must use its founder-approved migration: "+name);
     }
     if(name===RECEIPT_MIGRATION) {
       // The receipt store is strictly an opaque machine-event lease. Prevent
@@ -111,6 +117,20 @@ export async function auditFounderGates(root = rootDefault) {
          !/\bCHECK\s*\(/i.test(content))
         errors.push("Notification dead-letter migration must keep only three bounded machine fields");
     }
+    if(name===AGORA_PREFERENCE_MIGRATION) {
+      const match=content.match(/CREATE\s+TABLE\s+worker_agora_call_preferences\s*\(([\s\S]*?)\)\s*;/i);
+      const fields=match===null?[]:[...match[1].matchAll(
+        /(?:^|[,(])\s*([a-z][a-z0-9_]*)\s+(?:TEXT|INTEGER|REAL|BLOB)\b/gim,
+      )].map(m=>m[1].toLowerCase());
+      if(fields.join(",")!==AGORA_PREFERENCE_FIELDS.join(",") ||
+         !/REFERENCES\s+worker_profiles\s*\(\s*account_id\s*\)/i.test(content) ||
+         !/ON\s+DELETE\s+CASCADE/i.test(content) ||
+         !/calls_enabled\s+INTEGER\s+NOT\s+NULL\s+DEFAULT\s+0\s+CHECK\s*\(\s*calls_enabled\s+IN\s*\(\s*0\s*,\s*1\s*\)\s*\)/i.test(content) ||
+         !/revision\s+INTEGER\s+NOT\s+NULL\s+CHECK\s*\(\s*revision\s+BETWEEN\s+1\s+AND\s+2147483647\s*\)/i.test(content))
+        errors.push("Agora preference migration must retain only 3 guarded fields and worker owner FK");
+    }
+    if(/\b(?:ALTER|DROP)\s+TABLE\s+worker_agora_call_preferences\b/i.test(content))
+      errors.push("Unauthorized Agora preference schema mutation: "+name);
     if(/\b(?:ALTER|DROP)\s+TABLE\s+notification_delivery_dead_letters\b/i.test(content))
       errors.push("Unauthorized notification dead-letter table mutation: "+name);
     if(name!=="0002_shared_accounts_worker_drafts.sql" &&
