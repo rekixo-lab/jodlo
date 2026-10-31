@@ -682,3 +682,11 @@ Add a local-only D1 machine-event dead-letter migration and injected adapter to 
 ## 2026-10-31 — Internal trusted request-target read (PR CI pending)
 
 Implement a policy-neutral, read-only, D1-compatible current-state query for requester/worker/listing/Category existing status, with local end-to-end synthetic account/session and moderation test coverage. Exclude all policy-dependent availability, blocks and channel authorization fields, so the result **cannot** activate a request by itself. Real contacts, notifications, schema and routes remain blocked until explicit founder M-005 rules and M-003 privacy; visual Android M-004, OAuth M-008, provider M-006 and production M-007 remain unchanged. No staged/remote deploy, actual Category seed or old Finworkar mutation. Verify exact PR-head then independent merged-main GitHub CI.
+
+
+## 2026-10-31 — Founder-approved first call channel and policy foundation (PR CI pending)
+
+- **M-005 first-contact mode DECIDED:** direct telephone call is the customer's first contact; no mandatory internal request/worker accept lifecycle before it (ADR-0012). All trades remain in full 889-Category review scope; no automatic activation.
+- Internal pure backend `direct-call.ts` safely composes the existing D1 request-target read and contact guard. It denies missing policy, worker opt-in, privacy/verified destination, abuse budget, inactive Category, hidden/unpublished worker, disabled accounts or mutual block. No number/connection information is returned.
+- **Next blocking policy:** M-003/M-005 decide disclosed vs privacy-mediated number connection, worker consent/data deletion, current availability/blocks/moderation and rate policy **before** any persistent phone or public call API. M-004 founder visual approval before native dialer screen, M-006 provider only if required, M-008 real OAuth and M-007 controlled production only after readiness. No UI/staging/deploy/Finworkar writes.
+- Validate isolated Node tests + doc/founder guards, strict TypeScript, Kotlin JVM, local D1/workerd and non-deploy Wrangler dry-run on exact PR head and independent merged `main`.
