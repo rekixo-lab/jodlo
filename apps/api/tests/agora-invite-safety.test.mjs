@@ -8,6 +8,7 @@ import { publishListing } from "../src/modules/workers/listings.ts";
 import { issueSession, revokeSession } from "../src/modules/identity/sessions.ts";
 import { setOwnWorkerAgoraCallPreference } from "../src/modules/workers/agora-call-preference.ts";
 import { prepareSyntheticSafetyCheckedAgoraInvite } from "../src/modules/interactions/agora-invite-safety.ts";
+import { composeSyntheticAgoraInviteRisk } from "../src/modules/interactions/agora-risk-evidence.ts";
 import {
   READ_CALLER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY,
   readCallerSessionBoundAgoraOptInTarget,
@@ -50,6 +51,119 @@ async function fixture(){
   return {db,adapter,listing,callerBearer,workerBearer,otherBearer,
     risk,prepare,enable,close(){db.close();}};
 }
+
+/**
+ * Independent scripted checks: deliberately NOT D1-backed availability,
+ * presence, relationships, rate reservation, or real device routing.
+ */
+function syntheticCallabilityChecks(listingId){
+  const bound={
+    callerAccountId:CALLER,workerAccountId:WORKER,listingId,
+    checkedAtMs:NOW-100,expiresAtMs:DEADLINE,
+  };
+  return [
+    {...bound,kind:"synthetic_presence_check_v1",workerPresence:"online"},
+    {...bound,kind:"synthetic_availability_check_v1",workerAvailability:"available"},
+    {...bound,kind:"synthetic_mutual_blocks_check_v1",
+      blockedByCaller:false,blockedByWorker:false},
+    {...bound,kind:"synthetic_rate_check_v1",rateGate:"pass"},
+    {...bound,kind:"synthetic_connection_check_v1",
+      recipientVerified:true,privacyApproved:true},
+  ];
+}
+
+test("five separate synthetic checks compose only with matching account and listing",async()=>{
+  const f=await fixture();
+  try{
+    const identity={callerAccountId:CALLER,workerAccountId:WORKER,listingId:f.listing.id};
+    const checks=syntheticCallabilityChecks(f.listing.id);
+    checks[0]={...checks[0],checkedAtMs:NOW-10};
+    checks[1]={...checks[1],expiresAtMs:NOW+10};
+    const risk=composeSyntheticAgoraInviteRisk(identity,NOW,checks);
+    assert.ok(risk);
+    assert.equal(risk.checkedAtMs,NOW-10,"newest check is the evidence start");
+    assert.equal(risk.expiresAtMs,NOW+10,"earliest expiry wins; no extension");
+    assert.equal(Object.isFrozen(risk),true);
+    assert.equal(JSON.stringify(risk).includes(f.workerBearer),false);
+    assert.deepEqual(await f.prepare(risk),denied,"real D1 opt-in remains default-OFF");
+    assert.equal((await f.enable()).kind,"updated");
+    assert.equal((await f.prepare(risk)).kind,"prepared");
+    assert.deepEqual(await f.prepare(risk,f.callerBearer,
+      f.listing.id,CALL_ID,NOW+10,DEADLINE+10),denied,
+    "reassembled risk expires at the earliest check expiration");
+    const off=await setOwnWorkerAgoraCallPreference(
+      f.adapter,f.workerBearer,false,1);
+    assert.equal(off.kind,"updated");
+    assert.deepEqual(await f.prepare(risk),denied,"opt-out cannot be bypassed by evidence");
+  }finally{f.close();}
+});
+
+test("missing, duplicated, forged or malformed synthetic provider dimensions fail closed",async()=>{
+  const f=await fixture();
+  try{
+    const identity={callerAccountId:CALLER,workerAccountId:WORKER,listingId:f.listing.id};
+    const good=syntheticCallabilityChecks(f.listing.id);
+    const invalids=[
+      null,{},false,[],[...good.slice(0,4)],
+      [good[0],good[0],...good.slice(2)],
+      good.map((x,i)=>i===0?{...x,kind:"client_provided_presence"}:x),
+      good.map((x,i)=>i===0?{...x,workerAccountId:OTHER}:x),
+      good.map((x,i)=>i===1?{...x,listingId:"other-listing-000001"}:x),
+      good.map((x,i)=>i===2?{...x,callerAccountId:OTHER}:x),
+      good.map((x,i)=>i===2?{...x,blockedByWorker:"false"}:x),
+      good.map((x,i)=>i===2?{...x,blockedByCaller:null}:x),
+      good.map((x,i)=>i===3?{...x,rateGate:true}:x),
+      good.map((x,i)=>i===4?{...x,privacyApproved:1}:x),
+      good.map((x,i)=>i===4?{...x,phone:"+91_private"}:x),
+      good.map((x,i)=>i===0?{...x,checkedAtMs:NOW+1}:x),
+      good.map((x,i)=>i===1?{...x,checkedAtMs:-1}:x),
+      good.map((x,i)=>i===2?{...x,expiresAtMs:NOW}:x),
+      good.map((x,i)=>i===3?{...x,expiresAtMs:NaN}:x),
+      good.map((x,i)=>i===4?{...x,checkedAtMs:NOW-0.5}:x),
+    ];
+    for(const checks of invalids)
+      assert.equal(composeSyntheticAgoraInviteRisk(identity,NOW,checks),null,
+        JSON.stringify(checks));
+    assert.equal(composeSyntheticAgoraInviteRisk(
+      {...identity,workerAccountId:CALLER},NOW,good),null);
+    assert.equal(composeSyntheticAgoraInviteRisk(
+      {...identity,listingId:"wrong-listing-00001"},NOW,good),null);
+    assert.equal(composeSyntheticAgoraInviteRisk(
+      {...identity,phone:"fake"},NOW,good),null);
+    assert.equal(composeSyntheticAgoraInviteRisk(identity,NaN,good),null);
+    assert.equal(composeSyntheticAgoraInviteRisk(identity,-1,good),null);
+  }finally{f.close();}
+});
+
+test("scripted offline, busy, bilateral blocks and rate denial never become invitations",async()=>{
+  const f=await fixture();
+  try{
+    const identity={callerAccountId:CALLER,workerAccountId:WORKER,listingId:f.listing.id};
+    assert.equal((await f.enable()).kind,"updated");
+    const base=syntheticCallabilityChecks(f.listing.id);
+    const blockedCases=[
+      [0,"workerPresence","offline"],
+      [0,"workerPresence","unknown"],
+      [1,"workerAvailability","busy"],
+      [1,"workerAvailability","unknown"],
+      [2,"blockedByCaller",true],
+      [2,"blockedByWorker",true],
+      [3,"rateGate","deny"],
+      [3,"rateGate","unknown"],
+      [4,"recipientVerified",false],
+      [4,"privacyApproved",false],
+    ];
+    for(const [index,field,value] of blockedCases){
+      const checks=base.map((v,i)=>i===index?{...v,[field]:value}:v);
+      const risk=composeSyntheticAgoraInviteRisk(identity,NOW,checks);
+      assert.ok(risk,`structured explicit denial can be represented: ${field}`);
+      assert.deepEqual(await f.prepare(risk),denied,field);
+    }
+    assert.equal((await f.prepare(composeSyntheticAgoraInviteRisk(
+      identity,NOW,base))).kind,"prepared",
+      "an internal synthetic pass is NOT proof of live availability or a quota");
+  }finally{f.close();}
+});
 
 test("default-OFF worker consent blocks ring despite all synthetic risk facts",async()=>{
   const f=await fixture();
