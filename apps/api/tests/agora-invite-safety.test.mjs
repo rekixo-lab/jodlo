@@ -8,6 +8,11 @@ import { publishListing } from "../src/modules/workers/listings.ts";
 import { issueSession, revokeSession } from "../src/modules/identity/sessions.ts";
 import { setOwnWorkerAgoraCallPreference } from "../src/modules/workers/agora-call-preference.ts";
 import { prepareSyntheticSafetyCheckedAgoraInvite } from "../src/modules/interactions/agora-invite-safety.ts";
+import {
+  READ_CALLER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY,
+  readCallerSessionBoundAgoraOptInTarget,
+} from "../src/modules/interactions/request-target.ts";
+import { sessionHash } from "../src/modules/identity/sessions.ts";
 
 const CALLER="account-agora-guard-caller";
 const WORKER="account-agora-guard-worker";
@@ -38,9 +43,9 @@ async function fixture(){
     blockedByCaller:false,blockedByWorker:false,rateGate:"pass",
     recipientVerified:true,privacyApproved:true,...overrides,
   });
-  const prepare=(riskFacts=risk(),cb=callerBearer,wb=workerBearer,id=listing.id,
+  const prepare=(riskFacts=risk(),cb=callerBearer,id=listing.id,
     callId=CALL_ID,now=NOW,deadline=DEADLINE)=>
-    prepareSyntheticSafetyCheckedAgoraInvite(adapter,cb,wb,id,callId,now,deadline,riskFacts);
+    prepareSyntheticSafetyCheckedAgoraInvite(adapter,cb,id,callId,now,deadline,riskFacts);
   const enable=()=>setOwnWorkerAgoraCallPreference(adapter,workerBearer,true,0);
   return {db,adapter,listing,callerBearer,workerBearer,otherBearer,
     risk,prepare,enable,close(){db.close();}};
@@ -140,9 +145,9 @@ test("cross-listing, wrong worker and wrong caller risk are rejected",async()=>{
       {listingId:"listing-another-00001"},
       {callerAccountId:WORKER,workerAccountId:CALLER},
     ])assert.deepEqual(await f.prepare(f.risk(delta)),denied,JSON.stringify(delta));
-    assert.deepEqual(await f.prepare(f.risk(),f.otherBearer,f.workerBearer),denied);
-    assert.deepEqual(await f.prepare(f.risk(),f.callerBearer,f.otherBearer),denied);
-    assert.deepEqual(await f.prepare(f.risk(),f.workerBearer,f.workerBearer),denied);
+    assert.deepEqual(await f.prepare(f.risk(),f.otherBearer),denied);
+    assert.deepEqual(await f.prepare(f.risk(),f.workerBearer),denied);
+    assert.deepEqual(await f.prepare(f.risk(),f.callerBearer,"other-listing-00001"),denied);
   }finally{f.close();}
 });
 
@@ -153,7 +158,7 @@ test("expired consent evidence cannot authorize a later invitation",async()=>{
     const old=f.risk();
     assert.equal((await f.prepare(old)).kind,"prepared");
     assert.deepEqual(await f.prepare(old,
-      f.callerBearer,f.workerBearer,f.listing.id,CALL_ID,DEADLINE,DEADLINE+2000),denied);
+      f.callerBearer,f.listing.id,CALL_ID,DEADLINE,DEADLINE+2000),denied);
     assert.deepEqual(await f.prepare(f.risk({checkedAtMs:NOW+10})),denied);
   }finally{f.close();}
 });
@@ -173,13 +178,16 @@ test("worker opt-out immediately blocks new invite even with previously passing 
   }finally{f.close();}
 });
 
-test("caller or worker logout, disabled accounts and revoked worker deny",async()=>{
+test("caller logout and worker deactivation deny; worker login is NOT invitation consent",async()=>{
   const f=await fixture();
   try{
     assert.equal((await f.enable()).kind,"updated");
     assert.equal((await f.prepare()).kind,"prepared");
     assert.equal(await revokeSession(f.adapter,f.workerBearer),true);
-    assert.deepEqual(await f.prepare(),denied);
+    assert.equal((await f.prepare()).kind,"prepared",
+      "worker session is NOT a credential the caller must provide; mock risk still says online");
+    assert.deepEqual(await f.prepare(f.risk({workerPresence:"offline"})),denied,
+      "a future real server-owned presence system must enforce availability");
   }finally{f.close();}
   const g=await fixture();
   try{
@@ -215,13 +223,13 @@ test("invalid synthetic call ID and ring bounds do not bypass existing reducer",
   const f=await fixture();
   try{
     assert.equal((await f.enable()).kind,"updated");
-    assert.deepEqual(await f.prepare(f.risk(),f.callerBearer,f.workerBearer,
+    assert.deepEqual(await f.prepare(f.risk(),f.callerBearer,
       f.listing.id,"x"),denied);
-    assert.deepEqual(await f.prepare(f.risk(),f.callerBearer,f.workerBearer,
+    assert.deepEqual(await f.prepare(f.risk(),f.callerBearer,
       f.listing.id,CALL_ID,NOW,NOW),denied);
-    assert.deepEqual(await f.prepare(f.risk(),f.callerBearer,f.workerBearer,
+    assert.deepEqual(await f.prepare(f.risk(),f.callerBearer,
       f.listing.id,CALL_ID,NOW,NOW+120001),denied);
-    assert.deepEqual(await f.prepare(f.risk(),f.callerBearer,f.workerBearer,
+    assert.deepEqual(await f.prepare(f.risk(),f.callerBearer,
       f.listing.id,CALL_ID,-1,DEADLINE),denied);
   }finally{f.close();}
 });
@@ -232,12 +240,12 @@ test("fake database outage, corrupt projection and fake consent cannot place a r
     assert.equal((await f.enable()).kind,"updated");
     const broken={prepare(){throw Error("sensitive-offline-DB-error");}};
     assert.deepEqual(await prepareSyntheticSafetyCheckedAgoraInvite(
-      broken,f.callerBearer,f.workerBearer,f.listing.id,CALL_ID,NOW,DEADLINE,f.risk()),
+      broken,f.callerBearer,f.listing.id,CALL_ID,NOW,DEADLINE,f.risk()),
       denied);
     const malformed={prepare(){return {bind(){return this;},
       async all(){return {results:[{workerAccountId:WORKER,phone:"+91_private"}]};}};}};
     assert.deepEqual(await prepareSyntheticSafetyCheckedAgoraInvite(
-      malformed,f.callerBearer,f.workerBearer,f.listing.id,CALL_ID,NOW,DEADLINE,f.risk()),
+      malformed,f.callerBearer,f.listing.id,CALL_ID,NOW,DEADLINE,f.risk()),
       denied);
     assert.equal(JSON.stringify(await f.prepare(f.risk({rateGate:"deny"}))).includes(WORKER),false);
   }finally{f.close();}
@@ -264,5 +272,161 @@ test("risk verdict does not persist blocks, presence, quota or any user metadata
          {DB:f.adapter});
       assert.equal(response.status,404,path);
     }
+  }finally{f.close();}
+});
+
+
+test("caller-only SQL does not ask for or compare a worker bearer",async()=>{
+  const f=await fixture();
+  try{
+    assert.match(READ_CALLER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY,/session\.token_hash=\?/);
+    assert.match(READ_CALLER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY,/session\.expires_at>\?/);
+    assert.match(READ_CALLER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY,/worker\.id<>requester\.id|requester\.id<>worker\.id/);
+    assert.match(READ_CALLER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY,/pref\.account_id=worker\.id/);
+    assert.match(READ_CALLER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY,/pref\.calls_enabled=1/);
+    assert.match(READ_CALLER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY,/wl\.status='published'/);
+    assert.match(READ_CALLER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY,/c\.is_active=1/);
+    assert.equal((READ_CALLER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY.match(/\?/g)||[]).length,3);
+    assert.equal(READ_CALLER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY.includes("worker_session"),false);
+    assert.equal(READ_CALLER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY.includes("phone"),false);
+    assert.equal(READ_CALLER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY.includes("tel:"),false);
+    assert.equal(await readCallerSessionBoundAgoraOptInTarget(
+      f.adapter,f.callerBearer,f.listing.id),null,"default-OFF");
+    assert.equal((await f.enable()).kind,"updated");
+    const target=await readCallerSessionBoundAgoraOptInTarget(
+      f.adapter,f.callerBearer,f.listing.id);
+    assert.ok(target);
+    assert.equal(target.requesterAccountId,CALLER);
+    assert.equal(target.workerAccountId,WORKER);
+    assert.equal(target.listingOwnerAccountId,WORKER);
+    assert.equal(target.categoryId,CAT);
+    assert.equal(Object.isFrozen(target),true);
+    assert.equal(JSON.stringify(target).includes(f.callerBearer),false);
+    assert.equal(JSON.stringify(target).includes(f.workerBearer),false);
+  }finally{f.close();}
+});
+
+test("one owner-bound query binds ONLY caller hash, server time and listing ID",async()=>{
+  const f=await fixture();
+  try{
+    assert.equal((await f.enable()).kind,"updated");
+    const observed=[];
+    const proxy={
+      prepare(query){
+        const row={query,values:[]};
+        observed.push(row);
+        return {bind(...values){row.values=values;return {
+          all:()=>f.adapter.prepare(query).bind(...values).all(),
+        };}};
+      },
+    };
+    const result=await readCallerSessionBoundAgoraOptInTarget(
+      proxy,f.callerBearer,f.listing.id);
+    assert.ok(result);
+    assert.equal(observed.length,1);
+    assert.deepEqual(observed[0].values,[
+      await sessionHash(f.callerBearer),observed[0].values[1],f.listing.id,
+    ]);
+    assert.ok(Number.isSafeInteger(observed[0].values[1]));
+    for(const secret of [f.callerBearer,f.workerBearer,f.otherBearer,WORKER,CALLER]){
+      assert.equal(JSON.stringify(observed).includes(secret),false,secret);
+    }
+    assert.equal(observed[0].query,READ_CALLER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY);
+  }finally{f.close();}
+});
+
+test("worker login/logout is NOT caller-supplied; revoked worker cannot turn off consent",async()=>{
+  const f=await fixture();
+  try{
+    assert.equal((await f.enable()).kind,"updated");
+    assert.equal((await f.prepare()).kind,"prepared");
+    assert.equal(await revokeSession(f.adapter,f.workerBearer),true);
+    assert.ok(await readCallerSessionBoundAgoraOptInTarget(
+      f.adapter,f.callerBearer,f.listing.id),
+      "caller authorization is independent of whether worker is logged in");
+    assert.equal((await f.prepare()).kind,"prepared",
+      "synthetic online evidence does NOT become real presence");
+    assert.deepEqual(await f.prepare(f.risk({workerPresence:"offline"})),denied);
+    assert.deepEqual(await setOwnWorkerAgoraCallPreference(
+      f.adapter,f.workerBearer,false,1),{kind:"denied"},
+      "revoked worker bearer cannot toggle future call permission");
+  }finally{f.close();}
+});
+
+test("real D1 preference OFF overrides fabricated pass/online risk",async()=>{
+  const f=await fixture();
+  try{
+    assert.equal((await f.enable()).kind,"updated");
+    const evidence=f.risk();
+    assert.equal((await f.prepare(evidence)).kind,"prepared");
+    const off=await setOwnWorkerAgoraCallPreference(
+      f.adapter,f.workerBearer,false,1);
+    assert.equal(off.kind,"updated");
+    assert.deepEqual(await f.prepare(evidence),denied);
+    assert.equal(await readCallerSessionBoundAgoraOptInTarget(
+      f.adapter,f.callerBearer,f.listing.id),null);
+    assert.equal((await setOwnWorkerAgoraCallPreference(
+      f.adapter,f.workerBearer,true,2)).kind,"updated");
+    assert.equal((await f.prepare(evidence)).kind,"prepared");
+  }finally{f.close();}
+});
+
+test("invalid caller token or listing is rejected before any D1 access",async()=>{
+  const bomb={prepare(){throw Error("should not access DB");}};
+  const listing="opaque-listing-00001";
+  for(const invalid of [
+    null,undefined,"","bad",123,false,"a".repeat(42),"a".repeat(44),
+    "Bearer "+"a".repeat(43),
+  ])assert.equal(await readCallerSessionBoundAgoraOptInTarget(
+    bomb,invalid,listing),null);
+  for(const invalid of [null,undefined,42,false,"", "bad listing"])
+    assert.equal(await readCallerSessionBoundAgoraOptInTarget(
+      bomb,"a".repeat(43),invalid),null);
+});
+
+test("a fake row with disallowed account/status/moderation/category cannot pass",async()=>{
+  const f=await fixture();
+  try{
+    const good={
+      requesterId:CALLER,requesterStatus:"active",
+      workerAccountId:WORKER,workerStatus:"active",
+      listingId:f.listing.id,listingOwnerAccountId:WORKER,
+      categoryId:CAT,listingStatus:"published",moderationStatus:"allowed",
+      workerProfileStatus:"draft",categoryActive:1,
+    };
+    const forged=rows=>({prepare(){return {bind(){return this;},
+      async all(){return {results:rows};}};}});
+    const attempt=async row=>readCallerSessionBoundAgoraOptInTarget(
+      forged([row]),f.callerBearer,f.listing.id);
+    assert.ok(await attempt(good),
+      "This is only a mock projection; SQL is responsible for real consent");
+    for(const patch of [
+      {requesterId:WORKER,workerAccountId:WORKER,listingOwnerAccountId:WORKER},
+      {requesterStatus:"disabled"},
+      {workerStatus:"disabled"},
+      {listingStatus:"unpublished"},
+      {moderationStatus:"hidden"},
+      {workerProfileStatus:"verified"},
+      {categoryActive:0},
+      {listingOwnerAccountId:OTHER},
+      {listingId:"other-listing-000001"},
+    ])assert.equal(await attempt({...good,...patch}),null,JSON.stringify(patch));
+    assert.equal(await readCallerSessionBoundAgoraOptInTarget(
+      forged([]),f.callerBearer,f.listing.id),null);
+    assert.equal(await readCallerSessionBoundAgoraOptInTarget(
+      forged([good,good]),f.callerBearer,f.listing.id),null);
+  }finally{f.close();}
+});
+
+test("unknown/expired caller or wrong-account bearer never creates an invitation",async()=>{
+  const f=await fixture();
+  try{
+    assert.equal((await f.enable()).kind,"updated");
+    assert.deepEqual(await f.prepare(f.risk(),"x".repeat(43)),denied);
+    assert.deepEqual(await f.prepare(f.risk(),f.otherBearer),denied);
+    assert.deepEqual(await f.prepare(f.risk(),f.workerBearer),denied);
+    f.db.prepare("UPDATE auth_sessions SET expires_at=1 WHERE token_hash=?")
+      .run(await sessionHash(f.callerBearer));
+    assert.deepEqual(await f.prepare(),denied);
   }finally{f.close();}
 });

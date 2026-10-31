@@ -1,5 +1,8 @@
 # JODLO
 
+> **AGORA INVITE CORRECTION — 2026-10-31:** A customer **never provides a worker login token** to start an in-app Internet voice call. A new local-only single D1 query uses only the customer's authenticated session plus listing to recheck the actual worker's current **explicit default-OFF call consent**, publication, Category and moderation. The synthetic invite guard reuses it and still denies unknown/offline/busy/blocked/abuse cases. No real presence, calling, rate limits, notifications, UI, credential issuance, staging or deployment. See [Agora voice design](docs/AGORA_VOICE.md); M-003/M-004/M-005/M-006/M-007/M-008 gates unchanged.
+
+
 > **LOCAL AGORA INVITE SAFETY REHEARSAL — 2026-10-31:** New synthetic incoming-call guard requires the existing current worker **opt-in + both authenticated sessions** and explicit mock presence/availability, mutual-block and abuse verdicts before preparing a local-only ring snapshot. Unknown/busy/offline/blocked/stale evidence denies. **This is not real worker presence, a durable spam limiter, a quota reservation, a notification or an Agora call**; M-005 real policy/rate thresholds remain unapproved. [Agora voice design](docs/AGORA_VOICE.md). No new UI, route, D1 tables, vendor credential or deployment.
 
 

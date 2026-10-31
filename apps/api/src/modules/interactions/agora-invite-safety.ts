@@ -2,7 +2,7 @@ import type { D1Database } from "../../data/d1.ts";
 import { validOpaqueId } from "../shared/identifiers.ts";
 import { prepareSyntheticAgoraInvite, type AgoraCallSnapshot } from "./agora-call-lifecycle.ts";
 import type { DirectCallPolicyFacts } from "./direct-call.ts";
-import { readTwoSessionBoundAgoraOptInTarget } from "./request-target.ts";
+import { readCallerSessionBoundAgoraOptInTarget } from "./request-target.ts";
 
 /**
  * OFFLINE ONLY: scripted, server-injected evidence for call-invitation safety
@@ -73,21 +73,20 @@ export type SyntheticInviteSafetyDecision =
 
 /**
  * Test-only rehearsal for a customer-initiated Agora ring, NOT RTC grant.
- * The worker's explicit consent is checked by an existing one-statement D1
- * read that also checks both live sessions, actual listing owner, active
- * Category and moderation. Scripted risk input must be CURRENT, exact and
+ * The worker's explicit consent is checked by a single D1 SELECT with
+ * the CALLER'S current session, actual listing owner, active Category
+ * and moderation. The worker bearer is NOT needed to start an invite. Scripted risk input must be CURRENT, exact and
  * identity-bound; any unknown/offline/busy/blocked/abuse/privacy state denies.
  *
  * A real invitation needs atomic admission / rate reservation, actual
  * server-owned block + presence + availability facts, owner-approved policy,
- * durable idempotency and separate consent-checked signaling. The worker's
- * bearer must never be supplied by the customer; this is only a paired
- * synthetic test harness, NOT an implementable customer-facing route.
+ * durable idempotency and separate consent-checked signaling. A customer's
+ * request can never include the worker bearer; presence is NOT inferred
+ * from a worker session. This internal fake is NOT a public route.
  */
 export async function prepareSyntheticSafetyCheckedAgoraInvite(
   db: D1Database,
   callerBearer: string,
-  workerBearer: string,
   listingId: string,
   callId: string,
   nowMs: number,
@@ -100,8 +99,8 @@ export async function prepareSyntheticSafetyCheckedAgoraInvite(
       !validRisk(risk, nowMs)) return denied;
 
   try {
-    const target = await readTwoSessionBoundAgoraOptInTarget(
-      db, callerBearer, workerBearer, listingId,
+    const target = await readCallerSessionBoundAgoraOptInTarget(
+      db, callerBearer, listingId,
     );
     if (!target ||
         risk.callerAccountId !== target.requesterAccountId ||
