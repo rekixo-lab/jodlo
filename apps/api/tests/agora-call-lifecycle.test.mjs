@@ -227,6 +227,62 @@ test("corrupt, cross-call or future revision receipts fail closed",async()=>{
   }finally{f.close();}
 });
 
+test("synthetic Agora replay refuses receipts impossible in time or lifecycle step",async()=>{
+  const f=await fixture();
+  try{
+    const {call}=await f.prepare();
+    const acceptCmd=cmd(WORKER,"accept",0,NOW+5000,"timeguard-accept-0001");
+    const accepted=decideSyntheticAgoraCallEvent(call,acceptCmd);
+    assert.equal(accepted.kind,"apply");
+    assert.deepEqual(decideSyntheticAgoraCallEvent(
+      accepted.result,acceptCmd,accepted.receipt,
+    ),{kind:"replay",receipt:accepted.receipt});
+
+    // A fabricated receipt with a matching fabricated command must not replay:
+    // before invite creation or after the worker's ring window expires.
+    for(const time of [NOW-1,DEADLINE,DEADLINE+1]){
+      const bad={...accepted.receipt,nowMs:time};
+      assert.deepEqual(decideSyntheticAgoraCallEvent(
+        accepted.result,{...acceptCmd,nowMs:time},bad,
+      ),{kind:"reject",code:"KEY_CONFLICT"},String(time));
+    }
+
+    const timeoutCmd=cmd(null,"ring_timeout",0,DEADLINE,"timeguard-timeout-0001");
+    const timeout=decideSyntheticAgoraCallEvent(call,timeoutCmd);
+    assert.equal(timeout.kind,"apply");
+    assert.deepEqual(decideSyntheticAgoraCallEvent(
+      timeout.result,timeoutCmd,timeout.receipt,
+    ),{kind:"replay",receipt:timeout.receipt});
+    const forgedTimeout={...timeout.receipt,nowMs:DEADLINE-1};
+    assert.deepEqual(decideSyntheticAgoraCallEvent(timeout.result,
+      {...timeoutCmd,nowMs:DEADLINE-1},forgedTimeout),
+    {kind:"reject",code:"KEY_CONFLICT"});
+
+    // Media and hangup events require a previous accepted/connected revision.
+    // Matching identity/revision alone is not evidence that a call existed.
+    for(const [event,actor,phase] of [
+      ["media_ready",null,"connected"],
+      ["media_failed",null,"ended"],
+      ["hangup",WORKER,"ended"],
+    ]){
+      const fake={
+        ...accepted.receipt,event,actorAccountId:actor,
+        result:{...accepted.result,phase},
+      };
+      assert.deepEqual(decideSyntheticAgoraCallEvent(
+        fake.result,{...acceptCmd,event,actorAccountId:actor},fake,
+      ),{kind:"reject",code:"KEY_CONFLICT"},event);
+    }
+
+    const hangupCmd=cmd(WORKER,"hangup",1,NOW+6000,"timeguard-hangup-0001");
+    const ended=decideSyntheticAgoraCallEvent(accepted.result,hangupCmd);
+    assert.equal(ended.kind,"apply");
+    assert.deepEqual(decideSyntheticAgoraCallEvent(
+      ended.result,hangupCmd,ended.receipt,
+    ),{kind:"replay",receipt:ended.receipt});
+  }finally{f.close();}
+});
+
 test("malformed event, unauthorized field and overflow revisions cannot mutate",async()=>{
   const f=await fixture();
   try{
