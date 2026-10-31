@@ -240,11 +240,15 @@ test("synthetic Agora replay refuses receipts impossible in time or lifecycle st
 
     // A fabricated receipt with a matching fabricated command must not replay:
     // before invite creation or after the worker's ring window expires.
-    for(const time of [NOW-1,DEADLINE,DEADLINE+1]){
+    for(const [time,code] of [
+      [NOW-1,"INVALID_INPUT"],
+      [DEADLINE,"KEY_CONFLICT"],
+      [DEADLINE+1,"KEY_CONFLICT"],
+    ]){
       const bad={...accepted.receipt,nowMs:time};
       assert.deepEqual(decideSyntheticAgoraCallEvent(
         accepted.result,{...acceptCmd,nowMs:time},bad,
-      ),{kind:"reject",code:"KEY_CONFLICT"},String(time));
+      ),{kind:"reject",code},String(time));
     }
 
     const timeoutCmd=cmd(null,"ring_timeout",0,DEADLINE,"timeguard-timeout-0001");
