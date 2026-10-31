@@ -1,14 +1,12 @@
 import type { D1Database } from "../../data/d1.ts";
+import { sessionHash, validSessionToken } from "../identity/sessions.ts";
 import { validCategoryId, validOpaqueId } from "../shared/identifiers.ts";
 import type { ContactSafetyFacts } from "./contact-safety.ts";
 
 /**
  * Trusted current D1 facts for a FUTURE customer-to-worker interaction.
- *
- * Deliberately excludes the four M-005/M-003 policy facts that have no
- * approved data model yet: availability, either-way blocks and contact
- * channel consent. A database read is NEVER authorization to contact.
- * Future approval must re-read all facts inside the SAME atomic request write.
+ * Does not supply worker phone, call consent, privacy method, availability,
+ * blocks, or call abuse policy: the result is never connection authorization.
  */
 export type RequestTargetFacts = Readonly<Pick<ContactSafetyFacts,
   "requesterAccountId" | "workerAccountId" | "listingId" |
@@ -17,13 +15,11 @@ export type RequestTargetFacts = Readonly<Pick<ContactSafetyFacts,
   "listingPublished" | "moderationApproved"
 >>;
 
-/** Exactly one bound current-state read. No client-declared worker identity,
- * untrusted preview flags, location, phone, ratings or unapproved request table.
- *
- * Statuses are not filtered in the WHERE clause: disabled/unpublished/hidden
- * records project to false facts, rather than being accidentally "eligible".
+/** Reuse the exact account/listing/Category source projection for both legacy
+ * trusted-account reads and the stronger, single-statement session-bound read.
+ * A stale browser preview or a separate session lookup is NOT call permission.
  */
-export const READ_CURRENT_REQUEST_TARGET_QUERY =
+const REQUEST_TARGET_SOURCE_QUERY =
   "SELECT requester.id AS requesterId,requester.status AS requesterStatus, " +
   "worker.id AS workerAccountId,worker.status AS workerStatus, " +
   "wl.id AS listingId,wl.worker_account_id AS listingOwnerAccountId, " +
@@ -33,9 +29,29 @@ export const READ_CURRENT_REQUEST_TARGET_QUERY =
   "FROM worker_listings AS wl " +
   "JOIN accounts AS worker ON worker.id=wl.worker_account_id " +
   "JOIN worker_profiles AS wp ON wp.account_id=worker.id " +
-  "JOIN categories AS c ON c.id=wl.category_id " +
+  "JOIN categories AS c ON c.id=wl.category_id ";
+
+/** Existing trusted-account read. This is only for internal *previews*;
+ * caller resolves requester from a verified server session beforehand.
+ */
+export const READ_CURRENT_REQUEST_TARGET_QUERY =
+  REQUEST_TARGET_SOURCE_QUERY +
   "JOIN accounts AS requester ON requester.id=? " +
   "WHERE wl.id=? LIMIT 1";
+
+/** A call's session must not be checked separately from its target: a
+ * logout/expiry/disable between those two reads could leave stale approval.
+ * One statement binds ONLY the SHA-256 token hash, trusted current time and
+ * opaque listing ID; current requester ownership is resolved inside D1.
+ *
+ * Still only a read; future disclosure/connect requires additional M-003/M-005
+ * policy and race-safe enforcement at the actual contact boundary.
+ */
+export const READ_SESSION_BOUND_CALL_TARGET_QUERY =
+  REQUEST_TARGET_SOURCE_QUERY +
+  "JOIN auth_sessions AS session ON session.token_hash=? AND session.expires_at>? " +
+  "JOIN accounts AS requester ON requester.id=session.account_id " +
+  "WHERE wl.id=? AND requester.status='active' LIMIT 1";
 
 type RequestTargetRow = {
   requesterId: unknown;
@@ -51,22 +67,20 @@ type RequestTargetRow = {
   categoryActive: unknown;
 };
 
-/** Internal, read-only projection. A missing/corrupt row fails closed; an
- * unavailable database throws (never returns fabricated "allowed" facts).
- * Caller must resolve requesterId from a VERIFIED server bearer session.
- * No public route or durable request is created by this function.
+/** One shared, fail-closed hydration boundary. A malformed fake/D1 row never
+ * becomes an eligible account, and no private fields enter the return value.
  */
-export async function readCurrentRequestTarget(
-  db: D1Database,
-  requesterId: string,
+function projectRequestTarget(
+  rows: unknown,
   listingId: string,
-): Promise<RequestTargetFacts | null> {
-  if (!validOpaqueId(requesterId) || !validOpaqueId(listingId)) return null;
-  const { results } = await db.prepare(READ_CURRENT_REQUEST_TARGET_QUERY)
-    .bind(requesterId, listingId).all<RequestTargetRow>();
-  if (!Array.isArray(results) || results.length !== 1) return null;
-  const row = results[0];
-  if (!row || row.requesterId !== requesterId || row.listingId !== listingId ||
+  expectedRequesterId: string | null,
+): RequestTargetFacts | null {
+  if (!Array.isArray(rows) || rows.length !== 1) return null;
+  const row: RequestTargetRow = rows[0];
+  if (!row || typeof row !== "object" ||
+      !validOpaqueId(row.requesterId) ||
+      (expectedRequesterId !== null && row.requesterId !== expectedRequesterId) ||
+      row.listingId !== listingId ||
       !validOpaqueId(row.workerAccountId) ||
       row.workerAccountId !== row.listingOwnerAccountId ||
       !validCategoryId(row.categoryId) ||
@@ -79,10 +93,10 @@ export async function readCurrentRequestTarget(
     return null;
   }
   return Object.freeze({
-    requesterAccountId: requesterId,
+    requesterAccountId: row.requesterId,
     workerAccountId: row.workerAccountId,
     listingId,
-    listingOwnerAccountId: row.listingOwnerAccountId,
+    listingOwnerAccountId: row.listingOwnerAccountId as string,
     categoryId: row.categoryId,
     requesterActive: row.requesterStatus === "active",
     workerActive: row.workerStatus === "active",
@@ -91,4 +105,42 @@ export async function readCurrentRequestTarget(
     listingPublished: row.listingStatus === "published",
     moderationApproved: row.moderationStatus === "allowed",
   });
+}
+
+/** Internal preview of server-owned status. A missing/corrupt row fails
+ * closed; D1 outages reject instead of fabricating allowed facts.
+ * This must not be reused as a call consent/disclosure decision.
+ */
+export async function readCurrentRequestTarget(
+  db: D1Database,
+  requesterId: string,
+  listingId: string,
+): Promise<RequestTargetFacts | null> {
+  if (!validOpaqueId(requesterId) || !validOpaqueId(listingId)) return null;
+  const { results } = await db.prepare(READ_CURRENT_REQUEST_TARGET_QUERY)
+    .bind(requesterId, listingId).all<RequestTargetRow>();
+  return projectRequestTarget(results, listingId, requesterId);
+}
+
+/** Strict one-statement call preflight: current unexpired, non-revoked,
+ * ACTIVE caller session and CURRENT listing/owner/category state share the
+ * same SQLite/D1 SELECT. No caller-supplied account ID or worker identity.
+ *
+ * Deny unknown/invalid tokens without even touching D1. Token values never
+ * reach SQL, logs or the projection; only the SHA-256 digest is bound.
+ * Not a call credential or authorization to display any phone number.
+ */
+export async function readSessionBoundCallTarget(
+  db: D1Database,
+  bearerToken: string,
+  listingId: string,
+): Promise<RequestTargetFacts | null> {
+  if (!validSessionToken(bearerToken) || !validOpaqueId(listingId)) return null;
+  const { results } = await db.prepare(READ_SESSION_BOUND_CALL_TARGET_QUERY)
+    .bind(await sessionHash(bearerToken), Math.floor(Date.now() / 1000), listingId)
+    .all<RequestTargetRow>();
+  const result = projectRequestTarget(results, listingId, null);
+  // The SQL requires active status. Fail closed even if a malformed fake
+  // adapter bypasses that WHERE predicate.
+  return result?.requesterActive ? result : null;
 }
