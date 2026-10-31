@@ -132,6 +132,28 @@ function actorAuthorized(call: AgoraCallSnapshot, cmd: AgoraCallCommand): boolea
   }
 }
 
+/**
+ * Even a test-only replay receipt must describe a temporally possible event.
+ * Receipt timestamps are NOT signatures or proof of a committed call; a real
+ * store must still authenticate an atomic transition and unique receipt.
+ */
+function validReceiptTiming(
+  event: AgoraCallEvent,
+  expectedRevision: number,
+  nowMs: number,
+  result: AgoraCallSnapshot,
+): boolean {
+  if (nowMs < result.createdAtMs) return false;
+  switch (event) {
+    case "accept": case "decline": case "busy": case "cancel":
+      return expectedRevision === 0 && nowMs < result.ringDeadlineMs;
+    case "ring_timeout":
+      return expectedRevision === 0 && nowMs >= result.ringDeadlineMs;
+    case "media_ready": case "media_failed": case "hangup":
+      return expectedRevision >= 1;
+  }
+}
+
 function validReceipt(value: unknown): value is AgoraCallReceipt {
   if (!record(value) || !exactKeys(value, RECEIPT_FIELDS) ||
       !validSnapshot(value.result)) return false;
@@ -142,7 +164,11 @@ function validReceipt(value: unknown): value is AgoraCallReceipt {
       !validIdempotencyKey(value.idempotencyKey) ||
       !nonnegativeInteger(value.nowMs) ||
       typeof value.event !== "string" || !EVENTS.includes(value.event)) return false;
-  return result.callId === value.callId &&
+  return validReceiptTiming(
+      value.event as AgoraCallEvent,
+      value.expectedRevision, value.nowMs, result,
+    ) &&
+    result.callId === value.callId &&
     result.revision === value.expectedRevision + 1 &&
     result.phase === RECEIPT_PHASES[value.event as AgoraCallEvent] &&
     actorAuthorized(result, {
