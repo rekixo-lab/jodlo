@@ -1,5 +1,8 @@
 # JODLO
 
+> **LOCAL AGORA INVITE SAFETY REHEARSAL — 2026-10-31:** New synthetic incoming-call guard requires the existing current worker **opt-in + both authenticated sessions** and explicit mock presence/availability, mutual-block and abuse verdicts before preparing a local-only ring snapshot. Unknown/busy/offline/blocked/stale evidence denies. **This is not real worker presence, a durable spam limiter, a quota reservation, a notification or an Agora call**; M-005 real policy/rate thresholds remain unapproved. [Agora voice design](docs/AGORA_VOICE.md). No new UI, route, D1 tables, vendor credential or deployment.
+
+
 > **M-005 FOUNDER DECISION — 2026-10-31:** Worker receiving Agora app-to-app voice calls requires **separate explicit opt-in, DEFAULT OFF**, independently of profile/listing publication. Worker can toggle OFF at any time; current consent is rechecked at future call/RTC token preflight. [ADR-0014](docs/decisions/0014-explicit-worker-agora-call-opt-in.md). Implemented only as private, owner-session-scoped D1 preference and local tests; **no public toggle route, visual UI, actual Agora SDK/tokens, call, recording or cloud deploy**. Other M-003/M-004/M-005/M-006/M-007/M-008 gates remain.
 
 
