@@ -55,7 +55,7 @@ async function openTrial() {
     a.exec("PRAGMA busy_timeout=0");
     b.exec("PRAGMA busy_timeout=0");
     for(const filename of MIGRATIONS) {
-      a.exec(readFileSync(new URL("../../../../infra/migrations/" +
+      a.exec(readFileSync(new URL("../../../infra/migrations/" +
         filename,import.meta.url),"utf8"));
     }
     a.exec(
