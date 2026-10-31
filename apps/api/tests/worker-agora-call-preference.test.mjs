@@ -96,7 +96,7 @@ test("explicit OFF revokes future Agora RTC preconditions immediately",async()=>
     });
     assert.equal(accepted.kind,"apply");
     const grant=()=>assessSyntheticAgoraRtcPreflight(f.adapter,
-      accepted.result,f.callerToken,f.workerToken,"caller",1,consent());
+      accepted.result,f.callerToken,"caller",1,consent());
     assert.deepEqual(await grant(),{kind:"prerequisite_only",role:"caller"});
     assert.deepEqual(await setOwnWorkerAgoraCallPreference(f.adapter,f.workerToken,false,1),
       {kind:"updated",preference:{enabled:false,revision:2}});

@@ -2,23 +2,26 @@ import type { D1Database } from "../../data/d1.ts";
 import type { DirectCallPolicyFacts } from "./direct-call.ts";
 import type { AgoraCallSnapshot } from "./agora-call-lifecycle.ts";
 import { assessSyntheticAgoraJoinPrerequisites } from "./agora-call-lifecycle.ts";
-import { readTwoSessionBoundAgoraOptInTarget } from "./request-target.ts";
+import {
+  readCallerSessionBoundAgoraOptInTarget,
+  readWorkerSessionBoundAgoraOptInTarget,
+} from "./request-target.ts";
 
 /**
- * An OFFLINE rehearsal of what an Agora AccessToken2 issuer MUST check.
- * This cannot create tokens, channel names, RTC user IDs or credentials.
- * Worker call opt-in now has a real owner-scoped D1 source. Other injected
- * policy flags still have NO approved real data sources.
+ * OFFLINE RTC JOIN rehearsal, never credential issuance or provider access.
+ * EACH participant supplies exclusively THEIR OWN session bearer. A caller
+ * cannot access the worker's token; a worker cannot access the caller's.
+ * Worker opt-in is checked directly in D1 for both roles.
  *
- * A future issuer must atomically bind call grant, participant session and
- * fresh consent/block/abuse facts; a read-only preflight is never enough
- * to authorize an external provider side effect.
+ * The internal call snapshot is simulated and NOT an authoritative durable
+ * call record. A future token issuer must obtain a server-owned accepted
+ * call with atomic participant authorization and current block/availability
+ * /abuse/privacy checks before scoped, short-lived Agora AccessToken2 signing.
  */
 export async function assessSyntheticAgoraRtcPreflight(
   db: D1Database,
   call: AgoraCallSnapshot,
-  callerBearer: string,
-  workerBearer: string,
+  participantBearer: string,
   requestedRole: "caller" | "worker",
   expectedRevision: number,
   currentPolicy: DirectCallPolicyFacts | null,
@@ -31,9 +34,13 @@ export async function assessSyntheticAgoraRtcPreflight(
     return { kind: "denied", reason: "INVALID_ROLE" };
   }
   try {
-    const target = await readTwoSessionBoundAgoraOptInTarget(
-      db, callerBearer, workerBearer, call?.listingId,
-    );
+    const target = requestedRole === "caller"
+      ? await readCallerSessionBoundAgoraOptInTarget(
+          db, participantBearer, call?.listingId,
+        )
+      : await readWorkerSessionBoundAgoraOptInTarget(
+          db, participantBearer, call?.listingId, call?.callerAccountId,
+        );
     if (!target) return { kind: "denied", reason: "SESSION_OR_TARGET_UNAVAILABLE" };
     const account = requestedRole === "caller"
       ? target.requesterAccountId : target.workerAccountId;
@@ -45,7 +52,6 @@ export async function assessSyntheticAgoraRtcPreflight(
     }
     return Object.freeze({ kind: "prerequisite_only" as const, role: decision.role });
   } catch {
-    // D1 outage/corrupt adapter is never a reason to issue RTC credentials.
     return { kind: "denied", reason: "SESSION_OR_TARGET_UNAVAILABLE" };
   }
 }

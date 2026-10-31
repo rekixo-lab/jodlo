@@ -1,5 +1,8 @@
 # JODLO
 
+> **AGORA RTC JOIN HARDENING — 2026-10-31:** Each customer/worker authenticates their **own** session only; no party ever needs the other party's bearer. Worker role uses a separate current D1 listing/consent/role-bound session query and synthetic accepted call identity, caller role checks its own live bearer. Outputs `prerequisite_only` **not** RTC access; no provider token, channel, SDK, call UI, push, call-history or remote deployment. Real M-003/M-005/006 policy and M-004/M-007 remain gated. [Agora voice runbook](docs/AGORA_VOICE.md).
+
+
 > **AGORA INVITE CORRECTION — 2026-10-31:** A customer **never provides a worker login token** to start an in-app Internet voice call. A new local-only single D1 query uses only the customer's authenticated session plus listing to recheck the actual worker's current **explicit default-OFF call consent**, publication, Category and moderation. The synthetic invite guard reuses it and still denies unknown/offline/busy/blocked/abuse cases. No real presence, calling, rate limits, notifications, UI, credential issuance, staging or deployment. See [Agora voice design](docs/AGORA_VOICE.md); M-003/M-004/M-005/M-006/M-007/M-008 gates unchanged.
 
 
