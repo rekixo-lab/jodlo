@@ -5,6 +5,10 @@ export const SESSION_TTL_SECONDS = 60 * 60;
 export const MAX_ACTIVE_SESSIONS = 6;
 const CLEANUP_BATCH_SIZE = 100;
 const VALID_SESSION_TOKEN = /^[A-Za-z0-9_-]{43}$/;
+/** Shared exact session-token validator; other modules must not invent a looser regex. */
+export function validSessionToken(value: unknown): value is string {
+  return typeof value === "string" && VALID_SESSION_TOKEN.test(value);
+}
 
 export const OWN_SESSION_QUERY =
   "SELECT a.id AS accountId FROM auth_sessions AS s " +
@@ -40,7 +44,7 @@ export async function sessionHash(token: string): Promise<string> {
 }
 
 export async function findSessionAccount(db: D1Database, token: string): Promise<string | null> {
-  if (!VALID_SESSION_TOKEN.test(token)) return null;
+  if (!validSessionToken(token)) return null;
   const { results } = await db.prepare(OWN_SESSION_QUERY)
     .bind(await sessionHash(token), Math.floor(Date.now() / 1000))
     .all<{ accountId: string }>();
@@ -93,7 +97,7 @@ export const REVOKE_ALL_SESSIONS_QUERY =
   "WHERE s.token_hash = ? AND s.expires_at > ? AND a.status = 'active' LIMIT 1)";
 
 export async function revokeSession(db: D1Database, token: string): Promise<boolean> {
-  if (!VALID_SESSION_TOKEN.test(token)) return false;
+  if (!validSessionToken(token)) return false;
   const now = Math.floor(Date.now() / 1000);
   const { meta } = await db.prepare(REVOKE_SESSION_QUERY)
     .bind(await sessionHash(token), now).run();
@@ -102,7 +106,7 @@ export async function revokeSession(db: D1Database, token: string): Promise<bool
 
 /** Revoke all devices using a single owner-scoped database statement. */
 export async function revokeAllSessions(db: D1Database, token: string): Promise<boolean> {
-  if (!VALID_SESSION_TOKEN.test(token)) return false;
+  if (!validSessionToken(token)) return false;
   const now = Math.floor(Date.now() / 1000);
   const { meta } = await db.prepare(REVOKE_ALL_SESSIONS_QUERY)
     .bind(await sessionHash(token), now).run();
