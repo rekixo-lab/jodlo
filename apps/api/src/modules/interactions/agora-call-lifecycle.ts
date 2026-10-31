@@ -73,6 +73,11 @@ const EVENTS: readonly string[] = [
   "accept", "decline", "busy", "cancel", "ring_timeout",
   "media_ready", "media_failed", "hangup",
 ];
+const RECEIPT_PHASES: Readonly<Record<AgoraCallEvent, AgoraCallPhase>> = Object.freeze({
+  accept: "accepted", decline: "declined", busy: "busy",
+  cancel: "cancelled", ring_timeout: "missed",
+  media_ready: "connected", media_failed: "ended", hangup: "ended",
+});
 
 /** Test-only guard, NOT an approved caller ringing duration. */
 export const MAX_SYNTHETIC_RING_WINDOW_MS = 120_000;
@@ -139,7 +144,11 @@ function validReceipt(value: unknown): value is AgoraCallReceipt {
       typeof value.event !== "string" || !EVENTS.includes(value.event)) return false;
   return result.callId === value.callId &&
     result.revision === value.expectedRevision + 1 &&
-    actorAuthorized(result, value as AgoraCallCommand);
+    result.phase === RECEIPT_PHASES[value.event as AgoraCallEvent] &&
+    actorAuthorized(result, {
+      event: value.event as AgoraCallEvent,
+      actorAccountId: value.actorAccountId as string | null,
+    } as AgoraCallCommand);
 }
 
 /** Synthetic initialization requires a complete *test-only* future policy.
