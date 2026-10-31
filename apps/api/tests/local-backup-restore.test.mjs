@@ -11,6 +11,7 @@ import { optInAsWorker } from "../src/modules/workers/profile.ts";
 import { publishListing } from "../src/modules/workers/listings.ts";
 import { issueSession, findSessionAccount, sessionHash } from "../src/modules/identity/sessions.ts";
 import { makeD1NotificationReceiptStore } from "../src/modules/notifications/d1-receipts.ts";
+import { makeD1NotificationDeadLetters } from "../src/modules/notifications/d1-dead-letters.ts";
 
 const ORIGIN = "https://jodlo.rekixo.com";
 const OWNER = "account-backup-owner";
@@ -19,7 +20,7 @@ const get = (path, env, bearer) => worker.fetch(new Request(ORIGIN + path, {
   headers: bearer ? { Authorization: "Bearer " + bearer } : {},
 }), env);
 
-test("local five-migration SQLite backup survives destructive source changes and restores API authorization and delivery receipts", async () => {
+test("local six-migration SQLite backup restores authorization, receipts and dead letters", async () => {
   // Every row and bearer is synthetic; this never opens a Cloudflare D1 binding.
   const { db, adapter } = openLocalDatabase();
   const dir = mkdtempSync(join(tmpdir(), "jodlo-local-recovery-"));
@@ -57,6 +58,8 @@ test("local five-migration SQLite backup survives destructive source changes and
     const claim=await delivery.acquire("event-backup-synthetic-0001");
     assert.equal(claim.state,"acquired");
     await delivery.markCompleted("event-backup-synthetic-0001",claim.claimToken);
+    await makeD1NotificationDeadLetters(adapter,()=>1_800_000_000_000)
+      .record("event-backup-deadletter-0002","RETRIES_EXHAUSTED");
 
     // Node's actual SQLite online backup copies both schema and committed rows.
     // Never use the throwaway source DB as the restore target.
@@ -79,7 +82,7 @@ test("local five-migration SQLite backup survives destructive source changes and
     assert.deepEqual(recovered.prepare("PRAGMA foreign_key_check").all(), []);
     for (const table of ["categories", "accounts", "worker_profiles",
                          "google_identities", "auth_sessions", "worker_listings",
-                         "notification_delivery_receipts"]) {
+                         "notification_delivery_receipts", "notification_delivery_dead_letters"]) {
       assert.equal(recovered.prepare(
         "SELECT COUNT(*) AS n FROM sqlite_schema WHERE type='table' AND name=?"
       ).get(table).n, 1, table);
@@ -89,6 +92,17 @@ test("local five-migration SQLite backup survives destructive source changes and
     assert.deepEqual(await makeD1NotificationReceiptStore(
       localD1Adapter(recovered),()=>1_800_000_000_000+60_000,
     ).acquire("event-backup-synthetic-0001"),{state:"completed"});
+    assert.deepEqual({...recovered.prepare(
+      "SELECT event_id,reason,recorded_at_ms FROM notification_delivery_dead_letters WHERE event_id=?"
+    ).get("event-backup-deadletter-0002")}, {
+      event_id:"event-backup-deadletter-0002",reason:"RETRIES_EXHAUSTED",
+      recorded_at_ms:1_800_000_000_000,
+    });
+    await makeD1NotificationDeadLetters(localD1Adapter(recovered),()=>1_800_000_060_000)
+      .record("event-backup-deadletter-0002","PERMANENT_FAILURE");
+    assert.equal(recovered.prepare(
+      "SELECT reason FROM notification_delivery_dead_letters WHERE event_id=?"
+    ).get("event-backup-deadletter-0002").reason,"RETRIES_EXHAUSTED");
     assert.equal(recovered.prepare("SELECT google_sub FROM google_identities WHERE account_id=?")
       .get(OWNER).google_sub, "123456789012345678901");
     assert.equal(recovered.prepare("SELECT token_hash FROM auth_sessions WHERE account_id=?")

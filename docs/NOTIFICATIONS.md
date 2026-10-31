@@ -18,3 +18,10 @@ The existing eleven generic delivery tests now use the **actual migrated D1 rece
 **Still missing before any real notification:** founder-approved event types and recipient preferences/consent and deletion/retention (M-003/M-005), durable dead-letter store, Queue producer/consumer/bindings and local Queue runtime test, FCM provider and Android registration/permission handling (M-006/M-004), device delivery and operational checks, M-007 controlled production approval. This module is **not connected to `src/index.ts`**, so no push can be emitted.
 
 No location/area schema, unreviewed 889 Category activation, customer contact API, real Google OAuth, visual UI, production deploy or Finworkar modification.
+
+## 2026-10-31 — Durable local D1 dead-letter audit (PR verification pending)
+
+- `infra/migrations/0006_notification_dead_letters.sql` creates a **machine-only** table with opaque event ID, strict permanent/exhausted reason and nonnegative recording time. The first committed record wins across retries. No account ID, destination, device token, notification body, location, approved event type or consent preference is stored.
+- `apps/api/src/modules/notifications/d1-dead-letters.ts` implements the existing injected `NotificationDeadLetters` interface with one idempotent bound D1 INSERT, strict clock/identifier validation and fail-closed write errors. Existing delivery core will ACK after this `record` succeeds; a failed write retries instead.
+- Local tests exercise two independent file-backed SQLite handles, replay, restart, malformed data, real delivery-core callbacks and backup/restore; CI founder guard pins the migration/table to the three exact fields.
+- This **does not** configure a Cloudflare Queue consumer/producer, FCM, approved event/consent policy, actual notifications, dead-letter retention cleanup, UI, real-user data or deployment. Any actual retention/deletion policy is deferred to M-003/M-005/M-007. Validate exact PR-head and independent merged-main CI before calling this verified.

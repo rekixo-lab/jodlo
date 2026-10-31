@@ -13,8 +13,12 @@ const allowedTables = new Set([
   // Exactly one newly engineered, non-recipient delivery receipt; never a
   // blanket permission for contact, notification preference or token storage.
   "notification_delivery_receipts",
+  // This is a second *machine-only* notification table, not a recipient/token store.
+  "notification_delivery_dead_letters",
 ]);
 const RECEIPT_MIGRATION = "0005_notification_delivery_receipts.sql";
+const DEAD_LETTER_MIGRATION = "0006_notification_dead_letters.sql";
+const DEAD_LETTER_FIELDS = ["event_id", "reason", "recorded_at_ms"];
 const RECEIPT_FIELDS = [
   "event_id", "state", "claim_token", "lease_until_ms", "completed_at_ms",
 ];
@@ -83,6 +87,8 @@ export async function auditFounderGates(root = rootDefault) {
       if(!allowedTables.has(table)) errors.push("Unapproved D1 table: "+table+" ("+name+")");
       if(table==="notification_delivery_receipts" && name!==RECEIPT_MIGRATION)
         errors.push("Notification receipt table must use its reviewed migration: "+name);
+      if(table==="notification_delivery_dead_letters" && name!==DEAD_LETTER_MIGRATION)
+        errors.push("Notification dead-letter table must use its reviewed migration: "+name);
     }
     if(name===RECEIPT_MIGRATION) {
       // The receipt store is strictly an opaque machine-event lease. Prevent
@@ -96,6 +102,17 @@ export async function auditFounderGates(root = rootDefault) {
          /\b(?:ALTER|DROP)\s+TABLE\s+notification_delivery_receipts\b/i.test(content))
         errors.push("Notification receipt migration must keep only five bounded machine fields");
     }
+    if(name===DEAD_LETTER_MIGRATION) {
+      const match=content.match(/CREATE\s+TABLE\s+notification_delivery_dead_letters\s*\(([\s\S]*?)\)\s*;/i);
+      const fields=match===null?[]:[...match[1].matchAll(
+        /(?:^|[,(])\s*([a-z][a-z0-9_]*)\s+(?:TEXT|INTEGER|REAL|BLOB)\b/gim,
+      )].map(m=>m[1].toLowerCase());
+      if(fields.join(",")!==DEAD_LETTER_FIELDS.join(",") ||
+         !/\bCHECK\s*\(/i.test(content))
+        errors.push("Notification dead-letter migration must keep only three bounded machine fields");
+    }
+    if(/\b(?:ALTER|DROP)\s+TABLE\s+notification_delivery_dead_letters\b/i.test(content))
+      errors.push("Unauthorized notification dead-letter table mutation: "+name);
     if(name!=="0002_shared_accounts_worker_drafts.sql" &&
        /\b(?:ALTER|DROP)\s+TABLE\s+worker_profiles\b/i.test(content))
       errors.push("Unauthorized worker_profiles schema mutation: "+name);

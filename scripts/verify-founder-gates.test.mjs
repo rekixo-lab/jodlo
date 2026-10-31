@@ -25,6 +25,9 @@ function baseline() {
       "CREATE TABLE notification_delivery_receipts (event_id TEXT, state TEXT, " +
       "claim_token TEXT, lease_until_ms INTEGER, completed_at_ms INTEGER, " +
       "CHECK(state IN ('claimed','completed')));",
+    "infra/migrations/0006_notification_dead_letters.sql":
+      "CREATE TABLE notification_delivery_dead_letters (event_id TEXT, reason TEXT, " +
+      "recorded_at_ms INTEGER, CHECK(reason IN ('PERMANENT_FAILURE','RETRIES_EXHAUSTED')));",
     "docs/decisions/0008-hindi-english-only.md":"Hinglish is NOT a supported language",
     ".github/workflows/checks.yml":"run: npm run build:api",
     "package.json":JSON.stringify({scripts:{"build:api":"wrangler deploy --dry-run --config apps/api/wrangler.jsonc"}}),
@@ -47,7 +50,7 @@ test("approved routes, tables, draft state and languages pass",async()=>{
   const result=await fixture();
   assert.deepEqual(result.errors,[]);
   assert.equal(result.routes.length,9);
-  assert.equal(result.tables.length,7);
+  assert.equal(result.tables.length,8);
 });
 test("unapproved workers, requests, area and listing routes fail",async()=>{
   for(const p of ["/api/v1/workers","/api/v1/requests","/api/v1/areas","/api/v1/contact"]){
@@ -176,4 +179,24 @@ test("notification receipt permission never admits recipient, push token, contac
   });
   assert.match(moved.errors.join("\n"),
     /Notification receipt table must use its reviewed migration/);
+});
+
+test("new dead-letter allowlist cannot add recipient fields, move migration or ALTER table",async()=>{
+  for(const extra of ["recipient_account_id TEXT","device_token TEXT","payload BLOB","phone TEXT"]) {
+    const wrong=await fixture(f=>{
+      f["infra/migrations/0006_notification_dead_letters.sql"]=
+        f["infra/migrations/0006_notification_dead_letters.sql"]
+          .replace("recorded_at_ms INTEGER,", "recorded_at_ms INTEGER, "+extra+",");
+    });
+    assert.match(wrong.errors.join("\n"),/Notification dead-letter migration must keep only three bounded machine fields/,extra);
+  }
+  const moved=await fixture(f=>{
+    f["infra/migrations/0007_rogue.sql"]="CREATE TABLE notification_delivery_dead_letters (event_id TEXT);";
+  });
+  assert.match(moved.errors.join("\n"),/Notification dead-letter table must use its reviewed migration/);
+  const altered=await fixture(f=>{
+    f["infra/migrations/0007_rogue.sql"]=
+      "ALTER TABLE notification_delivery_dead_letters ADD COLUMN recipient_account_id TEXT;";
+  });
+  assert.match(altered.errors.join("\n"),/Unauthorized notification dead-letter table mutation/);
 });
