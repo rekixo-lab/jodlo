@@ -57,6 +57,22 @@ const SESSION_BOUND_TARGET_QUERY =
 export const READ_SESSION_BOUND_CALL_TARGET_QUERY =
   SESSION_BOUND_TARGET_QUERY + "LIMIT 1";
 
+/** A caller-initiated Agora INVITE must NEVER require or accept a worker
+ * bearer token from the caller. The server derives the worker exclusively
+ * from the listing owner, and rechecks the worker's current private opt-in
+ * alongside the customer's own active bearer in ONE D1 SELECT.
+ *
+ * This is a fail-closed local-only preview, not a call grant. Availability,
+ * blocking, anti-abuse and actual signaling remain unapproved M-005 facts.
+ */
+export const READ_CALLER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY =
+  SESSION_BOUND_TARGET_QUERY +
+  "AND worker.status='active' AND wp.status='draft' " +
+  "AND wl.status='published' AND wl.moderation_status='allowed' " +
+  "AND c.is_active=1 AND requester.id<>worker.id " +
+  "AND EXISTS (SELECT 1 FROM worker_agora_call_preferences AS pref " +
+  "WHERE pref.account_id=worker.id AND pref.calls_enabled=1) LIMIT 1";
+
 /** Two current bearer proofs must match their DIFFERENT actual accounts
  * inside the same SQLite/D1 statement. The worker token is compared only
  * against the worker owning this listing, never a body-selected worker ID.
@@ -156,19 +172,52 @@ export async function readCurrentRequestTarget(
  * reach SQL, logs or the projection; only the SHA-256 digest is bound.
  * Not a call credential or authorization to display any phone number.
  */
-export async function readSessionBoundCallTarget(
+async function readCallerTargetWithQuery(
+  db: D1Database,
+  bearerToken: string,
+  listingId: string,
+  query: string,
+): Promise<RequestTargetFacts | null> {
+  if (!validSessionToken(bearerToken) || !validOpaqueId(listingId)) return null;
+  const { results } = await db.prepare(query)
+    .bind(await sessionHash(bearerToken), Math.floor(Date.now() / 1000), listingId)
+    .all<RequestTargetRow>();
+  const result = projectRequestTarget(results, listingId, null);
+  // Never accept a fake adapter that violates the caller active predicate.
+  return result?.requesterActive ? result : null;
+}
+
+export function readSessionBoundCallTarget(
   db: D1Database,
   bearerToken: string,
   listingId: string,
 ): Promise<RequestTargetFacts | null> {
-  if (!validSessionToken(bearerToken) || !validOpaqueId(listingId)) return null;
-  const { results } = await db.prepare(READ_SESSION_BOUND_CALL_TARGET_QUERY)
-    .bind(await sessionHash(bearerToken), Math.floor(Date.now() / 1000), listingId)
-    .all<RequestTargetRow>();
-  const result = projectRequestTarget(results, listingId, null);
-  // The SQL requires active status. Fail closed even if a malformed fake
-  // adapter bypasses that WHERE predicate.
-  return result?.requesterActive ? result : null;
+  return readCallerTargetWithQuery(
+    db, bearerToken, listingId, READ_SESSION_BOUND_CALL_TARGET_QUERY);
+}
+
+/** Caller-initiated, phone-free INVITATION preflight. Requires ONLY the
+ * caller's live session (SHA-256 hash), listing ID and a verified, enabled
+ * worker call preference. The worker account comes from D1, NEVER a caller
+ * parameter. This read intentionally does not require the worker to hold
+ * a current session: a session is not online presence or push availability.
+ *
+ * We recheck projection invariants in case a fake/broken D1 adapter returns
+ * rows in violation of SQL predicates. This does NOT verify actual live
+ * availability/blocks/abuse, reserve a call slot or authorize Agora RTC.
+ */
+export async function readCallerSessionBoundAgoraOptInTarget(
+  db: D1Database,
+  callerBearer: string,
+  listingId: string,
+): Promise<RequestTargetFacts | null> {
+  const facts = await readCallerTargetWithQuery(
+    db, callerBearer, listingId, READ_CALLER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY,
+  );
+  return facts?.requesterActive && facts.workerActive &&
+    facts.workerOptedIn && facts.categoryActive &&
+    facts.listingPublished && facts.moderationApproved &&
+    facts.requesterAccountId !== facts.workerAccountId ? facts : null;
 }
 
 
