@@ -37,7 +37,7 @@ export function localD1Adapter(db) {
 export function openLocalDatabase() {
   const db = new DatabaseSync(":memory:");
   db.exec("PRAGMA foreign_keys = ON");
-  for (const name of ["0001_public_catalog.sql", "0002_shared_accounts_worker_drafts.sql", "0003_google_identity_sessions.sql", "0004_worker_service_listings.sql", "0005_notification_delivery_receipts.sql", "0006_notification_dead_letters.sql"]) {
+  for (const name of ["0001_public_catalog.sql", "0002_shared_accounts_worker_drafts.sql", "0003_google_identity_sessions.sql", "0004_worker_service_listings.sql", "0005_notification_delivery_receipts.sql", "0006_notification_dead_letters.sql", "0007_worker_agora_call_preferences.sql"]) {
     db.exec(readFileSync(new URL("../../../../infra/migrations/" + name, import.meta.url), "utf8"));
   }
   return { db, adapter: localD1Adapter(db) };

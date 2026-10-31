@@ -28,6 +28,11 @@ function baseline() {
     "infra/migrations/0006_notification_dead_letters.sql":
       "CREATE TABLE notification_delivery_dead_letters (event_id TEXT, reason TEXT, " +
       "recorded_at_ms INTEGER, CHECK(reason IN ('PERMANENT_FAILURE','RETRIES_EXHAUSTED')));",
+    "infra/migrations/0007_worker_agora_call_preferences.sql":
+      "CREATE TABLE worker_agora_call_preferences (account_id TEXT PRIMARY KEY NOT NULL " +
+      "REFERENCES worker_profiles(account_id) ON DELETE CASCADE, " +
+      "calls_enabled INTEGER NOT NULL DEFAULT 0 CHECK(calls_enabled IN (0,1)), " +
+      "revision INTEGER NOT NULL CHECK(revision BETWEEN 1 AND 2147483647));",
     "docs/decisions/0008-hindi-english-only.md":"Hinglish is NOT a supported language",
     ".github/workflows/checks.yml":"run: npm run build:api",
     "package.json":JSON.stringify({scripts:{"build:api":"wrangler deploy --dry-run --config apps/api/wrangler.jsonc"}}),
@@ -50,7 +55,7 @@ test("approved routes, tables, draft state and languages pass",async()=>{
   const result=await fixture();
   assert.deepEqual(result.errors,[]);
   assert.equal(result.routes.length,9);
-  assert.equal(result.tables.length,8);
+  assert.equal(result.tables.length,9);
 });
 test("unapproved workers, requests, area and listing routes fail",async()=>{
   for(const p of ["/api/v1/workers","/api/v1/requests","/api/v1/areas","/api/v1/contact"]){
@@ -199,4 +204,37 @@ test("new dead-letter allowlist cannot add recipient fields, move migration or A
       "ALTER TABLE notification_delivery_dead_letters ADD COLUMN recipient_account_id TEXT;";
   });
   assert.match(altered.errors.join("\n"),/Unauthorized notification dead-letter table mutation/);
+});
+
+
+test("approved worker Agora opt-in table cannot contain phone, push, PII, other columns or moved schema",async()=>{
+  for(const extra of [
+    "phone TEXT","device_token TEXT","call_history TEXT","location TEXT",
+    "provider_uid TEXT","created_at TEXT",
+  ]) {
+    const changed=await fixture(files=>{
+      files["infra/migrations/0007_worker_agora_call_preferences.sql"]=
+        files["infra/migrations/0007_worker_agora_call_preferences.sql"]
+          .replace("revision INTEGER",extra+", revision INTEGER");
+    });
+    assert.match(changed.errors.join("\n"),
+      /Agora preference migration must retain only 3 guarded fields and worker owner FK/,extra);
+  }
+  const moved=await fixture(files=>{
+    files["infra/migrations/0008_rogue.sql"]=
+      "CREATE TABLE worker_agora_call_preferences (account_id TEXT);";
+  });
+  assert.match(moved.errors.join("\n"),/Agora preference table must use its founder-approved migration/);
+  const altered=await fixture(files=>{
+    files["infra/migrations/0008_rogue.sql"]=
+      "ALTER TABLE worker_agora_call_preferences ADD COLUMN phone TEXT;";
+  });
+  assert.match(altered.errors.join("\n"),/Unauthorized Agora preference schema mutation/);
+  const relaxed=await fixture(files=>{
+    files["infra/migrations/0007_worker_agora_call_preferences.sql"]=
+      files["infra/migrations/0007_worker_agora_call_preferences.sql"]
+        .replace("CHECK(calls_enabled IN (0,1))","CHECK(calls_enabled IN (0,1,2))");
+  });
+  assert.match(relaxed.errors.join("\n"),
+    /Agora preference migration must retain only 3 guarded fields and worker owner FK/);
 });

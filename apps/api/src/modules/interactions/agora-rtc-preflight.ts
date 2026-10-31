@@ -2,12 +2,13 @@ import type { D1Database } from "../../data/d1.ts";
 import type { DirectCallPolicyFacts } from "./direct-call.ts";
 import type { AgoraCallSnapshot } from "./agora-call-lifecycle.ts";
 import { assessSyntheticAgoraJoinPrerequisites } from "./agora-call-lifecycle.ts";
-import { readTwoSessionBoundCallTarget } from "./request-target.ts";
+import { readTwoSessionBoundAgoraOptInTarget } from "./request-target.ts";
 
 /**
  * An OFFLINE rehearsal of what an Agora AccessToken2 issuer MUST check.
  * This cannot create tokens, channel names, RTC user IDs or credentials.
- * The currently injected policy flags have no approved real data sources.
+ * Worker call opt-in now has a real owner-scoped D1 source. Other injected
+ * policy flags still have NO approved real data sources.
  *
  * A future issuer must atomically bind call grant, participant session and
  * fresh consent/block/abuse facts; a read-only preflight is never enough
@@ -30,7 +31,7 @@ export async function assessSyntheticAgoraRtcPreflight(
     return { kind: "denied", reason: "INVALID_ROLE" };
   }
   try {
-    const target = await readTwoSessionBoundCallTarget(
+    const target = await readTwoSessionBoundAgoraOptInTarget(
       db, callerBearer, workerBearer, call?.listingId,
     );
     if (!target) return { kind: "denied", reason: "SESSION_OR_TARGET_UNAVAILABLE" };

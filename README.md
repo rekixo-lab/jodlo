@@ -1,5 +1,8 @@
 # JODLO
 
+> **M-005 FOUNDER DECISION — 2026-10-31:** Worker receiving Agora app-to-app voice calls requires **separate explicit opt-in, DEFAULT OFF**, independently of profile/listing publication. Worker can toggle OFF at any time; current consent is rechecked at future call/RTC token preflight. [ADR-0014](docs/decisions/0014-explicit-worker-agora-call-opt-in.md). Implemented only as private, owner-session-scoped D1 preference and local tests; **no public toggle route, visual UI, actual Agora SDK/tokens, call, recording or cloud deploy**. Other M-003/M-004/M-005/M-006/M-007/M-008 gates remain.
+
+
 > **LOCAL-ONLY AGORA DUAL-SESSION AND SIGNALING PREFLIGHT — 2026-10-31:** Both the customer and listing owner's own active bearer sessions must be current **in one D1 SELECT** for a future RTC token grant. Offline signaling transition intents reuse the call reducer's actor/revision/duplicate checks and emit **no real messages**. This does **not** issue an Agora token/channel/UID, send a push, store a call, create an API or permit live calling. See [Agora Voice security design](docs/AGORA_VOICE.md). M-003/M-004/M-005/M-006/M-007/M-008 remain gated.
 
 > **OFFLINE AGORA LIFECYCLE CONTRACT — 2026-10-31:** A new pure call-invite/ringing/accept/decline/cancel/busy/timeout/connected/ended model and join-prerequisite checks are exercised only by synthetic local tests. See [Agora Voice implementation design](docs/AGORA_VOICE.md). There is NO actual Agora channel, access token, in-app ringtone, SDK, call history, public route, UI or remote deployment. M-003/M-004/M-005/M-006/M-007/M-008 gates are unchanged.
