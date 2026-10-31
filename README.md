@@ -1,5 +1,7 @@
 # JODLO
 
+> **NEW M-005 APPROVAL — 2026-10-31:** Customers contact workers **first by direct phone call**, not through a mandatory in-app Request→Accept/Decline journey. See [ADR-0012](docs/decisions/0012-direct-phone-call-first-contact.md). The channel choice is approved, but displaying/storing a worker number, consent and privacy, dialing UI, connection method, blocks/moderation and abuse controls are **not** approved; there is no live calling API. M-003/M-004/M-005 safety/M-006/M-007/M-008 remain gated.
+
 > **NEW FOUNDER DECISION — 2026-10-27: CODE FIRST, NO STAGING.** Develop Android, backend, database and external-provider adapter code using Wrangler local simulation, mock integrations and GitHub CI. **Do not deploy or request Cloudflare credentials now.** First cloud deployment is a founder-approved controlled production launch after product readiness. Former staging directions are superseded. See [ADR-0004](docs/decisions/0004-local-first-no-staging-until-production.md) and [Release Readiness](docs/RELEASE_READINESS.md).
 
 

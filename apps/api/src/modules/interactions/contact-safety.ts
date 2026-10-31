@@ -3,7 +3,8 @@ import { validCategoryId, validOpaqueId } from "../shared/identifiers.ts";
 /** Pure server-trusted safety facts. Never populate these from client flags.
  * A future D1 transaction MUST re-read every mutable fact before writing a
  * contact request: a preview result is never permission to interact later.
- * This does not select M-005's final channel/cooldown/request lifecycle.
+ * M-005 now selects direct telephone call as the FIRST contact (ADR-0012),
+ * but no phone disclosure/consent/abuse policy or live calling is enabled.
  */
 export type ContactSafetyFacts = Readonly<{
   requesterAccountId: string;
