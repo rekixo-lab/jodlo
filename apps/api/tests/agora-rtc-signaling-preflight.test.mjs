@@ -12,6 +12,8 @@ import {
 import {
   readTwoSessionBoundCallTarget,
   READ_TWO_SESSION_BOUND_CALL_TARGET_QUERY,
+  readWorkerSessionBoundAgoraOptInTarget,
+  READ_WORKER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY,
 } from "../src/modules/interactions/request-target.ts";
 import {
   prepareSyntheticAgoraInvite, decideSyntheticAgoraCallEvent,
@@ -68,8 +70,10 @@ async function fixture(){
     assert.equal(decision.kind,"apply");
     return decision.result;
   };
-  const rtc=(call,role="caller",policy=ready(),version=call?.revision)=>
-    assessSyntheticAgoraRtcPreflight(adapter,call,callerToken,workerToken,role,version,policy);
+  const rtc=(call,role="caller",policy=ready(),version=call?.revision,ownToken)=>
+    assessSyntheticAgoraRtcPreflight(
+      adapter,call,ownToken??(role==="worker"?workerToken:callerToken),
+      role,version,policy);
   return {
     db,adapter,listing,callerToken,workerToken,otherToken,
     target,invite,accepted,rtc,close(){db.close();}
@@ -153,7 +157,7 @@ test("invalid bearer and listing are rejected BEFORE touching D1",async()=>{
     "a".repeat(43),"b".repeat(43),"bad id"),null);
 });
 
-test("worker logout and logout-all revoke RTC preflight without disabling caller",async()=>{
+test("each participant's logout revokes only their OWN join, not the other bearer",async()=>{
   const f=await fixture();
   try{
     const call=await f.accepted();
@@ -163,29 +167,45 @@ test("worker logout and logout-all revoke RTC preflight without disabling caller
       {kind:"prerequisite_only",role:"worker"});
     assert.equal(await revokeSession(f.adapter,f.workerToken),true);
     assert.equal(await f.target(),null);
-    assert.deepEqual(await f.rtc(call),
+    assert.deepEqual(await f.rtc(call,"worker"),
       refused("SESSION_OR_TARGET_UNAVAILABLE"));
+    assert.deepEqual(await f.rtc(call,"caller"),
+      {kind:"prerequisite_only",role:"caller"},
+      "caller still owns their live token; worker logout is not presence");
     const token=(await issueSession(f.adapter,WORKER))?.accessToken;
     assert.ok(token);
     assert.ok(await readTwoSessionBoundCallTarget(
       f.adapter,f.callerToken,token,f.listing.id));
+    assert.deepEqual(await f.rtc(call,"worker",ready(),call.revision,token),
+      {kind:"prerequisite_only",role:"worker"});
     assert.equal(await revokeAllSessions(f.adapter,f.callerToken),true);
     assert.equal(await readTwoSessionBoundCallTarget(
       f.adapter,f.callerToken,token,f.listing.id),null);
+    assert.deepEqual(await f.rtc(call,"caller"),
+      refused("SESSION_OR_TARGET_UNAVAILABLE"));
+    assert.deepEqual(await f.rtc(call,"worker",ready(),call.revision,token),
+      {kind:"prerequisite_only",role:"worker"},
+      "other participant's token is not needed; their account is still active");
   }finally{f.close();}
 });
 
-test("expired worker or caller session never meets token preflight",async()=>{
+test("expired worker or caller session blocks only its OWN role's join",async()=>{
   const f=await fixture();
   try {
     const call=await f.accepted();
-    for(const token of [f.workerToken,f.callerToken]){
-      f.db.prepare("UPDATE auth_sessions SET expires_at=1 WHERE token_hash=?")
-        .run(await sessionHash(token));
-      assert.equal(await f.target(),null);
-      assert.deepEqual(await f.rtc(call),
-        refused("SESSION_OR_TARGET_UNAVAILABLE"));
-    }
+    f.db.prepare("UPDATE auth_sessions SET expires_at=1 WHERE token_hash=?")
+      .run(await sessionHash(f.workerToken));
+    assert.equal(await f.target(),null,"legacy dual-session preview needs both");
+    assert.deepEqual(await f.rtc(call,"worker"),
+      refused("SESSION_OR_TARGET_UNAVAILABLE"));
+    assert.deepEqual(await f.rtc(call,"caller"),
+      {kind:"prerequisite_only",role:"caller"});
+    f.db.prepare("UPDATE auth_sessions SET expires_at=1 WHERE token_hash=?")
+      .run(await sessionHash(f.callerToken));
+    assert.deepEqual(await f.rtc(call,"caller"),
+      refused("SESSION_OR_TARGET_UNAVAILABLE"));
+    assert.deepEqual(await f.rtc(call,"worker"),
+      refused("SESSION_OR_TARGET_UNAVAILABLE"));
   }finally{f.close();}
 });
 
@@ -209,14 +229,14 @@ test("hidden/unpublished listing and deactivated Category deny RTC preflight",as
     const call=await f.accepted();
     f.db.prepare("UPDATE worker_listings SET moderation_status='hidden' WHERE id=?")
       .run(f.listing.id);
-    assert.deepEqual(await f.rtc(call),refused("CALL_OR_POLICY_DENIED"));
+    assert.deepEqual(await f.rtc(call),refused("SESSION_OR_TARGET_UNAVAILABLE"));
     f.db.prepare("UPDATE worker_listings SET moderation_status='allowed',status='unpublished' WHERE id=?")
       .run(f.listing.id);
-    assert.deepEqual(await f.rtc(call),refused("CALL_OR_POLICY_DENIED"));
+    assert.deepEqual(await f.rtc(call),refused("SESSION_OR_TARGET_UNAVAILABLE"));
     f.db.prepare("UPDATE worker_listings SET status='published' WHERE id=?")
       .run(f.listing.id);
     f.db.prepare("UPDATE categories SET is_active=0 WHERE id=?").run(CATEGORY);
-    assert.deepEqual(await f.rtc(call),refused("CALL_OR_POLICY_DENIED"));
+    assert.deepEqual(await f.rtc(call),refused("SESSION_OR_TARGET_UNAVAILABLE"));
   }finally{f.close();}
 });
 
@@ -251,12 +271,12 @@ test("D1 exception or malformed fake target fails closed, never issues RTC token
     const faulty={prepare(){return {bind(){return this;},
       async all(){throw Error("D1 offline");}};}};
     assert.deepEqual(await assessSyntheticAgoraRtcPreflight(
-      faulty,call,f.callerToken,f.workerToken,"worker",call.revision,ready()),
+      faulty,call,f.workerToken,"worker",call.revision,ready()),
       refused("SESSION_OR_TARGET_UNAVAILABLE"));
     const malformed={prepare(){return {bind(){return this;},
       async all(){return {results:[{requesterId:CALLER,workerAccountId:WORKER}]};}};}};
     assert.deepEqual(await assessSyntheticAgoraRtcPreflight(
-      malformed,call,f.callerToken,f.workerToken,"worker",call.revision,ready()),
+      malformed,call,f.workerToken,"worker",call.revision,ready()),
       refused("SESSION_OR_TARGET_UNAVAILABLE"));
   }finally{f.close();}
 });

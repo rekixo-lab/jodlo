@@ -95,6 +95,28 @@ export const READ_TWO_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY =
 export const READ_TWO_SESSION_BOUND_CALL_TARGET_QUERY =
   SESSION_BOUND_TARGET_QUERY + WORKER_SESSION_OWNER_CONDITION + "LIMIT 1";
 
+/** Future worker's OWN Agora RTC-join proof. A worker never supplies the
+ * customer's bearer. The caller account comes only from a trusted internal
+ * call snapshot (not a client-selected value) and is verified active here;
+ * the recipient is resolved from the current listing's actual owner.
+ *
+ * This one D1 SELECT checks the worker's OWN active session, worker consent,
+ * listing moderation/publication, Category and both account states together.
+ * Read-only synthetic prerequisite, NEVER a token or a real call grant.
+ */
+export const READ_WORKER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY =
+  REQUEST_TARGET_SOURCE_QUERY +
+  "JOIN auth_sessions AS participant_session " +
+  "ON participant_session.account_id=worker.id " +
+  "AND participant_session.token_hash=? AND participant_session.expires_at>? " +
+  "JOIN accounts AS requester ON requester.id=? " +
+  "WHERE wl.id=? AND worker.status='active' AND requester.status='active' " +
+  "AND requester.id<>worker.id AND wp.status='draft' " +
+  "AND wl.status='published' AND wl.moderation_status='allowed' " +
+  "AND c.is_active=1 " +
+  "AND EXISTS (SELECT 1 FROM worker_agora_call_preferences AS pref " +
+  "WHERE pref.account_id=worker.id AND pref.calls_enabled=1) LIMIT 1";
+
 type RequestTargetRow = {
   requesterId: unknown;
   requesterStatus: unknown;
@@ -281,4 +303,36 @@ export function readTwoSessionBoundAgoraOptInTarget(
   return readTwoBoundSessions(
     db, callerToken, workerToken, listingId,
     READ_TWO_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY);
+}
+
+
+
+/**
+ * Separate WORKER-owned RTC JOIN proof. Unlike the first-caller invitation
+ * reader, this can run only when a trusted internal accepted call snapshot
+ * already names its caller; it NEVER receives the caller's bearer.
+ *
+ * Expected caller ID must be server-held call state in a future durable
+ * implementation, not an ID from client JSON or a header. Invalid inputs
+ * fail before D1. Both accounts, listing state and worker consent must
+ * remain eligible. Not a real RTC credential or grant.
+ */
+export async function readWorkerSessionBoundAgoraOptInTarget(
+  db: D1Database,
+  workerBearer: string,
+  listingId: string,
+  trustedCallerAccountId: string,
+): Promise<RequestTargetFacts | null> {
+  if (!validSessionToken(workerBearer) ||
+      !validOpaqueId(listingId) ||
+      !validOpaqueId(trustedCallerAccountId)) return null;
+  const { results } = await db.prepare(READ_WORKER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY)
+    .bind(await sessionHash(workerBearer), Math.floor(Date.now() / 1000),
+      trustedCallerAccountId, listingId)
+    .all<RequestTargetRow>();
+  const facts = projectRequestTarget(results, listingId, trustedCallerAccountId);
+  return facts?.requesterActive && facts.workerActive &&
+    facts.workerOptedIn && facts.categoryActive &&
+    facts.listingPublished && facts.moderationApproved &&
+    facts.requesterAccountId !== facts.workerAccountId ? facts : null;
 }
