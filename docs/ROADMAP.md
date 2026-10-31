@@ -677,3 +677,8 @@ Project the previously merged one-page-at-a-time uncertain-worker-write diagnost
 ## 2026-10-31 — Durable notification failure journal (PR verification pending)
 
 Add a local-only D1 machine-event dead-letter migration and injected adapter to the existing consent-gated Queue-style delivery core. Test replay first-write-wins, concurrent SQLite writers, invalid writes/fail-closed Queue ACK, independent restored DB and founder no-recipient-field guard. Neither actual notifications nor recipient preferences/consent, Queue/FCM adapter, retention, UI, remote Cloudflare or real-world event approval are introduced. PR and independently merged-main CI must both succeed before reporting verified. Founder M-003/M-004/M-005/M-006/M-007/M-008 still gate their respective real product/operation stages.
+
+
+## 2026-10-31 — Internal trusted request-target read (PR CI pending)
+
+Implement a policy-neutral, read-only, D1-compatible current-state query for requester/worker/listing/Category existing status, with local end-to-end synthetic account/session and moderation test coverage. Exclude all policy-dependent availability, blocks and channel authorization fields, so the result **cannot** activate a request by itself. Real contacts, notifications, schema and routes remain blocked until explicit founder M-005 rules and M-003 privacy; visual Android M-004, OAuth M-008, provider M-006 and production M-007 remain unchanged. No staged/remote deploy, actual Category seed or old Finworkar mutation. Verify exact PR-head then independent merged-main GitHub CI.
