@@ -235,9 +235,14 @@ export async function readCurrentRequestTarget(
   listingId: string,
 ): Promise<RequestTargetFacts | null> {
   if (!validOpaqueId(requesterId) || !validOpaqueId(listingId)) return null;
-  const { results } = await db.prepare(READ_CURRENT_REQUEST_TARGET_QUERY)
-    .bind(requesterId, listingId).all<RequestTargetRow>();
-  return projectRequestTarget(results, listingId, requesterId);
+  try {
+    const { results } = await db.prepare(READ_CURRENT_REQUEST_TARGET_QUERY)
+      .bind(requesterId, listingId).all<RequestTargetRow>();
+    return projectRequestTarget(results, listingId, requesterId);
+  } catch {
+    // Unknown/broken D1 availability is not an eligible target.
+    return null;
+  }
 }
 
 /** Strict one-statement call preflight: current unexpired, non-revoked,
@@ -255,12 +260,17 @@ async function readCallerTargetWithQuery(
   query: string,
 ): Promise<RequestTargetFacts | null> {
   if (!validSessionToken(bearerToken) || !validOpaqueId(listingId)) return null;
-  const { results } = await db.prepare(query)
-    .bind(await sessionHash(bearerToken), Math.floor(Date.now() / 1000), listingId)
-    .all<RequestTargetRow>();
-  const result = projectRequestTarget(results, listingId, null);
-  // Never accept a fake adapter that violates the caller active predicate.
-  return result?.requesterActive ? result : null;
+  try {
+    const { results } = await db.prepare(query)
+      .bind(await sessionHash(bearerToken), Math.floor(Date.now() / 1000), listingId)
+      .all<RequestTargetRow>();
+    const result = projectRequestTarget(results, listingId, null);
+    // Never accept a fake adapter that violates the caller active predicate.
+    return result?.requesterActive ? result : null;
+  } catch {
+    // An outage or malformed D1 adapter result cannot yield call eligibility.
+    return null;
+  }
 }
 
 export function readSessionBoundCallTarget(
@@ -404,14 +414,19 @@ async function readTwoBoundSessions(
       !validSessionToken(workerToken) ||
       callerToken === workerToken ||
       !validOpaqueId(listingId)) return null;
-  const now = Math.floor(Date.now() / 1000);
-  const { results } = await db.prepare(query)
-    .bind(await sessionHash(callerToken), now, listingId,
-      await sessionHash(workerToken), now)
-    .all<RequestTargetRow>();
-  const facts = projectRequestTarget(results, listingId, null);
-  return facts?.requesterActive && facts.workerActive &&
-    facts.requesterAccountId !== facts.workerAccountId ? facts : null;
+  try {
+    const now = Math.floor(Date.now() / 1000);
+    const { results } = await db.prepare(query)
+      .bind(await sessionHash(callerToken), now, listingId,
+        await sessionHash(workerToken), now)
+      .all<RequestTargetRow>();
+    const facts = projectRequestTarget(results, listingId, null);
+    return facts?.requesterActive && facts.workerActive &&
+      facts.requesterAccountId !== facts.workerAccountId ? facts : null;
+  } catch {
+    // No partial approval if either role's D1 evidence is unavailable.
+    return null;
+  }
 }
 
 /** Existing session-only preview deliberately retained for earlier tests.
@@ -464,15 +479,20 @@ export async function readWorkerSessionBoundAgoraOptInTarget(
   if (!validSessionToken(workerBearer) ||
       !validOpaqueId(listingId) ||
       !validOpaqueId(trustedCallerAccountId)) return null;
-  const { results } = await db.prepare(READ_WORKER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY)
-    .bind(await sessionHash(workerBearer), Math.floor(Date.now() / 1000),
-      trustedCallerAccountId, listingId)
-    .all<RequestTargetRow>();
-  const facts = projectRequestTarget(results, listingId, trustedCallerAccountId);
-  return facts?.requesterActive && facts.workerActive &&
-    facts.workerOptedIn && facts.categoryActive &&
-    facts.listingPublished && facts.moderationApproved &&
-    facts.requesterAccountId !== facts.workerAccountId ? facts : null;
+  try {
+    const { results } = await db.prepare(READ_WORKER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY)
+      .bind(await sessionHash(workerBearer), Math.floor(Date.now() / 1000),
+        trustedCallerAccountId, listingId)
+      .all<RequestTargetRow>();
+    const facts = projectRequestTarget(results, listingId, trustedCallerAccountId);
+    return facts?.requesterActive && facts.workerActive &&
+      facts.workerOptedIn && facts.categoryActive &&
+      facts.listingPublished && facts.moderationApproved &&
+      facts.requesterAccountId !== facts.workerAccountId ? facts : null;
+  } catch {
+    // No worker-own RTC prerequisite from an unavailable/malformed D1 read.
+    return null;
+  }
 }
 
 /**
