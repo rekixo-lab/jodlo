@@ -180,15 +180,46 @@ internal class InvalidReplyBodyException : IOException("Invalid HTTP response bo
  * incomplete UTF-8 (including bytes split at the 4096-byte read boundary).
  * Transport I/O failures remain distinct from invalid server content.
  */
-internal fun readBoundedUtf8Reply(stream: InputStream): String {
+/**
+ * Total reply-read budget independent of individual socket readTimeout.
+ * A peer can trickle bytes indefinitely while never triggering a socket
+ * read timeout. The 10-second HttpsURLConnection readTimeout separately
+ * bounds a *blocking* read; this monotonic budget is observed before/after
+ * each read, so it is not an asynchronous interruption mechanism.
+ *
+ * An abnormal InputStream may also return 0 for a nonempty buffer, causing
+ * an otherwise infinite busy loop. Tolerate at most eight zero-byte reads
+ * in the entire reply, even when interleaved with productive bytes.
+ */
+internal const val REPLY_READ_BUDGET_NANOS = 20_000_000_000L
+internal const val MAX_EMPTY_REPLY_READS = 8
+internal fun readBoundedUtf8Reply(
+    stream: InputStream,
+    monotonicNanos: () -> Long = { System.nanoTime() },
+): String {
     val output = java.io.ByteArrayOutputStream()
     val buffer = ByteArray(4096)
+    val started = monotonicNanos()
     var size = 0
+    var emptyReads = 0
+
+    fun enforceDeadline() {
+        val elapsed = monotonicNanos() - started
+        if (elapsed < 0 || elapsed >= REPLY_READ_BUDGET_NANOS) {
+            throw InvalidReplyBodyException()
+        }
+    }
     while (true) {
+        enforceDeadline()
         val n = stream.read(buffer)
+        enforceDeadline()
         if (n < 0) break
+        if (n == 0) {
+            if (++emptyReads > MAX_EMPTY_REPLY_READS) throw InvalidReplyBodyException()
+            continue
+        }
+        if (n > buffer.size || size > 65_536 - n) throw InvalidReplyBodyException()
         size += n
-        if (size > 65_536) throw InvalidReplyBodyException()
         output.write(buffer, 0, n)
     }
     return try {

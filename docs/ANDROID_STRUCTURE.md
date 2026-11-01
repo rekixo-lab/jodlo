@@ -111,3 +111,9 @@ Before writing Compose screens, XML layouts, themes, colors, wireframes, screens
 ## 2026-10-28 — Headless session state, NOT a user screen
 
 A nonvisual `InMemorySessionCoordinator` can supply a later approved ViewModel with public SignedOut/SignedIn and Worker draft-only state, not bearer strings. Expiry is monotonic; logout is local-first; stale network responses cannot resurrect state. No Activity, UI, Google SDK, credential store or GPS has been built. M-003/M-004/M-008 remain separate.
+
+## 2026-11-01 — Headless Kotlin HTTPS response progress bound (PR CI pending)
+
+The existing no-UI Android-compatible `HttpsTransport` now uses `readBoundedUtf8Reply` with a **20-second monotonic whole-response read budget** and a cumulative maximum of **eight anomalous zero-byte reads**. Previously a broken `InputStream` repeatedly returning 0 for a nonempty buffer could spin without progress, while a server trickling one byte per socket timeout could extend the response indefinitely. A ninth zero read (including zeros interleaved with productive bytes), excessive aggregate read duration, the existing 65,536-byte size bound or invalid UTF-8 all raise the same content-free `InvalidReplyBodyException`. The valid 65,536-byte/strict UTF-8 contracts and existing route builders remain unchanged.
+
+New real Kotlin/JVM tests use synthetic streams and a fake monotonic clock for always-zero, mixed-zero and slow productive drip cases, plus an exact just-under-deadline successful response. **Caveat:** this budget is checked before and after each blocking read, rather than asynchronously interrupting a read; `HttpsURLConnection.readTimeout=10s` still separately bounds an individual socket read. No Android SDK, approved UI, Activity, Google device OAuth, persistence, network request to a real server, Cloudflare deployment, provider token or Finworkar change. M-004 and M-008 still require their own approvals.

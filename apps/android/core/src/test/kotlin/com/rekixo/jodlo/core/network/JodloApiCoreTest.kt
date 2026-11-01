@@ -1,6 +1,7 @@
 package com.rekixo.jodlo.core.network
 
 import java.io.ByteArrayInputStream
+import java.io.InputStream
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 
@@ -128,6 +129,89 @@ fun main() {
     rejects("truncated multibyte UTF-8 is not a valid reply") {
         readBoundedUtf8Reply(ByteArrayInputStream(byteArrayOf(0x7b, 0xe0.toByte(), 0xa4.toByte())))
     }
+
+    // Some InputStream implementations violate the progress contract by
+    // returning zero with a nonempty buffer. That must not spin forever.
+    var zeroReads = 0
+    val endlessZero = object : InputStream() {
+        override fun read(): Int = 0
+        override fun read(b: ByteArray, off: Int, len: Int): Int {
+            zeroReads += 1
+            return 0
+        }
+    }
+    rejects("unproductive zero-byte input has a finite read bound") {
+        readBoundedUtf8Reply(endlessZero)
+    }
+    check(zeroReads == MAX_EMPTY_REPLY_READS + 1)
+
+    // A small number of anomalous reads may be tolerated, but cannot skip
+    // valid bytes or create malformed UTF-8 through partial buffering.
+    val steps = intArrayOf(0, 0, 'a'.code, 0, 'b'.code, -1)
+    var step = 0
+    val intermittent = object : InputStream() {
+        override fun read(): Int = -1
+        override fun read(b: ByteArray, off: Int, len: Int): Int {
+            val next = steps[step++]
+            if (next < 0) return -1
+            if (next == 0) return 0
+            b[off] = next.toByte()
+            return 1
+        }
+    }
+    check(readBoundedUtf8Reply(intermittent) == "ab")
+
+    var mixedReads = 0
+    val mixedZeroDrip = object : InputStream() {
+        override fun read(): Int = -1
+        override fun read(b: ByteArray, off: Int, len: Int): Int {
+            mixedReads += 1
+            if (mixedReads % 2 == 1) return 0
+            b[off] = 'x'.code.toByte()
+            return 1
+        }
+    }
+    rejects("interleaved zero-byte reads cannot evade the cumulative limit") {
+        readBoundedUtf8Reply(mixedZeroDrip)
+    }
+    check(mixedReads == MAX_EMPTY_REPLY_READS * 2 + 1)
+
+    // Deterministic virtual monotonic clock: every byte arrives after 4s,
+    // individually faster than the existing 10s socket read timeout. The
+    // absolute response deadline still rejects the never-ending trickle.
+    var virtualNanos = 0L
+    var dripReads = 0
+    val slowDrip = object : InputStream() {
+        override fun read(): Int = -1
+        override fun read(b: ByteArray, off: Int, len: Int): Int {
+            dripReads += 1
+            virtualNanos += 4_000_000_000L
+            b[off] = 'x'.code.toByte()
+            return 1
+        }
+    }
+    rejects("slow productive response must fit one total read-time budget") {
+        readBoundedUtf8Reply(slowDrip) { virtualNanos }
+    }
+    check(virtualNanos == REPLY_READ_BUDGET_NANOS)
+    check(dripReads == 5)
+
+    // A complete response may be read just *inside* the deadline, whereas
+    // finishing at the boundary is rejected; no real sleep/network needed.
+    var completeClock = 0L
+    val almostDeadline = object : InputStream() {
+        var sent = false
+        override fun read(): Int = -1
+        override fun read(b: ByteArray, off: Int, len: Int): Int {
+            completeClock = REPLY_READ_BUDGET_NANOS - 1
+            if (sent) return -1
+            sent = true
+            b[off] = 'z'.code.toByte()
+            return 1
+        }
+    }
+    check(readBoundedUtf8Reply(almostDeadline) { completeClock } == "z")
+
     check(!TransportReply(200, "secret-user-data").toString().contains("secret-user-data"))
     println("JODLO Android headless Kotlin: bilingual Unicode, routes, privacy and publication safety OK")
 }
