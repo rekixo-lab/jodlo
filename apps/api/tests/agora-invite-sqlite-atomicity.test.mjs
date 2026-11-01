@@ -68,7 +68,11 @@ async function openTrial() {
       "call_id TEXT PRIMARY KEY REFERENCES synthetic_voice_invites(call_id), " +
       "kind TEXT NOT NULL CHECK(kind='ring_intent_only'), " +
       "status TEXT NOT NULL DEFAULT 'pending_test_only' " +
-      "CHECK(status IN ('pending_test_only','claimed_test_only')));"
+      "CHECK(status IN ('pending_test_only','claimed_test_only')), " +
+      "claim_generation INTEGER NOT NULL DEFAULT 0 " +
+      "CHECK(claim_generation>=0), " +
+      "claim_lease_until_ms INTEGER DEFAULT NULL " +
+      "CHECK(claim_lease_until_ms IS NULL OR claim_lease_until_ms>=0));"
     );
     const adapter=localD1Adapter(a);
     for(const id of [CALLER,WORKER,OTHER]) await ensureAccount(adapter,id);
@@ -201,6 +205,7 @@ async function stageSyntheticInvite(db,options) {
  */
 async function previewSyntheticUnsentOutbox(db,{
   callerBearer,callId=CALL_ID,nowMs=NOW+100,risk,
+  forFencedRecovery=false,
 }){
   const withheld=Object.freeze({kind:"withheld"});
   if(!validOpaqueId(callId) ||
@@ -215,8 +220,9 @@ async function previewSyntheticUnsentOutbox(db,{
       "LEFT JOIN worker_agora_call_preferences AS pref " +
       "ON pref.account_id=i.worker_id " +
       "WHERE outbox.call_id=? AND outbox.kind='ring_intent_only' " +
-      "AND outbox.status='pending_test_only'"
-    ).get(callId);
+      "AND outbox.status=?"
+    ).get(callId,
+      forFencedRecovery?"claimed_test_only":"pending_test_only");
     if(!row || row.consent_on!==1 ||
        !Number.isSafeInteger(row.consent_revision) ||
        row.current_revision!==row.consent_revision ||
@@ -280,6 +286,121 @@ async function claimSyntheticUnsentOutbox(db,{
   }catch(error){
     if(inTransaction)db.exec("ROLLBACK");
     throw error;
+  }
+}
+
+/**
+ * OFFLINE ONLY: a SECOND, deliberately hypothetical claim mode, independent
+ * from the earlier non-recoverable claim exercise. Each claim has a LOCAL fake
+ * lease deadline explicitly supplied by the test (NOT a product timeout).
+ *
+ * Crash recovery at/after an expired lease increments a monotonic generation.
+ * A stale generation can never inspect as current. The safety gate is run
+ * INSIDE BEGIN IMMEDIATE on both initial and recovered claims.
+ *
+ * This DOES NOT implement delivery or allow a previously claimed process
+ * to send: a real provider may ignore a DB fence and still duplicate a send.
+ * No provider acknowledgment, device, token, lease scheduler or real sender.
+ */
+async function claimSyntheticFencedOutbox(db,{
+  callerBearer,callId=CALL_ID,nowMs=NOW+100,
+  risk,testLeaseUntilMs,failBeforeCommit=false,
+}){
+  const withheld=Object.freeze({kind:"withheld"});
+  if(!validOpaqueId(callId) || !Number.isSafeInteger(nowMs) ||
+     nowMs<0 || !Number.isSafeInteger(testLeaseUntilMs) ||
+     testLeaseUntilMs<=nowMs) return withheld;
+  let inTransaction=false;
+  try{
+    db.exec("BEGIN IMMEDIATE");
+    inTransaction=true;
+    const old=db.prepare(
+      "SELECT outbox.status,outbox.claim_generation," +
+      "outbox.claim_lease_until_ms,invite.ring_deadline_ms " +
+      "FROM synthetic_voice_outbox AS outbox " +
+      "JOIN synthetic_voice_invites AS invite " +
+      "ON invite.call_id=outbox.call_id " +
+      "WHERE outbox.call_id=? AND outbox.kind='ring_intent_only'"
+    ).get(callId);
+    if(!old || !Number.isSafeInteger(old.claim_generation) ||
+       old.claim_generation<0 ||
+       old.claim_generation>=Number.MAX_SAFE_INTEGER ||
+       testLeaseUntilMs>old.ring_deadline_ms) {
+      db.exec("ROLLBACK");
+      inTransaction=false;
+      return withheld;
+    }
+    const first=old.status==="pending_test_only" &&
+      old.claim_generation===0 && old.claim_lease_until_ms===null;
+    const recovered=old.status==="claimed_test_only" &&
+      old.claim_generation>0 &&
+      Number.isSafeInteger(old.claim_lease_until_ms) &&
+      old.claim_lease_until_ms<=nowMs;
+    if(!first && !recovered) {
+      db.exec("ROLLBACK");
+      inTransaction=false;
+      return withheld;
+    }
+    const check=await previewSyntheticUnsentOutbox(db,{
+      callerBearer,callId,nowMs,risk,forFencedRecovery:recovered,
+    });
+    if(check.kind!=="rechecked_only"){
+      db.exec("ROLLBACK");
+      inTransaction=false;
+      return withheld;
+    }
+    const newGeneration=old.claim_generation+1;
+    const changed=db.prepare(
+      "UPDATE synthetic_voice_outbox SET " +
+      "status='claimed_test_only',claim_generation=?," +
+      "claim_lease_until_ms=? WHERE call_id=? AND " +
+      "status=? AND claim_generation=? AND " +
+      "(claim_lease_until_ms IS ? OR claim_lease_until_ms=?)"
+    ).run(newGeneration,testLeaseUntilMs,callId,old.status,
+      old.claim_generation,old.claim_lease_until_ms,
+      old.claim_lease_until_ms);
+    if(changed.changes!==1){
+      db.exec("ROLLBACK");
+      inTransaction=false;
+      return withheld;
+    }
+    if(failBeforeCommit) throw Error("synthetic crash before fenced claim commit");
+    db.exec("COMMIT");
+    inTransaction=false;
+    return Object.freeze({kind:"fenced_claim_test_only",generation:newGeneration});
+  }catch(error){
+    if(inTransaction)db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+/** Local introspection only: never an authorization to contact a provider.
+ * The same safety facts MUST be fresh even when the DB generation matches.
+ * Old generations and expired leases can never be treated as current.
+ */
+async function inspectSyntheticFencedClaim(db,{
+  callerBearer,callId=CALL_ID,nowMs=NOW+100,risk,generation,
+}){
+  const withheld=Object.freeze({kind:"withheld"});
+  if(!validOpaqueId(callId) || !Number.isSafeInteger(nowMs) ||
+     nowMs<0 || !Number.isSafeInteger(generation) || generation<1)
+    return withheld;
+  try {
+    const row=db.prepare(
+      "SELECT claim_generation,claim_lease_until_ms,status " +
+      "FROM synthetic_voice_outbox WHERE call_id=?"
+    ).get(callId);
+    if(!row || row.status!=="claimed_test_only" ||
+       row.claim_generation!==generation ||
+       !Number.isSafeInteger(row.claim_lease_until_ms) ||
+       row.claim_lease_until_ms<=nowMs) return withheld;
+    const check=await previewSyntheticUnsentOutbox(db,{
+      callerBearer,callId,nowMs,risk,forFencedRecovery:true,
+    });
+    return check.kind==="rechecked_only"
+      ? Object.freeze({kind:"current_fence_test_only"}) : withheld;
+  }catch {
+    return withheld;
   }
 }
 
@@ -648,6 +769,189 @@ test("claimed is NOT delivered: a crash has no lease, retry, sender or recovery 
     }),{kind:"withheld"});
     assert.equal(outboxRows(t.a)[0].status,"claimed_test_only");
     assert.deepEqual(t.b.prepare("PRAGMA foreign_key_check").all(),[]);
+  });
+});
+
+test("local fenced claim generation increases only when synthetic lease expires",async()=>{
+  await withTrial(async t=>{
+    assert.equal((await t.enable()).kind,"updated");
+    assert.equal((await stageSyntheticInvite(t.a,args(t))).kind,"staged_intent_only");
+    const claim={
+      ...args(t),nowMs:NOW+100,testLeaseUntilMs:NOW+300,
+    };
+    assert.deepEqual(await claimSyntheticFencedOutbox(t.a,claim),
+      {kind:"fenced_claim_test_only",generation:1});
+    assert.deepEqual(await claimSyntheticFencedOutbox(t.b,{
+      ...claim,nowMs:NOW+200,testLeaseUntilMs:NOW+400,
+    }),{kind:"withheld"},"early takeover is disallowed");
+    assert.deepEqual(await inspectSyntheticFencedClaim(t.b,{
+      ...args(t),nowMs:NOW+200,generation:1,
+    }),{kind:"current_fence_test_only"});
+    assert.deepEqual(await inspectSyntheticFencedClaim(t.b,{
+      ...args(t),nowMs:NOW+300,generation:1,
+    }),{kind:"withheld"},"expired fence is not current");
+    assert.deepEqual(await claimSyntheticFencedOutbox(t.b,{
+      ...args(t),nowMs:NOW+300,testLeaseUntilMs:NOW+500,
+    }),{kind:"fenced_claim_test_only",generation:2});
+    assert.deepEqual(await inspectSyntheticFencedClaim(t.a,{
+      ...args(t),nowMs:NOW+400,generation:1,
+    }),{kind:"withheld"},"stale owner may not reuse generation 1");
+    assert.deepEqual(await inspectSyntheticFencedClaim(t.a,{
+      ...args(t),nowMs:NOW+400,generation:2,
+    }),{kind:"current_fence_test_only"});
+    assert.equal(outboxRows(t.a)[0].status,"claimed_test_only");
+    assert.equal(outboxRows(t.a)[0].claim_generation,2);
+    assert.equal(outboxRows(t.a)[0].claim_lease_until_ms,NOW+500);
+    assert.equal(outboxRows(t.b).length,1);
+  });
+});
+
+test("two SQLite connections cannot both recover the same expired fake lease",async()=>{
+  await withTrial(async t=>{
+    assert.equal((await t.enable()).kind,"updated");
+    assert.equal((await stageSyntheticInvite(t.a,args(t))).kind,"staged_intent_only");
+    assert.equal((await claimSyntheticFencedOutbox(t.a,{
+      ...args(t),nowMs:NOW+100,testLeaseUntilMs:NOW+200,
+    })).generation,1);
+    t.a.exec("BEGIN IMMEDIATE");
+    try{
+      await assert.rejects(()=>claimSyntheticFencedOutbox(t.b,{
+        ...args(t),nowMs:NOW+200,testLeaseUntilMs:NOW+300,
+      }),/database is locked|SQLITE_BUSY/i);
+    }finally{t.a.exec("ROLLBACK");}
+    assert.deepEqual(await claimSyntheticFencedOutbox(t.b,{
+      ...args(t),nowMs:NOW+200,testLeaseUntilMs:NOW+300,
+    }),{kind:"fenced_claim_test_only",generation:2});
+    assert.deepEqual(await claimSyntheticFencedOutbox(t.a,{
+      ...args(t),nowMs:NOW+201,testLeaseUntilMs:NOW+350,
+    }),{kind:"withheld"});
+    assert.equal(outboxRows(t.a)[0].claim_generation,2);
+  });
+});
+
+test("fenced claim crash before commit retains old generation for safe retry",async()=>{
+  await withTrial(async t=>{
+    assert.equal((await t.enable()).kind,"updated");
+    assert.equal((await stageSyntheticInvite(t.a,args(t))).kind,"staged_intent_only");
+    await assert.rejects(()=>claimSyntheticFencedOutbox(t.a,{
+      ...args(t),testLeaseUntilMs:NOW+200,failBeforeCommit:true,
+    }),/synthetic crash before fenced claim commit/);
+    assert.equal(outboxRows(t.b)[0].status,"pending_test_only");
+    assert.equal(outboxRows(t.b)[0].claim_generation,0);
+    assert.equal(outboxRows(t.b)[0].claim_lease_until_ms,null);
+    assert.deepEqual(await claimSyntheticFencedOutbox(t.b,{
+      ...args(t),testLeaseUntilMs:NOW+200,
+    }),{kind:"fenced_claim_test_only",generation:1});
+    await assert.rejects(()=>claimSyntheticFencedOutbox(t.b,{
+      ...args(t),nowMs:NOW+200,testLeaseUntilMs:NOW+350,
+      failBeforeCommit:true,
+    }),/synthetic crash before fenced claim commit/);
+    assert.equal(outboxRows(t.a)[0].claim_generation,1);
+    assert.deepEqual(await claimSyntheticFencedOutbox(t.a,{
+      ...args(t),nowMs:NOW+200,testLeaseUntilMs:NOW+350,
+    }),{kind:"fenced_claim_test_only",generation:2});
+  });
+});
+
+test("recovered local claim must recheck opt-out, account, listing and synthetic policy",async()=>{
+  const mutationCases=[
+    ["worker opt-out",async t=>{assert.equal((await t.disable()).kind,"updated");}],
+    ["worker re-opt-in new version",async t=>{
+      assert.equal((await t.disable()).kind,"updated");
+      assert.equal((await setOwnWorkerAgoraCallPreference(
+        localD1Adapter(t.a),t.workerBearer,true,2)).kind,"updated");
+    }],
+    ["caller disabled",async t=>t.a.prepare(
+      "UPDATE accounts SET status='disabled' WHERE id=?").run(CALLER)],
+    ["listing hidden",async t=>t.a.prepare(
+      "UPDATE worker_listings SET moderation_status='hidden' WHERE id=?")
+      .run(t.listing.id)],
+  ];
+  for(const [label,mutate] of mutationCases){
+    await withTrial(async t=>{
+      assert.equal((await t.enable()).kind,"updated");
+      assert.equal((await stageSyntheticInvite(t.a,args(t))).kind,"staged_intent_only");
+      assert.equal((await claimSyntheticFencedOutbox(t.a,{
+        ...args(t),nowMs:NOW+100,testLeaseUntilMs:NOW+200,
+      })).generation,1);
+      await mutate(t);
+      assert.deepEqual(await claimSyntheticFencedOutbox(t.b,{
+        ...args(t),nowMs:NOW+200,testLeaseUntilMs:NOW+300,
+      }),{kind:"withheld"},label);
+      assert.deepEqual(await inspectSyntheticFencedClaim(t.a,{
+        ...args(t),nowMs:NOW+150,generation:1,
+      }),{kind:"withheld"},label+" revokes old inspection too");
+      assert.equal(outboxRows(t.b)[0].claim_generation,1);
+    });
+  }
+  await withTrial(async t=>{
+    assert.equal((await t.enable()).kind,"updated");
+    assert.equal((await stageSyntheticInvite(t.a,args(t))).kind,"staged_intent_only");
+    assert.equal((await claimSyntheticFencedOutbox(t.a,{
+      ...args(t),nowMs:NOW+100,testLeaseUntilMs:NOW+200,
+    })).generation,1);
+    for(const riskChange of [
+      {workerPresence:"offline"},{workerAvailability:"busy"},
+      {blockedByWorker:true},{rateGate:"unknown"},
+      {privacyApproved:false},{expiresAtMs:NOW+200},
+    ]){
+      assert.deepEqual(await claimSyntheticFencedOutbox(t.b,{
+        ...args(t),nowMs:NOW+200,testLeaseUntilMs:NOW+300,
+        risk:t.risk(riskChange),
+      }),{kind:"withheld"},JSON.stringify(riskChange));
+    }
+    assert.equal(outboxRows(t.b)[0].claim_generation,1);
+  });
+});
+
+test("invalid synthetic lease dates, expired ringing and legacy no-lease claims deny recovery",async()=>{
+  await withTrial(async t=>{
+    assert.equal((await t.enable()).kind,"updated");
+    assert.equal((await stageSyntheticInvite(t.a,args(t))).kind,"staged_intent_only");
+    for(const testLeaseUntilMs of [
+      NOW+100,NOW,DEADLINE+1,NaN,Infinity,-1,
+    ]){
+      assert.deepEqual(await claimSyntheticFencedOutbox(t.a,{
+        ...args(t),nowMs:NOW+100,testLeaseUntilMs,
+      }),{kind:"withheld"},String(testLeaseUntilMs));
+    }
+    assert.deepEqual(await claimSyntheticFencedOutbox(t.a,{
+      ...args(t),nowMs:DEADLINE,testLeaseUntilMs:DEADLINE+100,
+    }),{kind:"withheld"});
+    assert.deepEqual(outboxRows(t.b).map(r=>r.claim_generation),[0]);
+    assert.deepEqual(await claimSyntheticUnsentOutbox(t.a,{
+      ...args(t),nowMs:NOW+100,
+    }),{kind:"claimed_test_only"});
+    assert.deepEqual(await claimSyntheticFencedOutbox(t.b,{
+      ...args(t),nowMs:NOW+1000,testLeaseUntilMs:NOW+2000,
+    }),{kind:"withheld"},
+      "a legacy non-fenced claim has no authenticated lease to recover");
+    assert.deepEqual(await inspectSyntheticFencedClaim(t.a,{
+      ...args(t),nowMs:NOW+200,generation:0,
+    }),{kind:"withheld"});
+  });
+});
+
+test("generation is not a provider delivery or token grant and never stores bearers",async()=>{
+  await withTrial(async t=>{
+    assert.equal((await t.enable()).kind,"updated");
+    assert.equal((await stageSyntheticInvite(t.a,args(t))).kind,"staged_intent_only");
+    assert.equal((await claimSyntheticFencedOutbox(t.a,{
+      ...args(t),nowMs:NOW+100,testLeaseUntilMs:NOW+200,
+    })).generation,1);
+    assert.equal((await claimSyntheticFencedOutbox(t.b,{
+      ...args(t),nowMs:NOW+200,testLeaseUntilMs:NOW+300,
+    })).generation,2);
+    const saved=JSON.stringify([...inviteRows(t.a),...outboxRows(t.b)]);
+    for(const secret of [t.callerBearer,t.workerBearer,t.otherBearer]){
+      assert.equal(saved.includes(secret),false);
+    }
+    for(const forbidden of ["provider_token","phone_number",
+      "recipient_device","delivered_at","sent_at","credential"]){
+      assert.equal(saved.includes(forbidden),false);
+    }
+    assert.equal(outboxRows(t.a)[0].status,"claimed_test_only");
+    assert.equal(inviteRows(t.a).length,1);
   });
 });
 
