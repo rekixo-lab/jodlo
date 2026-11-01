@@ -130,7 +130,7 @@ function slots(db,workerId=WORKER){
   return db.prepare(
     "SELECT slot,call_id,fence FROM fake_worker_capacity_slots "+
     "WHERE worker_id=? ORDER BY slot"
-  ).all(workerId);
+  ).all(workerId).map(row=>({...row}));
 }
 function reservations(db,workerId=WORKER){
   return db.prepare(
