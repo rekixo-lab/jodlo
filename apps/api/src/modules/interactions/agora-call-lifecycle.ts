@@ -91,6 +91,32 @@ const nonnegativeInteger = (v: unknown): v is number =>
 const positiveInteger = (v: unknown): v is number =>
   typeof v === "number" && Number.isSafeInteger(v) && v > 0;
 
+/**
+ * The OFFLINE reducer has a fixed acyclic event graph. A state with a
+ * mismatched revision could never have been produced by that graph and must
+ * not be used to authorize a replay, signaling intent or join preflight.
+ *
+ * This does NOT attest the snapshot's provenance or choose operational call
+ * timing: durable authenticated history is a separate M-003/M-005 gate.
+ */
+function validSyntheticPhaseRevision(phase: string, revision: unknown): boolean {
+  if (!nonnegativeInteger(revision)) return false;
+  switch (phase) {
+    case "ringing":
+      return revision === 0;
+    case "accepted": case "declined": case "busy":
+    case "cancelled": case "missed":
+      return revision === 1;
+    case "connected":
+      return revision === 2;
+    case "ended":
+      // accepted -> ended, or accepted -> connected -> ended
+      return revision === 2 || revision === 3;
+    default:
+      return false;
+  }
+}
+
 function validSnapshot(value: unknown): value is AgoraCallSnapshot {
   if (!record(value) || !exactKeys(value, SNAPSHOT_FIELDS)) return false;
   return validOpaqueId(value.callId) &&
@@ -100,7 +126,7 @@ function validSnapshot(value: unknown): value is AgoraCallSnapshot {
     validOpaqueId(value.workerAccountId) &&
     value.callerAccountId !== value.workerAccountId &&
     typeof value.phase === "string" && PHASES.includes(value.phase) &&
-    nonnegativeInteger(value.revision) &&
+    validSyntheticPhaseRevision(value.phase, value.revision) &&
     nonnegativeInteger(value.createdAtMs) &&
     positiveInteger(value.ringDeadlineMs) &&
     value.ringDeadlineMs > value.createdAtMs &&
