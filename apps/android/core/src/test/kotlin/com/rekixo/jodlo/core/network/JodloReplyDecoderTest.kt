@@ -16,6 +16,50 @@ private const val carpenter = """{"id":"carpenter","slug":"carpenter","name":"�
 private const val listing = """{"id":"11111111-1111-4111-8111-111111111111","categoryId":"plumber"}"""
 
 fun main() {
+    // Strict JSON DTOs must not silently resolve duplicate object fields:
+    // some JSON parsers map later keys over earlier ones. Detect duplicates
+    // recursively, even when a key is escaped on the wire.
+    val repeatedBrowseKeys = listOf(
+        """{"ok":true,"ok":true,"data":{"language":"hi","categories":[]}}""",
+        """{"ok":true,"data":{"language":"hi","language":"en","categories":[]}}""",
+        """{"ok":true,"data":{"language":"hi","categories":[{"id":"plumber","id":"carpenter","slug":"plumber","name":"प्लंबर"}]}}""",
+        """{"ok":true,"data":{"language":"hi","categories":[{"id":"plumber","slug":"plumber","name":"प्लंबर","name":"electrician"}]}}""",
+        """{"\u006f\u006b":true,"ok":true,"data":{"language":"hi","categories":[]}}""",
+        """{"ok":true,"data":{"language":"hi","categories":[{"id":"plumber","\u0069d":"plumber","slug":"plumber","name":"प्लंबर"}]}}""",
+        """{"ok":true,"data":{"language":"hi","categories":[{"id":"plumber","slug":"plumber","name":"प्लंबर"},{"id":"carpenter","slug":"carpenter","name":"बढ़ई","name":"duplicate"}]}}""",
+    )
+    for (payload in repeatedBrowseKeys) {
+        rejects(payload, parse = JodloReplyDecoder::browse)
+    }
+
+    // Sibling objects may each have their own "id" key; this is not a
+    // duplicate within the same object. String contents containing JSON-like
+    // punctuation and escaped quotes must never be interpreted as field names.
+    val siblingFields = JodloReplyDecoder.browse(TransportReply(200,
+        """{"ok":true,"data":{"language":"en","categories":[{"id":"plumber","slug":"plumber","name":"word: \"id\", {x} [y]"},{"id":"carpenter","slug":"carpenter","name":"Carpenter"}]}}"""))
+    check(siblingFields is ApiOutcome.Ok && siblingFields.value.categories.size == 2)
+    eq(siblingFields.value.categories.first().name, "word: \"id\", {x} [y]")
+    eq(JodloReplyDecoder.browse(TransportReply(200,
+        """{"\u006f\u006b":true,"data":{"language":"hi","categories":[]}}""")),
+        ApiOutcome.Ok(CatalogBrowse(Language.HI, emptyList(), null)))
+
+    // Login tokens cannot be interpreted from ambiguous object keys. The
+    // decoder must neither install a session nor echo any token or server text.
+    val tokenA = "a".repeat(43)
+    val tokenB = "b".repeat(43)
+    rejects("""{"ok":true,"data":{"accessToken":"$tokenA","accessToken":"$tokenB","tokenType":"Bearer","expiresInSeconds":3600}}""",
+        parse = JodloReplyDecoder::issuedSession)
+    rejects("""{"ok":true,"data":{"accessToken":"$tokenA","tokenType":"Bearer","expiresInSeconds":3600,"\u0061ccessToken":"$tokenB"}}""",
+        parse = JodloReplyDecoder::issuedSession)
+    rejects("""{"ok":false,"error":{"code":"UNAUTHORIZED","code":"FORBIDDEN","message":"never log me"}}""",
+        status = 401, parse = JodloReplyDecoder::issuedSession)
+    val ambiguousLogin = performOnce(JodloRoutes.googleExchange("a.b.c"),
+        { TransportReply(200,
+            """{"ok":true,"data":{"accessToken":"$tokenA","accessToken":"$tokenB","tokenType":"Bearer","expiresInSeconds":3600}}""") },
+        JodloReplyDecoder::issuedSession)
+    eq(ambiguousLogin, ApiOutcome.Failed(FailureKind.BAD_RESPONSE, false))
+    check(!ambiguousLogin.toString().contains(tokenA) && !ambiguousLogin.toString().contains(tokenB))
+
     val browse = JodloReplyDecoder.browse(TransportReply(200,
         envelope("""{"language":"hi","categories":[$plumber],"nextCursor":"10:plumber"}""")))
     check(browse is ApiOutcome.Ok)
