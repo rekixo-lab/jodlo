@@ -262,8 +262,11 @@ test("synthetic Agora replay refuses receipts impossible in time or lifecycle st
       {...timeoutCmd,nowMs:DEADLINE-1},forgedTimeout),
     {kind:"reject",code:"KEY_CONFLICT"});
 
-    // Media and hangup events require a previous accepted/connected revision.
-    // Matching identity/revision alone is not evidence that a call existed.
+    // Media and hangup events require a prior accepted/connected revision.
+    // Here the fabricated result keeps accepted's revision=1 while changing
+    // phase to connected/ended, which is an unreachable snapshot. The shared
+    // phase/revision guard rejects INVALID_INPUT before replay-key matching.
+    // Matching identities alone never prove a committed media transition.
     for(const [event,actor,phase] of [
       ["media_ready",null,"connected"],
       ["media_failed",null,"ended"],
@@ -275,7 +278,7 @@ test("synthetic Agora replay refuses receipts impossible in time or lifecycle st
       };
       assert.deepEqual(decideSyntheticAgoraCallEvent(
         fake.result,{...acceptCmd,event,actorAccountId:actor},fake,
-      ),{kind:"reject",code:"KEY_CONFLICT"},event);
+      ),{kind:"reject",code:"INVALID_INPUT"},event);
     }
 
     const hangupCmd=cmd(WORKER,"hangup",1,NOW+6000,"timeguard-hangup-0001");
