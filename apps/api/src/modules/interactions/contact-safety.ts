@@ -3,8 +3,9 @@ import { validCategoryId, validOpaqueId } from "../shared/identifiers.ts";
 /** Pure server-trusted safety facts. Never populate these from client flags.
  * A future D1 transaction MUST re-read every mutable fact before writing a
  * contact request: a preview result is never permission to interact later.
- * M-005 now selects direct telephone call as the FIRST contact (ADR-0012),
- * but no phone disclosure/consent/abuse policy or live calling is enabled.
+ * ADR-0013 supersedes telephone dialing: first contact is a customer-
+ * initiated Agora in-app Internet AUDIO call, with no worker phone number or
+ * PSTN. M-005 presence, busy, blocking and abuse policies are still gated.
  */
 export type ContactSafetyFacts = Readonly<{
   requesterAccountId: string;
