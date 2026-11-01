@@ -9,6 +9,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonPrimitive
 
 /** Typed DTOs for the CURRENT public API. No worker trust, phone, location or permission fields. */
 data class PublicCategory(val id: String, val slug: String, val name: String)
@@ -67,6 +68,66 @@ fun <T> performOnce(call: ApiCall, send: (ApiCall) -> TransportReply,
     } catch (_: IOException) {
         ApiOutcome.Failed(FailureKind.OFFLINE_OR_TIMEOUT, retryable = false)
     }
+
+/**
+ * A JSON object with repeated keys is ambiguous even if the JSON library
+ * silently keeps only one value. Run this scanner ONLY AFTER the strict JSON
+ * parser has verified the complete input grammar, so braces, commas and
+ * quote escapes can be tracked without a second full JSON parser.
+ *
+ * Every object has an independent key set, including objects inside arrays
+ * and nested error/session/listing payloads. Decode escaped key names with
+ * the SAME JSON parser: "id" and "\u0069d" are the same property.
+ *
+ * Responses are already capped at 65,536 UTF-8 bytes before this runs.
+ * This is a response-integrity check, not verification of server/TLS identity.
+ */
+private data class JsonKeyFrame(
+    val keys: MutableSet<String>?,
+    var expectsKey: Boolean = false,
+)
+
+private fun hasDuplicateReplyObjectKeys(source: String, parser: Json): Boolean {
+    val stack = java.util.ArrayDeque<JsonKeyFrame>()
+    var i = 0
+    while (i < source.length) {
+        when (source[i]) {
+            '{' -> stack.addLast(JsonKeyFrame(hashSetOf(), expectsKey = true))
+            '[' -> stack.addLast(JsonKeyFrame(null))
+            '}', ']' -> stack.removeLast()
+            ',' -> stack.peekLast()?.let { if (it.keys != null) it.expectsKey = true }
+            '"' -> {
+                val start = i
+                i += 1
+                while (i < source.length) {
+                    if (source[i] == '\\') {
+                        i += 2 // Skip escaped quote/backslash or escape prefix.
+                    } else if (source[i] == '"') {
+                        i += 1
+                        break
+                    } else {
+                        i += 1
+                    }
+                }
+                val frame = stack.peekLast()
+                val keys = frame?.keys
+                if (keys != null && frame.expectsKey) {
+                    val rawKey = source.substring(start, i)
+                    val key = if ('\\' in rawKey) {
+                        parser.parseToJsonElement(rawKey).jsonPrimitive.content
+                    } else {
+                        rawKey.substring(1, rawKey.length - 1)
+                    }
+                    if (!keys.add(key)) return true
+                    frame.expectsKey = false
+                }
+                continue
+            }
+        }
+        i += 1
+    }
+    return false
+}
 
 object JodloReplyDecoder {
     private val json = Json { isLenient = false }
@@ -149,7 +210,11 @@ object JodloReplyDecoder {
         if (reply.status !in 200..599 || reply.body.toByteArray(Charsets.UTF_8).size > 65_536)
             return ApiOutcome.Failed(FailureKind.BAD_RESPONSE, false)
         return try {
-            val root = json.parseToJsonElement(reply.body).obj()
+            val parsed = json.parseToJsonElement(reply.body)
+            // JSON object maps can discard an earlier value of a repeated key.
+            // Reject ambiguous root, nested, escaped and array-object fields.
+            if (hasDuplicateReplyObjectKeys(reply.body, json)) bad()
+            val root = parsed.obj()
             val ok = root.required("ok").bool()
             if (reply.status == 200 && ok) {
                 root.keysOnly(setOf("ok", "data"))
