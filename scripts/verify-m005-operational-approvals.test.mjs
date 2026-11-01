@@ -28,11 +28,11 @@ const baseline=()=>({
   "docs/decisions/0013-agora-ip-voice-calling.md":[
     "**Status: ACCEPTED founder clarification — 2026-10-31.**",
     "The first contact is in-app Internet voice calling powered by Agora RTC.",
-    "No worker phone number is used.",
+    "JODLO must not require, collect, store, display or disclose a worker's mobile number.",
   ].join("\n"),
   "docs/decisions/0014-explicit-worker-agora-call-opt-in.md":[
     "**Status: ACCEPTED founder decision — 2026-10-31.**",
-    "The call setting default is OFF and revocable.",
+    "The call setting default is OFF. The worker may disable the setting at any time.",
   ].join("\n"),
   "apps/api/src/http/router.ts":'if (url.pathname==="/api/v1/listings") return;',
   "apps/api/src/modules/interactions/contact-safety.ts":
