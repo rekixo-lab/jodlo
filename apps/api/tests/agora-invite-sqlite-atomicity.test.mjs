@@ -75,6 +75,18 @@ async function openTrial() {
       "claim_lease_until_ms INTEGER DEFAULT NULL " +
       "CHECK(claim_lease_until_ms IS NULL OR claim_lease_until_ms>=0));"
     );
+    // Synthetic call phase and local callback observations are test-only;
+    // NEVER real provider callbacks, delivery acknowledgements, or call logs.
+    a.exec(
+      "CREATE TABLE synthetic_voice_mock_call_state (" +
+      "call_id TEXT PRIMARY KEY REFERENCES synthetic_voice_invites(call_id)," +
+      "phase TEXT NOT NULL,revision INTEGER NOT NULL);" +
+      "CREATE TABLE synthetic_voice_local_observations (" +
+      "call_id TEXT NOT NULL REFERENCES synthetic_voice_invites(call_id)," +
+      "claim_generation INTEGER NOT NULL CHECK(claim_generation>=1)," +
+      "kind TEXT NOT NULL CHECK(kind='not_provider_evidence')," +
+      "PRIMARY KEY(call_id,claim_generation));"
+    );
     const adapter=localD1Adapter(a);
     for(const id of [CALLER,WORKER,OTHER]) await ensureAccount(adapter,id);
     await optInAsWorker(adapter,WORKER);
@@ -473,6 +485,89 @@ async function tombstoneRevokedSyntheticOutbox(db,{
     return Object.freeze({kind:"revoked_test_only"});
   }catch(error){
     if(inTransaction) db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+
+/**
+ * FAKE callback receipt boundary: test-only local evidence after a fenced
+ * claim. The callback is a locally constructed fixture, NOT a network or
+ * Agora/FCM provider callback. The lease, state, worker consent epoch, own
+ * caller session and scripted safety facts are freshly inspected while a
+ * local BEGIN IMMEDIATE write lock is held. We NEVER call a provider here.
+ *
+ * Even a positive observation is NOT proof that a notification was sent,
+ * displayed, acknowledged, or that RTC media began. The write lock cannot
+ * fence an external network operation that was already in flight.
+ */
+const MOCK_OBSERVATION_FIELDS=[
+  "kind","callId","generation","nowMs",
+];
+function seedMockRingingState(db,callId=CALL_ID){
+  db.prepare(
+    "INSERT INTO synthetic_voice_mock_call_state VALUES(?,?,?)"
+  ).run(callId,"ringing",0);
+}
+function mockObservationRows(db){
+  return db.prepare(
+    "SELECT call_id,claim_generation,kind FROM " +
+    "synthetic_voice_local_observations ORDER BY claim_generation"
+  ).all().map(row=>({...row}));
+}
+const mockObservation=(generation,nowMs=NOW+150,callId=CALL_ID)=>({
+  kind:"trusted_local_mock_only",callId,generation,nowMs,
+});
+async function observeMockFencedCallback(db,request,{
+  callerBearer,risk,failAfterObservation=false,
+}={}){
+  const withheld=Object.freeze({kind:"withheld"});
+  if(!request || typeof request!=="object" ||
+     Array.isArray(request) ||
+     Object.keys(request).length!==MOCK_OBSERVATION_FIELDS.length ||
+     MOCK_OBSERVATION_FIELDS.some(k=>!Object.hasOwn(request,k)) ||
+     request.kind!=="trusted_local_mock_only" ||
+     !validOpaqueId(request.callId) ||
+     !Number.isSafeInteger(request.generation) ||
+     request.generation<1 ||
+     !Number.isSafeInteger(request.nowMs) ||
+     request.nowMs<0) return withheld;
+  let tx=false;
+  try{
+    db.exec("BEGIN IMMEDIATE");tx=true;
+    const phase=db.prepare(
+      "SELECT phase,revision FROM synthetic_voice_mock_call_state " +
+      "WHERE call_id=?"
+    ).get(request.callId);
+    if(!phase || phase.phase!=="ringing" || phase.revision!==0){
+      db.exec("ROLLBACK");tx=false;
+      return withheld;
+    }
+    const checked=await inspectSyntheticFencedClaim(db,{
+      callerBearer,callId:request.callId,nowMs:request.nowMs,
+      risk,generation:request.generation,
+    });
+    if(checked.kind!=="current_fence_test_only"){
+      db.exec("ROLLBACK");tx=false;
+      return withheld;
+    }
+    const recorded=db.prepare(
+      "INSERT OR IGNORE INTO synthetic_voice_local_observations " +
+      "(call_id,claim_generation,kind) " +
+      "SELECT call_id,claim_generation,'not_provider_evidence' " +
+      "FROM synthetic_voice_outbox WHERE call_id=? " +
+      "AND status='claimed_test_only' AND claim_generation=?"
+    ).run(request.callId,request.generation);
+    if(recorded.changes!==1){
+      db.exec("ROLLBACK");tx=false;
+      return withheld;
+    }
+    if(failAfterObservation)
+      throw Error("synthetic callback crash before observation commit");
+    db.exec("COMMIT");tx=false;
+    return Object.freeze({kind:"local_observation_only"});
+  }catch(error){
+    if(tx)db.exec("ROLLBACK");
     throw error;
   }
 }
@@ -1152,6 +1247,193 @@ test("invalid or unknown ID cannot tombstone unrelated fake outbox records",asyn
       assert.equal(saved.includes(secret),false);
     }
     assert.equal(saved.includes("recipient_device"),false);
+  });
+});
+
+
+test("mock fenced callback gets at most one LOCAL observation; never provider delivery",async()=>{
+  await withTrial(async t=>{
+    assert.equal((await t.enable()).kind,"updated");
+    assert.equal((await stageSyntheticInvite(t.a,args(t))).kind,"staged_intent_only");
+    seedMockRingingState(t.a);
+    assert.deepEqual(await claimSyntheticFencedOutbox(t.a,{
+      ...args(t),nowMs:NOW+100,testLeaseUntilMs:NOW+200,
+    }),{kind:"fenced_claim_test_only",generation:1});
+    const input=mockObservation(1);
+    assert.deepEqual(await observeMockFencedCallback(t.b,input,args(t)),
+      {kind:"local_observation_only"});
+    assert.deepEqual(await observeMockFencedCallback(t.a,input,args(t)),
+      {kind:"withheld"},"same fake callback cannot double-write its generation");
+    assert.deepEqual(mockObservationRows(t.b),[{
+      call_id:CALL_ID,claim_generation:1,kind:"not_provider_evidence",
+    }]);
+    assert.equal(outboxRows(t.a)[0].status,"claimed_test_only");
+    assert.equal(JSON.stringify(mockObservationRows(t.a)).includes("delivered"),false);
+    assert.equal(JSON.stringify(mockObservationRows(t.a)).includes("provider"),true,
+      "the ONLY kind explicitly denies external-provider evidence");
+  });
+});
+
+test("revoke then stale fake callback: old fence denies even after OFF->ON",async()=>{
+  await withTrial(async t=>{
+    assert.equal((await t.enable()).kind,"updated");
+    assert.equal((await stageSyntheticInvite(t.a,args(t))).kind,"staged_intent_only");
+    seedMockRingingState(t.a);
+    assert.equal((await claimSyntheticFencedOutbox(t.a,{
+      ...args(t),nowMs:NOW+100,testLeaseUntilMs:NOW+250,
+    })).generation,1);
+    const old=mockObservation(1,NOW+150);
+    assert.equal((await t.disable()).kind,"updated");
+    assert.deepEqual(await tombstoneRevokedSyntheticOutbox(t.b),
+      {kind:"revoked_test_only"});
+    assert.deepEqual(await observeMockFencedCallback(t.a,old,args(t)),
+      {kind:"withheld"});
+    assert.deepEqual(mockObservationRows(t.b),[]);
+    assert.equal((await setOwnWorkerAgoraCallPreference(
+      localD1Adapter(t.b),t.workerBearer,true,2)).kind,"updated");
+    assert.deepEqual(await observeMockFencedCallback(t.b,old,args(t)),
+      {kind:"withheld"},"old original epoch remains invalid");
+    assert.equal(outboxRows(t.a)[0].status,"revoked_test_only");
+    assert.equal(outboxRows(t.b)[0].claim_generation,1);
+  });
+});
+
+test("recovered lease fences stale callback generation, accepting only current local observation",async()=>{
+  await withTrial(async t=>{
+    assert.equal((await t.enable()).kind,"updated");
+    assert.equal((await stageSyntheticInvite(t.a,args(t))).kind,"staged_intent_only");
+    seedMockRingingState(t.a);
+    assert.equal((await claimSyntheticFencedOutbox(t.a,{
+      ...args(t),nowMs:NOW+100,testLeaseUntilMs:NOW+200,
+    })).generation,1);
+    assert.equal((await claimSyntheticFencedOutbox(t.b,{
+      ...args(t),nowMs:NOW+200,testLeaseUntilMs:NOW+300,
+    })).generation,2);
+    assert.deepEqual(await observeMockFencedCallback(t.a,
+      mockObservation(1,NOW+250),args(t)),{kind:"withheld"});
+    assert.deepEqual(await observeMockFencedCallback(t.a,
+      mockObservation(2,NOW+300),args(t)),{kind:"withheld"},
+      "a lease valid only before 300 expires at the exact boundary");
+    assert.deepEqual(await observeMockFencedCallback(t.a,
+      mockObservation(2,NOW+250),args(t)),
+      {kind:"local_observation_only"});
+    assert.deepEqual(mockObservationRows(t.b),[{
+      call_id:CALL_ID,claim_generation:2,kind:"not_provider_evidence",
+    }]);
+  });
+});
+
+test("terminal or forged fake call phase cannot be used as a delayed callback",async()=>{
+  for(const [phase,revision] of [
+    ["cancelled",1],["missed",1],["ended",2],["accepted",1],
+    ["ringing",1],["nonsense",0],
+  ]){
+    await withTrial(async t=>{
+      assert.equal((await t.enable()).kind,"updated");
+      assert.equal((await stageSyntheticInvite(t.a,args(t))).kind,"staged_intent_only");
+      seedMockRingingState(t.a);
+      assert.equal((await claimSyntheticFencedOutbox(t.b,{
+        ...args(t),nowMs:NOW+100,testLeaseUntilMs:NOW+200,
+      })).generation,1);
+      t.a.prepare(
+        "UPDATE synthetic_voice_mock_call_state " +
+        "SET phase=?,revision=? WHERE call_id=?"
+      ).run(phase,revision,CALL_ID);
+      assert.deepEqual(await observeMockFencedCallback(t.b,
+        mockObservation(1),args(t)),{kind:"withheld"},phase+"/"+revision);
+      assert.deepEqual(mockObservationRows(t.a),[]);
+    });
+  }
+});
+
+test("callback invalid payload or unsafe current risk cannot create local observation",async()=>{
+  await withTrial(async t=>{
+    assert.equal((await t.enable()).kind,"updated");
+    assert.equal((await stageSyntheticInvite(t.a,args(t))).kind,"staged_intent_only");
+    seedMockRingingState(t.a);
+    assert.equal((await claimSyntheticFencedOutbox(t.b,{
+      ...args(t),nowMs:NOW+100,testLeaseUntilMs:NOW+200,
+    })).generation,1);
+    const input=mockObservation(1);
+    for(const malformed of [
+      null,{},input.kind,
+      {...input,kind:"client_says_sent"},
+      {...input,workerAccountId:WORKER},
+      {...input,providerReceipt:"fake"},
+      {...input,claimedConsentRevision:1},
+      {...input,callId:"bad id"},
+      {...input,generation:0},
+      {...input,generation:1.5},
+      {...input,generation:Number.MAX_SAFE_INTEGER},
+      {...input,nowMs:-1},
+      {...input,nowMs:NaN},
+    ]){
+      assert.deepEqual(await observeMockFencedCallback(t.a,malformed,args(t)),
+        {kind:"withheld"});
+    }
+    for(const overrides of [
+      {blockedByCaller:true},{workerPresence:"offline"},
+      {workerAvailability:"busy"},{rateGate:"deny"},
+      {recipientVerified:false},{privacyApproved:false},
+    ]){
+      assert.deepEqual(await observeMockFencedCallback(t.b,input,{
+        ...args(t),risk:t.risk(overrides),
+      }),{kind:"withheld"},JSON.stringify(overrides));
+    }
+    assert.deepEqual(mockObservationRows(t.a),[]);
+  });
+});
+
+test("callback local crash rollback and competing writer lock preserve observation consistency",async()=>{
+  await withTrial(async t=>{
+    assert.equal((await t.enable()).kind,"updated");
+    assert.equal((await stageSyntheticInvite(t.a,args(t))).kind,"staged_intent_only");
+    seedMockRingingState(t.a);
+    assert.equal((await claimSyntheticFencedOutbox(t.a,{
+      ...args(t),nowMs:NOW+100,testLeaseUntilMs:NOW+200,
+    })).generation,1);
+    const input=mockObservation(1);
+    await assert.rejects(()=>observeMockFencedCallback(t.b,input,{
+      ...args(t),failAfterObservation:true,
+    }),/synthetic callback crash before observation commit/);
+    assert.deepEqual(mockObservationRows(t.a),[]);
+    t.a.exec("BEGIN IMMEDIATE");
+    try{
+      await assert.rejects(()=>observeMockFencedCallback(t.b,input,args(t)),
+        /database is locked|SQLITE_BUSY/i);
+      assert.deepEqual(mockObservationRows(t.a),[]);
+    }finally{t.a.exec("ROLLBACK");}
+    assert.deepEqual(await observeMockFencedCallback(t.b,input,args(t)),
+      {kind:"local_observation_only"});
+    assert.deepEqual(mockObservationRows(t.a).map(x=>x.claim_generation),[1]);
+    assert.deepEqual(t.b.prepare("PRAGMA foreign_key_check").all(),[]);
+  });
+});
+
+test("local observations survive later OFF only as unverified historical test facts",async()=>{
+  await withTrial(async t=>{
+    assert.equal((await t.enable()).kind,"updated");
+    assert.equal((await stageSyntheticInvite(t.a,args(t))).kind,"staged_intent_only");
+    seedMockRingingState(t.a);
+    assert.equal((await claimSyntheticFencedOutbox(t.a,{
+      ...args(t),nowMs:NOW+100,testLeaseUntilMs:NOW+250,
+    })).generation,1);
+    assert.equal((await observeMockFencedCallback(t.a,
+      mockObservation(1),args(t))).kind,"local_observation_only");
+    assert.equal((await t.disable()).kind,"updated");
+    assert.deepEqual(await tombstoneRevokedSyntheticOutbox(t.b),
+      {kind:"revoked_test_only"});
+    assert.deepEqual(await observeMockFencedCallback(t.a,
+      mockObservation(1),args(t)),{kind:"withheld"});
+    assert.deepEqual(mockObservationRows(t.b),[{
+      call_id:CALL_ID,claim_generation:1,kind:"not_provider_evidence",
+    }]);
+    const persisted=JSON.stringify(mockObservationRows(t.b));
+    for(const forbidden of [
+      t.callerBearer,t.workerBearer,t.otherBearer,
+      "sent_at","delivered_at","phone_number","channelName",
+      "deviceToken","agoraToken","providerAck",
+    ])assert.equal(persisted.includes(forbidden),false);
   });
 });
 
