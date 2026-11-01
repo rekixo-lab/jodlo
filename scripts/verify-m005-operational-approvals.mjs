@@ -107,12 +107,12 @@ export async function auditM005OperationalApprovals(root=rootDefault){
   const audio=sources.audio;
   if(audio!==null && (!/Status:\s*ACCEPTED founder clarification/i.test(audio) ||
       !/in-app Internet voice calling powered by Agora RTC/i.test(audio) ||
-      !/No worker phone number\b/i.test(audio)))
+      !/not require, collect, store, display or disclose a worker's mobile number/i.test(audio)))
     errors.push("ADR-0013 approved Agora audio / no worker phone number must remain binding");
   const optin=sources.optin;
   if(optin!==null && (!/Status:\s*ACCEPTED founder decision/i.test(optin) ||
       !/default is OFF/i.test(optin) ||
-      !/revocable/i.test(optin)))
+      !/worker may disable the setting at any time/i.test(optin)))
     errors.push("ADR-0014 approved revocable default-OFF worker opt-in must remain binding");
 
   const router=sources.router;
