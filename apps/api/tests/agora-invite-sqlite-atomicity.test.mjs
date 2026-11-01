@@ -428,7 +428,10 @@ test("expired, offline, blocked or rate-denied fresh evidence withholds unsent i
       "expired ringing deadline never reactivates an unsent intent");
     assert.deepEqual(await preview(t.risk(),NaN),{kind:"withheld"});
     assert.deepEqual(await preview(t.risk(),-1),{kind:"withheld"});
-    assert.deepEqual(await preview(t.risk(),"wrong-call-id"),{kind:"withheld"});
+    assert.deepEqual(await previewSyntheticUnsentOutbox(t.b,{
+      callerBearer:t.callerBearer,callId:"call-agora-nonexistent-000001",
+      nowMs:NOW+100,risk:t.risk(),
+    }),{kind:"withheld"},"unknown outbox call ID");
     assert.deepEqual(await preview(t.risk()),{kind:"rechecked_only"});
     assert.equal(outboxRows(t.a).length,1);
   });
