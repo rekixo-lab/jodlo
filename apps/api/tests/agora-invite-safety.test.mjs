@@ -14,6 +14,9 @@ import {
   readCallerSessionBoundAgoraOptInTarget,
   READ_CALLER_SESSION_BOUND_AGORA_CONSENT_EPOCH_QUERY,
   readCallerSessionBoundAgoraConsentEpoch,
+  READ_CALLER_SESSION_BOUND_AGORA_CONSENT_EPOCH_MATCH_QUERY,
+  readCallerSessionBoundAgoraConsentEpochMatch,
+  readWorkerSessionBoundAgoraConsentEpochMatch,
 } from "../src/modules/interactions/request-target.ts";
 import { sessionHash } from "../src/modules/identity/sessions.ts";
 
@@ -738,6 +741,231 @@ test("fake malformed D1 revision or identity cannot be accepted as permission",a
     }
     for(const list of [[],[validRow,validRow],null,{}]){
       assert.equal(await tryRows(list),null);
+    }
+  }finally{f.close();}
+});
+
+
+test("caller expected-epoch preview requires the worker's current enabled consent",async()=>{
+  const f=await fixture();
+  try{
+    assert.equal(await readCallerSessionBoundAgoraConsentEpochMatch(
+      f.adapter,f.callerBearer,f.listing.id,1),null,
+      "worker missing/default-OFF setting must fail closed");
+    assert.equal((await f.enable()).kind,"updated");
+    const allowed=await readCallerSessionBoundAgoraConsentEpochMatch(
+      f.adapter,f.callerBearer,f.listing.id,1);
+    assert.equal(allowed?.consentRevision,1);
+    assert.equal(allowed?.target.workerAccountId,WORKER);
+    assert.equal(allowed?.target.requesterAccountId,CALLER);
+    assert.equal(Object.isFrozen(allowed),true);
+    assert.equal(Object.isFrozen(allowed.target),true);
+    assert.deepEqual(Object.keys(allowed).sort(),["consentRevision","target"]);
+    assert.equal(await readCallerSessionBoundAgoraConsentEpochMatch(
+      f.adapter,f.callerBearer,f.listing.id,2),null);
+    for(const secret of [f.workerBearer,f.callerBearer,"phoneNumber","channelName","rtcToken"]){
+      assert.equal(JSON.stringify(allowed).includes(secret),false);
+    }
+  }finally{f.close();}
+});
+
+test("OFF -> ON does not resurrect an old caller-side consent epoch",async()=>{
+  const f=await fixture();
+  try{
+    assert.equal((await f.enable()).kind,"updated");
+    const read=revision=>readCallerSessionBoundAgoraConsentEpochMatch(
+      f.adapter,f.callerBearer,f.listing.id,revision);
+    assert.equal((await read(1))?.consentRevision,1);
+    assert.equal((await setOwnWorkerAgoraCallPreference(
+      f.adapter,f.workerBearer,false,1)).kind,"updated");
+    assert.equal(await read(1),null);
+    assert.equal((await setOwnWorkerAgoraCallPreference(
+      f.adapter,f.workerBearer,true,2)).kind,"updated");
+    assert.equal((await readCallerSessionBoundAgoraConsentEpoch(
+      f.adapter,f.callerBearer,f.listing.id))?.consentRevision,3);
+    assert.equal(await read(1),null,
+      "old consent cannot be accepted when the worker re-enables calls");
+    assert.equal(await read(2),null);
+    assert.equal((await read(3))?.consentRevision,3);
+  }finally{f.close();}
+});
+
+test("both participant-own exact-epoch readers deny old consent after OFF to ON",async()=>{
+  const f=await fixture();
+  try{
+    assert.equal((await f.enable()).kind,"updated");
+    const caller=rev=>readCallerSessionBoundAgoraConsentEpochMatch(
+      f.adapter,f.callerBearer,f.listing.id,rev);
+    const worker=rev=>readWorkerSessionBoundAgoraConsentEpochMatch(
+      f.adapter,f.workerBearer,f.listing.id,CALLER,rev);
+    assert.ok(await caller(1));
+    assert.ok(await worker(1));
+    assert.equal((await setOwnWorkerAgoraCallPreference(
+      f.adapter,f.workerBearer,false,1)).kind,"updated");
+    assert.equal(await caller(1),null);
+    assert.equal(await worker(1),null);
+    assert.equal((await setOwnWorkerAgoraCallPreference(
+      f.adapter,f.workerBearer,true,2)).kind,"updated");
+    assert.equal(await caller(1),null);
+    assert.equal(await worker(1),null);
+    assert.equal((await caller(3))?.consentRevision,3);
+    assert.ok(await worker(3));
+  }finally{f.close();}
+});
+
+test("caller-only SQL binds one session hash, time, listing, expected epoch",async()=>{
+  const f=await fixture();
+  try{
+    assert.equal((await f.enable()).kind,"updated");
+    const query=READ_CALLER_SESSION_BOUND_AGORA_CONSENT_EPOCH_MATCH_QUERY;
+    assert.equal((query.match(/\?/g)||[]).length,4);
+    assert.match(query,/pref\.calls_enabled=1/);
+    assert.match(query,/pref\.revision=\?/);
+    assert.match(query,/session\.token_hash=\?/);
+    assert.match(query,/wl\.moderation_status='allowed'/);
+    const observed=[];
+    const proxy={prepare(sql){
+      const item={sql,params:[]};
+      observed.push(item);
+      return {bind(...params){
+        item.params=params;
+        return {all:()=>f.adapter.prepare(sql).bind(...params).all()};
+      }};
+    }};
+    const result=await readCallerSessionBoundAgoraConsentEpochMatch(
+      proxy,f.callerBearer,f.listing.id,1);
+    assert.equal(result?.consentRevision,1);
+    assert.equal(observed.length,1,"cannot rely on separate raceable consent read");
+    assert.equal(observed[0].sql,query);
+    assert.deepEqual(observed[0].params,[
+      await sessionHash(f.callerBearer),observed[0].params[1],f.listing.id,1,
+    ]);
+    assert.ok(Number.isSafeInteger(observed[0].params[1]));
+    const raw=JSON.stringify(observed);
+    for(const token of [f.callerBearer,f.workerBearer,f.otherBearer,WORKER,CALLER]){
+      assert.equal(raw.includes(token),false,token);
+    }
+  }finally{f.close();}
+});
+
+test("other active customers may match; worker self-contact and bad listing cannot",async()=>{
+  const f=await fixture();
+  try{
+    assert.equal((await f.enable()).kind,"updated");
+    const other=await readCallerSessionBoundAgoraConsentEpochMatch(
+      f.adapter,f.otherBearer,f.listing.id,1);
+    assert.equal(other?.target.requesterAccountId,OTHER,
+      "not a worker-secret or a caller whitelist");
+    assert.equal(await readCallerSessionBoundAgoraConsentEpochMatch(
+      f.adapter,f.workerBearer,f.listing.id,1),null,
+      "worker cannot initiate contact with self");
+    assert.equal(await readCallerSessionBoundAgoraConsentEpochMatch(
+      f.adapter,f.callerBearer,"missing-listing-00001",1),null);
+  }finally{f.close();}
+});
+
+test("expired/revoked/disabled caller and disabled worker cannot match an epoch",async()=>{
+  for(const change of ["revoke","expire","caller_disabled","worker_disabled"]){
+    const f=await fixture();
+    try{
+      assert.equal((await f.enable()).kind,"updated");
+      if(change==="revoke")assert.equal(
+        await revokeSession(f.adapter,f.callerBearer),true);
+      if(change==="expire")f.db.prepare(
+        "UPDATE auth_sessions SET expires_at=1 WHERE token_hash=?"
+      ).run(await sessionHash(f.callerBearer));
+      if(change==="caller_disabled")f.db.prepare(
+        "UPDATE accounts SET status='disabled' WHERE id=?").run(CALLER);
+      if(change==="worker_disabled")f.db.prepare(
+        "UPDATE accounts SET status='disabled' WHERE id=?").run(WORKER);
+      assert.equal(await readCallerSessionBoundAgoraConsentEpochMatch(
+        f.adapter,f.callerBearer,f.listing.id,1),null,change);
+    }finally{f.close();}
+  }
+});
+
+test("caller expected epoch rechecks published listing, moderation and Category",async()=>{
+  const mutations=[
+    (db,id)=>db.prepare(
+      "UPDATE worker_listings SET status='unpublished' WHERE id=?").run(id),
+    (db,id)=>db.prepare(
+      "UPDATE worker_listings SET moderation_status='hidden' WHERE id=?").run(id),
+    db=>db.prepare("UPDATE categories SET is_active=0 WHERE id=?").run(CAT),
+    (db,id)=>db.prepare("DELETE FROM worker_listings WHERE id=?").run(id),
+  ];
+  for(const mutate of mutations){
+    const f=await fixture();
+    try{
+      assert.equal((await f.enable()).kind,"updated");
+      mutate(f.db,f.listing.id);
+      assert.equal(await readCallerSessionBoundAgoraConsentEpochMatch(
+        f.adapter,f.callerBearer,f.listing.id,1),null);
+    }finally{f.close();}
+  }
+});
+
+test("invalid expected epoch or bearer never touches D1; unexpected outage withholds",async()=>{
+  const db={prepare(){throw Error("private D1 unavailable");}};
+  const validBearer="a".repeat(43),listing="listing-epoch-test-0001";
+  for(const invalid of [undefined,null,0,-1,NaN,1.3,Infinity,
+    2147483648,Number.MAX_SAFE_INTEGER,"1",true]){
+    assert.equal(await readCallerSessionBoundAgoraConsentEpochMatch(
+      db,validBearer,listing,invalid),null,String(invalid));
+  }
+  for(const invalid of ["",null,undefined,42,"Bearer "+validBearer,
+    validBearer.slice(1)]){
+    assert.equal(await readCallerSessionBoundAgoraConsentEpochMatch(
+      db,invalid,listing,1),null);
+  }
+  for(const invalid of ["",null,undefined,42,"bad listing"]){
+    assert.equal(await readCallerSessionBoundAgoraConsentEpochMatch(
+      db,validBearer,invalid,1),null);
+  }
+  assert.equal(await readCallerSessionBoundAgoraConsentEpochMatch(
+    db,validBearer,listing,1),null);
+});
+
+test("fake D1 row must match owner, active flags and exact revision, without new call route",async()=>{
+  const f=await fixture();
+  try{
+    assert.equal((await f.enable()).kind,"updated");
+    const valid={
+      requesterId:CALLER,requesterStatus:"active",
+      workerAccountId:WORKER,workerStatus:"active",
+      listingId:f.listing.id,listingOwnerAccountId:WORKER,
+      categoryId:CAT,listingStatus:"published",moderationStatus:"allowed",
+      workerProfileStatus:"draft",categoryActive:1,consentRevision:1,
+    };
+    const db=rows=>({prepare(){return {bind(){return this;},
+      async all(){return {results:rows};}};}});
+    const tryRows=rows=>readCallerSessionBoundAgoraConsentEpochMatch(
+      db(rows),f.callerBearer,f.listing.id,1);
+    assert.equal((await tryRows([valid]))?.consentRevision,1,
+      "fake adapters are untrusted: this unit check cannot attest to SQL");
+    for(const rev of [undefined,null,0,2,"1",true,NaN,2147483648]){
+      assert.equal(await tryRows([{...valid,consentRevision:rev}]),null);
+    }
+    for(const patch of [
+      {requesterStatus:"disabled"},{workerStatus:"disabled"},
+      {listingOwnerAccountId:OTHER},{listingId:"other-listing-00001"},
+      {moderationStatus:"hidden"},{listingStatus:"unpublished"},
+      {categoryActive:0},{workerAccountId:CALLER},
+    ])assert.equal(await tryRows([{...valid,...patch}]),null,JSON.stringify(patch));
+    for(const rows of [[],[valid,valid],null,{}]){
+      assert.equal(await tryRows(rows),null);
+    }
+    for(const route of ["/api/v1/calls","/api/v1/rtc/token","/api/v1/me/agora-call-preference"]){
+      const response=await worker.fetch(
+        new Request("https://jodlo.rekixo.com"+route,{method:"POST"}),
+        {DB:f.adapter},
+      );
+      assert.equal(response.status,404,route);
+    }
+    const tables=f.db.prepare(
+      "SELECT name FROM sqlite_schema WHERE type='table'"
+    ).all().map(row=>row.name);
+    for(const table of ["call_sessions","call_history","agora_tokens","agora_channels"]){
+      assert.equal(tables.includes(table),false);
     }
   }finally{f.close();}
 });
