@@ -73,6 +73,28 @@ export const READ_CALLER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY =
   "AND EXISTS (SELECT 1 FROM worker_agora_call_preferences AS pref " +
   "WHERE pref.account_id=worker.id AND pref.calls_enabled=1) LIMIT 1";
 
+/**
+ * ADR-0014 preflight evidence with the actual worker's CURRENT consent epoch.
+ * This is still ONE session-bound D1 SELECT (not a read-then-re-read).
+ * The nested read reuses the existing caller-only, owner/category/moderation
+ * eligibility filter; the same statement joins the current enabled preference
+ * and reads its exact revision. No worker bearer or client-selected worker ID.
+ *
+ * This evidence is INTERNAL ONLY. A future dispatch/token boundary MUST
+ * compare the epoch against current consent inside its own atomic admission:
+ * merely receiving an epoch is not permission to notify or join Agora.
+ */
+export const READ_CALLER_SESSION_BOUND_AGORA_CONSENT_EPOCH_QUERY =
+  "SELECT target.*,pref.revision AS consentRevision FROM (" +
+  READ_CALLER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY +
+  ") AS target JOIN worker_agora_call_preferences AS pref " +
+  "ON pref.account_id=target.workerAccountId AND pref.calls_enabled=1 LIMIT 1";
+
+export type CallerAgoraConsentEpochPreview = Readonly<{
+  target: RequestTargetFacts;
+  consentRevision: number;
+}>;
+
 /** Two current bearer proofs must match their DIFFERENT actual accounts
  * inside the same SQLite/D1 statement. The worker token is compared only
  * against the worker owning this listing, never a body-selected worker ID.
@@ -242,6 +264,48 @@ export async function readCallerSessionBoundAgoraOptInTarget(
     facts.requesterAccountId !== facts.workerAccountId ? facts : null;
 }
 
+
+/**
+ * INTERNAL caller-only consent-generation read, without phone, device,
+ * provider token, new call session, outbox or public route.
+ *
+ * Null means deny/withhold, including malformed D1 evidence or DB failure.
+ * The caller may use only their own currently valid server session; there
+ * is NO worker bearer parameter. Returned account IDs are private server
+ * facts and must never be projected to user-visible JSON.
+ *
+ * OFF -> ON increments the worker's existing revision. A former preview may
+ * remain an object in memory but NEVER authorizes a later action: the real
+ * admission/dispatch/token writer must atomically compare that earlier epoch
+ * with CURRENT opt-in (and pending founder-approved M-005 policy).
+ */
+export async function readCallerSessionBoundAgoraConsentEpoch(
+  db: D1Database,
+  callerBearer: string,
+  listingId: string,
+): Promise<CallerAgoraConsentEpochPreview | null> {
+  if (!validSessionToken(callerBearer) || !validOpaqueId(listingId)) return null;
+  try {
+    const { results } = await db.prepare(
+      READ_CALLER_SESSION_BOUND_AGORA_CONSENT_EPOCH_QUERY,
+    ).bind(
+      await sessionHash(callerBearer), Math.floor(Date.now() / 1000), listingId,
+    ).all<RequestTargetRow & { consentRevision: unknown }>();
+    const target = projectRequestTarget(results, listingId, null);
+    if (!target || !target.requesterActive || !target.workerActive ||
+        !target.workerOptedIn || !target.categoryActive ||
+        !target.listingPublished || !target.moderationApproved ||
+        target.requesterAccountId === target.workerAccountId) return null;
+
+    const revision = results[0]?.consentRevision;
+    if (typeof revision !== "number" ||
+        !Number.isSafeInteger(revision) ||
+        revision < 1 || revision > 2_147_483_647) return null;
+    return Object.freeze({ target, consentRevision: revision });
+  } catch {
+    return null;
+  }
+}
 
 /**
  * LOCAL-ONLY preflight for future Agora RTC participant authorization.
