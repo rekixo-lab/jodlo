@@ -84,11 +84,24 @@ export const READ_CALLER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY =
  * compare the epoch against current consent inside its own atomic admission:
  * merely receiving an epoch is not permission to notify or join Agora.
  */
-export const READ_CALLER_SESSION_BOUND_AGORA_CONSENT_EPOCH_QUERY =
+const CALLER_AGORA_CONSENT_EPOCH_SOURCE =
   "SELECT target.*,pref.revision AS consentRevision FROM (" +
   READ_CALLER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY +
   ") AS target JOIN worker_agora_call_preferences AS pref " +
-  "ON pref.account_id=target.workerAccountId AND pref.calls_enabled=1 LIMIT 1";
+  "ON pref.account_id=target.workerAccountId AND pref.calls_enabled=1";
+
+/** Preserve the current-revision preview's existing three bound inputs. */
+export const READ_CALLER_SESSION_BOUND_AGORA_CONSENT_EPOCH_QUERY =
+  CALLER_AGORA_CONSENT_EPOCH_SOURCE + " LIMIT 1";
+
+/**
+ * A separate INTERNAL caller-side preflight for a previously prepared call:
+ * match a server-held original opt-in epoch to the CURRENT worker preference.
+ * This is one read-only session/listing/consent D1 SELECT, not a token or
+ * public invitation. Real admission needs atomic recheck in an approved writer.
+ */
+export const READ_CALLER_SESSION_BOUND_AGORA_CONSENT_EPOCH_MATCH_QUERY =
+  CALLER_AGORA_CONSENT_EPOCH_SOURCE + " AND pref.revision=? LIMIT 1";
 
 export type CallerAgoraConsentEpochPreview = Readonly<{
   target: RequestTargetFacts;
@@ -321,6 +334,48 @@ export async function readCallerSessionBoundAgoraConsentEpoch(
         !Number.isSafeInteger(revision) ||
         revision < 1 || revision > 2_147_483_647) return null;
     return Object.freeze({ target, consentRevision: revision });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * INTERNAL caller-side expected-epoch preview for a previously prepared
+ * call. The expected epoch MUST come from trusted internal call state: never
+ * from caller JSON or unverified consent. A caller supplies ONLY their own
+ * live session and the listing ID; worker ownership comes from D1.
+ *
+ * OFF -> ON increments the owner's private preference revision, so a stale
+ * epoch no longer matches even if incoming calls are enabled again.
+ * Like the worker-own exact-epoch reader, this is NOT call admission,
+ * a network delivery claim or an Agora token grant; consent can still turn
+ * OFF after this SELECT. A real writer must compare atomically.
+ */
+export async function readCallerSessionBoundAgoraConsentEpochMatch(
+  db: D1Database,
+  callerBearer: string,
+  listingId: string,
+  expectedConsentRevision: number,
+): Promise<CallerAgoraConsentEpochPreview | null> {
+  if (!validSessionToken(callerBearer) || !validOpaqueId(listingId) ||
+      typeof expectedConsentRevision !== "number" ||
+      !Number.isSafeInteger(expectedConsentRevision) ||
+      expectedConsentRevision < 1 ||
+      expectedConsentRevision > 2_147_483_647) return null;
+  try {
+    const { results } = await db.prepare(
+      READ_CALLER_SESSION_BOUND_AGORA_CONSENT_EPOCH_MATCH_QUERY,
+    ).bind(
+      await sessionHash(callerBearer), Math.floor(Date.now() / 1000),
+      listingId, expectedConsentRevision,
+    ).all<RequestTargetRow & { consentRevision: unknown }>();
+    const target = projectRequestTarget(results, listingId, null);
+    if (!target || !target.requesterActive || !target.workerActive ||
+        !target.workerOptedIn || !target.categoryActive ||
+        !target.listingPublished || !target.moderationApproved ||
+        target.requesterAccountId === target.workerAccountId ||
+        results[0]?.consentRevision !== expectedConsentRevision) return null;
+    return Object.freeze({ target, consentRevision: expectedConsentRevision });
   } catch {
     return null;
   }
