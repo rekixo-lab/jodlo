@@ -67,3 +67,9 @@ For each `Pxx/Bxx/Axx/Txx/Dxx/Uxx/Sxx` row, write `APPROVED` plus the precise al
 - [Firebase: Android message priority and device/Doze uncertainty](https://firebase.google.com/docs/cloud-messaging/android-message-priority). Delivery may be late or missing, and some priority choices are subject to platform policies.
 - [Cloudflare: SQLite-backed Durable Object storage](https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/) and [Durable Object alarm retry semantics](https://developers.cloudflare.com/durable-objects/api/alarms/). These document product capabilities, **not** JODLO implementation or provider-exactly-once behavior.
 - [Agora RTC authentication guidance](https://docs.agora.io/en/realtime-media/rtc/build/authenticate-users/authentication-workflow). RTC tokens alone are not a complete incoming-call notification protocol.
+
+### CI pre-approval tripwire (not a replacement for founder approval)
+
+Each of the 14 register rows now has an explicit **`PENDING` Status** cell. `scripts/verify-m005-operational-approvals.mjs`, integrated into both `npm run founder:check` and negative/positive `npm test` fixtures, denies absent/duplicated/unknown rows, status drift away from `PENDING`, loss of binding ADR-0013/ADR-0014, restoration of a stale telephone-first-contact note, and selected early live-call routes or Agora SDK dependencies. The safety gate is deliberately **narrow and source-pattern-based**: it is not a security scanner, developer identity verification, authentic presence implementation or automatic proof of all unapproved behavior. A future explicit founder decision requires a deliberate, independently reviewed gate update and new ADR, never a silent change to this table.
+
+**No operational choice has been approved by this test or by the instruction to proceed.** Production policy, Android UI, remote provider calls and Cloudflare deployment remain disabled.
