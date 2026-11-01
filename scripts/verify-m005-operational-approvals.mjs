@@ -97,8 +97,8 @@ export async function auditM005OperationalApprovals(root=rootDefault){
   const previous=sources.previous;
   if(previous!==null){
     if(!/Current binding updates — 2026-11-01/.test(previous) ||
-       !/First contact APPROVED: Direct \*\*Agora in-app Internet AUDIO call\*\*/.test(previous) ||
-       !/Worker call consent APPROVED: Separate default-OFF/.test(previous) ||
+       !/\*\*First contact APPROVED:\*\* Direct \*\*Agora in-app Internet AUDIO call\*\*/.test(previous) ||
+       !/\*\*Worker call consent APPROVED:\*\* Separate default-OFF/.test(previous) ||
        !previous.includes("M005_AGORA_OPERATIONAL_DECISIONS.md"))
       errors.push("Historic M-005 proposal must not lose accepted Agora audio/opt-in update or pending decision link");
     if(/^- Customer first sends an availability request vs direct calling/m.test(previous))
@@ -107,7 +107,7 @@ export async function auditM005OperationalApprovals(root=rootDefault){
   const audio=sources.audio;
   if(audio!==null && (!/Status:\s*ACCEPTED founder clarification/i.test(audio) ||
       !/in-app Internet voice calling powered by Agora RTC/i.test(audio) ||
-      !/No worker phone numbers/i.test(audio)))
+      !/No worker phone number\b/i.test(audio)))
     errors.push("ADR-0013 approved Agora audio / no worker phone number must remain binding");
   const optin=sources.optin;
   if(optin!==null && (!/Status:\s*ACCEPTED founder decision/i.test(optin) ||
