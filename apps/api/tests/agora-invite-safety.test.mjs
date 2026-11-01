@@ -672,14 +672,18 @@ test("caller epoch requires current worker/Category/listing/moderation eligibili
   }
 });
 
-test("wrong account, self-contact and absent listing never disclose an Agora consent epoch",async()=>{
+test("another valid caller may preview, but worker self-contact and unknown listing deny",async()=>{
   const f=await fixture();
   try{
     assert.equal((await f.enable()).kind,"updated");
-    for(const bearer of [f.otherBearer,f.workerBearer]){
-      assert.equal(await readCallerSessionBoundAgoraConsentEpoch(
-        f.adapter,bearer,f.listing.id),null);
-    }
+    const other=await readCallerSessionBoundAgoraConsentEpoch(
+      f.adapter,f.otherBearer,f.listing.id);
+    assert.equal(other?.consentRevision,1,
+      "another authenticated customer may contact the eligible listing");
+    assert.equal(other?.target.requesterAccountId,OTHER);
+    assert.equal(await readCallerSessionBoundAgoraConsentEpoch(
+      f.adapter,f.workerBearer,f.listing.id),null,
+      "worker cannot initiate a call with self");
     assert.equal(await readCallerSessionBoundAgoraConsentEpoch(
       f.adapter,f.callerBearer,"missing-listing-000001"),null);
     assert.equal(await readCallerSessionBoundAgoraConsentEpoch(
@@ -725,7 +729,7 @@ test("fake malformed D1 revision or identity cannot be accepted as permission",a
         String(revision));
     }
     for(const bad of [
-      {requesterId:OTHER},{workerAccountId:CALLER},
+      {requesterId:"invalid id"},{workerAccountId:CALLER},
       {listingOwnerAccountId:OTHER},{listingStatus:"unpublished"},
       {moderationStatus:"hidden"},{categoryActive:0},{workerStatus:"disabled"},
     ]){
