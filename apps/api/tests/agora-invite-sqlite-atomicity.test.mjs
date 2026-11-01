@@ -68,7 +68,8 @@ async function openTrial() {
       "call_id TEXT PRIMARY KEY REFERENCES synthetic_voice_invites(call_id), " +
       "kind TEXT NOT NULL CHECK(kind='ring_intent_only'), " +
       "status TEXT NOT NULL DEFAULT 'pending_test_only' " +
-      "CHECK(status IN ('pending_test_only','claimed_test_only')), " +
+      "CHECK(status IN ('pending_test_only','claimed_test_only'," +
+      "'revoked_test_only')), " +
       "claim_generation INTEGER NOT NULL DEFAULT 0 " +
       "CHECK(claim_generation>=0), " +
       "claim_lease_until_ms INTEGER DEFAULT NULL " +
@@ -401,6 +402,78 @@ async function inspectSyntheticFencedClaim(db,{
       ? Object.freeze({kind:"current_fence_test_only"}) : withheld;
   }catch {
     return withheld;
+  }
+}
+
+/**
+ * OFFLINE ONLY: tombstone one unsent fake intent that no longer belongs to
+ * the worker's ORIGINAL revocable opt-in epoch. This does NOT select any
+ * presence/abuse policy or revoke an in-flight real provider operation.
+ *
+ * This deliberately needs only a call ID and current D1 worker preference;
+ * no caller bearer, synthetic risk evidence, client worker ID or device.
+ * BEGIN IMMEDIATE makes a local worker consent toggle / tombstone serialized
+ * across the two SQLite connections in the tests; it is NOT a distributed
+ * Cloudflare D1/DO atomicity or provider cancellation guarantee.
+ *
+ * A tombstone is terminal in this disposable fixture. No data is deleted,
+ * sent or retained in production, and no provider is told to stop ringing.
+ */
+async function tombstoneRevokedSyntheticOutbox(db,{
+  callId=CALL_ID,failBeforeCommit=false,
+}={}){
+  const withheld=Object.freeze({kind:"withheld"});
+  if(!validOpaqueId(callId)) return withheld;
+  let inTransaction=false;
+  try{
+    db.exec("BEGIN IMMEDIATE");
+    inTransaction=true;
+    const row=db.prepare(
+      "SELECT outbox.status,outbox.claim_generation, " +
+      "invite.consent_revision, pref.calls_enabled AS enabled_now, " +
+      "pref.revision AS revision_now " +
+      "FROM synthetic_voice_outbox AS outbox " +
+      "JOIN synthetic_voice_invites AS invite " +
+      "ON invite.call_id=outbox.call_id " +
+      "LEFT JOIN worker_agora_call_preferences AS pref " +
+      "ON pref.account_id=invite.worker_id " +
+      "WHERE outbox.call_id=? AND outbox.kind='ring_intent_only'"
+    ).get(callId);
+    if(!row || !["pending_test_only","claimed_test_only"].includes(row.status)){
+      db.exec("ROLLBACK");
+      inTransaction=false;
+      return withheld;
+    }
+    if(!Number.isSafeInteger(row.consent_revision) || row.consent_revision<1 ||
+       !Number.isSafeInteger(row.claim_generation) || row.claim_generation<0){
+      db.exec("ROLLBACK");
+      inTransaction=false;
+      return withheld;
+    }
+    // A missing, OFF or different-version preference invalidates the old
+    // call's consent epoch. OFF -> ON never resurrects that same epoch.
+    if(row.enabled_now===1 && row.revision_now===row.consent_revision){
+      db.exec("ROLLBACK");
+      inTransaction=false;
+      return Object.freeze({kind:"unchanged_test_only"});
+    }
+    const changed=db.prepare(
+      "UPDATE synthetic_voice_outbox " +
+      "SET status='revoked_test_only' " +
+      "WHERE call_id=? AND status=? AND claim_generation=?"
+    ).run(callId,row.status,row.claim_generation);
+    if(changed.changes!==1){
+      db.exec("ROLLBACK");
+      inTransaction=false;
+      return withheld;
+    }
+    if(failBeforeCommit) throw Error("synthetic crash before revocation tombstone commit");
+    db.exec("COMMIT");
+    inTransaction=false;
+    return Object.freeze({kind:"revoked_test_only"});
+  }catch(error){
+    if(inTransaction) db.exec("ROLLBACK");
+    throw error;
   }
 }
 
@@ -952,6 +1025,133 @@ test("generation is not a provider delivery or token grant and never stores bear
     }
     assert.equal(outboxRows(t.a)[0].status,"claimed_test_only");
     assert.equal(inviteRows(t.a).length,1);
+  });
+});
+
+test("worker opt-out tombstones an unclaimed fake ring and OFF->ON cannot resurrect",async()=>{
+  await withTrial(async t=>{
+    assert.equal((await t.enable()).kind,"updated");
+    assert.equal((await stageSyntheticInvite(t.a,args(t))).kind,"staged_intent_only");
+    assert.deepEqual(await tombstoneRevokedSyntheticOutbox(t.b),
+      {kind:"unchanged_test_only"},"still enabled at matching consent revision");
+    assert.equal(outboxRows(t.a)[0].status,"pending_test_only");
+    assert.equal((await t.disable()).kind,"updated");
+    assert.deepEqual(await tombstoneRevokedSyntheticOutbox(t.b),
+      {kind:"revoked_test_only"});
+    assert.equal(outboxRows(t.a)[0].status,"revoked_test_only");
+    assert.deepEqual(await tombstoneRevokedSyntheticOutbox(t.a),
+      {kind:"withheld"},"terminalized row cannot be changed twice");
+    assert.equal((await setOwnWorkerAgoraCallPreference(
+      localD1Adapter(t.b),t.workerBearer,true,2)).kind,"updated");
+    assert.deepEqual(await previewSyntheticUnsentOutbox(t.a,{
+      ...args(t),nowMs:NOW+100,
+    }),{kind:"withheld"},"old queued intent must not reappear");
+    assert.deepEqual(await claimSyntheticUnsentOutbox(t.a,{
+      ...args(t),nowMs:NOW+100,
+    }),{kind:"withheld"});
+    assert.deepEqual(await claimSyntheticFencedOutbox(t.b,{
+      ...args(t),nowMs:NOW+100,testLeaseUntilMs:NOW+200,
+    }),{kind:"withheld"});
+    assert.deepEqual(await tombstoneRevokedSyntheticOutbox(t.a),
+      {kind:"withheld"},"test fixture terminal state remains terminal");
+    const fresh={...args(t),callId:"call-agora-atomic-000002"};
+    assert.equal((await stageSyntheticInvite(t.b,fresh)).kind,"staged_intent_only",
+      "only a new call ID under the current opt-in epoch is permitted in the fixture");
+    assert.equal(outboxRows(t.a).length,2);
+    assert.deepEqual(outboxRows(t.a).map(r=>r.status),
+      ["revoked_test_only","pending_test_only"]);
+  });
+});
+
+test("an already claimed or recovered test-only ring can be tombstoned on opt-out",async()=>{
+  for(const recover of [false,true]){
+    await withTrial(async t=>{
+      assert.equal((await t.enable()).kind,"updated");
+      assert.equal((await stageSyntheticInvite(t.a,args(t))).kind,"staged_intent_only");
+      assert.deepEqual(await claimSyntheticFencedOutbox(t.a,{
+        ...args(t),nowMs:NOW+100,testLeaseUntilMs:NOW+200,
+      }),{kind:"fenced_claim_test_only",generation:1});
+      if(recover) assert.deepEqual(await claimSyntheticFencedOutbox(t.b,{
+        ...args(t),nowMs:NOW+200,testLeaseUntilMs:NOW+300,
+      }),{kind:"fenced_claim_test_only",generation:2});
+      assert.equal((await t.disable()).kind,"updated");
+      assert.deepEqual(await tombstoneRevokedSyntheticOutbox(t.b),
+        {kind:"revoked_test_only"});
+      assert.equal(outboxRows(t.a)[0].status,"revoked_test_only");
+      assert.deepEqual(await inspectSyntheticFencedClaim(t.a,{
+        ...args(t),nowMs:NOW+150,generation:1,
+      }),{kind:"withheld"},"tombstone invalidates old local fence inspection");
+      assert.deepEqual(await claimSyntheticFencedOutbox(t.a,{
+        ...args(t),nowMs:NOW+300,testLeaseUntilMs:NOW+400,
+      }),{kind:"withheld"},"expired local lease cannot recover terminal tombstone");
+      assert.equal(outboxRows(t.b)[0].claim_generation,recover?2:1);
+      assert.equal(outboxRows(t.a)[0].claim_lease_until_ms,
+        recover?NOW+300:NOW+200);
+      // No actual provider send is represented by an old claimed status.
+    });
+  }
+});
+
+test("tombstone crash rolls back; another local connection can retry once",async()=>{
+  await withTrial(async t=>{
+    assert.equal((await t.enable()).kind,"updated");
+    assert.equal((await stageSyntheticInvite(t.a,args(t))).kind,"staged_intent_only");
+    assert.equal((await t.disable()).kind,"updated");
+    await assert.rejects(()=>tombstoneRevokedSyntheticOutbox(t.a,{
+      failBeforeCommit:true,
+    }),/synthetic crash before revocation tombstone commit/);
+    assert.equal(outboxRows(t.b)[0].status,"pending_test_only",
+      "the crash did not partially mark the row");
+    assert.deepEqual(await tombstoneRevokedSyntheticOutbox(t.b),
+      {kind:"revoked_test_only"});
+    assert.deepEqual(await tombstoneRevokedSyntheticOutbox(t.a),
+      {kind:"withheld"});
+    assert.equal(outboxRows(t.a)[0].status,"revoked_test_only");
+    assert.deepEqual(t.b.prepare("PRAGMA foreign_key_check").all(),[]);
+  });
+});
+
+test("competing local writer cannot race worker opt-out tombstone transaction",async()=>{
+  await withTrial(async t=>{
+    assert.equal((await t.enable()).kind,"updated");
+    assert.equal((await stageSyntheticInvite(t.a,args(t))).kind,"staged_intent_only");
+    assert.equal((await t.disable()).kind,"updated");
+    t.a.exec("BEGIN IMMEDIATE");
+    try{
+      await assert.rejects(()=>tombstoneRevokedSyntheticOutbox(t.b),
+        /database is locked|SQLITE_BUSY/i);
+      assert.equal(outboxRows(t.a)[0].status,"pending_test_only");
+    }finally{t.a.exec("ROLLBACK");}
+    assert.deepEqual(await tombstoneRevokedSyntheticOutbox(t.b),
+      {kind:"revoked_test_only"});
+    assert.deepEqual(await tombstoneRevokedSyntheticOutbox(t.a),
+      {kind:"withheld"});
+    assert.deepEqual(await claimSyntheticFencedOutbox(t.a,{
+      ...args(t),nowMs:NOW+100,testLeaseUntilMs:NOW+200,
+    }),{kind:"withheld"});
+  });
+});
+
+test("invalid or unknown ID cannot tombstone unrelated fake outbox records",async()=>{
+  await withTrial(async t=>{
+    assert.equal((await t.enable()).kind,"updated");
+    assert.equal((await stageSyntheticInvite(t.a,args(t))).kind,"staged_intent_only");
+    assert.equal((await t.disable()).kind,"updated");
+    for(const callId of [
+      "",null,"wrong id","call-agora-nonexistent-000001",CALLER,
+    ]){
+      assert.deepEqual(await tombstoneRevokedSyntheticOutbox(t.b,{callId}),
+        {kind:"withheld"},String(callId));
+    }
+    assert.equal(outboxRows(t.a)[0].status,"pending_test_only");
+    assert.deepEqual(await tombstoneRevokedSyntheticOutbox(t.b,{callId:CALL_ID}),
+      {kind:"revoked_test_only"});
+    assert.equal(outboxRows(t.a)[0].status,"revoked_test_only");
+    const saved=JSON.stringify([...outboxRows(t.a),...inviteRows(t.a)]);
+    for(const secret of [t.callerBearer,t.workerBearer,t.otherBearer]){
+      assert.equal(saved.includes(secret),false);
+    }
+    assert.equal(saved.includes("recipient_device"),false);
   });
 });
 
