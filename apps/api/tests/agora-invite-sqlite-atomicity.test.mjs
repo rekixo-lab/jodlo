@@ -9,11 +9,11 @@ import { localD1Adapter, openLocalDatabase } from "./helpers/local-db.mjs";
 import { ensureAccount } from "../src/modules/identity/accounts.ts";
 import { optInAsWorker } from "../src/modules/workers/profile.ts";
 import { publishListing } from "../src/modules/workers/listings.ts";
-import { issueSession } from "../src/modules/identity/sessions.ts";
+import { issueSession, revokeSession } from "../src/modules/identity/sessions.ts";
 import { setOwnWorkerAgoraCallPreference } from "../src/modules/workers/agora-call-preference.ts";
 import { prepareSyntheticSafetyCheckedAgoraInvite } from
   "../src/modules/interactions/agora-invite-safety.ts";
-import { validIdempotencyKey } from "../src/modules/shared/identifiers.ts";
+import { validIdempotencyKey, validOpaqueId } from "../src/modules/shared/identifiers.ts";
 
 /**
  * OFFLINE, DISPOSABLE two-connection SQLite transaction rehearsal ONLY.
@@ -62,7 +62,8 @@ async function openTrial() {
       "CREATE TABLE synthetic_voice_invites (" +
       "call_id TEXT PRIMARY KEY, caller_id TEXT NOT NULL, " +
       "worker_id TEXT NOT NULL, listing_id TEXT NOT NULL, " +
-      "retry_key TEXT NOT NULL, ring_deadline_ms INTEGER NOT NULL); " +
+      "retry_key TEXT NOT NULL, ring_deadline_ms INTEGER NOT NULL, " +
+      "consent_revision INTEGER NOT NULL CHECK(consent_revision>=1)); " +
       "CREATE TABLE synthetic_voice_outbox (" +
       "call_id TEXT PRIMARY KEY REFERENCES synthetic_voice_invites(call_id), " +
       "kind TEXT NOT NULL CHECK(kind='ring_intent_only'));"
@@ -143,6 +144,16 @@ async function stageSyntheticInvite(db,options) {
     }
 
     const call=candidate.call;
+    const liveConsent=db.prepare(
+      "SELECT revision FROM worker_agora_call_preferences " +
+      "WHERE account_id=? AND calls_enabled=1"
+    ).get(call.workerAccountId);
+    if(!liveConsent || !Number.isSafeInteger(liveConsent.revision) ||
+        liveConsent.revision < 1) {
+      db.exec("ROLLBACK");
+      inTransaction=false;
+      return {kind:"denied"};
+    }
     const old=db.prepare("SELECT * FROM synthetic_voice_invites WHERE call_id=?")
       .get(callId);
     if(old){
@@ -150,16 +161,17 @@ async function stageSyntheticInvite(db,options) {
         old.worker_id===call.workerAccountId &&
         old.listing_id===call.listingId &&
         old.retry_key===retryKey &&
-        old.ring_deadline_ms===call.ringDeadlineMs;
+        old.ring_deadline_ms===call.ringDeadlineMs &&
+        old.consent_revision===liveConsent.revision;
       db.exec("ROLLBACK");
       inTransaction=false;
       return {kind:exact?"replay_suppressed":"denied"};
     }
 
     db.prepare(
-      "INSERT INTO synthetic_voice_invites VALUES(?,?,?,?,?,?)"
+      "INSERT INTO synthetic_voice_invites VALUES(?,?,?,?,?,?,?)"
     ).run(callId,call.callerAccountId,call.workerAccountId,
-      call.listingId,retryKey,call.ringDeadlineMs);
+      call.listingId,retryKey,call.ringDeadlineMs,liveConsent.revision);
     if(failAfterInsert) throw Error("synthetic failure before outbox commit");
     db.prepare("INSERT INTO synthetic_voice_outbox VALUES(?,?)")
       .run(callId,"ring_intent_only");
@@ -169,6 +181,54 @@ async function stageSyntheticInvite(db,options) {
   }catch(e) {
     if(inTransaction) db.exec("ROLLBACK");
     throw e;
+  }
+}
+
+/**
+ * OFFLINE READ-ONLY PREVIEW for an UNSENT existing test outbox.
+ *
+ * No provider delivery, device discovery, remote send, or durable production
+ * call identity is involved. Re-read current opted-in worker consent AND its
+ * version, plus the existing caller-only D1 target/risk guards. The sample
+ * caller bearer is an in-memory fixture only, NEVER stored in the outbox;
+ * production async deliveries must not demand or persist that bearer.
+ *
+ * Since no send occurs, this is NOT an atomic dispatch/outbox lease and
+ * cannot rule out a mutation between recheck and a future provider send.
+ * Real dispatch needs a separate M-003/M-005/M-006-approved design.
+ */
+async function previewSyntheticUnsentOutbox(db,{
+  callerBearer,callId=CALL_ID,nowMs=NOW+100,risk,
+}){
+  const withheld=Object.freeze({kind:"withheld"});
+  if(!validOpaqueId(callId) ||
+     !Number.isSafeInteger(nowMs) || nowMs < 0) return withheld;
+  try{
+    const row=db.prepare(
+      "SELECT i.call_id,i.caller_id,i.worker_id,i.listing_id," +
+      "i.ring_deadline_ms,i.consent_revision, " +
+      "pref.calls_enabled AS consent_on,pref.revision AS current_revision " +
+      "FROM synthetic_voice_outbox AS outbox " +
+      "JOIN synthetic_voice_invites AS i ON i.call_id=outbox.call_id " +
+      "LEFT JOIN worker_agora_call_preferences AS pref " +
+      "ON pref.account_id=i.worker_id " +
+      "WHERE outbox.call_id=? AND outbox.kind='ring_intent_only'"
+    ).get(callId);
+    if(!row || row.consent_on!==1 ||
+       !Number.isSafeInteger(row.consent_revision) ||
+       row.current_revision!==row.consent_revision ||
+       nowMs >= row.ring_deadline_ms) return withheld;
+    const decision=await prepareSyntheticSafetyCheckedAgoraInvite(
+      localD1Adapter(db),callerBearer,row.listing_id,
+      row.call_id,nowMs,row.ring_deadline_ms,risk,
+    );
+    if(decision.kind!=="prepared" ||
+       decision.call.callerAccountId!==row.caller_id ||
+       decision.call.workerAccountId!==row.worker_id ||
+       decision.call.listingId!==row.listing_id) return withheld;
+    return Object.freeze({kind:"rechecked_only"});
+  }catch{
+    return withheld;
   }
 }
 
@@ -288,6 +348,118 @@ test("stale, blocked, busy and invalid fake evidence cannot create outbox rows",
     }
     assert.deepEqual(inviteRows(t.b),[]);
     assert.deepEqual(outboxRows(t.b),[]);
+  });
+});
+
+
+test("old unsent intent stays withheld after worker OFF then ON (new consent epoch)",async()=>{
+  await withTrial(async t=>{
+    assert.equal((await t.enable()).kind,"updated");
+    assert.equal((await stageSyntheticInvite(t.a,args(t))).kind,"staged_intent_only");
+    const check=()=>previewSyntheticUnsentOutbox(t.b,{
+      ...args(t),nowMs:NOW+100,
+    });
+    assert.deepEqual(await check(),{kind:"rechecked_only"});
+    assert.equal(inviteRows(t.a)[0].consent_revision,1);
+    assert.equal((await t.disable()).kind,"updated");
+    assert.deepEqual(await check(),{kind:"withheld"});
+    assert.equal(outboxRows(t.a).length,1,"not deleted or sent by preview");
+    assert.equal((await setOwnWorkerAgoraCallPreference(
+      localD1Adapter(t.b),t.workerBearer,true,2)).kind,"updated");
+    assert.deepEqual(await check(),{kind:"withheld"},
+      "a later opt-in cannot resurrect the old consent epoch");
+    assert.deepEqual(await stageSyntheticInvite(t.b,args(t)),{kind:"denied"},
+      "retry on old call ID cannot treat changed consent version as same invite");
+    const fresh={...args(t),callId:"call-agora-atomic-000002"};
+    assert.equal((await stageSyntheticInvite(t.a,fresh)).kind,"staged_intent_only");
+    assert.equal(inviteRows(t.b)[1].consent_revision,3);
+    assert.deepEqual(await previewSyntheticUnsentOutbox(t.b,{
+      ...fresh,nowMs:NOW+100,
+    }),{kind:"rechecked_only"},"fresh call can only pass a fresh internal rehearsal");
+  });
+});
+
+test("an unsent outbox row is withheld after status, listing or Category revocation",async()=>{
+  const mutations=[
+    ["caller disabled",db=>db.prepare(
+      "UPDATE accounts SET status='disabled' WHERE id=?").run(CALLER)],
+    ["worker disabled",db=>db.prepare(
+      "UPDATE accounts SET status='disabled' WHERE id=?").run(WORKER)],
+    ["listing hidden",(_,t)=>t.a.prepare(
+      "UPDATE worker_listings SET moderation_status='hidden' WHERE id=?")
+      .run(t.listing.id)],
+    ["listing unpublished",(_,t)=>t.a.prepare(
+      "UPDATE worker_listings SET status='unpublished' WHERE id=?")
+      .run(t.listing.id)],
+    ["Category inactive",db=>db.prepare(
+      "UPDATE categories SET is_active=0 WHERE id=?").run(CATEGORY)],
+  ];
+  for(const [label,mutate] of mutations){
+    await withTrial(async t=>{
+      assert.equal((await t.enable()).kind,"updated");
+      assert.equal((await stageSyntheticInvite(t.a,args(t))).kind,"staged_intent_only");
+      mutate(t.a,t);
+      assert.deepEqual(await previewSyntheticUnsentOutbox(t.b,{
+        ...args(t),nowMs:NOW+100,
+      }),{kind:"withheld"},label);
+      assert.equal(outboxRows(t.a).length,1,label+" remains UNSENT");
+    });
+  }
+});
+
+test("expired, offline, blocked or rate-denied fresh evidence withholds unsent intent",async()=>{
+  await withTrial(async t=>{
+    assert.equal((await t.enable()).kind,"updated");
+    assert.equal((await stageSyntheticInvite(t.a,args(t))).kind,"staged_intent_only");
+    const preview=(risk,nowMs=NOW+100)=>previewSyntheticUnsentOutbox(
+      t.b,{callerBearer:t.callerBearer,callId:CALL_ID,risk,nowMs});
+    for(const change of [
+      {workerPresence:"offline"},{workerAvailability:"busy"},
+      {blockedByCaller:true},{blockedByWorker:true},
+      {rateGate:"deny"},{rateGate:"unknown"},
+      {recipientVerified:false},{privacyApproved:false},
+      {checkedAtMs:NOW+1000},{expiresAtMs:NOW+100},
+      {callerAccountId:OTHER},{workerAccountId:OTHER},
+    ]){
+      assert.deepEqual(await preview(t.risk(change)),{kind:"withheld"},
+        JSON.stringify(change));
+    }
+    assert.deepEqual(await preview(t.risk(),DEADLINE),{kind:"withheld"},
+      "expired ringing deadline never reactivates an unsent intent");
+    assert.deepEqual(await preview(t.risk(),NaN),{kind:"withheld"});
+    assert.deepEqual(await preview(t.risk(),-1),{kind:"withheld"});
+    assert.deepEqual(await preview(t.risk(),"wrong-call-id"),{kind:"withheld"});
+    assert.deepEqual(await preview(t.risk()),{kind:"rechecked_only"});
+    assert.equal(outboxRows(t.a).length,1);
+  });
+});
+
+test("caller session revocation and outbox removal also withhold an old preview",async()=>{
+  await withTrial(async t=>{
+    assert.equal((await t.enable()).kind,"updated");
+    assert.equal((await stageSyntheticInvite(t.a,args(t))).kind,"staged_intent_only");
+    assert.equal(await revokeSession(localD1Adapter(t.a),t.callerBearer),true);
+    assert.deepEqual(await previewSyntheticUnsentOutbox(t.b,{
+      ...args(t),
+    }),{kind:"withheld"});
+    t.a.prepare("DELETE FROM synthetic_voice_outbox WHERE call_id=?").run(CALL_ID);
+    assert.deepEqual(await previewSyntheticUnsentOutbox(t.b,{
+      ...args(t),
+    }),{kind:"withheld"});
+  });
+});
+
+test("distinct call IDs STILL can stage for one worker; no busy slot was reserved",async()=>{
+  await withTrial(async t=>{
+    assert.equal((await t.enable()).kind,"updated");
+    assert.equal((await stageSyntheticInvite(t.a,args(t))).kind,"staged_intent_only");
+    const second={...args(t),callId:"call-agora-atomic-000002",retryKey:KEY_OTHER};
+    assert.equal((await stageSyntheticInvite(t.b,second)).kind,
+      "staged_intent_only");
+    assert.equal(inviteRows(t.a).length,2,
+      "per-call uniqueness is NOT a worker-level concurrency guard");
+    assert.equal(outboxRows(t.b).length,2,
+      "these are UNSENT offline fixtures, not authorized simultaneous rings");
   });
 });
 
