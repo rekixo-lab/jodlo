@@ -235,14 +235,9 @@ export async function readCurrentRequestTarget(
   listingId: string,
 ): Promise<RequestTargetFacts | null> {
   if (!validOpaqueId(requesterId) || !validOpaqueId(listingId)) return null;
-  try {
-    const { results } = await db.prepare(READ_CURRENT_REQUEST_TARGET_QUERY)
-      .bind(requesterId, listingId).all<RequestTargetRow>();
-    return projectRequestTarget(results, listingId, requesterId);
-  } catch {
-    // Unknown/broken D1 availability is not an eligible target.
-    return null;
-  }
+  const { results } = await db.prepare(READ_CURRENT_REQUEST_TARGET_QUERY)
+    .bind(requesterId, listingId).all<RequestTargetRow>();
+  return projectRequestTarget(results, listingId, requesterId);
 }
 
 /** Strict one-statement call preflight: current unexpired, non-revoked,
@@ -260,17 +255,12 @@ async function readCallerTargetWithQuery(
   query: string,
 ): Promise<RequestTargetFacts | null> {
   if (!validSessionToken(bearerToken) || !validOpaqueId(listingId)) return null;
-  try {
-    const { results } = await db.prepare(query)
-      .bind(await sessionHash(bearerToken), Math.floor(Date.now() / 1000), listingId)
-      .all<RequestTargetRow>();
-    const result = projectRequestTarget(results, listingId, null);
-    // Never accept a fake adapter that violates the caller active predicate.
-    return result?.requesterActive ? result : null;
-  } catch {
-    // An outage or malformed D1 adapter result cannot yield call eligibility.
-    return null;
-  }
+  const { results } = await db.prepare(query)
+    .bind(await sessionHash(bearerToken), Math.floor(Date.now() / 1000), listingId)
+    .all<RequestTargetRow>();
+  const result = projectRequestTarget(results, listingId, null);
+  // Never accept a fake adapter that violates the caller active predicate.
+  return result?.requesterActive ? result : null;
 }
 
 export function readSessionBoundCallTarget(
@@ -297,13 +287,19 @@ export async function readCallerSessionBoundAgoraOptInTarget(
   callerBearer: string,
   listingId: string,
 ): Promise<RequestTargetFacts | null> {
-  const facts = await readCallerTargetWithQuery(
-    db, callerBearer, listingId, READ_CALLER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY,
-  );
-  return facts?.requesterActive && facts.workerActive &&
-    facts.workerOptedIn && facts.categoryActive &&
-    facts.listingPublished && facts.moderationApproved &&
-    facts.requesterAccountId !== facts.workerAccountId ? facts : null;
+  try {
+    const facts = await readCallerTargetWithQuery(
+      db, callerBearer, listingId, READ_CALLER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY,
+    );
+    return facts?.requesterActive && facts.workerActive &&
+      facts.workerOptedIn && facts.categoryActive &&
+      facts.listingPublished && facts.moderationApproved &&
+      facts.requesterAccountId !== facts.workerAccountId ? facts : null;
+  } catch {
+    // Only Agora preflight turns an unavailable D1 read into withheld facts.
+    // Legacy session target readers retain their existing error contract.
+    return null;
+  }
 }
 
 
@@ -414,19 +410,14 @@ async function readTwoBoundSessions(
       !validSessionToken(workerToken) ||
       callerToken === workerToken ||
       !validOpaqueId(listingId)) return null;
-  try {
-    const now = Math.floor(Date.now() / 1000);
-    const { results } = await db.prepare(query)
-      .bind(await sessionHash(callerToken), now, listingId,
-        await sessionHash(workerToken), now)
-      .all<RequestTargetRow>();
-    const facts = projectRequestTarget(results, listingId, null);
-    return facts?.requesterActive && facts.workerActive &&
-      facts.requesterAccountId !== facts.workerAccountId ? facts : null;
-  } catch {
-    // No partial approval if either role's D1 evidence is unavailable.
-    return null;
-  }
+  const now = Math.floor(Date.now() / 1000);
+  const { results } = await db.prepare(query)
+    .bind(await sessionHash(callerToken), now, listingId,
+      await sessionHash(workerToken), now)
+    .all<RequestTargetRow>();
+  const facts = projectRequestTarget(results, listingId, null);
+  return facts?.requesterActive && facts.workerActive &&
+    facts.requesterAccountId !== facts.workerAccountId ? facts : null;
 }
 
 /** Existing session-only preview deliberately retained for earlier tests.
@@ -447,15 +438,20 @@ export function readTwoSessionBoundCallTarget(
  * Missing row or disabled switch => denied even if listing is published.
  * This is NOT a token grant and does not replace other live safety checks.
  */
-export function readTwoSessionBoundAgoraOptInTarget(
+export async function readTwoSessionBoundAgoraOptInTarget(
   db: D1Database,
   callerToken: string,
   workerToken: string,
   listingId: string,
 ): Promise<RequestTargetFacts | null> {
-  return readTwoBoundSessions(
-    db, callerToken, workerToken, listingId,
-    READ_TWO_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY);
+  try {
+    return await readTwoBoundSessions(
+      db, callerToken, workerToken, listingId,
+      READ_TWO_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY);
+  } catch {
+    // Failure of either participant's D1 evidence withholds Agora eligibility.
+    return null;
+  }
 }
 
 
@@ -490,7 +486,7 @@ export async function readWorkerSessionBoundAgoraOptInTarget(
       facts.listingPublished && facts.moderationApproved &&
       facts.requesterAccountId !== facts.workerAccountId ? facts : null;
   } catch {
-    // No worker-own RTC prerequisite from an unavailable/malformed D1 read.
+    // No worker-own RTC prerequisite from unavailable/malformed D1 evidence.
     return null;
   }
 }
