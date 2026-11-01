@@ -287,13 +287,19 @@ export async function readCallerSessionBoundAgoraOptInTarget(
   callerBearer: string,
   listingId: string,
 ): Promise<RequestTargetFacts | null> {
-  const facts = await readCallerTargetWithQuery(
-    db, callerBearer, listingId, READ_CALLER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY,
-  );
-  return facts?.requesterActive && facts.workerActive &&
-    facts.workerOptedIn && facts.categoryActive &&
-    facts.listingPublished && facts.moderationApproved &&
-    facts.requesterAccountId !== facts.workerAccountId ? facts : null;
+  try {
+    const facts = await readCallerTargetWithQuery(
+      db, callerBearer, listingId, READ_CALLER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY,
+    );
+    return facts?.requesterActive && facts.workerActive &&
+      facts.workerOptedIn && facts.categoryActive &&
+      facts.listingPublished && facts.moderationApproved &&
+      facts.requesterAccountId !== facts.workerAccountId ? facts : null;
+  } catch {
+    // Only Agora preflight turns an unavailable D1 read into withheld facts.
+    // Legacy session target readers retain their existing error contract.
+    return null;
+  }
 }
 
 
@@ -432,15 +438,20 @@ export function readTwoSessionBoundCallTarget(
  * Missing row or disabled switch => denied even if listing is published.
  * This is NOT a token grant and does not replace other live safety checks.
  */
-export function readTwoSessionBoundAgoraOptInTarget(
+export async function readTwoSessionBoundAgoraOptInTarget(
   db: D1Database,
   callerToken: string,
   workerToken: string,
   listingId: string,
 ): Promise<RequestTargetFacts | null> {
-  return readTwoBoundSessions(
-    db, callerToken, workerToken, listingId,
-    READ_TWO_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY);
+  try {
+    return await readTwoBoundSessions(
+      db, callerToken, workerToken, listingId,
+      READ_TWO_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY);
+  } catch {
+    // Failure of either participant's D1 evidence withholds Agora eligibility.
+    return null;
+  }
 }
 
 
@@ -464,15 +475,20 @@ export async function readWorkerSessionBoundAgoraOptInTarget(
   if (!validSessionToken(workerBearer) ||
       !validOpaqueId(listingId) ||
       !validOpaqueId(trustedCallerAccountId)) return null;
-  const { results } = await db.prepare(READ_WORKER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY)
-    .bind(await sessionHash(workerBearer), Math.floor(Date.now() / 1000),
-      trustedCallerAccountId, listingId)
-    .all<RequestTargetRow>();
-  const facts = projectRequestTarget(results, listingId, trustedCallerAccountId);
-  return facts?.requesterActive && facts.workerActive &&
-    facts.workerOptedIn && facts.categoryActive &&
-    facts.listingPublished && facts.moderationApproved &&
-    facts.requesterAccountId !== facts.workerAccountId ? facts : null;
+  try {
+    const { results } = await db.prepare(READ_WORKER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY)
+      .bind(await sessionHash(workerBearer), Math.floor(Date.now() / 1000),
+        trustedCallerAccountId, listingId)
+      .all<RequestTargetRow>();
+    const facts = projectRequestTarget(results, listingId, trustedCallerAccountId);
+    return facts?.requesterActive && facts.workerActive &&
+      facts.workerOptedIn && facts.categoryActive &&
+      facts.listingPublished && facts.moderationApproved &&
+      facts.requesterAccountId !== facts.workerAccountId ? facts : null;
+  } catch {
+    // No worker-own RTC prerequisite from unavailable/malformed D1 evidence.
+    return null;
+  }
 }
 
 /**
