@@ -139,6 +139,25 @@ export const READ_WORKER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY =
   "AND EXISTS (SELECT 1 FROM worker_agora_call_preferences AS pref " +
   "WHERE pref.account_id=worker.id AND pref.calls_enabled=1) LIMIT 1";
 
+/**
+ * ADR-0014, internal WORKER-OWN RTC eligibility: bind a previously
+ * server-observed consent revision to the CURRENT private worker opt-in in
+ * the SAME read as the worker's OWN active session, owner/listing, trusted
+ * caller account, Category and moderation status.
+ *
+ * The last placeholder is a trusted internal consent revision, never a
+ * client-selected worker account or a provider credential. A revoked OFF→ON
+ * epoch must not accidentally match an old accepted call. This is still
+ * READ-ONLY: it does not prove authenticated accepted call storage, reserve
+ * provider rights, fix a read-to-send race or approve M-005 operations.
+ */
+export const READ_WORKER_SESSION_BOUND_AGORA_CONSENT_EPOCH_MATCH_QUERY =
+  "SELECT target.*,pref.revision AS consentRevision FROM (" +
+  READ_WORKER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY +
+  ") AS target JOIN worker_agora_call_preferences AS pref " +
+  "ON pref.account_id=target.workerAccountId AND pref.calls_enabled=1 " +
+  "AND pref.revision=? LIMIT 1";
+
 type RequestTargetRow = {
   requesterId: unknown;
   requesterStatus: unknown;
@@ -399,4 +418,48 @@ export async function readWorkerSessionBoundAgoraOptInTarget(
     facts.workerOptedIn && facts.categoryActive &&
     facts.listingPublished && facts.moderationApproved &&
     facts.requesterAccountId !== facts.workerAccountId ? facts : null;
+}
+
+/**
+ * Worker-side current consent generation match, for future server-owned
+ * accepted-call preflight ONLY. A worker uses their OWN bearer; the caller's
+ * account ID and expected consent revision MUST come from trusted internal
+ * call state, not client JSON, a header, or a previous caller preview alone.
+ *
+ * Unknown/default-OFF, disabled, stale consent (including OFF→ON), expired
+ * session, hidden listing, wrong recipient/caller, malformed rows or D1
+ * failures withhold the internal target. No RTC token is signed or sent;
+ * any future real admission MUST recheck inside its approved atomic grant.
+ */
+export async function readWorkerSessionBoundAgoraConsentEpochMatch(
+  db: D1Database,
+  workerBearer: string,
+  listingId: string,
+  trustedCallerAccountId: string,
+  expectedConsentRevision: number,
+): Promise<RequestTargetFacts | null> {
+  if (!validSessionToken(workerBearer) ||
+      !validOpaqueId(listingId) ||
+      !validOpaqueId(trustedCallerAccountId) ||
+      typeof expectedConsentRevision !== "number" ||
+      !Number.isSafeInteger(expectedConsentRevision) ||
+      expectedConsentRevision < 1 ||
+      expectedConsentRevision > 2_147_483_647) return null;
+  try {
+    const { results } = await db.prepare(
+      READ_WORKER_SESSION_BOUND_AGORA_CONSENT_EPOCH_MATCH_QUERY,
+    ).bind(
+      await sessionHash(workerBearer), Math.floor(Date.now() / 1000),
+      trustedCallerAccountId, listingId, expectedConsentRevision,
+    ).all<RequestTargetRow & { consentRevision: unknown }>();
+    const target = projectRequestTarget(results, listingId, trustedCallerAccountId);
+    if (!target || !target.requesterActive || !target.workerActive ||
+        !target.workerOptedIn || !target.categoryActive ||
+        !target.listingPublished || !target.moderationApproved ||
+        target.requesterAccountId === target.workerAccountId ||
+        results[0]?.consentRevision !== expectedConsentRevision) return null;
+    return target;
+  } catch {
+    return null;
+  }
 }
