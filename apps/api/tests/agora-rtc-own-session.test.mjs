@@ -12,6 +12,8 @@ import { setOwnWorkerAgoraCallPreference } from "../src/modules/workers/agora-ca
 import {
   readWorkerSessionBoundAgoraOptInTarget,
   READ_WORKER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY,
+  readWorkerSessionBoundAgoraConsentEpochMatch,
+  READ_WORKER_SESSION_BOUND_AGORA_CONSENT_EPOCH_MATCH_QUERY,
   READ_CALLER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY,
 } from "../src/modules/interactions/request-target.ts";
 import {
@@ -275,6 +277,210 @@ test("no public token/join API or personal call data schema introduced",async()=
     for(const missing of ["agora_tokens","agora_channels","rtc_participants",
       "call_sessions","call_history","phone_numbers"]){
       assert.equal(tables.includes(missing),false,missing);
+    }
+  }finally{f.close();}
+});
+
+
+test("worker own-session consent-epoch match stays OFF without an explicit worker switch",async()=>{
+  const f=await fixture();
+  try{
+    const call=f.call();
+    const result=await readWorkerSessionBoundAgoraConsentEpochMatch(
+      f.adapter,f.workerToken,call.listingId,call.callerAccountId,1);
+    assert.equal(result,null);
+    assert.equal(f.db.prepare(
+      "SELECT COUNT(*) AS n FROM worker_agora_call_preferences").get().n,0);
+  }finally{f.close();}
+});
+
+test("worker accepts only current exact consent epoch for an eligible accepted caller",async()=>{
+  const f=await fixture();
+  try{
+    const call=f.call();
+    assert.equal((await f.enable()).kind,"updated");
+    const matched=await readWorkerSessionBoundAgoraConsentEpochMatch(
+      f.adapter,f.workerToken,call.listingId,call.callerAccountId,1);
+    assert.ok(matched);
+    assert.equal(matched.requesterAccountId,CALLER);
+    assert.equal(matched.workerAccountId,WORKER);
+    assert.equal(matched.listingId,f.listing.id);
+    assert.equal(Object.isFrozen(matched),true);
+    for(const forbidden of [f.workerToken,f.callerToken,"phoneNumber","tel:","token","channel"]){
+      assert.equal(JSON.stringify(matched).includes(forbidden),false);
+    }
+    assert.equal(await readWorkerSessionBoundAgoraConsentEpochMatch(
+      f.adapter,f.workerToken,call.listingId,call.callerAccountId,2),null,
+      "future/nonmatching epochs cannot authorize a historical accepted call");
+  }finally{f.close();}
+});
+
+test("worker OFF then ON cannot resurrect a synthetic accepted call bound to the old consent epoch",async()=>{
+  const f=await fixture();
+  try{
+    assert.equal((await f.enable()).kind,"updated");
+    const call=f.call();
+    const args=[f.adapter,f.workerToken,call.listingId,call.callerAccountId];
+    assert.ok(await readWorkerSessionBoundAgoraConsentEpochMatch(...args,1));
+    const disabled=await setOwnWorkerAgoraCallPreference(
+      f.adapter,f.workerToken,false,1);
+    assert.equal(disabled.kind,"updated");
+    assert.equal(await readWorkerSessionBoundAgoraConsentEpochMatch(...args,1),null);
+    const reenabled=await setOwnWorkerAgoraCallPreference(
+      f.adapter,f.workerToken,true,2);
+    assert.equal(reenabled.kind,"updated");
+    assert.equal(reenabled.preference.revision,3);
+    assert.ok(await readWorkerSessionBoundAgoraOptInTarget(
+      f.adapter,f.workerToken,call.listingId,call.callerAccountId),
+      "legacy no-epoch synthetic preview is intentionally not token authorization");
+    assert.equal(await readWorkerSessionBoundAgoraConsentEpochMatch(...args,1),null,
+      "revoked epoch must remain invalid after another ON toggle");
+    assert.ok(await readWorkerSessionBoundAgoraConsentEpochMatch(...args,3),
+      "only a new trusted epoch may pass the separate read-only prerequisite");
+    assert.equal(await readWorkerSessionBoundAgoraConsentEpochMatch(...args,2),null);
+  }finally{f.close();}
+});
+
+test("one worker-own D1 SELECT matches epoch with five binds; no caller bearer or raw token",async()=>{
+  const f=await fixture();
+  try{
+    assert.equal((await f.enable()).kind,"updated");
+    const call=f.call();
+    const query=READ_WORKER_SESSION_BOUND_AGORA_CONSENT_EPOCH_MATCH_QUERY;
+    assert.equal((query.match(/\?/g)||[]).length,5);
+    assert.match(query,/participant_session\.account_id=worker\.id/);
+    assert.match(query,/pref\.calls_enabled=1/);
+    assert.match(query,/pref\.revision=\?/);
+    assert.match(query,/wl\.moderation_status='allowed'/);
+    const observed=[];
+    const proxy={prepare(sql){
+      const item={sql,params:[]};
+      observed.push(item);
+      return {bind(...params){
+        item.params=params;
+        return {all:()=>f.adapter.prepare(sql).bind(...params).all()};
+      }};
+    }};
+    const match=await readWorkerSessionBoundAgoraConsentEpochMatch(
+      proxy,f.workerToken,call.listingId,call.callerAccountId,1);
+    assert.ok(match);
+    assert.equal(observed.length,1,"do not read caller, worker, opt-in and listing in separate queries");
+    assert.equal(observed[0].sql,query);
+    assert.deepEqual(observed[0].params,[
+      await sessionHash(f.workerToken),observed[0].params[1],
+      CALLER,f.listing.id,1,
+    ]);
+    assert.ok(Number.isSafeInteger(observed[0].params[1]));
+    for(const forbidden of [f.callerToken,f.workerToken,f.otherToken]){
+      assert.equal(JSON.stringify(observed).includes(forbidden),false);
+    }
+  }finally{f.close();}
+});
+
+test("wrong worker bearer, revoked worker session and disabled caller deny current epoch",async()=>{
+  for(const mode of ["wrong_actor","revoked","disabled_caller"]){
+    const f=await fixture();
+    try{
+      assert.equal((await f.enable()).kind,"updated");
+      const call=f.call();
+      let bearer=f.workerToken;
+      if(mode==="wrong_actor")bearer=f.otherToken;
+      if(mode==="revoked")assert.equal(await revokeSession(
+        f.adapter,f.workerToken),true);
+      if(mode==="disabled_caller")f.db.prepare(
+        "UPDATE accounts SET status='disabled' WHERE id=?").run(CALLER);
+      assert.equal(await readWorkerSessionBoundAgoraConsentEpochMatch(
+        f.adapter,bearer,call.listingId,call.callerAccountId,1),null,mode);
+    }finally{f.close();}
+  }
+});
+
+test("active listing and Category are rechecked for worker-own exact epoch",async()=>{
+  const mutations=[
+    (f)=>f.db.prepare("UPDATE worker_listings SET status='unpublished' WHERE id=?")
+      .run(f.listing.id),
+    (f)=>f.db.prepare("UPDATE worker_listings SET moderation_status='hidden' WHERE id=?")
+      .run(f.listing.id),
+    (f)=>f.db.prepare("UPDATE categories SET is_active=0 WHERE id=?").run(CATEGORY),
+    (f)=>f.db.prepare("UPDATE accounts SET status='disabled' WHERE id=?").run(WORKER),
+    (f)=>f.db.prepare("DELETE FROM worker_listings WHERE id=?").run(f.listing.id),
+  ];
+  for(const change of mutations){
+    const f=await fixture();
+    try{
+      assert.equal((await f.enable()).kind,"updated");
+      const call=f.call();
+      change(f);
+      assert.equal(await readWorkerSessionBoundAgoraConsentEpochMatch(
+        f.adapter,f.workerToken,call.listingId,call.callerAccountId,1),null);
+    }finally{f.close();}
+  }
+});
+
+test("malformed consent revision or untrusted caller ID denies before D1, outage withholds",async()=>{
+  const bomb={prepare(){throw Error("D1 must not be queried for malformed args");}};
+  const validWorker="a".repeat(43),listing="listing-worker-epoch-001",caller=CALLER;
+  for(const invalid of [undefined,null,0,-1,1.1,NaN,Infinity,
+    2147483648,Number.MAX_SAFE_INTEGER,"1",true]){
+    assert.equal(await readWorkerSessionBoundAgoraConsentEpochMatch(
+      bomb,validWorker,listing,caller,invalid),null,String(invalid));
+  }
+  for(const bad of [null,undefined,"","bad",12,"Bearer "+validWorker]){
+    assert.equal(await readWorkerSessionBoundAgoraConsentEpochMatch(
+      bomb,bad,listing,caller,1),null);
+  }
+  for(const bad of [null,"bad id",undefined,123]){
+    assert.equal(await readWorkerSessionBoundAgoraConsentEpochMatch(
+      bomb,validWorker,bad,caller,1),null);
+    assert.equal(await readWorkerSessionBoundAgoraConsentEpochMatch(
+      bomb,validWorker,listing,bad,1),null);
+  }
+  assert.equal(await readWorkerSessionBoundAgoraConsentEpochMatch(
+    bomb,validWorker,listing,caller,1),null,
+    "unexpected database failure cannot turn into consent proof");
+});
+
+test("fake D1 rows must match exact trusted actor and consent epoch; no grants or new routes",async()=>{
+  const f=await fixture();
+  try{
+    assert.equal((await f.enable()).kind,"updated");
+    const call=f.call();
+    const good={
+      requesterId:CALLER,requesterStatus:"active",workerAccountId:WORKER,
+      workerStatus:"active",listingId:call.listingId,
+      listingOwnerAccountId:WORKER,categoryId:CATEGORY,
+      listingStatus:"published",moderationStatus:"allowed",
+      workerProfileStatus:"draft",categoryActive:1,consentRevision:1,
+    };
+    const fake=results=>({prepare(){return{bind(){return this;},
+      async all(){return {results};}};}});
+    const attempt=rows=>readWorkerSessionBoundAgoraConsentEpochMatch(
+      fake(rows),f.workerToken,call.listingId,call.callerAccountId,1);
+    assert.equal((await attempt([good]))?.workerAccountId,WORKER,
+      "test adapter is not an authentic session provider or D1 proof");
+    for(const badRev of [null,0,2,2147483648,"1",undefined]){
+      assert.equal(await attempt([{...good,consentRevision:badRev}]),null);
+    }
+    for(const change of [
+      {requesterId:OTHER},{workerAccountId:OTHER},
+      {listingOwnerAccountId:OTHER},{moderationStatus:"hidden"},
+      {workerStatus:"disabled"},{categoryActive:0},
+      {listingId:"other-listing-000001"},
+    ])assert.equal(await attempt([{...good,...change}]),null,JSON.stringify(change));
+    for(const rows of [[],[good,good],null,{}]){
+      assert.equal(await attempt(rows),null);
+    }
+    for(const path of ["/api/v1/calls","/api/v1/rtc/token","/api/v1/agora"]){
+      const result=await worker.fetch(
+        new Request("https://jodlo.rekixo.com"+path,{method:"POST"}),
+        {DB:f.adapter},
+      );
+      assert.equal(result.status,404,path);
+    }
+    const tables=f.db.prepare("SELECT name FROM sqlite_schema WHERE type='table'")
+      .all().map(row=>row.name);
+    for(const name of ["call_sessions","agora_tokens","call_history"]){
+      assert.equal(tables.includes(name),false);
     }
   }finally{f.close();}
 });
