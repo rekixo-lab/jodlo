@@ -87,6 +87,20 @@ async function openTrial() {
       "kind TEXT NOT NULL CHECK(kind='not_provider_evidence')," +
       "PRIMARY KEY(call_id,claim_generation));"
     );
+    // Strictly LOCAL, synthetic uncertainty about a hypothetical external
+    // transport boundary. No real external transport is ever invoked.
+    a.exec(
+      "CREATE TABLE synthetic_voice_unknown_transport (" +
+      "call_id TEXT PRIMARY KEY REFERENCES synthetic_voice_invites(call_id)," +
+      "claim_generation INTEGER NOT NULL CHECK(claim_generation>=1)," +
+      "kind TEXT NOT NULL CHECK(kind='outcome_unknown_test_only'));" +
+      "CREATE TABLE synthetic_voice_unverified_hints (" +
+      "call_id TEXT NOT NULL REFERENCES synthetic_voice_invites(call_id)," +
+      "claim_generation INTEGER NOT NULL CHECK(claim_generation>=1)," +
+      "hint_key TEXT NOT NULL,hint TEXT NOT NULL " +
+      "CHECK(hint IN('maybe_accepted_test_only','maybe_rejected_test_only'))," +
+      "PRIMARY KEY(call_id,claim_generation,hint_key));"
+    );
     const adapter=localD1Adapter(a);
     for(const id of [CALLER,WORKER,OTHER]) await ensureAccount(adapter,id);
     await optInAsWorker(adapter,WORKER);
@@ -566,6 +580,163 @@ async function observeMockFencedCallback(db,request,{
       throw Error("synthetic callback crash before observation commit");
     db.exec("COMMIT");tx=false;
     return Object.freeze({kind:"local_observation_only"});
+  }catch(error){
+    if(tx)db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+
+/**
+ * D01 NOT SELECTED. The fixture records that a future external transport
+ * operation might have an UNKNOWN outcome; no provider send ever happens.
+ * A duplicate is still unresolved, not proof of delivery or safe retry.
+ *
+ * The previous fenced lease/generation, consent and caller-own safety facts
+ * are rechecked while SQLite BEGIN IMMEDIATE is held. A previous unknown
+ * generation is NEVER silently rebased to a later recovered lease.
+ */
+const UNKNOWN_ATTEMPT_FIELDS=["kind","callId","generation","nowMs"];
+const UNKNOWN_HINT_FIELDS=[
+  "kind","callId","generation","nowMs","hintKey","hint",
+];
+const unknownRequest=(generation,nowMs=NOW+150,callId=CALL_ID)=>({
+  kind:"trusted_uncertainty_fixture_only",callId,generation,nowMs,
+});
+function unknownTransportRows(db){
+  return db.prepare(
+    "SELECT call_id,claim_generation,kind FROM " +
+    "synthetic_voice_unknown_transport ORDER BY call_id"
+  ).all().map(x=>({...x}));
+}
+function unverifiedHintRows(db){
+  return db.prepare(
+    "SELECT call_id,claim_generation,hint_key,hint FROM " +
+    "synthetic_voice_unverified_hints ORDER BY hint_key"
+  ).all().map(x=>({...x}));
+}
+function exactFixture(value,fields){
+  return Boolean(value) && typeof value==="object" &&
+    !Array.isArray(value) &&
+    Object.keys(value).length===fields.length &&
+    fields.every(field=>Object.hasOwn(value,field));
+}
+function phaseStillRinging(db,callId){
+  const row=db.prepare(
+    "SELECT phase,revision FROM synthetic_voice_mock_call_state " +
+    "WHERE call_id=?"
+  ).get(callId);
+  return row?.phase==="ringing" && row?.revision===0;
+}
+async function recordUnknownTransportBoundary(db,request,{
+  callerBearer,risk,failBeforeCommit=false,
+}={}){
+  const withheld=Object.freeze({kind:"withheld"});
+  if(!exactFixture(request,UNKNOWN_ATTEMPT_FIELDS) ||
+     request.kind!=="trusted_uncertainty_fixture_only" ||
+     !validOpaqueId(request.callId) ||
+     !Number.isSafeInteger(request.generation) ||
+     request.generation<1 ||
+     !Number.isSafeInteger(request.nowMs) ||
+     request.nowMs<0) return withheld;
+  let tx=false;
+  try{
+    db.exec("BEGIN IMMEDIATE");tx=true;
+    if(!phaseStillRinging(db,request.callId)){
+      db.exec("ROLLBACK");tx=false;return withheld;
+    }
+    const existing=db.prepare(
+      "SELECT claim_generation FROM synthetic_voice_unknown_transport " +
+      "WHERE call_id=?"
+    ).get(request.callId);
+    // A historical ambiguous generation cannot be promoted to a new
+    // generation after hypothetical lease recovery; retry policy is pending.
+    if(existing){
+      db.exec("ROLLBACK");tx=false;
+      return existing.claim_generation===request.generation
+        ? Object.freeze({kind:"still_unresolved_test_only"}) : withheld;
+    }
+    const fence=await inspectSyntheticFencedClaim(db,{
+      callerBearer,callId:request.callId,nowMs:request.nowMs,
+      risk,generation:request.generation,
+    });
+    if(fence.kind!=="current_fence_test_only"){
+      db.exec("ROLLBACK");tx=false;return withheld;
+    }
+    const changed=db.prepare(
+      "INSERT INTO synthetic_voice_unknown_transport " +
+      "(call_id,claim_generation,kind) " +
+      "SELECT call_id,claim_generation,'outcome_unknown_test_only' " +
+      "FROM synthetic_voice_outbox WHERE call_id=? " +
+      "AND status='claimed_test_only' AND claim_generation=?"
+    ).run(request.callId,request.generation);
+    if(changed.changes!==1) throw Error("synthetic ambiguous CAS failed");
+    if(failBeforeCommit)throw Error("synthetic uncertainty crash before commit");
+    db.exec("COMMIT");tx=false;
+    return Object.freeze({kind:"outcome_unknown_test_only"});
+  }catch(error){
+    if(tx)db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+/**
+ * A locally constructed UNVERIFIED hint, never a signed provider receipt.
+ * Duplicate key+same hint is suppressed; contradictory replay cannot
+ * overwrite an earlier local note. Opposing DIFFERENT hints still leave the
+ * local transport status unknown. No ACK/delivered/failed state is produced.
+ */
+const unknownHint=(generation,hintKey,hint,nowMs=NOW+150)=>({
+  kind:"trusted_unverified_hint_fixture_only",
+  callId:CALL_ID,generation,nowMs,hintKey,hint,
+});
+async function recordUnverifiedHint(db,request,{
+  callerBearer,risk,failBeforeCommit=false,
+}={}){
+  const withheld=Object.freeze({kind:"withheld"});
+  if(!exactFixture(request,UNKNOWN_HINT_FIELDS) ||
+     request.kind!=="trusted_unverified_hint_fixture_only" ||
+     !validOpaqueId(request.callId) ||
+     !Number.isSafeInteger(request.generation) || request.generation<1 ||
+     !Number.isSafeInteger(request.nowMs) || request.nowMs<0 ||
+     !validIdempotencyKey(request.hintKey) ||
+     !["maybe_accepted_test_only","maybe_rejected_test_only"].includes(
+       request.hint))return withheld;
+  let tx=false;
+  try{
+    db.exec("BEGIN IMMEDIATE");tx=true;
+    if(!phaseStillRinging(db,request.callId)){
+      db.exec("ROLLBACK");tx=false;return withheld;
+    }
+    const known=db.prepare(
+      "SELECT claim_generation FROM synthetic_voice_unknown_transport " +
+      "WHERE call_id=? AND kind='outcome_unknown_test_only'"
+    ).get(request.callId);
+    if(!known || known.claim_generation!==request.generation){
+      db.exec("ROLLBACK");tx=false;return withheld;
+    }
+    const fence=await inspectSyntheticFencedClaim(db,{
+      callerBearer,callId:request.callId,nowMs:request.nowMs,
+      risk,generation:request.generation,
+    });
+    if(fence.kind!=="current_fence_test_only"){
+      db.exec("ROLLBACK");tx=false;return withheld;
+    }
+    const previous=db.prepare(
+      "SELECT hint FROM synthetic_voice_unverified_hints " +
+      "WHERE call_id=? AND claim_generation=? AND hint_key=?"
+    ).get(request.callId,request.generation,request.hintKey);
+    if(previous){
+      db.exec("ROLLBACK");tx=false;
+      return previous.hint===request.hint
+        ? Object.freeze({kind:"duplicate_hint_test_only"}) : withheld;
+    }
+    db.prepare(
+      "INSERT INTO synthetic_voice_unverified_hints VALUES(?,?,?,?)"
+    ).run(request.callId,request.generation,request.hintKey,request.hint);
+    if(failBeforeCommit)throw Error("synthetic hint crash before commit");
+    db.exec("COMMIT");tx=false;
+    return Object.freeze({kind:"unverified_hint_only"});
   }catch(error){
     if(tx)db.exec("ROLLBACK");
     throw error;
@@ -1435,6 +1606,230 @@ test("local observations survive later OFF only as unverified historical test fa
       "deviceToken","agoraToken","providerAck",
     ])assert.equal(persisted.includes(forbidden),false);
   });
+});
+
+
+test("unknown transport outcome cannot be promoted to delivered or safe retry",async()=>{
+  await withTrial(async t=>{
+    assert.equal((await t.enable()).kind,"updated");
+    assert.equal((await stageSyntheticInvite(t.a,args(t))).kind,"staged_intent_only");
+    seedMockRingingState(t.a);
+    assert.equal((await claimSyntheticFencedOutbox(t.a,{
+      ...args(t),nowMs:NOW+100,testLeaseUntilMs:NOW+200,
+    })).generation,1);
+    const request=unknownRequest(1);
+    assert.deepEqual(await recordUnknownTransportBoundary(t.a,request,args(t)),
+      {kind:"outcome_unknown_test_only"});
+    assert.deepEqual(await recordUnknownTransportBoundary(t.b,request,args(t)),
+      {kind:"still_unresolved_test_only"});
+    assert.deepEqual(unknownTransportRows(t.b),[{
+      call_id:CALL_ID,claim_generation:1,kind:"outcome_unknown_test_only",
+    }]);
+    assert.deepEqual(unverifiedHintRows(t.a),[]);
+    assert.equal(outboxRows(t.a)[0].status,"claimed_test_only");
+    assert.equal(JSON.stringify(unknownTransportRows(t.a)).includes("delivered"),
+      false);
+    assert.equal(JSON.stringify(unknownTransportRows(t.a)).includes("sent_at"),
+      false);
+  });
+});
+
+test("unknown-attempt crash rolls back; another local connection may record UNKNOWN once",async()=>{
+  await withTrial(async t=>{
+    assert.equal((await t.enable()).kind,"updated");
+    assert.equal((await stageSyntheticInvite(t.a,args(t))).kind,"staged_intent_only");
+    seedMockRingingState(t.a);
+    assert.equal((await claimSyntheticFencedOutbox(t.a,{
+      ...args(t),nowMs:NOW+100,testLeaseUntilMs:NOW+200,
+    })).generation,1);
+    const input=unknownRequest(1);
+    await assert.rejects(()=>recordUnknownTransportBoundary(t.a,input,{
+      ...args(t),failBeforeCommit:true,
+    }),/synthetic uncertainty crash/);
+    assert.deepEqual(unknownTransportRows(t.b),[]);
+    assert.deepEqual(await recordUnknownTransportBoundary(t.b,input,args(t)),
+      {kind:"outcome_unknown_test_only"});
+    assert.equal(unknownTransportRows(t.a).length,1);
+    assert.deepEqual(t.b.prepare("PRAGMA foreign_key_check").all(),[]);
+  });
+});
+
+test("concurrent SQLite writers cannot create duplicate UNKNOWN attempt after a lock",async()=>{
+  await withTrial(async t=>{
+    assert.equal((await t.enable()).kind,"updated");
+    assert.equal((await stageSyntheticInvite(t.a,args(t))).kind,"staged_intent_only");
+    seedMockRingingState(t.a);
+    assert.equal((await claimSyntheticFencedOutbox(t.b,{
+      ...args(t),nowMs:NOW+100,testLeaseUntilMs:NOW+200,
+    })).generation,1);
+    t.a.exec("BEGIN IMMEDIATE");
+    try{
+      await assert.rejects(()=>recordUnknownTransportBoundary(
+        t.b,unknownRequest(1),args(t)),
+      /database is locked|SQLITE_BUSY/i);
+      assert.deepEqual(unknownTransportRows(t.a),[]);
+    }finally{t.a.exec("ROLLBACK");}
+    assert.deepEqual(await recordUnknownTransportBoundary(
+      t.b,unknownRequest(1),args(t)),
+      {kind:"outcome_unknown_test_only"});
+    assert.deepEqual(await recordUnknownTransportBoundary(
+      t.a,unknownRequest(1),args(t)),
+      {kind:"still_unresolved_test_only"});
+    assert.equal(unknownTransportRows(t.b).length,1);
+  });
+});
+
+test("recovered local lease cannot relabel old uncertain attempt as new transport success",async()=>{
+  await withTrial(async t=>{
+    assert.equal((await t.enable()).kind,"updated");
+    assert.equal((await stageSyntheticInvite(t.a,args(t))).kind,"staged_intent_only");
+    seedMockRingingState(t.a);
+    assert.equal((await claimSyntheticFencedOutbox(t.a,{
+      ...args(t),nowMs:NOW+100,testLeaseUntilMs:NOW+200,
+    })).generation,1);
+    assert.equal((await recordUnknownTransportBoundary(
+      t.a,unknownRequest(1),args(t))).kind,"outcome_unknown_test_only");
+    assert.equal((await claimSyntheticFencedOutbox(t.b,{
+      ...args(t),nowMs:NOW+200,testLeaseUntilMs:NOW+300,
+    })).generation,2);
+    assert.deepEqual(await recordUnknownTransportBoundary(
+      t.b,unknownRequest(2,NOW+250),args(t)),
+      {kind:"withheld"},"new local generation must not silently retry unknown external action");
+    assert.deepEqual(await recordUnverifiedHint(t.a,unknownHint(
+      1,"unknown-feedback-one-001","maybe_accepted_test_only",NOW+250),
+      args(t)),{kind:"withheld"},"old local fence cannot accept late callback");
+    assert.deepEqual(unknownTransportRows(t.b),[{
+      call_id:CALL_ID,claim_generation:1,kind:"outcome_unknown_test_only",
+    }]);
+    assert.deepEqual(unverifiedHintRows(t.b),[]);
+  });
+});
+
+test("OFF, tombstone and OFF->ON leave old UNKNOWN unresolved but reject new hints",async()=>{
+  await withTrial(async t=>{
+    assert.equal((await t.enable()).kind,"updated");
+    assert.equal((await stageSyntheticInvite(t.a,args(t))).kind,"staged_intent_only");
+    seedMockRingingState(t.a);
+    assert.equal((await claimSyntheticFencedOutbox(t.a,{
+      ...args(t),nowMs:NOW+100,testLeaseUntilMs:NOW+250,
+    })).generation,1);
+    assert.equal((await recordUnknownTransportBoundary(t.b,
+      unknownRequest(1),args(t))).kind,"outcome_unknown_test_only");
+    assert.equal((await t.disable()).kind,"updated");
+    assert.deepEqual(await tombstoneRevokedSyntheticOutbox(t.b),
+      {kind:"revoked_test_only"});
+    assert.deepEqual(await recordUnverifiedHint(t.a,unknownHint(
+      1,"unknown-feedback-two-001","maybe_accepted_test_only"),args(t)),
+      {kind:"withheld"});
+    assert.equal((await setOwnWorkerAgoraCallPreference(
+      localD1Adapter(t.b),t.workerBearer,true,2)).kind,"updated");
+    assert.deepEqual(await recordUnknownTransportBoundary(
+      t.a,unknownRequest(1),args(t)),
+      {kind:"still_unresolved_test_only"},
+      "the historical local fact remains unresolved, never proof of fresh delivery");
+    assert.deepEqual(await recordUnverifiedHint(t.b,unknownHint(
+      1,"unknown-feedback-two-001","maybe_accepted_test_only"),args(t)),
+      {kind:"withheld"});
+    assert.equal(outboxRows(t.a)[0].status,"revoked_test_only");
+    assert.equal(unknownTransportRows(t.a)[0].kind,"outcome_unknown_test_only");
+    assert.deepEqual(unverifiedHintRows(t.a),[]);
+  });
+});
+
+test("duplicate and conflicting mock hint keys never establish delivered or failed",async()=>{
+  await withTrial(async t=>{
+    assert.equal((await t.enable()).kind,"updated");
+    assert.equal((await stageSyntheticInvite(t.a,args(t))).kind,"staged_intent_only");
+    seedMockRingingState(t.a);
+    assert.equal((await claimSyntheticFencedOutbox(t.a,{
+      ...args(t),nowMs:NOW+100,testLeaseUntilMs:NOW+250,
+    })).generation,1);
+    assert.equal((await recordUnknownTransportBoundary(t.a,
+      unknownRequest(1),args(t))).kind,"outcome_unknown_test_only");
+    const first=unknownHint(1,
+      "unknown-feedback-three-001","maybe_accepted_test_only");
+    const conflict={...first,hint:"maybe_rejected_test_only"};
+    const independent=unknownHint(1,
+      "unknown-feedback-three-002","maybe_rejected_test_only");
+    assert.deepEqual(await recordUnverifiedHint(t.a,first,args(t)),
+      {kind:"unverified_hint_only"});
+    assert.deepEqual(await recordUnverifiedHint(t.b,first,args(t)),
+      {kind:"duplicate_hint_test_only"});
+    assert.deepEqual(await recordUnverifiedHint(t.b,conflict,args(t)),
+      {kind:"withheld"},"conflict cannot rewrite already recorded local note");
+    assert.deepEqual(await recordUnverifiedHint(t.b,independent,args(t)),
+      {kind:"unverified_hint_only"});
+    assert.equal(unverifiedHintRows(t.a).length,2);
+    assert.deepEqual(unverifiedHintRows(t.b).map(r=>r.hint),[
+      "maybe_accepted_test_only","maybe_rejected_test_only",
+    ]);
+    assert.equal(unknownTransportRows(t.a)[0].kind,
+      "outcome_unknown_test_only");
+    const data=JSON.stringify([...unknownTransportRows(t.a),
+      ...unverifiedHintRows(t.b)]);
+    for(const forbidden of ["delivered_at","sent_at","provider_ack",
+      t.callerBearer,t.workerBearer,t.otherBearer,"agoraToken","deviceToken"])
+      assert.equal(data.includes(forbidden),false,forbidden);
+  });
+});
+
+test("hint crash rollback and unsafe or malformed fake reports fail closed",async()=>{
+  await withTrial(async t=>{
+    assert.equal((await t.enable()).kind,"updated");
+    assert.equal((await stageSyntheticInvite(t.a,args(t))).kind,"staged_intent_only");
+    seedMockRingingState(t.a);
+    assert.equal((await claimSyntheticFencedOutbox(t.b,{
+      ...args(t),nowMs:NOW+100,testLeaseUntilMs:NOW+250,
+    })).generation,1);
+    const input=unknownHint(1,
+      "unknown-feedback-four-001","maybe_accepted_test_only");
+    assert.deepEqual(await recordUnverifiedHint(t.a,input,args(t)),
+      {kind:"withheld"},"no fabricated provider feedback without local unknown boundary");
+    assert.equal((await recordUnknownTransportBoundary(t.b,
+      unknownRequest(1),args(t))).kind,"outcome_unknown_test_only");
+    await assert.rejects(()=>recordUnverifiedHint(t.a,input,{
+      ...args(t),failBeforeCommit:true,
+    }),/synthetic hint crash before commit/);
+    assert.deepEqual(unverifiedHintRows(t.b),[]);
+    for(const bad of [
+      null,{},input.kind,
+      {...input,kind:"client_says_delivered"},
+      {...input,providerSignature:"forged"},
+      {...input,workerAccountId:WORKER},
+      {...input,generation:0},
+      {...input,generation:2},
+      {...input,hint:"delivered"},
+      {...input,hintKey:"bad id"},
+      {...input,nowMs:NOW+250},
+    ])assert.deepEqual(await recordUnverifiedHint(t.b,bad,args(t)),
+      {kind:"withheld"});
+    for(const unsafe of [{workerPresence:"offline"},
+      {blockedByWorker:true},{privacyApproved:false},
+      {rateGate:"deny"},{recipientVerified:false}]){
+      assert.deepEqual(await recordUnverifiedHint(t.a,input,{
+        ...args(t),risk:t.risk(unsafe),
+      }),{kind:"withheld"});
+    }
+    t.a.prepare("UPDATE synthetic_voice_mock_call_state " +
+      "SET phase='cancelled',revision=1 WHERE call_id=?").run(CALL_ID);
+    assert.deepEqual(await recordUnverifiedHint(t.b,input,args(t)),
+      {kind:"withheld"},"terminal fake call cannot accept late hint");
+    assert.equal(unknownTransportRows(t.b)[0].kind,
+      "outcome_unknown_test_only");
+    assert.deepEqual(unverifiedHintRows(t.b),[]);
+  });
+});
+
+test("test-only UNKNOWN transport ledger never appears in production migrations",()=>{
+  const real=openLocalDatabase();
+  try{
+    const names=real.db.prepare(
+      "SELECT name FROM sqlite_schema WHERE type='table'"
+    ).all().map(r=>r.name);
+    for(const name of ["synthetic_voice_unknown_transport",
+      "synthetic_voice_unverified_hints"])
+      assert.equal(names.includes(name),false);
+  }finally{real.db.close();}
 });
 
 test("test-only journal creates no API, production D1 tables, Agora SDK or live call",async()=>{
