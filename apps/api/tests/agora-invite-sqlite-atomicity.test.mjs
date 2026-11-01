@@ -66,7 +66,9 @@ async function openTrial() {
       "consent_revision INTEGER NOT NULL CHECK(consent_revision>=1)); " +
       "CREATE TABLE synthetic_voice_outbox (" +
       "call_id TEXT PRIMARY KEY REFERENCES synthetic_voice_invites(call_id), " +
-      "kind TEXT NOT NULL CHECK(kind='ring_intent_only'));"
+      "kind TEXT NOT NULL CHECK(kind='ring_intent_only'), " +
+      "status TEXT NOT NULL DEFAULT 'pending_test_only' " +
+      "CHECK(status IN ('pending_test_only','claimed_test_only')));"
     );
     const adapter=localD1Adapter(a);
     for(const id of [CALLER,WORKER,OTHER]) await ensureAccount(adapter,id);
@@ -173,7 +175,7 @@ async function stageSyntheticInvite(db,options) {
     ).run(callId,call.callerAccountId,call.workerAccountId,
       call.listingId,retryKey,call.ringDeadlineMs,liveConsent.revision);
     if(failAfterInsert) throw Error("synthetic failure before outbox commit");
-    db.prepare("INSERT INTO synthetic_voice_outbox VALUES(?,?)")
+    db.prepare("INSERT INTO synthetic_voice_outbox(call_id,kind) VALUES(?,?)")
       .run(callId,"ring_intent_only");
     db.exec("COMMIT");
     inTransaction=false;
@@ -212,7 +214,8 @@ async function previewSyntheticUnsentOutbox(db,{
       "JOIN synthetic_voice_invites AS i ON i.call_id=outbox.call_id " +
       "LEFT JOIN worker_agora_call_preferences AS pref " +
       "ON pref.account_id=i.worker_id " +
-      "WHERE outbox.call_id=? AND outbox.kind='ring_intent_only'"
+      "WHERE outbox.call_id=? AND outbox.kind='ring_intent_only' " +
+      "AND outbox.status='pending_test_only'"
     ).get(callId);
     if(!row || row.consent_on!==1 ||
        !Number.isSafeInteger(row.consent_revision) ||
@@ -229,6 +232,54 @@ async function previewSyntheticUnsentOutbox(db,{
     return Object.freeze({kind:"rechecked_only"});
   }catch{
     return withheld;
+  }
+}
+
+/**
+ * A second OFFLINE SQLite-only rehearsal: an exclusive local claim of an
+ * ALREADY UNSENT fake outbox record. No worker/device address is stored and
+ * the result cannot be used to contact any provider.
+ *
+ * BEGIN IMMEDIATE protects the fresh consent/safety recheck and this local
+ * pending->claimed status transition from interleaving a competing writer.
+ * Caller bearer and scripted risk evidence are supplied ONLY in memory in
+ * this test harness, not saved or a proposal for production async dispatch.
+ * No lease, recovery, send, acknowledgment, retry, or guaranteed delivery.
+ */
+async function claimSyntheticUnsentOutbox(db,{
+  callerBearer,callId=CALL_ID,nowMs=NOW+100,risk,
+  failAfterClaim=false,
+}){
+  const withheld=Object.freeze({kind:"withheld"});
+  let inTransaction=false;
+  try{
+    db.exec("BEGIN IMMEDIATE");
+    inTransaction=true;
+    const check=await previewSyntheticUnsentOutbox(db,{
+      callerBearer,callId,nowMs,risk,
+    });
+    if(check.kind!=="rechecked_only"){
+      db.exec("ROLLBACK");
+      inTransaction=false;
+      return withheld;
+    }
+    const changed=db.prepare(
+      "UPDATE synthetic_voice_outbox SET status='claimed_test_only' " +
+      "WHERE call_id=? AND status='pending_test_only' " +
+      "AND kind='ring_intent_only'"
+    ).run(callId);
+    if(changed.changes!==1){
+      db.exec("ROLLBACK");
+      inTransaction=false;
+      return withheld;
+    }
+    if(failAfterClaim) throw Error("synthetic failure before exclusive claim commit");
+    db.exec("COMMIT");
+    inTransaction=false;
+    return Object.freeze({kind:"claimed_test_only"});
+  }catch(error){
+    if(inTransaction)db.exec("ROLLBACK");
+    throw error;
   }
 }
 
@@ -463,6 +514,140 @@ test("distinct call IDs STILL can stage for one worker; no busy slot was reserve
       "per-call uniqueness is NOT a worker-level concurrency guard");
     assert.equal(outboxRows(t.b).length,2,
       "these are UNSENT offline fixtures, not authorized simultaneous rings");
+  });
+});
+
+test("two local dispatchers can claim a staged intent at most once, without sending",async()=>{
+  await withTrial(async t=>{
+    assert.equal((await t.enable()).kind,"updated");
+    assert.equal((await stageSyntheticInvite(t.a,args(t))).kind,"staged_intent_only");
+    assert.deepEqual(outboxRows(t.a).map(x=>x.status),["pending_test_only"]);
+    const request={...args(t),nowMs:NOW+100};
+    assert.deepEqual(await claimSyntheticUnsentOutbox(t.a,request),
+      {kind:"claimed_test_only"});
+    assert.deepEqual(await claimSyntheticUnsentOutbox(t.b,request),
+      {kind:"withheld"},"second writer never claims the same call ID");
+    assert.deepEqual(await previewSyntheticUnsentOutbox(t.b,request),
+      {kind:"withheld"},"claimed fake outbox cannot be re-previewed");
+    assert.deepEqual(outboxRows(t.a).map(x=>x.status),["claimed_test_only"]);
+    assert.equal(inviteRows(t.b).length,1);
+    const stored=JSON.stringify([...inviteRows(t.b),...outboxRows(t.b)]);
+    for(const secret of [t.callerBearer,t.workerBearer,t.otherBearer])
+      assert.equal(stored.includes(secret),false,"no bearer or delivery address");
+  });
+});
+
+test("competing local claim writer cannot interleave an existing SQLite transaction",async()=>{
+  await withTrial(async t=>{
+    assert.equal((await t.enable()).kind,"updated");
+    assert.equal((await stageSyntheticInvite(t.a,args(t))).kind,"staged_intent_only");
+    t.a.exec("BEGIN IMMEDIATE");
+    try{
+      await assert.rejects(()=>claimSyntheticUnsentOutbox(t.b,{
+        ...args(t),nowMs:NOW+100,
+      }),/database is locked|SQLITE_BUSY/i);
+      assert.deepEqual(outboxRows(t.a).map(x=>x.status),["pending_test_only"]);
+    }finally{t.a.exec("ROLLBACK");}
+    assert.deepEqual(await claimSyntheticUnsentOutbox(t.b,{
+      ...args(t),nowMs:NOW+100,
+    }),{kind:"claimed_test_only"});
+    assert.deepEqual(await claimSyntheticUnsentOutbox(t.a,{
+      ...args(t),nowMs:NOW+100,
+    }),{kind:"withheld"});
+  });
+});
+
+test("failure before local claim commit rolls back, leaving one unsent pending fixture",async()=>{
+  await withTrial(async t=>{
+    assert.equal((await t.enable()).kind,"updated");
+    assert.equal((await stageSyntheticInvite(t.a,args(t))).kind,"staged_intent_only");
+    const request={...args(t),nowMs:NOW+100};
+    await assert.rejects(()=>claimSyntheticUnsentOutbox(t.a,{
+      ...request,failAfterClaim:true,
+    }),/synthetic failure before exclusive claim commit/);
+    assert.deepEqual(outboxRows(t.b).map(x=>x.status),["pending_test_only"]);
+    assert.deepEqual(await claimSyntheticUnsentOutbox(t.b,request),
+      {kind:"claimed_test_only"});
+    assert.deepEqual(outboxRows(t.a).map(x=>x.status),["claimed_test_only"]);
+  });
+});
+
+test("an old preview is NOT an authorization: recheck opt-out and unsafe state inside claim",async()=>{
+  const mutations=[
+    ["worker opts OFF",async t=>{assert.equal((await t.disable()).kind,"updated");}],
+    ["caller disabled",async t=>{t.a.prepare(
+      "UPDATE accounts SET status='disabled' WHERE id=?").run(CALLER);}],
+    ["listing hidden",async t=>{t.a.prepare(
+      "UPDATE worker_listings SET moderation_status='hidden' WHERE id=?")
+      .run(t.listing.id);}],
+    ["Category inactive",async t=>{t.a.prepare(
+      "UPDATE categories SET is_active=0 WHERE id=?").run(CATEGORY);}],
+  ];
+  for(const [label,mutate] of mutations){
+    await withTrial(async t=>{
+      assert.equal((await t.enable()).kind,"updated");
+      assert.equal((await stageSyntheticInvite(t.a,args(t))).kind,"staged_intent_only");
+      const request={...args(t),nowMs:NOW+100};
+      assert.deepEqual(await previewSyntheticUnsentOutbox(t.b,request),
+        {kind:"rechecked_only"},"the old preview was only a transient fact");
+      await mutate(t);
+      assert.deepEqual(await claimSyntheticUnsentOutbox(t.b,request),
+        {kind:"withheld"},label);
+      assert.deepEqual(outboxRows(t.a).map(x=>x.status),["pending_test_only"],
+        "refusal neither claims nor sends a notification");
+    });
+  }
+  await withTrial(async t=>{
+    assert.equal((await t.enable()).kind,"updated");
+    assert.equal((await stageSyntheticInvite(t.a,args(t))).kind,"staged_intent_only");
+    assert.equal((await t.disable()).kind,"updated");
+    assert.equal((await setOwnWorkerAgoraCallPreference(
+      localD1Adapter(t.a),t.workerBearer,true,2)).kind,"updated");
+    assert.deepEqual(await claimSyntheticUnsentOutbox(t.b,{
+      ...args(t),nowMs:NOW+100,
+    }),{kind:"withheld"},"OFF->ON must not resurrect the old consent revision");
+    assert.deepEqual(outboxRows(t.a).map(x=>x.status),["pending_test_only"]);
+  });
+});
+
+test("invalid, stale or prohibited fake claim risk never changes pending status",async()=>{
+  await withTrial(async t=>{
+    assert.equal((await t.enable()).kind,"updated");
+    assert.equal((await stageSyntheticInvite(t.a,args(t))).kind,"staged_intent_only");
+    const cases=[
+      {workerPresence:"offline"},{workerAvailability:"busy"},
+      {blockedByCaller:true},{blockedByWorker:true},
+      {rateGate:"deny"},{rateGate:"unknown"},
+      {recipientVerified:false},{privacyApproved:false},
+      {checkedAtMs:NOW+1000},{expiresAtMs:NOW+100},
+      {callerAccountId:OTHER},{workerAccountId:OTHER},
+    ];
+    for(const riskChange of cases){
+      assert.deepEqual(await claimSyntheticUnsentOutbox(t.b,{
+        ...args(t),nowMs:NOW+100,risk:t.risk(riskChange),
+      }),{kind:"withheld"},JSON.stringify(riskChange));
+    }
+    assert.deepEqual(await claimSyntheticUnsentOutbox(t.a,{
+      ...args(t),nowMs:DEADLINE,
+    }),{kind:"withheld"},"ring expired");
+    assert.deepEqual(outboxRows(t.b).map(x=>x.status),["pending_test_only"]);
+  });
+});
+
+test("claimed is NOT delivered: a crash has no lease, retry, sender or recovery in tests",async()=>{
+  await withTrial(async t=>{
+    assert.equal((await t.enable()).kind,"updated");
+    assert.equal((await stageSyntheticInvite(t.a,args(t))).kind,"staged_intent_only");
+    assert.deepEqual(await claimSyntheticUnsentOutbox(t.a,{
+      ...args(t),nowMs:NOW+100,
+    }),{kind:"claimed_test_only"});
+    // No "sent", "delivered", "failed" or provider ID state; do not claim
+    // delivery reliability based on this exclusive test-only reservation.
+    assert.deepEqual(await claimSyntheticUnsentOutbox(t.b,{
+      ...args(t),nowMs:NOW+200,
+    }),{kind:"withheld"});
+    assert.equal(outboxRows(t.a)[0].status,"claimed_test_only");
+    assert.deepEqual(t.b.prepare("PRAGMA foreign_key_check").all(),[]);
   });
 });
 
