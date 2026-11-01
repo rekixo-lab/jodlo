@@ -12,6 +12,8 @@ import { composeSyntheticAgoraInviteRisk } from "../src/modules/interactions/ago
 import {
   READ_CALLER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY,
   readCallerSessionBoundAgoraOptInTarget,
+  READ_CALLER_SESSION_BOUND_AGORA_CONSENT_EPOCH_QUERY,
+  readCallerSessionBoundAgoraConsentEpoch,
 } from "../src/modules/interactions/request-target.ts";
 import { sessionHash } from "../src/modules/identity/sessions.ts";
 
@@ -542,5 +544,196 @@ test("unknown/expired caller or wrong-account bearer never creates an invitation
     f.db.prepare("UPDATE auth_sessions SET expires_at=1 WHERE token_hash=?")
       .run(await sessionHash(f.callerBearer));
     assert.deepEqual(await f.prepare(),denied);
+  }finally{f.close();}
+});
+
+
+test("caller-bound internal consent epoch is absent when worker default-OFF, then revision one",async()=>{
+  const f=await fixture();
+  try{
+    assert.equal(await readCallerSessionBoundAgoraConsentEpoch(
+      f.adapter,f.callerBearer,f.listing.id),null);
+    assert.equal((await f.enable()).kind,"updated");
+    const evidence=await readCallerSessionBoundAgoraConsentEpoch(
+      f.adapter,f.callerBearer,f.listing.id);
+    assert.ok(evidence);
+    assert.equal(evidence.consentRevision,1);
+    assert.equal(Object.isFrozen(evidence),true);
+    assert.equal(Object.isFrozen(evidence.target),true);
+    assert.deepEqual(evidence.target,{
+      requesterAccountId:CALLER,workerAccountId:WORKER,
+      listingId:f.listing.id,listingOwnerAccountId:WORKER,
+      categoryId:CAT,requesterActive:true,workerActive:true,
+      workerOptedIn:true,categoryActive:true,listingPublished:true,
+      moderationApproved:true,
+    });
+    assert.deepEqual(Object.keys(evidence).sort(),["consentRevision","target"]);
+    for(const secret of [f.callerBearer,f.workerBearer,f.otherBearer,"phone","tel:","token","rtcChannel"]){
+      assert.equal(JSON.stringify(evidence).includes(secret),false,secret);
+    }
+  }finally{f.close();}
+});
+
+test("OFF -> ON has a different current revision; earlier consent epoch is stale evidence only",async()=>{
+  const f=await fixture();
+  try{
+    assert.equal((await f.enable()).kind,"updated");
+    const first=await readCallerSessionBoundAgoraConsentEpoch(
+      f.adapter,f.callerBearer,f.listing.id);
+    assert.equal(first?.consentRevision,1);
+    assert.equal((await setOwnWorkerAgoraCallPreference(
+      f.adapter,f.workerBearer,false,1)).kind,"updated");
+    assert.equal(await readCallerSessionBoundAgoraConsentEpoch(
+      f.adapter,f.callerBearer,f.listing.id),null);
+    assert.equal((await setOwnWorkerAgoraCallPreference(
+      f.adapter,f.workerBearer,true,2)).kind,"updated");
+    const later=await readCallerSessionBoundAgoraConsentEpoch(
+      f.adapter,f.callerBearer,f.listing.id);
+    assert.equal(later?.consentRevision,3);
+    assert.notEqual(first.consentRevision,later.consentRevision,
+      "re-enabled consent must never re-approve an older queued epoch");
+    assert.equal((await f.prepare()).kind,"prepared",
+      "old existing synthetic test-only preflight remains unchanged");
+  }finally{f.close();}
+});
+
+test("one caller D1 SELECT binds caller session hash and private listing only",async()=>{
+  const f=await fixture();
+  try{
+    assert.equal((await f.enable()).kind,"updated");
+    const calls=[];
+    const wrapper={prepare(query){
+      const item={query,bindings:null};
+      calls.push(item);
+      return {bind(...bindings){
+        item.bindings=bindings;
+        return {all:()=>f.adapter.prepare(query).bind(...bindings).all()};
+      }};
+    }};
+    const result=await readCallerSessionBoundAgoraConsentEpoch(
+      wrapper,f.callerBearer,f.listing.id);
+    assert.equal(result?.consentRevision,1);
+    assert.equal(calls.length,1,"no separate user/profile/consent read");
+    assert.equal(calls[0].query,READ_CALLER_SESSION_BOUND_AGORA_CONSENT_EPOCH_QUERY);
+    assert.equal(calls[0].bindings.length,3);
+    assert.equal(calls[0].bindings[0],await sessionHash(f.callerBearer));
+    assert.ok(Number.isSafeInteger(calls[0].bindings[1]));
+    assert.equal(calls[0].bindings[2],f.listing.id);
+    const raw=JSON.stringify(calls);
+    for(const value of [f.callerBearer,f.workerBearer,f.otherBearer,WORKER,CALLER]){
+      assert.equal(raw.includes(value),false,value);
+    }
+    assert.match(calls[0].query,/pref\.revision AS consentRevision/);
+    assert.match(calls[0].query,/pref\.calls_enabled=1/);
+    assert.match(calls[0].query,/session\.token_hash=\?/);
+    assert.match(calls[0].query,/wl\.moderation_status='allowed'/);
+  }finally{f.close();}
+});
+
+test("revoked or expired caller bearer cannot read a worker consent revision",async()=>{
+  for(const operation of ["revoke","expire","disable"]){
+    const f=await fixture();
+    try{
+      assert.equal((await f.enable()).kind,"updated");
+      assert.equal((await readCallerSessionBoundAgoraConsentEpoch(
+        f.adapter,f.callerBearer,f.listing.id))?.consentRevision,1);
+      if(operation==="revoke")assert.equal(
+        await revokeSession(f.adapter,f.callerBearer),true);
+      if(operation==="expire"){
+        f.db.prepare("UPDATE auth_sessions SET expires_at=1 WHERE token_hash=?")
+          .run(await sessionHash(f.callerBearer));
+      }
+      if(operation==="disable"){
+        f.db.prepare("UPDATE accounts SET status='disabled' WHERE id=?")
+          .run(CALLER);
+      }
+      assert.equal(await readCallerSessionBoundAgoraConsentEpoch(
+        f.adapter,f.callerBearer,f.listing.id),null,operation);
+    }finally{f.close();}
+  }
+});
+
+test("caller epoch requires current worker/Category/listing/moderation eligibility",async()=>{
+  const mutations=[
+    db=>db.prepare("UPDATE accounts SET status='disabled' WHERE id=?").run(WORKER),
+    db=>db.prepare("UPDATE categories SET is_active=0 WHERE id=?").run(CAT),
+    (db,id)=>db.prepare("UPDATE worker_listings SET status='unpublished' WHERE id=?").run(id),
+    (db,id)=>db.prepare("UPDATE worker_listings SET moderation_status='hidden' WHERE id=?").run(id),
+    (db,id)=>db.prepare("DELETE FROM worker_listings WHERE id=?").run(id),
+  ];
+  for(const modify of mutations){
+    const f=await fixture();
+    try{
+      assert.equal((await f.enable()).kind,"updated");
+      modify(f.db,f.listing.id);
+      assert.equal(await readCallerSessionBoundAgoraConsentEpoch(
+        f.adapter,f.callerBearer,f.listing.id),null);
+    }finally{f.close();}
+  }
+});
+
+test("wrong account, self-contact and absent listing never disclose an Agora consent epoch",async()=>{
+  const f=await fixture();
+  try{
+    assert.equal((await f.enable()).kind,"updated");
+    for(const bearer of [f.otherBearer,f.workerBearer]){
+      assert.equal(await readCallerSessionBoundAgoraConsentEpoch(
+        f.adapter,bearer,f.listing.id),null);
+    }
+    assert.equal(await readCallerSessionBoundAgoraConsentEpoch(
+      f.adapter,f.callerBearer,"missing-listing-000001"),null);
+    assert.equal(await readCallerSessionBoundAgoraConsentEpoch(
+      f.adapter,f.callerBearer,"no"),null);
+  }finally{f.close();}
+});
+
+test("invalid opaque IDs/tokens are denied before D1, while outage denies safely",async()=>{
+  const bomb={prepare(){throw Error("must not query invalid inputs");}};
+  for(const bearer of ["",null,undefined,0,"a".repeat(42),"Bearer "+"a".repeat(43)]){
+    assert.equal(await readCallerSessionBoundAgoraConsentEpoch(
+      bomb,bearer,"listing-opaque-00001"),null);
+  }
+  for(const listing of ["",null,undefined,42,"bad listing"]){
+    assert.equal(await readCallerSessionBoundAgoraConsentEpoch(
+      bomb,"a".repeat(43),listing),null);
+  }
+  assert.equal(await readCallerSessionBoundAgoraConsentEpoch(
+    bomb,"a".repeat(43),"listing-opaque-00001"),null,
+  "unexpected D1 failure cannot produce a consent generation or caller grant");
+});
+
+test("fake malformed D1 revision or identity cannot be accepted as permission",async()=>{
+  const f=await fixture();
+  try{
+    assert.equal((await f.enable()).kind,"updated");
+    const validRow={
+      requesterId:CALLER,requesterStatus:"active",
+      workerAccountId:WORKER,workerStatus:"active",
+      listingId:f.listing.id,listingOwnerAccountId:WORKER,
+      categoryId:CAT,listingStatus:"published",moderationStatus:"allowed",
+      workerProfileStatus:"draft",categoryActive:1,consentRevision:1,
+    };
+    const fake=rows=>({prepare(){return {bind(){return this;},
+      async all(){return {results:rows};}};}});
+    const tryRows=rows=>readCallerSessionBoundAgoraConsentEpoch(
+      fake(rows),f.callerBearer,f.listing.id);
+    assert.equal((await tryRows([validRow]))?.consentRevision,1,
+      "a fake adapter can forge the projection; only actual D1 SQL supplies trusted evidence");
+    for(const revision of [null,undefined,0,-1,1.2,NaN,Infinity,
+      Number.MAX_SAFE_INTEGER,2147483648,"1",true]){
+      assert.equal(await tryRows([{...validRow,consentRevision:revision}]),null,
+        String(revision));
+    }
+    for(const bad of [
+      {requesterId:OTHER},{workerAccountId:CALLER},
+      {listingOwnerAccountId:OTHER},{listingStatus:"unpublished"},
+      {moderationStatus:"hidden"},{categoryActive:0},{workerStatus:"disabled"},
+    ]){
+      assert.equal(await tryRows([{...validRow,...bad}]),null,
+        JSON.stringify(bad));
+    }
+    for(const list of [[],[validRow,validRow],null,{}]){
+      assert.equal(await tryRows(list),null);
+    }
   }finally{f.close();}
 });
