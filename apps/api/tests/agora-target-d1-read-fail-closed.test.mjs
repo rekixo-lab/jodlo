@@ -26,17 +26,19 @@ const TOKEN_A = "a".repeat(43);
 const TOKEN_B = "b".repeat(43);
 const NOW = 1_800_000_000_000;
 
-const previews = [
+const legacyPreviews = [
   ["trusted-account target", db => readCurrentRequestTarget(db, CALLER, LISTING)],
   ["caller session target", db => readSessionBoundCallTarget(db, TOKEN_A, LISTING)],
+  ["both session target", db =>
+    readTwoSessionBoundCallTarget(db, TOKEN_A, TOKEN_B, LISTING)],
+];
+const agoraPreviews = [
   ["caller Agora opt-in target", db =>
     readCallerSessionBoundAgoraOptInTarget(db, TOKEN_A, LISTING)],
   ["caller Agora consent epoch", db =>
     readCallerSessionBoundAgoraConsentEpoch(db, TOKEN_A, LISTING)],
   ["caller expected Agora consent epoch", db =>
     readCallerSessionBoundAgoraConsentEpochMatch(db, TOKEN_A, LISTING, 1)],
-  ["both session target", db =>
-    readTwoSessionBoundCallTarget(db, TOKEN_A, TOKEN_B, LISTING)],
   ["both session Agora opt-in", db =>
     readTwoSessionBoundAgoraOptInTarget(db, TOKEN_A, TOKEN_B, LISTING)],
   ["worker-own Agora opt-in", db =>
@@ -76,14 +78,14 @@ function failingAdapter(phase) {
   return { db, counts };
 }
 
-test("all nine read-only target/consent prerequisites deny D1 outages and malformed results", async () => {
+test("all six Agora-specific target/consent previews deny D1 outages and malformed results", async () => {
   const phases = [
     "prepare", "bind", "all", "null response", "missing response",
     "null rows", "object rows", "bad row", "duplicate bad rows",
   ];
   let exercised = 0;
   for (const phase of phases) {
-    for (const [name, read] of previews) {
+    for (const [name, read] of agoraPreviews) {
       const { db, counts } = failingAdapter(phase);
       assert.equal(await read(db), null, name + " must withhold on " + phase);
       assert.equal(counts.prepare, 1, name + " must use a single D1 statement");
@@ -92,7 +94,23 @@ test("all nine read-only target/consent prerequisites deny D1 outages and malfor
       exercised++;
     }
   }
-  assert.equal(exercised, phases.length * previews.length);
+  assert.equal(exercised, 9 * agoraPreviews.length);
+});
+
+test("generic request-target readers preserve their original propagated D1 error contract", async () => {
+  for (const phase of ["prepare", "bind", "all", "null response"]) {
+    for (const [name, read] of legacyPreviews) {
+      const { db } = failingAdapter(phase);
+      await assert.rejects(() => read(db), undefined,
+        name + " must retain the pre-existing read error behavior");
+    }
+  }
+  for (const phase of ["missing response", "null rows", "object rows", "bad row"]) {
+    for (const [name, read] of legacyPreviews) {
+      const { db } = failingAdapter(phase);
+      assert.equal(await read(db), null, name + " still rejects malformed rows");
+    }
+  }
 });
 
 test("an unavailable D1 never escapes the caller-initiated synthetic invite", async () => {
@@ -149,8 +167,9 @@ test("D1 SQL bindings contain only synthetic hashed session secrets, not raw bea
       };
     },
   };
-  for (const [, read] of previews) assert.equal(await read(db), null);
-  assert.equal(calls.length, previews.length);
+  for (const [, read] of [...legacyPreviews, ...agoraPreviews])
+    assert.equal(await read(db), null);
+  assert.equal(calls.length, legacyPreviews.length + agoraPreviews.length);
   assert.equal(JSON.stringify(calls).includes(TOKEN_A), false);
   assert.equal(JSON.stringify(calls).includes(TOKEN_B), false);
   for (const entry of calls) {
