@@ -1,0 +1,69 @@
+# M-005 — Agora in-app audio: operational decisions for founder approval
+
+> **STATUS: DRAFT / NOT APPROVED — 2026-11-01.** This is a decision pack, not an ADR, authorization to implement production behavior, or a release checklist marked complete. No numerical timeouts, quotas, online-source guarantees, retention durations or delivery assumptions below are approved. Until each required gate has an explicit recorded decision, **real call admission, external signaling, token issuance and cloud deployment stay DISABLED**.
+
+## What is already binding — do not ask again
+
+- **ADR-0013:** Customer directly initiates an **Agora in-app Internet AUDIO** call as first contact. **No worker phone numbers, SIM/PSTN dial, phone-number masking or compulsory service Request → Accept before calling.** Worker answering an incoming ring is not accepting a service booking.
+- **ADR-0014:** Worker independently turns on **Receive voice calls / कॉल प्राप्त करें**. Missing preference/default is OFF, owner-controlled and revocable. Publication, Google login, online presence or microphone permission does not equal this opt-in. Old call intents bound to an earlier consent revision must not be resurrected by OFF → ON.
+- **ADR-0009:** Worker may immediately publish a minimal listing against an already active Category; publication is not verification. Hidden/unpublished listing and disabled Category are not eligible.
+- **ADR-0010 / ADR-0011:** Bilaspur and Raipur selected as city names; the **889 Category / 7,267 Service** full-scope objective remains binding. No artificial ten-trade launch cap. Human occupational/regulatory/category approvals and precise locality decisions remain outstanding.
+- Local synthetic state/SQLite tests in `apps/api/tests` are NOT actual worker presence, real blocking, quota reservation, durable provider send or Cloudflare D1/DO guarantees.
+
+## Founder decision register — ALL items below remain PENDING
+
+The **working proposal** column is a recommendation for discussion, **not an implementation default**. If undecided, current behavior is **no real calls**. Time values and thresholds are deliberately left blank rather than invented.
+
+| ID / choice required | Working proposal (NOT approved) | Explicit alternative / decision to record | Dependent gate |
+| --- | --- | --- | --- |
+| **P01 — authoritative online status** | Authenticated, server-observed **per-device presence lease**; a Google/session token alone never means online. Uncertain/stale = unavailable; choose heartbeat interval + maximum lease age before launch. | Choose Agora Signaling presence, verified app-to-server heartbeat, or hybrid and document disconnect/clock-skew semantics. | M-005 + M-006 |
+| **P02 — worker availability / concurrent calls** | **One active incoming/accepted/connected call per worker** across all Categories; reserve an atomic worker-owned busy slot *before* enqueue and release on permitted terminal state. | Permit more than one and specify exact maximum, queuing, caller feedback and multi-device behavior. | M-005 |
+| **P03 — offline/background delivery** | Distinguish online real-time signaling from optional, separately consented Android push. Unknown/offline or permission denied = no implied ringing; never equate push accepted with device displayed/answered. | No offline ringing vs opted-in FCM wake-up; decide when notification and microphone consent are obtained. | M-003/M-004/M-005/M-006 |
+| **P04 — multi-device and first answer** | Only one successful worker accept per call ID by server-side revision CAS; other devices receive terminal/answered status without usable stale credentials. | One elected device vs eligible-device fanout; specify selection, revoked sessions and handling. | M-005/M-006 |
+| **B01 — mutual blocks** | User-controlled **bilateral blocks** deny future invite, queued delivery, renewals and new join checks in either direction; existing external token termination is best-effort and never guaranteed instantaneous. | Decide block creation/unblock permissions, appeal and treatment of active media; never expose public account IDs. | M-003/M-005/M-006 |
+| **B02 — user reports / enforcement** | Report is private and accessible to authorized reviewers; prevent contact between reporter and reported pending review without publicly claiming guilt. No automatic verification or irreversible ban on a report alone. | Choose temporary contact suppression, trusted moderation review, repeat reports, false-report appeals, staff roles and response SLAs. | M-003/M-005 |
+| **A01 — spam / quotas** | Enforce **atomic, server-owned counters** per caller, per caller-worker pair and per target; block/deny before worker busy reservation. Rate-limit client retries too. | Founder sets numeric limits, windows, cooldown, burst handling, appeal and account trust policy. **None selected now.** | M-005 |
+| **A02 — cost/abuse failure handling** | Unknown presence, missing block state, unavailable quota service, consent mismatch or unexpected provider error = **fail closed**, no call, token or delivery. Do not invent fallback bypass. | Define user-visible neutral failure messages and fallback behavior; no unreviewed PSTN fallback. | M-005/M-006 |
+| **T01 — ring expiry and admission** | Bound server ringing interval, reject late accept, cancel queued signals on expiry, and use monotonic/validated trusted time for state transitions. | Founder selects **ring duration**, max retry window and connection timeout. Synthetic fixture durations are NOT product values. | M-005 |
+| **T02 — ongoing call lifetime** | Distinguish queued/ringing, accepted, connected and terminal media; select expiry/renewal and forced termination bounds; no auto-recording. | Founder selects max call duration, disconnected grace, reconnect window, token TTL and failed-join behavior. | M-003/M-005/M-006 |
+| **D01 — delivery/ack semantics** | Atomic call + receipt + UNSENT outbox; dispatch only after fresh recipient/consent/blocks/quota checks; idempotency with generation/fence and terminal revocation. **At-least-once provider execution must not be marketed as exactly-once.** | Decide provider (Agora Signaling, push provider), allowed duplicate/uncertain delivery behavior, retry cap, crash recovery and acknowledgement lifecycle. | M-003/M-005/M-006 |
+| **D02 — storage and deletion** | **No real persistent call metadata until privacy approval.** Future schema proposal needs purpose, fields, recipients, user rights, encryption/ACLs, retention, deletion and audit policy. Do not persist telephone numbers, audio content, provider tokens or raw auth bearer. | M-003 founder/privacy review selects exact fields and durations; distinguish ephemeral worker busy slot from history and moderation reports. | M-003/M-005 |
+| **U01 — app experience** | Provide clear incoming ring, worker Accept/Decline, caller Cancel, busy/unavailable, mic permission, offline state, report/block and accessibility in Hindi + English only. | Approve M-004 storyboard/screens and Android notification/foreground policy separately. | M-004 |
+| **S01 — production readiness** | Local unit/race/property tests, Android device testing with real Google OAuth later, secure Agora scoped credentials later, verified budget/privacy and **production-only release** approval. | Founder explicitly approves each remaining phase; **no staging**, no remote Cloudflare or real provider call now. | M-006/M-007/M-008 |
+
+### Recommended decision sequence (not a backdoor approval)
+
+1. **Safety policy first:** P01, P02, B01, B02, A01, A02, T01 and T02. No values are inferred from `karo` or from synthetic tests.
+2. **Private data and delivery:** M-003 must resolve D02 before any real call metadata, device token, presence log or report retention; then P03, P04 and D01 select which external platform transports signaling.
+3. **Nonvisual implementation after approved policy:** Introduce provider-neutral, fail-closed ports with authenticated server evidence; choose worker-keyed coordination and verify race/expiry/blocks/quotas under local workerd/SQLite DO tests. Keep no public call routes or remote migration until explicitly authorized for those operations.
+4. **Provider, screens, deployment later:** M-006 vendor/SDK/credentials, M-004 UX, M-008 real device OAuth, then M-007 controlled **production only** authorization. Category editorial signoff remains a parallel human workflow; do not silently approve or seed Categories.
+
+## Authority boundaries / implementation contract for future review (nonbinding design)
+
+**Actor and trust:** Caller identity comes from a valid server-verified JODLO session, not request JSON; worker device/session is verified separately. A server-only event cannot be emulated by sending `actorAccountId:null`. Only the worker actor may Accept/Decline/Busy, caller may Cancel, trusted server may time out, and participants may Hangup. Current listing/Category/moderation, account status, precise consent revision, mutually enforced blocks, verified presence and quotas must be checked at admission, dispatch and RTC token issuance/renewal where applicable. If authoritative evidence is absent, deny.
+
+**Race control:** Consider one durable coordination owner per worker, or other demonstrably atomic serialization across caller and worker call IDs; a unique `call_id` alone does **not** prevent two callers ringing the same worker. Commit worker busy reservation, per-call revision CAS, idempotency receipt and unsent signal in an architecture where rollback and distributed failure semantics have been proven. Provider acknowledgements, retries and stale sender fencing need their own states and tests. Worker opt-out, block and disable must invalidate old queued intents and new token checks; already-issued external token/media cannot be promised instantaneous revocation.
+
+**Presence and signaling:** A connected Google account, a session in D1, a signed Agora RTC token, or an unacknowledged push is **not** proof that a worker device is reachable or ringing. No external provider guarantee is claimed. The sender must handle duplicate, reordered, delayed, missing or post-cancel notifications. Do not expose worker IDs, phone numbers, raw auth secrets, identifying location or calling history in a role-only client alert. Android background and notification permissions are separate from mic/call consent.
+
+**Fail-closed invariant:** No verified ON consent + active target + trusted availability + compliant contact policy + quota + atomic worker slot = **no real invite**. Until founder approves the missing policy source(s), keep the entire real Agora admission/signaling/token path absent.
+
+## Acceptance / negative tests required once founder signs off
+
+- **P01/P02:** Two independent workers/processes compete for the *same worker* with distinct call IDs; only the chosen approved concurrency outcome succeeds. Simulate heartbeat loss, lease expiry, duplicate worker devices, crash, recovery and clock skew. Offline/unknown never silently becomes online.
+- **B01/B02:** Block either direction before admission, during queue, immediately before RTC join and after token issue; reports/appeals cannot leak reporters or elevate unverified accounts; trusted moderator roles only.
+- **A01:** Concurrent caller burst, cross-device, per-pair cooldown, unknown counter state, replay, quota rollback, denial feedback without revealing whether the worker blocked the caller.
+- **T01/T02:** Cancel vs Accept vs timeout and disconnected media races; no late ringing; no fallback phone call; no orphaned busy slot under agreed deadline rules.
+- **D01/D02:** Old opt-in epoch OFF→ON never resurrects, a retry does not duplicate useful client effects, device unreachable/push stale cannot trigger an unauthorized join, privacy deletion matches exactly approved schema/retention, provider error never exposes bearer or certificate.
+- **Ship gate:** PR-head and independently merged-main CI success; M-003/M-004/M-005/M-006/M-007/M-008 approvals and specialist human Category signoff are separately traceable. Synthetic CI alone is not proof of production readiness.
+
+## How to record a founder decision
+
+For each `Pxx/Bxx/Axx/Txx/Dxx/Uxx/Sxx` row, write `APPROVED` plus the precise alternative and any numerical bounds **only after an explicit founder decision**. Record date, exact scope and a new approved ADR; do **not** edit this draft to imply that recommendations are binding. A general instruction such as `क​रो` authorizes safe drafting/testing, **not policy defaults, billing, real traffic or deployment**. If a decision is not supplied, leave it **PENDING**, and do not infer a value.
+
+## References used for technical risk only (not product approval)
+
+- [ADR-0013: Agora in-app voice](decisions/0013-agora-ip-voice-calling.md), [ADR-0014: separate worker default-OFF opt-in](decisions/0014-explicit-worker-agora-call-opt-in.md).
+- [Firebase: Android message priority and device/Doze uncertainty](https://firebase.google.com/docs/cloud-messaging/android-message-priority). Delivery may be late or missing, and some priority choices are subject to platform policies.
+- [Cloudflare: SQLite-backed Durable Object storage](https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/) and [Durable Object alarm retry semantics](https://developers.cloudflare.com/durable-objects/api/alarms/). These document product capabilities, **not** JODLO implementation or provider-exactly-once behavior.
+- [Agora RTC authentication guidance](https://docs.agora.io/en/realtime-media/rtc/build/authenticate-users/authentication-workflow). RTC tokens alone are not a complete incoming-call notification protocol.
