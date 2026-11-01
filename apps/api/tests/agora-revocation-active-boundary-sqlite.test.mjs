@@ -133,10 +133,12 @@ function queueFixture(db, callId, workerId = WORKER, callerId = CALLER,
   try {
     db.exec("BEGIN IMMEDIATE"); tx = true;
     const live = consent(db, workerId);
-    if (!live || live.enabled !== 1 || live.revision !== epoch) {
+    if (!live || live.enabled !== 1 || live.revision !== epoch ||
+        callRow(db, callId) !== null) {
       db.exec("ROLLBACK"); tx = false;
       return withheld;
     }
+    // A previous consent epoch's call ID is never re-created after OFF->ON.
     db.prepare("INSERT INTO fake_calls VALUES(?,?,?,?,?)").run(
       callId, workerId, callerId, epoch,
       JSON.stringify(snapshot(callId, workerId, callerId)),
@@ -266,10 +268,12 @@ function revokeUnsentOnOptOutFixture(db, workerId, expectedEpoch, {
 function previewJoinFixture(db, callId, actorId) {
   const row = db.prepare(
     "SELECT c.snapshot_json,c.consent_revision,c.caller_id,c.worker_id," +
-    "p.revision,p.enabled FROM fake_calls AS c " +
-    "JOIN fake_consent AS p ON p.worker_id=c.worker_id WHERE c.call_id=?"
+    "p.revision,p.enabled,q.state AS intent_state FROM fake_calls AS c " +
+    "JOIN fake_consent AS p ON p.worker_id=c.worker_id " +
+    "JOIN fake_unsent_intents AS q ON q.call_id=c.call_id " +
+    "WHERE c.call_id=?"
   ).get(callId);
-  if (!row || row.enabled !== 1 ||
+  if (!row || row.enabled !== 1 || row.intent_state !== "claimed_test_only" ||
       row.revision !== row.consent_revision ||
       ![row.caller_id, row.worker_id].includes(actorId)) return withheld;
   try {
