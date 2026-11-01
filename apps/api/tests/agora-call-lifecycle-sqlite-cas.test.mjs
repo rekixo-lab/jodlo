@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { assessSyntheticAgoraSignalingIntent } from
   "../src/modules/interactions/agora-signaling-intent.ts";
 import { openLocalDatabase } from "./helpers/local-db.mjs";
+import { validOpaqueId } from "../src/modules/shared/identifiers.ts";
 
 /**
  * OFFLINE / DISPOSABLE TWO-CONNECTION SQLite CAS rehearsal ONLY.
@@ -199,6 +200,91 @@ function stageSyntheticTransition(db,{
   }catch(error){
     if(inTransaction)db.exec("ROLLBACK");
     throw error;
+  }
+}
+
+/**
+ * READ-ONLY LOCAL CONSISTENCY REHEARSAL, NEVER a provider-send grant.
+ * Replays each disposable committed receipt with the existing pure reducer
+ * from a TRUSTED, hardcoded synthetic initial snapshot. Requires exact
+ * agreement across:
+ *   - persisted call ID / current revision / full snapshot;
+ *   - contiguous authorized state transitions and receipt bodies;
+ *   - one matching UNSENT outbox intent for EACH resulting revision;
+ *   - no missing, extra, changed or duplicate test-only ledger entries.
+ *
+ * This test snapshot is NOT an authenticated history, cryptographic proof,
+ * authorized delivery, approved call metadata retention, or real D1 audit.
+ * A coordinated attacker could rewrite all fake rows, and a read-only check
+ * cannot fence any future provider send after it returns.
+ */
+function inspectSyntheticUnsentLifecycleLedger(db,{callId=CALL_ID}={}){
+  const withheld=Object.freeze({kind:"withheld"});
+  if(!validOpaqueId(callId))return withheld;
+  let inTransaction=false;
+  try{
+    db.exec("BEGIN");
+    inTransaction=true;
+    const callRow=db.prepare(
+      "SELECT revision,snapshot_json FROM synthetic_lifecycle_calls " +
+      "WHERE call_id=?"
+    ).get(callId);
+    if(!callRow)throw Error("unknown synthetic call");
+    const snapshotNow=JSON.parse(callRow.snapshot_json);
+    const receiptRows=db.prepare(
+      "SELECT call_id,retry_key,receipt_json FROM " +
+      "synthetic_lifecycle_receipts WHERE call_id=?"
+    ).all(callId).map(row=>({
+      ...row,receipt:JSON.parse(row.receipt_json),
+    }));
+    const outboxRows=db.prepare(
+      "SELECT call_id,revision,signal_json FROM " +
+      "synthetic_lifecycle_outbox WHERE call_id=?"
+    ).all(callId).map(row=>({
+      ...row,signal:JSON.parse(row.signal_json),
+    }));
+    if(!Number.isSafeInteger(callRow.revision) ||
+       callRow.revision<0 ||
+       receiptRows.length!==callRow.revision ||
+       outboxRows.length!==callRow.revision)throw Error("broken synthetic counts");
+    receiptRows.sort((x,y)=>
+      Number(x.receipt?.result?.revision)-Number(y.receipt?.result?.revision));
+    outboxRows.sort((x,y)=>x.revision-y.revision);
+    let expected={...INITIAL,callId};
+    for(let i=0;i<receiptRows.length;i++){
+      const row=receiptRows[i],item=row.receipt;
+      if(!item || typeof item!=="object" || Array.isArray(item))
+        throw Error("malformed test receipt");
+      assert.equal(row.call_id,callId);
+      assert.equal(item.callId,callId);
+      assert.equal(row.retry_key,item.idempotencyKey);
+      assert.equal(item.expectedRevision,expected.revision);
+      const replayed=assessSyntheticAgoraSignalingIntent(expected,{
+        actorAccountId:item.actorAccountId,
+        expectedRevision:item.expectedRevision,
+        idempotencyKey:item.idempotencyKey,
+        event:item.event,
+        nowMs:item.nowMs,
+      });
+      assert.equal(replayed.kind,"transition_only",
+        "stored entry must be an authorized synthetic state transition");
+      assert.deepEqual(item,replayed.receipt,
+        "full receipt, owner, timestamp and result must match the reducer");
+      const outbox=outboxRows[i];
+      assert.equal(outbox.call_id,callId);
+      assert.equal(outbox.revision,expected.revision+1);
+      assert.deepEqual(outbox.signal,replayed.signal,
+        "one exact UNSENT logical signal matches the receipt");
+      expected=replayed.next;
+    }
+    assert.equal(callRow.revision,expected.revision);
+    assert.deepEqual(snapshotNow,expected,
+      "stored snapshot must match entire validated transition history");
+    db.exec("COMMIT");inTransaction=false;
+    return Object.freeze({kind:"consistent_test_only"});
+  }catch{
+    if(inTransaction)db.exec("ROLLBACK");
+    return withheld;
   }
 }
 
@@ -448,6 +534,238 @@ test("corrupt local snapshot or receipt fails closed; no synthetic intent emitte
       origin:client(WORKER,cmd),
     }),denied("CORRUPT_LOCAL_FIXTURE"));
     assert.deepEqual(intents(t.b).map(x=>x.revision),[1]);
+  });
+});
+
+test("read-only local audit verifies exact contiguous UNSENT signal trace after races",async()=>{
+  await withTrial(async t=>{
+    const consistent={kind:"consistent_test_only"};
+    assert.deepEqual(inspectSyntheticUnsentLifecycleLedger(t.a),consistent,
+      "empty ringing test fixture is internally consistent");
+    const accept=command("accept",0,"audit-accept-key-000001",NOW+1000);
+    const media=command("media_ready",1,"audit-media-key-000001",NOW+2000);
+    const hangup=command("hangup",2,"audit-hangup-key-000001",NOW+3000);
+    assert.equal(stageSyntheticTransition(t.a,{
+      origin:client(WORKER,accept),
+    }).next.phase,"accepted");
+    assert.deepEqual(inspectSyntheticUnsentLifecycleLedger(t.b),consistent);
+    assert.equal(stageSyntheticTransition(t.b,{
+      origin:server(media),
+    }).next.phase,"connected");
+    assert.deepEqual(inspectSyntheticUnsentLifecycleLedger(t.a),consistent);
+    assert.equal(stageSyntheticTransition(t.a,{
+      origin:client(CALLER,hangup),
+    }).next.phase,"ended");
+    assert.deepEqual(inspectSyntheticUnsentLifecycleLedger(t.b),consistent);
+    assert.deepEqual(stageSyntheticTransition(t.b,{
+      origin:client(WORKER,accept),
+    }),{kind:"replay_suppressed"});
+    assert.deepEqual(inspectSyntheticUnsentLifecycleLedger(t.a),consistent);
+    assert.deepEqual(intents(t.b).map(x=>x.revision),[1,2,3]);
+  });
+});
+
+test("deleted UNSENT update causes fail-closed audit even when retry is suppressed",async()=>{
+  await withTrial(async t=>{
+    const accept=command("accept",0,"audit-missing-intent-001");
+    assert.equal(stageSyntheticTransition(t.a,{
+      origin:client(WORKER,accept),
+    }).kind,"transition_only");
+    assert.deepEqual(inspectSyntheticUnsentLifecycleLedger(t.b),
+      {kind:"consistent_test_only"});
+    t.a.prepare(
+      "DELETE FROM synthetic_lifecycle_outbox WHERE call_id=? AND revision=1"
+    ).run(CALL_ID);
+    assert.deepEqual(stageSyntheticTransition(t.b,{
+      origin:client(WORKER,accept),
+    }),{kind:"replay_suppressed"},
+      "a prior idempotency receipt alone cannot reconstruct missing outbox");
+    assert.deepEqual(inspectSyntheticUnsentLifecycleLedger(t.b),
+      {kind:"withheld"},"no safe preview of incomplete signaling ledger");
+    assert.equal(receipts(t.a).length,1);
+    assert.equal(intents(t.a).length,0);
+  });
+});
+
+test("tampered UNSENT signal contents, recipient role or revision withhold audit",async()=>{
+  for(const mutate of [
+    db=>db.prepare(
+      "UPDATE synthetic_lifecycle_outbox SET signal_json=? WHERE call_id=?"
+    ).run(JSON.stringify({
+      kind:"intent_only",signal:"call_cancelled",
+      recipientRole:"worker",revision:1,
+    }),CALL_ID),
+    db=>db.prepare(
+      "UPDATE synthetic_lifecycle_outbox SET signal_json=? WHERE call_id=?"
+    ).run(JSON.stringify({
+      kind:"intent_only",signal:"call_answered",
+      recipientRole:"both",revision:1,
+    }),CALL_ID),
+    db=>db.prepare(
+      "UPDATE synthetic_lifecycle_outbox SET revision=2 WHERE call_id=?"
+    ).run(CALL_ID),
+    db=>db.prepare(
+      "UPDATE synthetic_lifecycle_outbox SET signal_json=? WHERE call_id=?"
+    ).run("{not-json",CALL_ID),
+  ]){
+    await withTrial(async t=>{
+      assert.equal(stageSyntheticTransition(t.a,{
+        origin:client(WORKER,command("accept",0,"audit-corrupt-signal-01")),
+      }).kind,"transition_only");
+      mutate(t.a);
+      assert.deepEqual(inspectSyntheticUnsentLifecycleLedger(t.b),
+        {kind:"withheld"});
+    });
+  }
+});
+
+test("receipt tampering is detected even when local snapshot and outbox look valid",async()=>{
+  const mutations=[
+    receipt=>({...receipt,actorAccountId:OTHER}),
+    receipt=>({...receipt,event:"cancel"}),
+    receipt=>({...receipt,nowMs:DEADLINE}),
+    receipt=>({...receipt,result:{...receipt.result,callerAccountId:OTHER}}),
+    receipt=>({...receipt,expectedRevision:2}),
+  ];
+  for(const alter of mutations){
+    await withTrial(async t=>{
+      assert.equal(stageSyntheticTransition(t.a,{
+        origin:client(WORKER,command("accept",0,"audit-corrupt-receipt-01")),
+      }).kind,"transition_only");
+      const row=receipts(t.a)[0];
+      t.a.prepare(
+        "UPDATE synthetic_lifecycle_receipts SET receipt_json=? " +
+        "WHERE call_id=? AND retry_key=?"
+      ).run(JSON.stringify(alter(JSON.parse(row.receipt_json))),
+        CALL_ID,row.retry_key);
+      assert.deepEqual(inspectSyntheticUnsentLifecycleLedger(t.b),
+        {kind:"withheld"});
+    });
+  }
+  await withTrial(async t=>{
+    assert.equal(stageSyntheticTransition(t.a,{
+      origin:client(WORKER,command("accept",0,"audit-different-key-01")),
+    }).kind,"transition_only");
+    t.a.prepare(
+      "UPDATE synthetic_lifecycle_receipts SET retry_key=? WHERE call_id=?"
+    ).run("audit-different-key-02",CALL_ID);
+    assert.deepEqual(inspectSyntheticUnsentLifecycleLedger(t.b),
+      {kind:"withheld"},"index key and receipt key must match");
+  });
+});
+
+test("snapshot revision, phase and participant tampering are detected by replay",async()=>{
+  for(const change of [
+    {revision:0},
+    {revision:2},
+    {phase:"cancelled"},
+    {workerAccountId:OTHER},
+    {ringDeadlineMs:DEADLINE+1},
+  ]){
+    await withTrial(async t=>{
+      assert.equal(stageSyntheticTransition(t.a,{
+        origin:client(WORKER,command("accept",0,"audit-corrupt-state-01")),
+      }).kind,"transition_only");
+      const current=snapshot(t.a);
+      t.a.prepare(
+        "UPDATE synthetic_lifecycle_calls SET snapshot_json=? " +
+        "WHERE call_id=?"
+      ).run(JSON.stringify({...current,...change}),CALL_ID);
+      assert.deepEqual(inspectSyntheticUnsentLifecycleLedger(t.b),
+        {kind:"withheld"},JSON.stringify(change));
+    });
+  }
+  await withTrial(async t=>{
+    assert.equal(stageSyntheticTransition(t.a,{
+      origin:client(WORKER,command("accept",0,"audit-state-db-rev-01")),
+    }).kind,"transition_only");
+    t.a.prepare(
+      "UPDATE synthetic_lifecycle_calls SET revision=2 WHERE call_id=?"
+    ).run(CALL_ID);
+    assert.deepEqual(inspectSyntheticUnsentLifecycleLedger(t.b),
+      {kind:"withheld"},"stored CAS column disagrees with actual receipt chain");
+  });
+});
+
+test("extra or missing local receipt/signal row fails closed without repair or send",async()=>{
+  await withTrial(async t=>{
+    assert.equal(stageSyntheticTransition(t.a,{
+      origin:client(WORKER,command("accept",0,"audit-extra-outbox-001")),
+    }).kind,"transition_only");
+    t.a.prepare(
+      "INSERT INTO synthetic_lifecycle_outbox VALUES(?,?,?)"
+    ).run(CALL_ID,2,JSON.stringify({
+      kind:"intent_only",signal:"call_ended",recipientRole:"both",revision:2,
+    }));
+    assert.deepEqual(inspectSyntheticUnsentLifecycleLedger(t.b),
+      {kind:"withheld"});
+    assert.equal(intents(t.a).length,2,"audit must not delete, resend or repair");
+  });
+  await withTrial(async t=>{
+    assert.equal(stageSyntheticTransition(t.a,{
+      origin:client(WORKER,command("accept",0,"audit-missing-receipt-01")),
+    }).kind,"transition_only");
+    t.a.prepare(
+      "DELETE FROM synthetic_lifecycle_receipts WHERE call_id=?"
+    ).run(CALL_ID);
+    assert.deepEqual(inspectSyntheticUnsentLifecycleLedger(t.b),
+      {kind:"withheld"});
+    assert.equal(intents(t.a).length,1);
+  });
+});
+
+test("ledger audit is scoped per call ID; another call's corruption stays isolated",async()=>{
+  await withTrial(async t=>{
+    t.a.prepare(
+      "INSERT INTO synthetic_lifecycle_calls VALUES(?,?,?)"
+    ).run(NEXT_ID,0,JSON.stringify({...INITIAL,callId:NEXT_ID}));
+    const cmd=command("accept",0,"audit-same-key-both-001");
+    assert.equal(stageSyntheticTransition(t.a,{
+      origin:client(WORKER,cmd),
+    }).kind,"transition_only");
+    assert.equal(stageSyntheticTransition(t.b,{
+      callId:NEXT_ID,origin:client(WORKER,cmd),
+    }).kind,"transition_only");
+    assert.deepEqual(inspectSyntheticUnsentLifecycleLedger(t.a),
+      {kind:"consistent_test_only"});
+    assert.deepEqual(inspectSyntheticUnsentLifecycleLedger(t.b,{
+      callId:NEXT_ID,
+    }),{kind:"consistent_test_only"});
+    t.a.prepare(
+      "DELETE FROM synthetic_lifecycle_outbox WHERE call_id=?"
+    ).run(NEXT_ID);
+    assert.deepEqual(inspectSyntheticUnsentLifecycleLedger(t.a),
+      {kind:"consistent_test_only"});
+    assert.deepEqual(inspectSyntheticUnsentLifecycleLedger(t.b,{
+      callId:NEXT_ID,
+    }),{kind:"withheld"});
+    assert.deepEqual(inspectSyntheticUnsentLifecycleLedger(t.b,{
+      callId:"call-local-unknown-00001",
+    }),{kind:"withheld"});
+    assert.deepEqual(inspectSyntheticUnsentLifecycleLedger(t.b,{
+      callId:"wrong id",
+    }),{kind:"withheld"});
+  });
+});
+
+test("rollback leaves consistent journal; audit never creates or sends a signal",async()=>{
+  await withTrial(async t=>{
+    assert.throws(()=>stageSyntheticTransition(t.a,{
+      origin:client(WORKER,command("accept",0,"audit-failed-commit-001")),
+      failAfterReceipt:true,
+    }),/synthetic crash before outbox commit/);
+    assert.deepEqual(inspectSyntheticUnsentLifecycleLedger(t.b),
+      {kind:"consistent_test_only"});
+    assert.equal(snapshot(t.b).revision,0);
+    assert.deepEqual(intents(t.b),[]);
+    assert.deepEqual(receipts(t.b),[]);
+    assert.equal(stageSyntheticTransition(t.b,{
+      origin:client(WORKER,command("accept",0,"audit-failed-commit-001")),
+    }).kind,"transition_only");
+    assert.deepEqual(inspectSyntheticUnsentLifecycleLedger(t.a),
+      {kind:"consistent_test_only"});
+    assert.equal(intents(t.a).length,1);
+    assert.deepEqual(t.a.prepare("PRAGMA foreign_key_check").all(),[]);
   });
 });
 
