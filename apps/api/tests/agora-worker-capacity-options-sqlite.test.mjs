@@ -267,6 +267,91 @@ function releaseFakeCall(db,release,{failAfterSlot=false}={}){
   }
 }
 
+
+/**
+ * OFFLINE-ONLY revocation rehearsal: one trusted test-fixture instruction
+ * flips this worker's fake consent OFF, releases every *UNSENT* fake slot,
+ * terminalizes its local fake reservations, and tombstones its queued intents
+ * inside one SQLite write transaction. This is NOT an implemented opt-out
+ * handler, an approved P02 capacity choice, a D1/DO guarantee or an external
+ * Agora media/notification cancellation contract. Never call this on real
+ * worker identifiers or persist its fake tables in production.
+ */
+const revocationFields=[
+  "kind","workerAccountId","expectedConsentRevision",
+];
+function fakeWorkerRevocation(workerAccountId,expectedConsentRevision){
+  return {
+    kind:"trusted_internal_fixture_only",workerAccountId,expectedConsentRevision,
+  };
+}
+function revokeQueuedWorkerFixtures(db,request,{
+  failAfterConsent=false,failAfterFirstSlot=false,
+  failAfterFirstReservation=false,failAfterFirstIntent=false,
+}={}){
+  if(!exact(request,revocationFields) ||
+     request.kind!=="trusted_internal_fixture_only" ||
+     !validOpaqueId(request.workerAccountId) ||
+     !Number.isSafeInteger(request.expectedConsentRevision) ||
+     request.expectedConsentRevision<1 ||
+     request.expectedConsentRevision>=Number.MAX_SAFE_INTEGER)
+    return denied("UNTRUSTED_TEST_REVOCATION");
+
+  let tx=false;
+  try{
+    db.exec("BEGIN IMMEDIATE");tx=true;
+    const preference=db.prepare(
+      "UPDATE fake_worker_consent SET enabled=0,revision=revision+1 "+
+      "WHERE worker_id=? AND enabled=1 AND revision=?"
+    ).run(request.workerAccountId,request.expectedConsentRevision);
+    if(preference.changes!==1){
+      db.exec("ROLLBACK");tx=false;
+      return denied("STALE_OR_OFF_CONSENT");
+    }
+    if(failAfterConsent)throw Error("synthetic crash after consent OFF");
+    const queued=db.prepare(
+      "SELECT call_id,slot,fence FROM fake_call_reservations "+
+      "WHERE worker_id=? AND state='reserved_test_only' ORDER BY call_id"
+    ).all(request.workerAccountId);
+
+    for(const [index,call] of queued.entries()){
+      const freed=db.prepare(
+        "UPDATE fake_worker_capacity_slots SET call_id=NULL "+
+        "WHERE worker_id=? AND slot=? AND call_id=? AND fence=?"
+      ).run(request.workerAccountId,call.slot,call.call_id,call.fence);
+      if(freed.changes!==1)throw Error("synthetic revoked slot CAS mismatch");
+      if(index===0 && failAfterFirstSlot)
+        throw Error("synthetic crash after first slot release");
+
+      const changed=db.prepare(
+        "UPDATE fake_call_reservations SET state='released_test_only' "+
+        "WHERE worker_id=? AND call_id=? AND slot=? AND fence=? "+
+        "AND state='reserved_test_only'"
+      ).run(request.workerAccountId,call.call_id,call.slot,call.fence);
+      if(changed.changes!==1)
+        throw Error("synthetic revoked call-state mismatch");
+      if(index===0 && failAfterFirstReservation)
+        throw Error("synthetic crash after first reservation");
+
+      const tombstoned=db.prepare(
+        "UPDATE fake_unsent_call_intents SET state='revoked_test_only' "+
+        "WHERE call_id=? AND state='pending_test_only' "+
+        "AND kind='incoming_audio_intent_only'"
+      ).run(call.call_id);
+      if(tombstoned.changes!==1)
+        throw Error("synthetic missing UNSENT alert");
+      if(index===0 && failAfterFirstIntent)
+        throw Error("synthetic crash after first alert tombstone");
+    }
+
+    db.exec("COMMIT");tx=false;
+    return Object.freeze({kind:"revoked_test_only",count:queued.length});
+  }catch(error){
+    if(tx)db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
 test("worker consent default OFF: neither P02 option admits even a synthetic call",async()=>{
   for(const capacity of [1,2]){
     await withTrial({workerSlots:capacity},async t=>{
@@ -495,6 +580,181 @@ test("unknown worker, invalid origin and malformed IDs cannot consume capacity",
     assert.equal(slots(t.a).filter(x=>x.call_id).length,0);
     assert.equal(reservations(t.b).length,0);
     assert.equal(unsent(t.a).length,0);
+  });
+});
+
+
+test("OFF revokes all queued UNSENT calls for one worker atomically, never another worker",async()=>{
+  await withTrial({workerSlots:2,includeOtherWorker:true},async t=>{
+    assert.deepEqual(setFixtureWorkerConsent(t.a,WORKER,true),
+      {revision:1,enabled:1});
+    assert.deepEqual(setFixtureWorkerConsent(t.a,OTHER_WORKER,true),
+      {revision:1,enabled:1});
+    const first=admitFakeCall(t.a,fakeCandidate());
+    const second=admitFakeCall(t.b,fakeCandidate({
+      callerAccountId:CALLER_B,listingId:LISTING_B,callId:CALL_B,
+    }));
+    const independent=admitFakeCall(t.a,fakeCandidate({
+      workerAccountId:OTHER_WORKER,callerAccountId:CALLER_C,callId:CALL_C,
+    }));
+    assert.deepEqual([first.kind,second.kind,independent.kind],
+      ["reserved_test_only","reserved_test_only","reserved_test_only"]);
+    assert.deepEqual(slots(t.b).map(x=>x.call_id),[CALL_A,CALL_B]);
+    assert.deepEqual(unsent(t.a).map(x=>x.state),
+      Array(3).fill("pending_test_only"));
+
+    const revoked=revokeQueuedWorkerFixtures(t.b,
+      fakeWorkerRevocation(WORKER,1));
+    assert.deepEqual(revoked,{kind:"revoked_test_only",count:2});
+    assert.equal(Object.isFrozen(revoked),true);
+    assert.deepEqual(t.a.prepare(
+      "SELECT enabled,revision FROM fake_worker_consent WHERE worker_id=?"
+    ).get(WORKER),{enabled:0,revision:2});
+    assert.deepEqual(slots(t.a).map(x=>x.call_id),[null,null]);
+    assert.deepEqual(reservations(t.a).map(x=>x.state),
+      ["released_test_only","released_test_only"]);
+    const stateByCall=Object.fromEntries(unsent(t.b).map(x=>[x.call_id,x.state]));
+    assert.deepEqual(stateByCall,{
+      [CALL_A]:"revoked_test_only",
+      [CALL_B]:"revoked_test_only",
+      [CALL_C]:"pending_test_only",
+    });
+    assert.equal(slots(t.a,OTHER_WORKER)[0].call_id,CALL_C);
+    assert.equal(reservations(t.b,OTHER_WORKER)[0].state,
+      "reserved_test_only");
+    assert.deepEqual(releaseFakeCall(t.a,releaseFixture(
+      CALL_A,WORKER,first.fence)),denied("STALE_OR_FOREIGN_RELEASE"));
+    assert.deepEqual(revokeQueuedWorkerFixtures(t.a,
+      fakeWorkerRevocation(WORKER,1)),denied("STALE_OR_OFF_CONSENT"));
+    assert.deepEqual(admitFakeCall(t.b,fakeCandidate()),
+      denied("WORKER_CONSENT_UNAVAILABLE"));
+
+    // OFF -> ON is a NEW epoch: no old queued call or previous receipt revives.
+    assert.deepEqual(setFixtureWorkerConsent(t.a,WORKER,true),
+      {enabled:1,revision:3});
+    assert.deepEqual(admitFakeCall(t.b,fakeCandidate()),
+      denied("WORKER_CONSENT_UNAVAILABLE"));
+    const fresh=admitFakeCall(t.a,fakeCandidate({
+      callerAccountId:CALLER_A,callId:"call-capacity-new-epoch-0001",
+      revision:3,
+    }));
+    assert.equal(fresh.kind,"reserved_test_only");
+    assert.equal(fresh.slot,1);
+    assert.equal(fresh.fence,first.fence+1);
+    assert.equal(stateByCall[CALL_A],"revoked_test_only");
+    assert.equal(unsent(t.a).find(x=>x.call_id===CALL_A).state,
+      "revoked_test_only");
+    assert.deepEqual(t.b.prepare("PRAGMA foreign_key_check").all(),[]);
+  });
+});
+
+test("consent revocation rollbacks never leave partially freed slots or alerts",async()=>{
+  for(const failure of [
+    "failAfterConsent","failAfterFirstSlot",
+    "failAfterFirstReservation","failAfterFirstIntent",
+  ]){
+    await withTrial({workerSlots:2},async t=>{
+      setFixtureWorkerConsent(t.a,WORKER,true);
+      assert.equal(admitFakeCall(t.a,fakeCandidate()).kind,
+        "reserved_test_only");
+      assert.equal(admitFakeCall(t.b,fakeCandidate({
+        callerAccountId:CALLER_B,listingId:LISTING_B,callId:CALL_B,
+      })).kind,"reserved_test_only");
+      const snapshot=()=>({
+        consent:t.a.prepare("SELECT * FROM fake_worker_consent").all(),
+        slots:slots(t.a),reservations:reservations(t.a),unsent:unsent(t.a),
+      });
+      const before=snapshot();
+      assert.throws(()=>revokeQueuedWorkerFixtures(t.b,
+        fakeWorkerRevocation(WORKER,1),{[failure]:true}),
+      /synthetic crash after/);
+      assert.deepEqual(snapshot(),before,
+        failure+" must roll back consent + both calls + unsent intents");
+      assert.deepEqual(t.b.prepare("PRAGMA foreign_key_check").all(),[]);
+      assert.deepEqual(revokeQueuedWorkerFixtures(t.a,
+        fakeWorkerRevocation(WORKER,1)),
+        {kind:"revoked_test_only",count:2});
+      assert.deepEqual(unsent(t.b).map(x=>x.state),
+        ["revoked_test_only","revoked_test_only"]);
+    });
+  }
+});
+
+test("competing local writers cannot interleave opt-out with a queued call claim",async()=>{
+  await withTrial({workerSlots:2},async t=>{
+    setFixtureWorkerConsent(t.a,WORKER,true);
+    const prepared=fakeCandidate();
+    assert.equal(admitFakeCall(t.a,prepared).kind,"reserved_test_only");
+    const before={slots:slots(t.a),unsent:unsent(t.a),
+      revisions:observedRevision(t.a)};
+    t.a.exec("BEGIN IMMEDIATE");
+    try{
+      assert.throws(()=>revokeQueuedWorkerFixtures(t.b,
+        fakeWorkerRevocation(WORKER,1)),/database is locked|SQLITE_BUSY/i);
+      assert.deepEqual(slots(t.a),before.slots);
+      assert.deepEqual(unsent(t.a),before.unsent);
+      assert.equal(observedRevision(t.a),before.revisions);
+    }finally{t.a.exec("ROLLBACK");}
+    assert.deepEqual(revokeQueuedWorkerFixtures(t.b,
+      fakeWorkerRevocation(WORKER,1)),
+      {kind:"revoked_test_only",count:1});
+    assert.deepEqual(admitFakeCall(t.a,fakeCandidate({
+      callerAccountId:CALLER_B,callId:CALL_B,
+    })),denied("WORKER_CONSENT_UNAVAILABLE"));
+    assert.equal(unsent(t.b)[0].state,"revoked_test_only");
+  });
+});
+
+test("untrusted, stale or foreign revocations never alter another worker's queue",async()=>{
+  await withTrial({workerSlots:1,includeOtherWorker:true},async t=>{
+    setFixtureWorkerConsent(t.a,WORKER,true);
+    setFixtureWorkerConsent(t.a,OTHER_WORKER,true);
+    const own=admitFakeCall(t.a,fakeCandidate());
+    const other=admitFakeCall(t.b,fakeCandidate({
+      workerAccountId:OTHER_WORKER,callerAccountId:CALLER_B,callId:CALL_B,
+    }));
+    assert.equal(own.kind,"reserved_test_only");
+    assert.equal(other.kind,"reserved_test_only");
+    const canonical=fakeWorkerRevocation(WORKER,1);
+    for(const invalid of [
+      null,{},canonical.kind, // no client / malformed instruction
+      {...canonical,kind:"client_claimed"},
+      {...canonical,origin:"caller"},
+      {...canonical,workerAccountId:"bad id"},
+      {...canonical,workerAccountId:"worker-nonexistent-00001"},
+      {...canonical,expectedConsentRevision:0},
+      {...canonical,expectedConsentRevision:-1},
+      {...canonical,expectedConsentRevision:NaN},
+      {...canonical,expectedConsentRevision:Number.MAX_SAFE_INTEGER},
+      {...canonical,expectedConsentRevision:2},
+    ]){
+      const result=revokeQueuedWorkerFixtures(t.b,invalid);
+      assert.equal(result.kind,"denied");
+      assert.equal(unsent(t.a).every(x=>x.state==="pending_test_only"),true);
+      assert.equal(slots(t.a)[0].call_id,CALL_A);
+      assert.equal(slots(t.b,OTHER_WORKER)[0].call_id,CALL_B);
+    }
+    assert.deepEqual(revokeQueuedWorkerFixtures(t.b,
+      fakeWorkerRevocation(WORKER,1)),
+      {kind:"revoked_test_only",count:1});
+    assert.equal(slots(t.a,OTHER_WORKER)[0].call_id,CALL_B);
+    assert.equal(unsent(t.b).find(x=>x.call_id===CALL_B).state,
+      "pending_test_only");
+  });
+});
+
+test("empty fake queue can opt out without touching another worker or real schema",async()=>{
+  await withTrial({workerSlots:1,includeOtherWorker:true},async t=>{
+    setFixtureWorkerConsent(t.a,WORKER,true);
+    setFixtureWorkerConsent(t.a,OTHER_WORKER,true);
+    assert.deepEqual(revokeQueuedWorkerFixtures(t.b,
+      fakeWorkerRevocation(WORKER,1)),
+      {kind:"revoked_test_only",count:0});
+    assert.deepEqual(slots(t.a),[{slot:1,call_id:null,fence:0}]);
+    assert.deepEqual(unsent(t.b),[]);
+    assert.deepEqual(reservations(t.a),[]);
+    assert.equal(observedRevision(t.b),2);
+    assert.equal(observedRevision(t.a,OTHER_WORKER),1);
   });
 });
 
