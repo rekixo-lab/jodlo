@@ -175,7 +175,9 @@ test("wrong role, participant bearer, call revision or server-policy facts deny"
       assert.deepEqual(await f.preview(call, role, 1, { token: opposite }),
         denied("SESSION_OR_TARGET_UNAVAILABLE"));
       assert.deepEqual(await f.preview(call, role, 1, { token: f.otherToken }),
-        denied("SESSION_OR_TARGET_UNAVAILABLE"));
+        denied(role === "caller" ? "CALL_OR_POLICY_DENIED" :
+          "SESSION_OR_TARGET_UNAVAILABLE"),
+        "other valid caller may read the listing, but cannot impersonate the call participant");
       assert.deepEqual(await f.preview(call, role, 1, { revision: 0 }),
         denied("CALL_OR_POLICY_DENIED"));
       assert.deepEqual(await f.preview(call, role, 1, {
