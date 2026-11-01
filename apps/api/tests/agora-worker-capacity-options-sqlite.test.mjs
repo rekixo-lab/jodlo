@@ -586,9 +586,9 @@ test("unknown worker, invalid origin and malformed IDs cannot consume capacity",
 
 test("OFF revokes all queued UNSENT calls for one worker atomically, never another worker",async()=>{
   await withTrial({workerSlots:2,includeOtherWorker:true},async t=>{
-    assert.deepEqual(setFixtureWorkerConsent(t.a,WORKER,true),
+    assert.deepEqual({...setFixtureWorkerConsent(t.a,WORKER,true)},
       {revision:1,enabled:1});
-    assert.deepEqual(setFixtureWorkerConsent(t.a,OTHER_WORKER,true),
+    assert.deepEqual({...setFixtureWorkerConsent(t.a,OTHER_WORKER,true)},
       {revision:1,enabled:1});
     const first=admitFakeCall(t.a,fakeCandidate());
     const second=admitFakeCall(t.b,fakeCandidate({
@@ -607,9 +607,9 @@ test("OFF revokes all queued UNSENT calls for one worker atomically, never anoth
       fakeWorkerRevocation(WORKER,1));
     assert.deepEqual(revoked,{kind:"revoked_test_only",count:2});
     assert.equal(Object.isFrozen(revoked),true);
-    assert.deepEqual(t.a.prepare(
+    assert.deepEqual({...t.a.prepare(
       "SELECT enabled,revision FROM fake_worker_consent WHERE worker_id=?"
-    ).get(WORKER),{enabled:0,revision:2});
+    ).get(WORKER)},{enabled:0,revision:2});
     assert.deepEqual(slots(t.a).map(x=>x.call_id),[null,null]);
     assert.deepEqual(reservations(t.a).map(x=>x.state),
       ["released_test_only","released_test_only"]);
@@ -630,7 +630,7 @@ test("OFF revokes all queued UNSENT calls for one worker atomically, never anoth
       denied("WORKER_CONSENT_UNAVAILABLE"));
 
     // OFF -> ON is a NEW epoch: no old queued call or previous receipt revives.
-    assert.deepEqual(setFixtureWorkerConsent(t.a,WORKER,true),
+    assert.deepEqual({...setFixtureWorkerConsent(t.a,WORKER,true)},
       {enabled:1,revision:3});
     assert.deepEqual(admitFakeCall(t.b,fakeCandidate()),
       denied("WORKER_CONSENT_UNAVAILABLE"));
