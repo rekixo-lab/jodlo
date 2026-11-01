@@ -111,7 +111,7 @@ private fun hasDuplicateReplyObjectKeys(source: String, parser: Json): Boolean {
                 }
                 val frame = stack.peekLast()
                 val keys = frame?.keys
-                if (keys != null && frame.expectsKey) {
+                if (frame != null && keys != null && frame.expectsKey) {
                     val rawKey = source.substring(start, i)
                     val key = if ('\\' in rawKey) {
                         parser.parseToJsonElement(rawKey).jsonPrimitive.content
