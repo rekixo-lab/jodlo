@@ -1,5 +1,7 @@
 # JODLO — Headless Android-compatible Kotlin Core (2026-10-28)
 
+> **Native preview source added for PR #169 (2026-11-02):** a separate opt-in `apps/android/app` module now contains a Compose launcher and guest read-only flows. See [app README](app/README.md). Existing statements about *this Core* being headless remain true. Do not claim an APK/build pass until the independent native Android workflow succeeds; no provider or cloud deployment was added.
+
 **Real Kotlin/JVM-compiled network source, not an APK or Android UI.** No founder-approved screen, theme, Activity, Android plugin, Manifest or user location permissions exist yet; M-004 visual approval is still required.
 
 `apps/android/core` is the first platform-neutral Kotlin networking foundation for the future native application `com.rekixo.jodlo`. It constructs only previously approved backend routes: Hindi/English Category browse/search, strict cursor and optional `includeChoices=1`, category-filtered public listings, Worker opt-in/private draft, explicitly chosen Category ID publish/unpublish, owner listing and session logout. It does NOT auto-select a category, import the old 889 historic trades, add arbitrary PII, or activate a Category.

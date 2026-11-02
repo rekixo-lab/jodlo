@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">JODLO</string>
+    <string name="discovery_subtitle">स्वीकृत सेवाएँ देखें। अतिथि मोड में स्थान या खाते की जानकारी एकत्र नहीं होती।</string>
+    <string name="language_hindi">हिन्दी</string>
+    <string name="language_english">English</string>
+    <string name="no_api_origin">लाइव सेवा सूची अभी जुड़ी नहीं है। बिल्ड में स्वीकृत सुरक्षित एपीआई पता जोड़ना आवश्यक है।</string>
+    <string name="search_label">सेवाएँ खोजें</string>
+    <string name="search_validation">2 से 64 अक्षर लिखें।</string>
+    <string name="search_action">खोजें</string>
+    <string name="browse_action">सभी देखें</string>
+    <string name="choose_category">आगे बढ़ने के लिए सही सेवा श्रेणी चुनें।</string>
+    <string name="back_action">श्रेणियों पर लौटें</string>
+    <string name="request_failed">जानकारी नहीं मिली। कोई बदलाव नहीं किया गया।</string>
+    <string name="retry_action">फिर से देखें</string>
+    <string name="empty_catalog">अभी कोई स्वीकृत सेवा श्रेणी उपलब्ध नहीं है।</string>
+    <string name="empty_listings">इस श्रेणी में कोई सार्वजनिक सेवा सूची नहीं है।</string>
+    <string name="public_listing">सार्वजनिक सेवा सूची</string>
+    <string name="listing_reference">संदर्भ: %1$s</string>
+    <string name="prototype_notice">विकास पूर्वावलोकन • अभी प्रवेश, कॉल, भुगतान या सेवा प्रकाशन नहीं।</string>
+</resources>
