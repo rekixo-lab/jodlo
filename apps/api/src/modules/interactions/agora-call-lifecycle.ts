@@ -203,6 +203,40 @@ function validReceipt(value: unknown): value is AgoraCallReceipt {
     } as AgoraCallCommand);
 }
 
+/**
+ * The journal is acyclic. A previously valid terminal receipt cannot be a
+ * predecessor of any later state, even if the later snapshot's revision is
+ * greater. Checking revision order alone incorrectly replays a cancelled,
+ * busy, declined or missed receipt against a separately accepted/connected
+ * winning call (or an ended receipt from a competing earlier hangup).
+ *
+ * Only two nonterminal historical results may legitimately advance:
+ * accepted(1) -> connected(2) / ended(2) -> ended(3), and
+ * connected(2) -> ended(3). This is a PURE consistency guard; it does not
+ * authenticate stored receipts, define an approved call SLA or replace
+ * transactional CAS + receipt uniqueness in a future approved D1 writer.
+ */
+function historicalReceiptReachable(
+  current: AgoraCallSnapshot,
+  receiptResult: AgoraCallSnapshot,
+): boolean {
+  if (current.revision === receiptResult.revision) {
+    return current.phase === receiptResult.phase;
+  }
+  if (current.revision < receiptResult.revision) return false;
+  if (receiptResult.phase === "accepted" && receiptResult.revision === 1) {
+    return (current.revision === 2 &&
+      (current.phase === "connected" || current.phase === "ended")) ||
+      (current.revision === 3 && current.phase === "ended");
+  }
+  if (receiptResult.phase === "connected" && receiptResult.revision === 2) {
+    return current.revision === 3 && current.phase === "ended";
+  }
+  // Every other receipt phase is terminal and must never precede a later
+  // revision. In particular: cancelled/missed/declined/busy/ended.
+  return false;
+}
+
 /** Synthetic initialization requires a complete *test-only* future policy.
  * Merely publishing a listing or having an Agora App ID never opens a call.
  * Caller/worker identities are internal; no number, channel, UID or token.
@@ -269,9 +303,7 @@ export function decideSyntheticAgoraCallEvent(
         priorReceipt.result.workerAccountId !== current.workerAccountId ||
         priorReceipt.result.createdAtMs !== current.createdAtMs ||
         priorReceipt.result.ringDeadlineMs !== current.ringDeadlineMs ||
-        current.revision < priorReceipt.result.revision ||
-        (current.revision === priorReceipt.result.revision &&
-         current.phase !== priorReceipt.result.phase)) {
+        !historicalReceiptReachable(current, priorReceipt.result)) {
       return { kind: "reject", code: "KEY_CONFLICT" };
     }
     return { kind: "replay", receipt: priorReceipt };
