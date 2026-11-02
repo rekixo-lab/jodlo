@@ -1,12 +1,21 @@
 # JODLO — current state, 2026-11-02
 
-## 2026-11-02 — Cross-route public discovery state consistency (ENGINEERING PR, CI PENDING)
+## 2026-11-02 — Global next-review action planner for all 889 Categories (PR CI PENDING)
+
+- **Next non-Android backend/catalog milestone:** the existing 45 packet review, 889-category attention order and 2,667 human task progress lived in separate tools. New offline [global review action planner](reference/JODLO_GLOBAL_REVIEW_NEXT_ACTIONS_2026-11-02.md) connects the *source-locked* priority and progress streams into one resumable 1..25-category reviewer work window. No arbitrary ten-category product scope.
+- **Implementation on isolated PR branch:** `scripts/catalog-review-next-actions.mjs`, `scripts/catalog-review-next-actions.test.mjs`, package scripts `catalog:review-next` and `catalog:review-next-check`. The existing strict validators recheck all 45 packets, 889 original Category IDs, 7,267 Services, 2,667 tasks, source fingerprints and original zero-authorization gates. Join by immutable ID; never treat JSON row order or a self-reported PR link as approval.
+- **Quality:** cli pagination by original Category cursor, priority lane, source fingerprint, Hindi/English labels, three actual task statuses per Category, no endorsement/SQL. Tests cover first/next/end pages, self-reported specialist/evidence statuses, missing/forged inputs and CLI behavior. `reference:check` and `npm test` now exercise it.
+- **Manual state:** all 889 Categories/7,267 Services still require qualified human/legal/language and founder review; none are activated. This is technical work planning, **not** M-005 signoff or production functionality. No Cloudflare, Android, deployment, real account/location data, live calls, payments or Finworkar edits.
+- **CI pending:** verify exact PR-head Foundation Actions, then independently verify merged-main after a permitted green merge. No implementation-status claim based solely on a source commit.
+
+
+## 2026-11-02 — Cross-route public discovery state consistency (MERGED, VERIFIED)
 
 - **Next backend priority, NOT Android:** verify that public `availableOnly=1` Catalog/Search (legacy and cursor), unpaged/paged public listings, and private owner listing routes all reflect the SAME current server-owned account/category/moderation/publication facts.
-- **Added test on isolated branch:** `apps/api/tests/public-discovery-state-consistency.test.mjs` uses real local D1 migrations, actual `/api/v1` HTTP router, three independently issued bearer sessions, two workers plus customer, explicit worker opt-in, two Categories, active/inactive status and concurrent public listing pagination. It checks that disabling a worker, hiding a listing, unpublishing the last eligible listing, or deactivating a Category cannot leave stale available-only worker suggestions on other API routes.
+- **Merged test:** `apps/api/tests/public-discovery-state-consistency.test.mjs` uses real local D1 migrations, actual `/api/v1` HTTP router, three independently issued bearer sessions, two workers plus customer, explicit worker opt-in, two Categories, active/inactive status and concurrent public listing pagination. It checks that disabling a worker, hiding a listing, unpublishing the last eligible listing, or deactivating a Category cannot leave stale available-only worker suggestions on other API routes.
 - **Stale search safety:** a previously returned active Category cannot later be published by an authenticated Worker after its server-owned Category activation is withdrawn, even if the client still possesses the old search response or adds an unauthorized `verified` field.
 - **Scope and limits:** test-only, synthetic records; no new public routes, no SQL migration, no Category activation of the 889-source archive, no private areas/locations, live Agora, reports, payments, Android, credentials or remote deployment. Existing source behavior is being *validated*, not a claim that area or callability policies are approved. M-003/005/006/007/008 unchanged.
-- **Verification requirement:** actual PR-head foundation CI, then independent merged-main CI before marking this test proven.
+- **Verified:** [PR #178](https://github.com/rekixo-lab/jodlo/pull/178) merged as `2fc9ca03f29938b41b5c4f5ad89631053271e9f5`; [PR-head Foundation CI #41475204198](https://github.com/rekixo-lab/jodlo/actions/runs/41475204198) SUCCESS; [independent merged-main CI #41475755642](https://github.com/rekixo-lab/jodlo/actions/runs/41475755642) SUCCESS. This verified the local regression suite, not production data or real external systems.
 
 
 ## 2026-11-02 — Nonvisual business action / outcome audit (MERGED, VERIFIED)
