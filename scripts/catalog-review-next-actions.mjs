@@ -191,7 +191,7 @@ export function selectNextHumanReviewActions(queue,progress,options={}) {
 
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   const args=process.argv.slice(2);
-  let mode=null,limit=20,after=null,reviewRoot,progressRoot;
+  let mode=null,limit=20,after=null,focus="all",reviewRoot,progressRoot;
   const seen=new Set();
   for(const arg of args){
     if(["--next","--summary","--check"].includes(arg)){
@@ -201,27 +201,31 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
       const equals=arg.indexOf("=");
       const key=equals>=0?arg.slice(0,equals):arg;
       const value=equals>=0?arg.slice(equals+1):null;
-      if(!["--limit","--after","--review-root","--progress-root"].includes(key)||
+      if(!["--limit","--after","--focus","--review-root","--progress-root"].includes(key)||
          seen.has(key)||value===null||!value)
-        throw Error("Use --next|--summary|--check with optional --limit=N, --after=ORIGINAL_ID, --review-root=PATH, --progress-root=PATH");
+        throw Error("Use --next|--summary|--check with optional --limit=N, --after=ORIGINAL_ID, --focus=all|mapping|service, --review-root=PATH, --progress-root=PATH");
       seen.add(key);
       if(key==="--limit"){
         if(!/^(?:[1-9]|1[0-9]|2[0-5])$/u.test(value))
           throw Error("Review batch limit must be 1..25");
         limit=Number(value);
       }else if(key==="--after")after=value;
-      else if(key==="--review-root")reviewRoot=value;
+      else if(key==="--focus"){
+        if(!FOCUSES.includes(value))throw Error("Unknown reviewer focus");
+        focus=value;
+      }else if(key==="--review-root")reviewRoot=value;
       else progressRoot=value;
     }
   }
   mode??="--next";
-  if(mode!=="--next"&&(seen.has("--after")||seen.has("--limit")))
+  if(mode!=="--next"&&(seen.has("--after")||seen.has("--limit")||
+     seen.has("--focus")))
     throw Error("Batch pagination options require --next");
   const queue=loadPinnedHumanReviewActionQueue(reviewRoot);
   const progress=progressRoot===undefined?
     emptyHumanReviewActionPacketSet(queue):
     loadHumanReviewActionDirectory(progressRoot);
-  const plan=selectNextHumanReviewActions(queue,progress,{limit,after});
+  const plan=selectNextHumanReviewActions(queue,progress,{limit,after,focus});
   if(mode==="--check"){
     console.log("JODLO global human review: 45 source packets, 889 Categories, 7,267 Services, 2,667 tasks checked; ZERO authorization.");
   }else if(mode==="--summary"){
