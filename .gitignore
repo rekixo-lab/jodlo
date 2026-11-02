@@ -30,3 +30,6 @@ apps/android/local.properties
 .jodlo-unified-review-test-*/
 
 .jodlo-review-progress-test-*/
+
+# Native Gradle Android app output (never commit APKs or generated resources)
+apps/android/app/build/

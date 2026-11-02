@@ -1,5 +1,11 @@
 # JODLO — current state, 2026-10-27
 
+## 2026-11-02 — Native Android entrypoint source (PR #169; CI verification pending)
+- **Code on review branch:** First separately opt-in Android `:app` includes Compose launcher, centrally scoped provisional theme, localized Hindi/English guest Browse/Search/Category selection/Public Listing UI. All network calls use existing strict headless Kotlin Core and an optional vetted HTTPS origin; no worker identity/phone/GPS/real RTC/payment data.
+- **CI requirement:** Existing SDK-free JVM Worker/Core checks must pass, plus a separate Android SDK `:app:assembleDebug` workflow. Neither a source commit nor the earlier JVM suite is proof of an APK or device acceptance. Keep this milestone pending until exact PR and merged-main runs are green.
+- **Unresolved:** founder-specific final visual direction/storyboard and device accessibility review, operational Agora numbers/retention and safety, actual catalog activation, Google OAuth credentials, real calls, payments and production approval. A blanket go-ahead is not authorization to invent numeric safety limits or provision remote production resources.
+
+
 **Identity:** JODLO; Android `com.rekixo.jodlo`; future production domain `jodlo.rekixo.com`. Entirely independent from live Finworkar (read-only reference).
 
 ## Founder-approved development/release method
