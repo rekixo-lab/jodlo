@@ -6,6 +6,7 @@ import {
   loadPinnedHumanReviewActionQueue,emptyHumanReviewActionPacketSet,
 } from "./catalog-human-review-progress.mjs";
 import {selectNextHumanReviewActions} from "./catalog-review-next-actions.mjs";
+import {loadPinnedCatalogMappingReadiness} from "./catalog-mapping-readiness.mjs";
 
 const queue=loadPinnedHumanReviewActionQueue();
 const fresh=()=>emptyHumanReviewActionPacketSet(queue);
@@ -127,4 +128,144 @@ test("read-only CLI: short next page, summary/check and invalid batch arguments"
     "scripts/catalog-review-next-actions.mjs","--next","--limit=26",
   ],{cwd:resolve(import.meta.dirname,".."),encoding:"utf8",timeout:90_000});
   assert.notEqual(invalid.status,0);
+});
+
+test("each reviewer card binds historical D1 syntax issues without inventing approved IDs or slugs",()=>{
+  const mapping=loadPinnedCatalogMappingReadiness().result;
+  const map=new Map(mapping.categories.map(x=>[x.sourceCategoryId,x]));
+  assert.equal(map.size,889);
+  const sample=plan(fresh(),{limit:25});
+  assert.equal(sample.page.focus,"all");
+  assert.equal(sample.summary.categoriesWithHistoricalSyntaxIssues,
+    mapping.categories.filter(x=>x.syntaxIssues.length>0).length);
+  for(const card of sample.page.categories){
+    const baseline=map.get(card.sourceCategoryId);
+    assert.deepEqual(card.originalCategoryMapping,{
+      categoryIdSyntaxCandidate:baseline.categoryIdCandidate,
+      slugSyntaxCandidate:baseline.slugCandidate,
+      syntaxIssues:baseline.syntaxIssues,
+      sourceReviewFlags:baseline.historicalReviewFlags,
+      reviewState:"HUMAN_ID_SLUG_LABEL_AND_SAFETY_REVIEW_REQUIRED",
+    });
+    assert.equal(card.categoriesAuthorizedForActivation,0);
+    assert.equal(card.stillRequiresQualifiedHumanReview,true);
+    assert.deepEqual(Object.keys(card.serviceReviewIssues),[
+      "flaggedOriginalServiceIds","serviceNameDraftsUnverified",
+      "serviceScopeDraftsUnverified","scopeConcernRowsUnverified",
+      "proposedNameConflictsUnresolved","outstandingNameScopeHandoffs",
+    ]);
+  }
+  // A historical identifier with Devanagari MUST remain a human correction
+  // task, not a silently transliterated D1 ID or authorized public listing.
+  const target=queue.reviewQueue.find(x=>x.sourceCategoryId==="farmer-helper-मजदूर");
+  assert.ok(target);
+  const card=plan(fresh(),{limit:1,after:queue.reviewQueue[
+    queue.reviewQueue.indexOf(target)-1].sourceCategoryId}).page.categories[0];
+  assert.equal(card.sourceCategoryId,"farmer-helper-मजदूर");
+  assert.equal(card.originalCategoryMapping.categoryIdSyntaxCandidate,null);
+  assert.equal(card.originalCategoryMapping.slugSyntaxCandidate,null);
+  assert.ok(card.originalCategoryMapping.syntaxIssues.includes(
+    "SOURCE_CATEGORY_ID_INCOMPATIBLE"));
+  assert.equal(card.categoriesAuthorizedForActivation,0);
+});
+
+test("mapping focus skips unaffected source rows without silently cutting full review scope",()=>{
+  const mapping=loadPinnedCatalogMappingReadiness().result;
+  const issueIds=new Set(mapping.categories
+    .filter(x=>x.syntaxIssues.length>0).map(x=>x.sourceCategoryId));
+  assert.ok(issueIds.size>0);
+  const expected=queue.reviewQueue.filter(x=>issueIds.has(x.sourceCategoryId))
+    .map(x=>x.sourceCategoryId);
+  const actual=[];
+  const input=fresh();
+  let after=null,pages=0;
+  do{
+    const out=plan(input,{focus:"mapping",limit:3,after});
+    assert.equal(out.summary.historicalCategories,889);
+    assert.equal(out.summary.historicalServices,7267);
+    assert.equal(out.summary.categoriesAuthorizedForActivation,0);
+    assert.equal(out.page.focus,"mapping");
+    assert.ok(out.page.categories.length<=3);
+    actual.push(...out.page.categories.map(x=>x.sourceCategoryId));
+    after=out.page.nextCursor;
+    pages++;
+    assert.ok(pages<=297);
+  }while(after!==null);
+  assert.deepEqual(actual,expected);
+  assert.equal(new Set(actual).size,actual.length);
+  assert.equal(plan(input,{focus:"mapping",after:queue.reviewQueue.at(-1).sourceCategoryId})
+    .page.categories.length,0);
+});
+
+test("service focus brings unverified source anomalies and name/scope handoffs together",()=>{
+  const input=fresh();
+  const expected=queue.reviewQueue.filter(x=>
+    x.flaggedSourceServiceIds.length>0||
+    x.serviceNameDraftsUnverified>0||
+    x.serviceScopeDraftsUnverified>0||
+    x.serviceScopeConcernRowsUnverified>0||
+    x.unresolvedProposedNameConflicts.length>0||
+    x.outstandingNameScopeHandoffs.length>0);
+  assert.ok(expected.length>0);
+  const page=plan(input,{focus:"service",limit:5});
+  assert.equal(page.page.focus,"service");
+  assert.deepEqual(page.page.categories.map(x=>x.sourceCategoryId),
+    expected.slice(0,5).map(x=>x.sourceCategoryId));
+  assert.equal(page.summary.categoriesWithServiceReviewSignals,expected.length);
+  for(const c of page.page.categories){
+    const source=queue.reviewQueue.find(x=>x.sourceCategoryId===c.sourceCategoryId);
+    assert.deepEqual(c.serviceReviewIssues.flaggedOriginalServiceIds,
+      source.flaggedSourceServiceIds);
+    assert.equal(c.serviceReviewIssues.serviceNameDraftsUnverified,
+      source.serviceNameDraftsUnverified);
+    assert.equal(c.serviceReviewIssues.scopeConcernRowsUnverified,
+      source.serviceScopeConcernRowsUnverified);
+    assert.ok(c.tasks.every(t=>t.qualifiedSignoffVerified===false));
+  }
+  if(expected.length>5){
+    const continuation=plan(input,{focus:"service",limit:5,
+      after:page.page.nextCursor});
+    assert.deepEqual(continuation.page.categories.map(x=>x.sourceCategoryId),
+      expected.slice(5,10).map(x=>x.sourceCategoryId));
+  }
+});
+
+test("unknown focus or altered mapping lineage fails closed before issuing reviewer action cards",()=>{
+  const input=fresh();
+  for(const focus of ["safety-approved","ten-categories",1,null,"M005_DONE"]){
+    assert.throws(()=>plan(input,{focus}),/Invalid reviewer batch/);
+  }
+  const altered=structuredClone(queue);
+  altered.reviewQueue[0].historicalNameEn="Invented approved trade";
+  assert.throws(()=>selectNextHumanReviewActions(altered,input),
+    /diverged|mismatch|changed|Invalid/);
+  const manipulated=structuredClone(queue);
+  manipulated.reviewQueue[0].sourceGroupId="fake-unreviewed-parent";
+  assert.throws(()=>selectNextHumanReviewActions(manipulated,input),
+    /diverged|mismatch|changed|Invalid/);
+});
+
+test("CLI focus rejects unknown modes and never creates activation or source aliases",()=>{
+  const cwd=resolve(import.meta.dirname,"..");
+  const run=(...args)=>execFileSync(process.execPath,
+    ["scripts/catalog-review-next-actions.mjs",...args],{
+      cwd,encoding:"utf8",timeout:90_000,maxBuffer:20_000_000,
+      stdio:["ignore","pipe","pipe"],
+    });
+  for(const focus of ["mapping","service"]){
+    const out=JSON.parse(run("--next","--focus="+focus,"--limit=2"));
+    assert.equal(out.page.focus,focus);
+    assert.ok(out.page.categories.length<=2);
+    assert.equal(out.summary.categoriesAuthorizedForActivation,0);
+    assert.equal(out.summary.servicesAuthorizedForActivation,0);
+    assert.equal(out.summary.sqlStatementsGenerated,0);
+    assert.equal(out.summary.approvedAliases,0);
+  }
+  for(const args of [
+    ["--next","--focus=approved"],
+    ["--summary","--focus=mapping"],
+    ["--next","--focus=all","--focus=service"],
+  ])assert.notEqual(spawnSync(process.execPath,
+      ["scripts/catalog-review-next-actions.mjs",...args],{cwd,timeout:90_000})
+      .status,0,args.join(" "));
 });
