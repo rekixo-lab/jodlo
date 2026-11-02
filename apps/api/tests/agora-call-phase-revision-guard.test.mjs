@@ -164,3 +164,102 @@ test("unapproved media duration is not invented by phase-revision validation", (
   assert.equal(result.result.revision, 3);
   // Future M-005 T02 duration and media expiry remain founder-gated.
 });
+
+test("losing cancel/decline/busy/timeout receipt cannot replay on the winner's connected or ended branch",()=>{
+  const initial=call();
+  const acceptedCommand=cmd(WORKER,"accept",0,CREATED+1000);
+  const accepted=decideSyntheticAgoraCallEvent(initial,acceptedCommand);
+  assert.equal(accepted.kind,"apply");
+  const connectedCommand=cmd(null,"media_ready",1,CREATED+2000);
+  const connected=decideSyntheticAgoraCallEvent(accepted.result,connectedCommand);
+  assert.equal(connected.kind,"apply");
+  const endedCommand=cmd(CALLER,"hangup",2,CREATED+3000);
+  const ended=decideSyntheticAgoraCallEvent(connected.result,endedCommand);
+  assert.equal(ended.kind,"apply");
+
+  // Every competing terminal receipt is internally valid on ringing (and
+  // matches its own original actor/event/key/time) but cannot be part of the
+  // winning accept -> media_ready -> hangup history. A persisted/corrupted
+  // loser must never be replayed as a successful action.
+  const terminalCases=[
+    [CALLER,"cancel",CREATED+900],
+    [WORKER,"decline",CREATED+900],
+    [WORKER,"busy",CREATED+900],
+    [null,"ring_timeout",DEADLINE],
+  ];
+  for(const [actor,event,time] of terminalCases){
+    const loserCommand=cmd(actor,event,0,time);
+    const loser=decideSyntheticAgoraCallEvent(initial,loserCommand);
+    assert.equal(loser.kind,"apply",event);
+    for(const current of [connected.result,ended.result]){
+      assert.deepEqual(
+        decideSyntheticAgoraCallEvent(current,loserCommand,loser.receipt),
+        reject("KEY_CONFLICT"),event+"/"+current.phase);
+      assert.deepEqual(
+        assessSyntheticAgoraSignalingIntent(current,loserCommand,loser.receipt),
+        deny("KEY_CONFLICT"),event+"/"+current.phase);
+    }
+  }
+
+  // Genuine winning history remains replayable after later revisions.
+  for(const [oldCommand,receipt] of [
+    [acceptedCommand,accepted.receipt],
+    [connectedCommand,connected.receipt],
+    [endedCommand,ended.receipt],
+  ]){
+    assert.deepEqual(decideSyntheticAgoraCallEvent(ended.result,oldCommand,receipt),
+      {kind:"replay",receipt});
+    assert.deepEqual(assessSyntheticAgoraSignalingIntent(
+      ended.result,oldCommand,receipt),{kind:"replay_suppressed"});
+  }
+});
+
+test("competing accepted-to-ended terminal receipts cannot replay after connected-to-ended",()=>{
+  const initial=call();
+  const acceptCommand=cmd(WORKER,"accept",0,CREATED+1000);
+  const accepted=decideSyntheticAgoraCallEvent(initial,acceptCommand);
+  assert.equal(accepted.kind,"apply");
+  const connected=decideSyntheticAgoraCallEvent(
+    accepted.result,cmd(null,"media_ready",1,CREATED+2000));
+  assert.equal(connected.kind,"apply");
+  const ended=decideSyntheticAgoraCallEvent(
+    connected.result,cmd(WORKER,"hangup",2,CREATED+3000));
+  assert.equal(ended.kind,"apply");
+  assert.equal(ended.result.revision,3);
+
+  // These receipts describe valid but mutually exclusive shorter histories:
+  // accepted -> ended(2), not accepted -> connected(2) -> ended(3).
+  for(const [actor,event] of [
+    [CALLER,"hangup"],[WORKER,"hangup"],[null,"media_failed"],
+  ]){
+    const command=cmd(actor,event,1,CREATED+1500);
+    const shortEnd=decideSyntheticAgoraCallEvent(accepted.result,command);
+    assert.equal(shortEnd.kind,"apply");
+    assert.equal(shortEnd.result.phase,"ended");
+    assert.equal(shortEnd.result.revision,2);
+    assert.deepEqual(decideSyntheticAgoraCallEvent(
+      ended.result,command,shortEnd.receipt),reject("KEY_CONFLICT"));
+    assert.deepEqual(assessSyntheticAgoraSignalingIntent(
+      ended.result,command,shortEnd.receipt),deny("KEY_CONFLICT"));
+  }
+});
+
+test("terminal same-revision retry remains exactly idempotent but cannot manufacture a successor",()=>{
+  const initial=call();
+  const cancelCmd=cmd(CALLER,"cancel",0,CREATED+1000);
+  const cancelled=decideSyntheticAgoraCallEvent(initial,cancelCmd);
+  assert.equal(cancelled.kind,"apply");
+  assert.deepEqual(decideSyntheticAgoraCallEvent(
+    cancelled.result,cancelCmd,cancelled.receipt),
+    {kind:"replay",receipt:cancelled.receipt});
+  // Accepted -> ended(2) is a valid *independent* winner but not a
+  // successor to the terminal cancelled(1) receipt.
+  const accept=decideSyntheticAgoraCallEvent(
+    initial,cmd(WORKER,"accept",0,CREATED+1000));
+  assert.equal(accept.kind,"apply");
+  const ended=decideSyntheticAgoraCallEvent(
+    accept.result,cmd(WORKER,"hangup",1,CREATED+2000));
+  assert.equal(ended.kind,"apply");
+  assert.deepEqual(decideSyntheticAgoraCallEvent(
+    ended.result,cancelCmd,cancelled.receipt),reject("KEY_CONFLICT"));
+});
