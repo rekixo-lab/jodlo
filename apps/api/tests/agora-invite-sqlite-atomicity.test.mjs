@@ -11,10 +11,8 @@ import { optInAsWorker } from "../src/modules/workers/profile.ts";
 import { publishListing } from "../src/modules/workers/listings.ts";
 import { issueSession, revokeSession } from "../src/modules/identity/sessions.ts";
 import { setOwnWorkerAgoraCallPreference } from "../src/modules/workers/agora-call-preference.ts";
-import {
-  prepareSyntheticSafetyCheckedAgoraInvite,
-  prepareSyntheticConsentEpochBoundAgoraInvite,
-} from "../src/modules/interactions/agora-invite-safety.ts";
+import { prepareSyntheticConsentEpochBoundAgoraInvite } from
+  "../src/modules/interactions/agora-invite-safety.ts";
 import { validIdempotencyKey, validOpaqueId } from "../src/modules/shared/identifiers.ts";
 
 /**
