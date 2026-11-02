@@ -251,11 +251,12 @@ async function previewSyntheticUnsentOutbox(db,{
        !Number.isSafeInteger(row.consent_revision) ||
        row.current_revision!==row.consent_revision ||
        nowMs >= row.ring_deadline_ms) return withheld;
-    const decision=await prepareSyntheticSafetyCheckedAgoraInvite(
+    const decision=await prepareSyntheticConsentEpochBoundAgoraInvite(
       localD1Adapter(db),callerBearer,row.listing_id,
       row.call_id,nowMs,row.ring_deadline_ms,risk,
     );
     if(decision.kind!=="prepared" ||
+       decision.originalConsentRevision!==row.consent_revision ||
        decision.call.callerAccountId!==row.caller_id ||
        decision.call.workerAccountId!==row.worker_id ||
        decision.call.listingId!==row.listing_id) return withheld;
