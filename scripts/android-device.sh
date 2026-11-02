@@ -91,12 +91,14 @@ fi
 
 [[ -d "$sdk/platforms/android-35" ]] || die "Android SDK platform 35 missing. Install sdkmanager 'platforms;android-35'."
 [[ -d "$sdk/build-tools/35.0.0" ]] || die "Android build-tools 35.0.0 missing. Install sdkmanager 'build-tools;35.0.0'."
-# ':core' pins jvmToolchain(17). A Java runtime or JDK 21 can run
-# Gradle itself while still failing to compile the Core after several minutes.
-# Select a complete JDK 17 (java + javac), not merely 'java' on PATH.
+# Gradle 8.10.2 can build JODLO on a full JDK 17 OR 21.
+# Both :core and :app still compile Java 17 bytecode.
+# Respect the developer's already working JAVA_HOME; never change system Java.
 jdk_candidates=()
-if [[ -n "${JODLO_JDK17_HOME:-}" ]]; then
-  # Explicit override: fail on invalid input rather than unexpectedly use another JDK.
+if [[ -n "${JODLO_JDK_HOME:-}" ]]; then
+  jdk_candidates+=("$JODLO_JDK_HOME")
+elif [[ -n "${JODLO_JDK17_HOME:-}" ]]; then
+  # Historical explicit setting remains JDK17 only.
   jdk_candidates+=("$JODLO_JDK17_HOME")
 else
   if [[ -n "${JAVA_HOME:-}" ]]; then jdk_candidates+=("$JAVA_HOME"); fi
@@ -106,23 +108,31 @@ else
       jdk_candidates+=("$(dirname "$(dirname "$resolved_javac")")")
     fi
   fi
-  for standard_jdk in /usr/lib/jvm/java-17-openjdk-* /usr/lib/jvm/temurin-17-* "$HOME/.sdkman/candidates/java/current"; do
+  for standard_jdk in /usr/lib/jvm/java-17-openjdk-* /usr/lib/jvm/java-21-openjdk-* \
+    /usr/lib/jvm/temurin-17-* /usr/lib/jvm/temurin-21-* \
+    "$HOME/.sdkman/candidates/java/current"; do
     if [[ -d "$standard_jdk" ]]; then jdk_candidates+=("$standard_jdk"); fi
   done
 fi
-
-jdk17=""
+jdk_home=""
+jdk_major=""
 for candidate in "${jdk_candidates[@]}"; do
   [[ -x "$candidate/bin/java" && -x "$candidate/bin/javac" ]] || continue
   version="$("$candidate/bin/javac" -version 2>&1)" || continue
   case "$version" in
-    "javac 17"|"javac 17."*) jdk17="$candidate"; break ;;
+    "javac 17"|"javac 17."*) major=17 ;;
+    "javac 21"|"javac 21."*) major=21 ;;
+    *) continue ;;
   esac
+  if [[ -n "${JODLO_JDK17_HOME:-}" && "$major" != 17 ]]; then continue; fi
+  jdk_home="$candidate"
+  jdk_major="$major"
+  break
 done
-[[ -n "$jdk17" ]] || die "Java 17 JDK not found (Gradle :core requires javac 17). Install with: sudo apt update && sudo apt install -y openjdk-17-jdk ; then rerun npm run android:run. For a custom JDK set JODLO_JDK17_HOME=/absolute/path/to/jdk17."
-export JAVA_HOME="$jdk17"
+[[ -n "$jdk_home" ]] || die "No full JDK 17 or 21 found (java + javac). Your existing JDK 21 works: set JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 or JODLO_JDK_HOME=/path/to/jdk. Legacy JODLO_JDK17_HOME accepts Java 17 only."
+export JAVA_HOME="$jdk_home"
 export PATH="$JAVA_HOME/bin:$PATH"
-printf 'JODLO: Java 17 JDK selected: %s\n' "$JAVA_HOME"
+printf 'JODLO: Using full JDK %s: %s (Java 17 bytecode target)\n' "$jdk_major" "$JAVA_HOME"
 if command -v gradle >/dev/null 2>&1; then
   gradle_bin="$(command -v gradle)"
 elif [[ -x "$HOME/.local/opt/gradle-8.10.2/bin/gradle" ]]; then

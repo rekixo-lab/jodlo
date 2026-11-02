@@ -16,6 +16,10 @@ jobs:
   build-android:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        java-version: ['17', '21']
     steps:
       - uses: actions/checkout@v4
       - name: Verify approved flat UI rules
@@ -23,7 +27,7 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: ${{ matrix.java-version }}
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
@@ -36,12 +40,18 @@ jobs:
           "$SDK_MANAGER" "platforms;android-35" "build-tools;35.0.0"
       - name: Compile real Android debug APK (no production signing or deployment)
         run: gradle -p apps/android -PincludeAndroidApp=true :app:assembleDebug --no-daemon
-      - name: Verify APK exists and print checksum
+      - name: Verify APK and Java 17 bytecode on selected JDK
         run: |
           test -s apps/android/app/build/outputs/apk/debug/app-debug.apk
           sha256sum apps/android/app/build/outputs/apk/debug/app-debug.apk
+          CORE_CLASS="$(find apps/android/core/build/classes/kotlin/main -type f -name '*.class' -print -quit)"
+          test -n "$CORE_CLASS"
+          javap -verbose "$CORE_CLASS" | grep -q 'major version: 61'
+      - name: Run Kotlin Core verification under JDK 21
+        if: matrix.java-version == '21'
+        run: gradle -p apps/android :core:verifyHeadlessCore --no-daemon
       - name: Save temporary debug APK for physical-device testing (main only)
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && matrix.java-version == '17'
         uses: actions/upload-artifact@v4
         with:
           name: jodlo-debug-apk-${{ github.sha }}

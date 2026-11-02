@@ -4,8 +4,20 @@ plugins {
 repositories {
     mavenCentral()
 }
-kotlin {
-    jvmToolchain(17)
+// Java 17 and 21 can both build this module without a separate JDK 17 toolchain.
+// The source and resulting bytecode remain Java 17-compatible on both hosts.
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+tasks.withType<org.gradle.api.tasks.compile.JavaCompile>().configureEach {
+    options.release.set(17)
+}
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+    kotlinOptions {
+        jvmTarget = "17"
+        freeCompilerArgs += "-Xjdk-release=17"
+    }
 }
 tasks.register<JavaExec>("verifyContracts") {
     group = "verification"
