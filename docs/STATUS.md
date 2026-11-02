@@ -1,13 +1,22 @@
-# JODLO — current state, 2026-10-27
+# JODLO — current state, 2026-11-02
 
-## 2026-11-02 — Nonvisual business action / outcome audit (PR CI PENDING)
+## 2026-11-02 — Cross-route public discovery state consistency (ENGINEERING PR, CI PENDING)
+
+- **Next backend priority, NOT Android:** verify that public `availableOnly=1` Catalog/Search (legacy and cursor), unpaged/paged public listings, and private owner listing routes all reflect the SAME current server-owned account/category/moderation/publication facts.
+- **Added test on isolated branch:** `apps/api/tests/public-discovery-state-consistency.test.mjs` uses real local D1 migrations, actual `/api/v1` HTTP router, three independently issued bearer sessions, two workers plus customer, explicit worker opt-in, two Categories, active/inactive status and concurrent public listing pagination. It checks that disabling a worker, hiding a listing, unpublishing the last eligible listing, or deactivating a Category cannot leave stale available-only worker suggestions on other API routes.
+- **Stale search safety:** a previously returned active Category cannot later be published by an authenticated Worker after its server-owned Category activation is withdrawn, even if the client still possesses the old search response or adds an unauthorized `verified` field.
+- **Scope and limits:** test-only, synthetic records; no new public routes, no SQL migration, no Category activation of the 889-source archive, no private areas/locations, live Agora, reports, payments, Android, credentials or remote deployment. Existing source behavior is being *validated*, not a claim that area or callability policies are approved. M-003/005/006/007/008 unchanged.
+- **Verification requirement:** actual PR-head foundation CI, then independent merged-main CI before marking this test proven.
+
+
+## 2026-11-02 — Nonvisual business action / outcome audit (MERGED, VERIFIED)
 
 - **Scope:** Android development was explicitly deprioritized by the founder. The immediate task is to audit JODLO's approved customer/worker/system actions and what database/API behavior each actually produces, using the legacy Finworkar repositories only as read-only behavioral references.
-- **Audit artifact (new branch, not merged):** [Business Logic Audit](BUSINESS_LOGIC_AUDIT_2026-11-02.md) inventories real HTTP+D1 actions versus internal synthetic contracts and not-yet-approved workflows. It includes evidence paths and the next nonvisual engineering order. It is **not** a percentage-completion claim or full security audit.
-- **Regression test (PR-head CI PENDING):** `apps/api/tests/business-logic-action-boundaries.test.mjs` exercises real local D1-backed bearer accounts, opt-in, deliberate active Category publication, available-only customer discovery, foreign-owner delete denial and unpublish. It also tests that an approved listing **does not** enable unapproved call/invite/contact/report/block/payment/deletion/call-preference routes or imply worker call consent.
+- **Audit artifact (merged into main):** [Business Logic Audit](BUSINESS_LOGIC_AUDIT_2026-11-02.md) inventories real HTTP+D1 actions versus internal synthetic contracts and not-yet-approved workflows. It includes evidence paths and the next nonvisual engineering order. It is **not** a percentage-completion claim or full security audit.
+- **Regression test (merged, both CI green):** `apps/api/tests/business-logic-action-boundaries.test.mjs` exercises real local D1-backed bearer accounts, opt-in, deliberate active Category publication, available-only customer discovery, foreign-owner delete denial and unpublish. It also tests that an approved listing **does not** enable unapproved call/invite/contact/report/block/payment/deletion/call-preference routes or imply worker call consent.
 - **Already-approved decisions unchanged:** JODLO separate from Finworkar; one account/customer + worker opt-in; Hindi (Devanagari)/English only; all 889 historical Categories/7,267 Services in human review scope (not automatically active); direct first-contact **Agora IP AUDIO**; worker incoming-call separate default-OFF consent. Bilaspur/Raipur city names selected without area/location approval.
 - **Still BLOCKED at dependent implementation boundaries:** M-003 privacy/locality/deletion and call metadata retention; M-005 14 unresolved Agora operational policy decisions, actual category/editorial/legal qualification and admin/moderation workflow; M-006 live provider/RTC signaling; M-008 live Google OAuth; M-007 production-only release. No new founder decision is required merely to audit or add fail-closed synthetic regression tests.
-- **Evidence/next exact action:** open isolated PR, run its actual `npm test`/foundation checks, repair any failure, and independently recheck `main` after a permitted merge. No Android code, Cloudflare staging/deployment, secrets, service activation, real user data or legacy Finworkar files modified in this milestone.
+- **Verified:** [PR #177](https://github.com/rekixo-lab/jodlo/pull/177) squash-merged as `1f0012767847deca5ea2ebae71ea408d2e973c8f`, [exact PR-head CI #41472378238](https://github.com/rekixo-lab/jodlo/actions/runs/41472378238) **SUCCESS**, and [independent merged-main CI #41473271888](https://github.com/rekixo-lab/jodlo/actions/runs/41473271888) **SUCCESS**. No Android code, Cloudflare staging/deployment, secrets, service activation, real user data or legacy Finworkar files modified in this milestone.
 
 
 
