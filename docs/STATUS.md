@@ -1,5 +1,11 @@
 # JODLO — current state, 2026-10-27
 
+## 2026-11-02 — Native Google/Worker screen integration (engineering PR; tests pending)
+- **New code:** Credential Manager Google ID token adapter gated on a public Web OAuth client ID + trusted HTTPS API origin, connected to existing backend session verification. Worker tab reuses one in-memory session, headless private listing pages, opt-in and write uncertainty safeguards. No real Google provider/Android device has been tested by this source change.
+- **Pending CI:** native :app:assembleDebug and existing worker/Kotlin suites on exact PR SHA and merged main; no release claim until both green.
+- **Product gates:** real OAuth console/testing M-008, founder-approved finalized visual tokens M-004, locality/privacy M-003, real Agora policy/SDK M-005/006, production-only M-007 remain unverified. No remote deployment or secrets.
+
+
 ## 2026-11-02 — Native Android entrypoint source (PR #169; CI verification pending)
 - **Code on review branch:** First separately opt-in Android `:app` includes Compose launcher, centrally scoped provisional theme, localized Hindi/English guest Browse/Search/Category selection/Public Listing UI. All network calls use existing strict headless Kotlin Core and an optional vetted HTTPS origin; no worker identity/phone/GPS/real RTC/payment data.
 - **CI requirement:** Existing SDK-free JVM Worker/Core checks must pass, plus a separate Android SDK `:app:assembleDebug` workflow. Neither a source commit nor the earlier JVM suite is proof of an APK or device acceptance. Keep this milestone pending until exact PR and merged-main runs are green.

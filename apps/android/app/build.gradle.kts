@@ -20,6 +20,12 @@ if (apiOrigin.isNotEmpty()) {
     }
 }
 
+val googleWebClientId = providers.gradleProperty("jodloGoogleWebClientId").orNull?.trim().orEmpty()
+require(googleWebClientId.isEmpty() ||
+    Regex("""^[0-9]+-[A-Za-z0-9_-]+\\.apps\\.googleusercontent\\.com$""").matches(googleWebClientId)) {
+    "jodloGoogleWebClientId must be a public WEB OAuth client ID only"
+}
+
 android {
     namespace = "com.rekixo.jodlo"
     compileSdk = 35
@@ -31,6 +37,7 @@ android {
         versionCode = 1
         versionName = "0.1.0-dev"
         buildConfigField("String", "API_ORIGIN", "\"" + apiOrigin + "\"")
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"" + googleWebClientId + "\"")
     }
 
     buildFeatures {
@@ -57,4 +64,7 @@ dependencies {
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    implementation("androidx.credentials:credentials:1.5.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.5.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
 }
