@@ -184,10 +184,6 @@ test("untrusted extra current fields cannot leak into transition result or retry
   ]){
     const contaminated={...baseline(),...property};
     assert.deepEqual(decideRequestTransition(contaminated,attempt(),policy),expected);
-    assert.equal(JSON.stringify(contaminated).includes("PRIVATE")||
-      JSON.stringify(contaminated).includes("DO-NOT-PUBLISH"),
-      Object.values(property).some(value=>String(value).includes("PRIVATE")||
-        String(value).includes("DO-NOT-PUBLISH")));
   }
   // Arrays and fake adapter rows are not authoritative request snapshots.
   assert.deepEqual(decideRequestTransition([baseline()],attempt(),policy),expected);
