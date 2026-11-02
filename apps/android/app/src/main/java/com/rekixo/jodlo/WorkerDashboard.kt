@@ -4,16 +4,14 @@ import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -35,6 +33,10 @@ import com.rekixo.jodlo.core.network.SessionResult
 import com.rekixo.jodlo.core.network.WorkerState
 import com.rekixo.jodlo.core.network.WorkerWriteCompletion
 import com.rekixo.jodlo.core.network.WorkerWriteState
+import com.rekixo.jodlo.ui.theme.JodloButton
+import com.rekixo.jodlo.ui.theme.JodloTextAction
+import com.rekixo.jodlo.ui.theme.JodloCard
+import com.rekixo.jodlo.ui.theme.JodloSizes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -168,8 +170,8 @@ internal fun WorkerDashboard(
     }
 
     LazyColumn(
-        modifier = Modifier.padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier.fillMaxSize().padding(JodloSizes.ScreenPadding),
+        verticalArrangement = Arrangement.spacedBy(JodloSizes.Gap),
     ) {
         item {
             Text(stringResource(R.string.worker_dashboard), style = MaterialTheme.typography.headlineMedium)
@@ -182,8 +184,8 @@ internal fun WorkerDashboard(
                 item { Text(stringResource(R.string.google_setup_required)) }
             } else {
                 item {
-                    Button(onClick = {
-                        if (busy) return@Button
+                    JodloButton(onClick = {
+                        if (busy) return@JodloButton
                         busy = true
                         message = 0
                         scope.launch {
@@ -207,10 +209,10 @@ internal fun WorkerDashboard(
             }
         } else {
             item {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(
+                Row(horizontalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
+                    JodloTextAction(
                         onClick = {
-                            if (busy) return@TextButton
+                            if (busy) return@JodloTextAction
                             // Clear PRIVATE screen state before requesting remote logout.
                             ownListings = emptyList()
                             ownerCursor = null
@@ -220,7 +222,7 @@ internal fun WorkerDashboard(
                         },
                         enabled = !busy,
                     ) { Text(stringResource(R.string.worker_logout)) }
-                    TextButton(
+                    JodloTextAction(
                         onClick = { checkedAction({ session.checkWorker() }) },
                         enabled = !busy,
                     ) { Text(stringResource(R.string.worker_check_profile)) }
@@ -230,7 +232,7 @@ internal fun WorkerDashboard(
                 WorkerState.UNKNOWN -> item { Text(stringResource(R.string.worker_check_first)) }
                 WorkerState.NO_DRAFT -> item {
                     Text(stringResource(R.string.worker_opt_in_explainer))
-                    Button(
+                    JodloButton(
                         onClick = {
                             checkedAction({ session.optIn() }, R.string.worker_opt_in_confirmed)
                         },
@@ -245,8 +247,8 @@ internal fun WorkerDashboard(
                                 stringResource(R.string.worker_uncertain_write),
                                 color = MaterialTheme.colorScheme.error,
                             )
-                            TextButton(onClick = {
-                                if (busy) return@TextButton
+                            JodloTextAction(onClick = {
+                                if (busy) return@JodloTextAction
                                 busy = true
                                 scope.launch {
                                     try {
@@ -257,7 +259,7 @@ internal fun WorkerDashboard(
                                     message = R.string.worker_recheck_not_proof
                                 }
                             }) { Text(stringResource(R.string.worker_recheck_read_only)) }
-                            TextButton(onClick = {
+                            JodloTextAction(onClick = {
                                 if (writes.acknowledgeUncertainty()) {
                                     writeState = writes.snapshot().state
                                     message = R.string.worker_review_acknowledged
@@ -267,16 +269,17 @@ internal fun WorkerDashboard(
                     } else {
                         item {
                             Text(stringResource(R.string.worker_my_listings), style = MaterialTheme.typography.titleMedium)
-                            TextButton(onClick = { loadOwnPage() }, enabled = !busy) {
+                            JodloTextAction(onClick = { loadOwnPage() }, enabled = !busy) {
                                 Text(stringResource(R.string.worker_refresh_listings))
                             }
                         }
                         items(ownListings, key = { "own-" + it.id }) { listing ->
-                            OutlinedCard(
+                            JodloCard(
                                 onClick = { selectedListing = listing.id },
+                                selected = selectedListing == listing.id,
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
-                                Column(Modifier.padding(12.dp)) {
+                                Column(Modifier.padding(JodloSizes.CardPadding)) {
                                     Text(stringResource(R.string.listing_reference, listing.id))
                                     Text(stringResource(R.string.worker_listing_category, listing.categoryId))
                                     Text(stringResource(if (listing.visible)
@@ -287,14 +290,14 @@ internal fun WorkerDashboard(
                             }
                         }
                         if (ownerCursor != null) item {
-                            TextButton(onClick = { loadOwnPage(ownerCursor) }, enabled = !busy) {
+                            JodloTextAction(onClick = { loadOwnPage(ownerCursor) }, enabled = !busy) {
                                 Text(stringResource(R.string.worker_load_more))
                             }
                         }
                         if (selectedListing != null) item {
-                            Button(
+                            JodloButton(
                                 onClick = {
-                                    val id = selectedListing ?: return@Button
+                                    val id = selectedListing ?: return@JodloButton
                                     mutate { writes.unpublish(id) }
                                 },
                                 enabled = canWrite,
@@ -304,16 +307,17 @@ internal fun WorkerDashboard(
                             Text(stringResource(R.string.worker_publish_category),
                                 style = MaterialTheme.typography.titleMedium)
                             Text(stringResource(R.string.worker_publish_explainer))
-                            TextButton(onClick = { loadCategories() }, enabled = !busy) {
+                            JodloTextAction(onClick = { loadCategories() }, enabled = !busy) {
                                 Text(stringResource(R.string.worker_choose_category))
                             }
                         }
                         items(categoryRows, key = { "cat-" + it.id }) { category ->
-                            OutlinedCard(
+                            JodloCard(
                                 onClick = { selectedCategory = category.id },
+                                selected = selectedCategory == category.id,
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
-                                Column(Modifier.padding(12.dp)) {
+                                Column(Modifier.padding(JodloSizes.CardPadding)) {
                                     Text(category.name)
                                     if (selectedCategory == category.id)
                                         Text(stringResource(R.string.worker_category_selected))
@@ -321,14 +325,14 @@ internal fun WorkerDashboard(
                             }
                         }
                         if (categoryCursor != null) item {
-                            TextButton(onClick = { loadCategories(categoryCursor) }, enabled = !busy) {
+                            JodloTextAction(onClick = { loadCategories(categoryCursor) }, enabled = !busy) {
                                 Text(stringResource(R.string.worker_load_more))
                             }
                         }
                         if (selectedCategory != null) item {
-                            Button(
+                            JodloButton(
                                 onClick = {
-                                    val id = selectedCategory ?: return@Button
+                                    val id = selectedCategory ?: return@JodloButton
                                     mutate { writes.publishExplicitCategory(id) }
                                 },
                                 enabled = canWrite,

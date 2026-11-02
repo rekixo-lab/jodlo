@@ -1,42 +1,52 @@
-# JODLO design-system specification — premium, coherent, reusable
+# JODLO design system — founder-approved flat black + subtle teal (2026-11-02)
 
-**Status:** founder-approved **quality direction only**; individual colors, screen layouts, typography and animation storyboard are **NOT approved**. **Before styling/building UI:** propose alternatives with visual samples/wireframes, receive founder input/approval, then record chosen numeric tokens here. Native Android remains `com.rekixo.jodlo`.
+**Status: APPROVED visual direction.** The founder selected and supplied two
+original UI screenshots on 2026-11-02. The binding design reference is
+[UI_REFERENCE_2026-11-02.md](UI_REFERENCE_2026-11-02.md); the tracked
+[flow redraw](assets/reference-flat-flow.svg) and
+[outlined-action redraw](assets/reference-icon-actions.svg) illustrate it.
+Earlier "visual colors/motion not approved" and alternative palette sections
+are superseded. Android application ID remains \`com.rekixo.jodlo\`.
 
-## Visual intent
+## Selected identity
 
-Premium yet practical Indian local-work app: refined visual hierarchy, clear contrast, high-quality icons, generous intentional whitespace, appealing but restrained accents, coherent shadow/depth, tactile components and smooth transitions. Smooth and light on budget Android devices and weak connections. Avoid visual noise, fake trust badges, huge animations or excessive translucent blur.
+- **Dark-only**, flat, almost fully black (\`#000000\`), with near-white text
+  and a muted secondary gray (\`#929292\`).
+- **Hairline borders**, neutral \`#262626\` and deep green selected/CTA stroke
+  \`#08391A\`, no gradient, glass/blur, shadow, 3D or thick outlines.
+- **Green-teal active state**, \`#40C877\`, sparingly for actionable text and icons.
+  Never use green alone as the sole selected/disabled/error indication.
+- **Corner language:** quiet rounded 10dp cards/fields, 12dp buttons/icon tiles.
+  Size and 48dp touch targets are density-independent accessibility adjustments,
+  not claims that PNG pixel radii equal device DP.
+- **Motion:** optional subtle state feedback only; always obey reduced motion
+  and avoid perpetual transitions. See [MOTION_3D.md](MOTION_3D.md).
+- **One reusable component set**, two localized resource dictionaries (Hindi,
+  English), and no per-screen invented colors or radius numbers.
 
-## Single source of truth (names are conceptual until UI sign-off)
+## Authoritative Android owners
 
-| Token family | Central owner (Android) | Rules |
-| --- | --- | --- |
-| Color roles | `core/designsystem/theme/JodloColorScheme.kt` | Material 3 light/dark semantic color roles; primary/accent/surface/text/error/outline; no per-screen raw HEX |
-| Type | `JodloTypography.kt` | One type scale, legible Devanagari/Latin fallbacks, density/accessibility font scaling |
-| Shapes | `JodloShapes.kt` | Reusable corner radius scale, no ad-hoc DP corners |
-| Spacing & sizes | `JodloSpacing.kt` | Common grid rhythm, touch target/safe-inset adaptation, avoid arbitrary per-screen spacing |
-| Borders/strokes | `JodloStrokes.kt` | Subtle strokes/elevation/shadows; theme-aware contrast and tokenized stroke widths |
-| Motion | `JodloMotion.kt` | Spring/easing/duration, shared transition primitives, system motion scale |
-| Components | `core/designsystem/components/` | Buttons, tabs, cards, inputs, chips, alerts, sheets, placeholders with stable APIs |
-| User text | `res/values/strings.xml`, localized `values-hi`, plural resources | `stringResource`; no inline user-facing copy or raw content descriptions |
+| Role | Current code |
+| --- | --- |
+| Colors, shapes, typography, dark-only theme, spacing | \`apps/android/app/src/main/java/com/rekixo/jodlo/ui/theme/JodloTheme.kt\` |
+| Outline buttons/chips/cards/fields, square action controls | \`apps/android/app/src/main/java/com/rekixo/jodlo/ui/theme/JodloComponents.kt\` |
+| Customer browse/search/listings and primary navigation | \`apps/android/app/src/main/java/com/rekixo/jodlo/MainActivity.kt\` |
+| Worker sign-in/opt-in/owned-listing views and guarded actions | \`apps/android/app/src/main/java/com/rekixo/jodlo/WorkerDashboard.kt\` |
+| Localization | \`apps/android/app/src/main/res/values/strings.xml\` and \`values-hi/strings.xml\` |
+| Static UI tripwire | \`scripts/verify-approved-flat-ui.mjs\` |
 
-**Naming and organization** are proposed code contracts, not files already created. Avoid generating placeholder files until the first reusable feature actually needs them. No unrelated third-party theme frameworks merely for novelty.
+For **all future** JODLO screens use \`JodloTheme\`, \`JodloSizes\` and
+shared \`JodloButton\`, \`JodloTextAction\`, \`JodloChip\`, \`JodloCard\`,
+\`JodloSearchField\`, \`JodloSquareAction\` rather than raw Material filled
+widgets. Do not convert conceptual "Smart Action" payment/advertisement/phone
+icons into live UX until corresponding backend authorization, payment/calling
+policy and real integration are implemented.
 
-## Suggested premium directions for founder review — NOT decided
+## Quality gates
 
-- **Option A — Midnight Ink + Bright Teal:** clean dark ink / soft neutral surfaces, jewel teal highlights and restrained warm support tone; professional/trustworthy.
-- **Option B — Deep Graphite + Electric Violet:** crisp light/dark surfaces, violet accent, high-contrast typography and restrained gradients; modern tech-forward.
-- **Option C — Royal Blue + Warm Amber:** confident blue primary with warm interactive accents; service-oriented and approachable.
-
-Do not assign permanent HEX values, radius numbers, exact stroke widths, font or 3D art until founder selects/revises a direction. Present light+dark, Hindi labels, normal/large fonts, empty/error/loading states and perceived quality **for approval first**.
-
-## Global invariants
-
-- All screens consume the same theme; optional Material 3 dynamic color only if founder elects it and semantic contrast remains good.
-- UI feedback colors always express semantic states, not decoration that conflicts with error/success warnings.
-- Depth is built by measured elevation, overlay, outline and composited lighting; don't apply blur, glass effects or thick strokes to every row.
-- Motion/haptics visual grammar is central and shared. See [Motion & 3D](MOTION_3D.md).
-- Test 320dp-class compact screens, larger tablets, dark/light, Devanagari legibility, font scaling and accessibility. Don't promise perfect appearance without real device testing.
-
-## Approval and acceptance
-
-Before UI source, show founder two or three visual directions, tab/navigation motion feel and relevant 3D examples; get actual feedback, amend this doc with approved tokens and screenshots. Then implement shared tokens + components **once**, reuse everywhere, and verify no duplicate assets or constants. [ADR-0005](decisions/0005-reuse-tokens-premium-motion.md) · [Android Structure](ANDROID_STRUCTURE.md).
+GitHub CI checks design source conventions and Android APK compilation; neither
+is a device screenshot review. Android phones with 320dp width, long Hindi
+labels, accessibility font scaling, TalkBack, display cutouts, contrast and
+hardware back navigation still need interactive testing. Only measurable
+device results can establish real visual/polish or motion smoothness. Later
+screens may extend tokens without diverging from the approved look.
