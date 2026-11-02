@@ -17,6 +17,8 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+      - name: Verify approved flat UI rules
+        run: node scripts/verify-approved-flat-ui.mjs
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

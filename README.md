@@ -1,5 +1,7 @@
 # JODLO
 
+> **FOUNDER UI REFERENCE APPROVED — 2026-11-02:** The entire JODLO application uses the [flat black + hairline teal/green UI spec](docs/UI_REFERENCE_2026-11-02.md), based on the founder's two screenshots. Android screens share checked dark-only Compose tokens and outlined components; code style approval is not approval to deploy Agora, ads, payments, location or live Google OAuth.
+
 > **NATIVE ANDROID APP SOURCE CHECKPOINT — 2026-11-02:** [PR #169](https://github.com/rekixo-lab/jodlo/pull/169) adds a separate opt-in `:app` launcher and Compose guest Browse/Search/public Listings flow, backed by existing headless Kotlin Core. Build CI and review are mandatory; this is not a verified release APK, working cloud backend, Google Sign-In, Agora calling, payments or approved final visual design. Historical sections below describe earlier stages.
 
 > **AGORA RTC JOIN HARDENING — 2026-10-31:** Each customer/worker authenticates their **own** session only; no party ever needs the other party's bearer. Worker role uses a separate current D1 listing/consent/role-bound session query and synthetic accepted call identity, caller role checks its own live bearer. Outputs `prerequisite_only` **not** RTC access; no provider token, channel, SDK, call UI, push, call-history or remote deployment. Real M-003/M-005/006 policy and M-004/M-007 remain gated. [Agora voice runbook](docs/AGORA_VOICE.md).

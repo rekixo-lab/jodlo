@@ -1,4 +1,6 @@
-# JODLO native Android guest discovery — first buildable milestone
+# JODLO native Android app — Customer and Worker flows
+
+> **Founder-approved UI theme (2026-11-02):** Every Android screen now shares the [black/teal flat outlined reference](../../../../docs/UI_REFERENCE_2026-11-02.md) through `JodloTheme` and `JodloComponents`. No light-mode substitution, raised cards, glossy visuals or fake active calling/ads.
 
 This module adds a real Android `:app` with a launcher Activity, Compose UI, Hindi and English resources, and **read-only guest** Category browse/search/public-listing screens. It reuses the existing compiled `:core` secure one-shot HTTPS transport, typed DTOs and repository validation; no duplicate HTTP stack.
 

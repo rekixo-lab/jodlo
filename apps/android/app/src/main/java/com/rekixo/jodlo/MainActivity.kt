@@ -4,7 +4,9 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -15,15 +17,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedCard
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -35,6 +32,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.rekixo.jodlo.core.network.ApiOutcome
@@ -48,7 +46,14 @@ import com.rekixo.jodlo.core.network.PublicListing
 import com.rekixo.jodlo.core.network.RemoteCatalogRepository
 import com.rekixo.jodlo.core.network.RemoteWorkerRepository
 import com.rekixo.jodlo.core.network.asRequestSender
+import com.rekixo.jodlo.ui.theme.JodloPalette
 import com.rekixo.jodlo.ui.theme.JodloTheme
+import com.rekixo.jodlo.ui.theme.JodloButton
+import com.rekixo.jodlo.ui.theme.JodloTextAction
+import com.rekixo.jodlo.ui.theme.JodloCard
+import com.rekixo.jodlo.ui.theme.JodloChip
+import com.rekixo.jodlo.ui.theme.JodloSearchField
+import com.rekixo.jodlo.ui.theme.JodloSizes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -57,7 +62,12 @@ import kotlinx.coroutines.withContext
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        // Keep white system-bar icons on the founder-approved black canvas,
+        // even when the device runs in light system mode.
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(JodloPalette.Canvas.toArgb()),
+            navigationBarStyle = SystemBarStyle.dark(JodloPalette.Canvas.toArgb()),
+        )
         setContent {
             JodloTheme { JodloApp(this) }
         }
@@ -80,17 +90,17 @@ private fun JodloApp(activity: ComponentActivity) {
         onDispose { writes?.close() }
     }
     var section by rememberSaveable { mutableStateOf("customer") }
-    Column(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            Modifier.fillMaxWidth().padding(horizontal = JodloSizes.ScreenPadding),
+            horizontalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap),
         ) {
-            FilterChip(
+            JodloChip(
                 selected = section == "customer",
                 onClick = { section = "customer" },
                 label = { Text(stringResource(R.string.tab_customer)) },
             )
-            FilterChip(
+            JodloChip(
                 selected = section == "worker",
                 onClick = { section = "worker" },
                 label = { Text(stringResource(R.string.tab_worker)) },
@@ -211,18 +221,18 @@ private fun GuestDiscovery(repository: RemoteCatalogRepository?) {
 
     Scaffold { insets ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(insets).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.fillMaxSize().padding(insets).padding(JodloSizes.ScreenPadding),
+            verticalArrangement = Arrangement.spacedBy(JodloSizes.Gap),
         ) {
             Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineLarge)
             Text(stringResource(R.string.discovery_subtitle), style = MaterialTheme.typography.bodyMedium)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
+            Row(horizontalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
+                JodloChip(
                     selected = language == Language.HI,
                     onClick = { language = Language.HI },
                     label = { Text(stringResource(R.string.language_hindi)) },
                 )
-                FilterChip(
+                JodloChip(
                     selected = language == Language.EN,
                     onClick = { language = Language.EN },
                     label = { Text(stringResource(R.string.language_english)) },
@@ -231,7 +241,7 @@ private fun GuestDiscovery(repository: RemoteCatalogRepository?) {
             if (repository == null) {
                 Text(stringResource(R.string.no_api_origin), color = MaterialTheme.colorScheme.error)
             } else if (selected == null) {
-                OutlinedTextField(
+                JodloSearchField(
                     value = searchText,
                     onValueChange = { searchText = it; invalidQuery = false },
                     label = { Text(stringResource(R.string.search_label)) },
@@ -242,17 +252,17 @@ private fun GuestDiscovery(repository: RemoteCatalogRepository?) {
                     stringResource(R.string.search_validation),
                     color = MaterialTheme.colorScheme.error,
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { search() }, enabled = !loading) {
+                Row(horizontalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
+                    JodloButton(onClick = { search() }, enabled = !loading) {
                         Text(stringResource(R.string.search_action))
                     }
-                    TextButton(onClick = { browse() }, enabled = !loading) {
+                    JodloTextAction(onClick = { browse() }, enabled = !loading) {
                         Text(stringResource(R.string.browse_action))
                     }
                 }
                 if (showChoiceHint) Text(stringResource(R.string.choose_category))
             } else {
-                TextButton(onClick = { backToCategories() }) {
+                JodloTextAction(onClick = { backToCategories() }) {
                     Text(stringResource(R.string.back_action))
                 }
                 Text(selected!!.name, style = MaterialTheme.typography.titleLarge)
@@ -265,7 +275,7 @@ private fun GuestDiscovery(repository: RemoteCatalogRepository?) {
                     stringResource(R.string.request_failed),
                     color = MaterialTheme.colorScheme.error,
                 )
-                TextButton(onClick = {
+                JodloTextAction(onClick = {
                     selected?.let { showListings(it) } ?: browse()
                 }) { Text(stringResource(R.string.retry_action)) }
             } else if (repository != null) {
@@ -275,14 +285,14 @@ private fun GuestDiscovery(repository: RemoteCatalogRepository?) {
                     } else {
                         LazyColumn(
                             modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap),
                         ) {
                             items(categories, key = { it.id }) { category ->
-                                OutlinedCard(
+                                JodloCard(
                                     onClick = { showListings(category) },
                                     modifier = Modifier.fillMaxWidth(),
                                 ) {
-                                    Column(Modifier.padding(16.dp)) {
+                                    Column(Modifier.padding(JodloSizes.ScreenPadding)) {
                                         Text(category.name, style = MaterialTheme.typography.titleMedium)
                                         Text(category.slug, style = MaterialTheme.typography.bodySmall)
                                     }
@@ -296,11 +306,11 @@ private fun GuestDiscovery(repository: RemoteCatalogRepository?) {
                     } else {
                         LazyColumn(
                             modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap),
                         ) {
                             items(listings, key = { it.id }) { listing ->
-                                OutlinedCard(modifier = Modifier.fillMaxWidth()) {
-                                    Column(Modifier.padding(16.dp)) {
+                                JodloCard(modifier = Modifier.fillMaxWidth()) {
+                                    Column(Modifier.padding(JodloSizes.ScreenPadding)) {
                                         Text(stringResource(R.string.public_listing))
                                         Text(
                                             stringResource(R.string.listing_reference, listing.id),
