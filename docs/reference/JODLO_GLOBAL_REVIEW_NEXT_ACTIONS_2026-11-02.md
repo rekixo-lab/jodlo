@@ -13,16 +13,21 @@ The [new action view](../../scripts/catalog-review-next-actions.mjs) joins **the
 ```bash
 npm run catalog:review-next
 npm run catalog:review-next -- --limit=5
-npm run catalog:review-next -- --limit=5 --after=ORIGINAL_SOURCE_CATEGORY_ID
+npm run catalog:review-next -- --focus=mapping --limit=5
+npm run catalog:review-next -- --focus=service --limit=5
+npm run catalog:review-next -- --focus=mapping --limit=5 --after=ORIGINAL_SOURCE_CATEGORY_ID
 npm run catalog:review-next -- --summary
 npm run catalog:review-next-check
 ```
 
 - Default: at most **20** Category cards; `--limit=1..25` bounds each window. When `page.nextCursor` is non-null, provide it **unchanged** to the next `--after` request. The cursor is only valid for the current local attention snapshot; if underlying human drafts change, regenerate the first page.
 - Each card retains: original packet/group work reference via `packetNumber`, source Category ID and fingerprint, historic Hindi/English labels, source Service count, priority lane and reason codes, and **all three** editorial/occupational-and-legal/mapping human tasks with their existing statuses and optional unverified JODLO PR references.
+- **Mapping bridge (2026-11-03):** `originalCategoryMapping` reuses the independent SHA-checked **full-889 historical D1 compatibility audit**: source Category ID candidate, slug candidate (both *syntax-only*), explicit ID/slug/label issues, original source flags and pending human review. No automatic corrected ID, bilingual rewrite, finalized parent, or approval. The immutable Category ID, Group/Family and both historic labels must match the priority stream or the CLI fails closed.
+- **Service evidence bridge (2026-11-03):** `serviceReviewIssues` reuses validated original flagged Service IDs, unverified Service name/scope draft counts, specialist-concern row counts, unresolved cross-Category phrase conflicts and outstanding name/scope handoffs. It never assumes any service is safe, assigned to the correct parent or ready for contact.
+- `--focus=mapping` narrows the **review display** to historical Category syntax issues; `--focus=service` narrows it to existing Service-review signals, while `--focus=all` (default) still covers every original Category. A focus is **not** a release allowlist or a bypass of review for unflagged Categories. Keep the same `--focus` when continuing with `--after`.
 - The first-window ordering follows the **full existing review-attention queue**; it is **not** a legal hazard ranking, certification, quota, fixed pilot allowlist, or product rollout order. Later windows retain all 889 original items, including source IDs needing manual correction.
 - Optional `--review-root=RELATIVE_DIR` and `--progress-root=RELATIVE_DIR` reuse the **same strict path, symlink, source hash and input validation** as the upstream human-review tools. Source-locked inputs or original counts that do not match fail closed; no file is automatically rewritten.
-- `--check` verifies input coverage and zero authorization. `--summary` shows the 45/889/7267/2667 original coverage and unverified status counts; it does **not** claim completed human reviews, legal approval, or any remotely validated evidence.
+- `--check` verifies input coverage and zero authorization. `--summary` shows the 45/889/7267/2667 original coverage, source mapping-issue count, Service-review-signal count and unverified status counts; it does **not** claim completed human reviews, legal approval, or any remotely validated evidence. Syntax flags are reviewer hints, not an automatic legal safety assessment.
 
 ## Review acceptance remains separate
 
