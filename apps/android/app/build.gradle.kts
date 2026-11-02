@@ -22,7 +22,7 @@ if (apiOrigin.isNotEmpty()) {
 
 val googleWebClientId = providers.gradleProperty("jodloGoogleWebClientId").orNull?.trim().orEmpty()
 require(googleWebClientId.isEmpty() ||
-    Regex("""^[0-9]+-[A-Za-z0-9_-]+\\.apps\\.googleusercontent\\.com$""").matches(googleWebClientId)) {
+    Regex("""^[0-9]+-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$""").matches(googleWebClientId)) {
     "jodloGoogleWebClientId must be a public WEB OAuth client ID only"
 }
 
