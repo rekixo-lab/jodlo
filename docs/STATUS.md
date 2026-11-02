@@ -1,5 +1,16 @@
 # JODLO — current state, 2026-10-27
 
+## 2026-11-02 — Nonvisual business action / outcome audit (PR CI PENDING)
+
+- **Scope:** Android development was explicitly deprioritized by the founder. The immediate task is to audit JODLO's approved customer/worker/system actions and what database/API behavior each actually produces, using the legacy Finworkar repositories only as read-only behavioral references.
+- **Audit artifact (new branch, not merged):** [Business Logic Audit](BUSINESS_LOGIC_AUDIT_2026-11-02.md) inventories real HTTP+D1 actions versus internal synthetic contracts and not-yet-approved workflows. It includes evidence paths and the next nonvisual engineering order. It is **not** a percentage-completion claim or full security audit.
+- **Regression test (PR-head CI PENDING):** `apps/api/tests/business-logic-action-boundaries.test.mjs` exercises real local D1-backed bearer accounts, opt-in, deliberate active Category publication, available-only customer discovery, foreign-owner delete denial and unpublish. It also tests that an approved listing **does not** enable unapproved call/invite/contact/report/block/payment/deletion/call-preference routes or imply worker call consent.
+- **Already-approved decisions unchanged:** JODLO separate from Finworkar; one account/customer + worker opt-in; Hindi (Devanagari)/English only; all 889 historical Categories/7,267 Services in human review scope (not automatically active); direct first-contact **Agora IP AUDIO**; worker incoming-call separate default-OFF consent. Bilaspur/Raipur city names selected without area/location approval.
+- **Still BLOCKED at dependent implementation boundaries:** M-003 privacy/locality/deletion and call metadata retention; M-005 14 unresolved Agora operational policy decisions, actual category/editorial/legal qualification and admin/moderation workflow; M-006 live provider/RTC signaling; M-008 live Google OAuth; M-007 production-only release. No new founder decision is required merely to audit or add fail-closed synthetic regression tests.
+- **Evidence/next exact action:** open isolated PR, run its actual `npm test`/foundation checks, repair any failure, and independently recheck `main` after a permitted merge. No Android code, Cloudflare staging/deployment, secrets, service activation, real user data or legacy Finworkar files modified in this milestone.
+
+
+
 ## 2026-11-02 — Native Customer public pagination PR (CI verification pending)
 - Android Customer now wires existing Kotlin Core `browse(after)`, exhaustive `searchCursor(after)` and `pageListings(after)` into visible, tap-triggered 20-row continuation controls. Legacy ambiguity/choice Search still runs first; long searches restart in cursor mode instead of combining different pagination protocols.
 - One vertically scrollable flat-outline Customer screen, Hindi/English copy, explicit retry for failed next page, stale/cross-navigation response rejection and invalidated-anchor refresh required. No new API, account, GPS, call, payment or cloud resources.
