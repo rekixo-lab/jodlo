@@ -39,6 +39,35 @@ const RISK_FIELDS = [
   "recipientVerified", "privacyApproved",
 ] as const;
 
+/**
+ * Capture exactly the documented OWN DATA properties without executing
+ * getters. A mutable test adapter can change its input while the D1 query is
+ * awaited; never re-read the original risk object after validation.
+ * Non-enumerable, symbol, getter and unexpected private fields fail closed.
+ */
+function snapshotRisk(
+  value: unknown,
+  nowMs: number,
+): SyntheticAgoraInviteRisk | null {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  try {
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    if (Reflect.ownKeys(descriptors).length !== RISK_FIELDS.length ||
+        RISK_FIELDS.some(key =>
+          !Object.hasOwn(descriptors, key) ||
+          !Object.hasOwn(descriptors[key], "value"))) return null;
+    const candidate: unknown = Object.fromEntries(
+      RISK_FIELDS.map(key => [key, descriptors[key].value]),
+    );
+    return validRisk(candidate, nowMs) ? Object.freeze(candidate) : null;
+  } catch {
+    // Unexpected proxy/adapter behavior is never approval.
+    return null;
+  }
+}
+
 function validRisk(value: unknown, nowMs: number): value is SyntheticAgoraInviteRisk {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const record = value as unknown as Record<string, unknown>;
@@ -148,13 +177,16 @@ export async function prepareSyntheticSafetyCheckedAgoraInvite(
   risk: SyntheticAgoraInviteRisk | null,
 ): Promise<SyntheticInviteSafetyDecision> {
   if (!Number.isSafeInteger(nowMs) || nowMs < 0 ||
-      !Number.isSafeInteger(ringDeadlineMs) ||
-      !validRisk(risk, nowMs)) return DENIED;
+      !Number.isSafeInteger(ringDeadlineMs)) return DENIED;
+  const checkedRisk = snapshotRisk(risk, nowMs);
+  if (!checkedRisk) return DENIED;
   try {
     const target = await readCallerSessionBoundAgoraOptInTarget(
       db, callerBearer, listingId,
     );
-    return prepareForCurrentTarget(target, risk, callId, nowMs, ringDeadlineMs);
+    return prepareForCurrentTarget(
+      target, checkedRisk, callId, nowMs, ringDeadlineMs,
+    );
   } catch {
     // No leakage of D1 errors, identity, presence or block relationships.
     return DENIED;
@@ -182,15 +214,16 @@ export async function prepareSyntheticConsentEpochBoundAgoraInvite(
   risk: SyntheticAgoraInviteRisk | null,
 ): Promise<SyntheticEpochBoundInviteSafetyDecision> {
   if (!Number.isSafeInteger(nowMs) || nowMs < 0 ||
-      !Number.isSafeInteger(ringDeadlineMs) ||
-      !validRisk(risk, nowMs)) return DENIED;
+      !Number.isSafeInteger(ringDeadlineMs)) return DENIED;
+  const checkedRisk = snapshotRisk(risk, nowMs);
+  if (!checkedRisk) return DENIED;
   try {
     const evidence = await readCallerSessionBoundAgoraConsentEpoch(
       db, callerBearer, listingId,
     );
     if (!evidence) return DENIED;
     const result = prepareForCurrentTarget(
-      evidence.target, risk, callId, nowMs, ringDeadlineMs,
+      evidence.target, checkedRisk, callId, nowMs, ringDeadlineMs,
     );
     return result.kind === "prepared"
       ? Object.freeze({
