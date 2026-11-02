@@ -1,12 +1,21 @@
 # JODLO — current state, 2026-11-03
 
-## 2026-11-03 — Internal candidate batch uniqueness: no first-wins Worker conflicts (PR CI PENDING)
+## 2026-11-03 — Synthetic request-transition private projection / replay authorization (ENGINEERING PR, CI PENDING)
+
+- **Next NON-Android interaction milestone:** `apps/api/src/modules/interactions/request-contract.ts` previously spread unchecked `current` runtime objects into new results. An adapter-supplied extra private field could leak into an idempotency receipt; replay input accepted additional arbitrary fields. This is an engineering data minimization defect, independent of yet-undecided business policy.
+- **Code change:** strict, complete own-field schemas for request snapshot, command and persisted replay receipt (including its nested result); reject hidden, symbol, added/missing/unexpected runtime fields before transition/replay. The newly frozen transition result is built from **only five known fields**, never `...current`. Existing owner-only action, revision CAS intent, retry-key conflict and exact replay behavior are retained.
+- **Tests/documentation:** extend `apps/api/tests/request-contract.test.mjs` to deny injected privileged/contact/bearer/provider fields in current rows, commands and nested stored receipts, while confirming legitimate exact receipts replay after later revisions. See [request transition private-projection contract](REQUEST_TRANSITION_PRIVACY_BOUNDARY_2026-11-03.md). Existing SQLite/unique-key and actor safety tests remain intact.
+- **Product boundary:** this remains the **PURE TEST-ONLY** synthetic request reducer, NOT a live request-first booking system. Customer first contact remains approved direct **Agora IP AUDIO** (ADR-0013); real sessions, calls, blocks, risk limits, presence, Call admission/RTC and any future authenticated request APIs await M-003/M-005/M-006. No public route, D1 migration, Android, actual worker data, payment, cloud staging/production or Finworkar writes.
+- **PR-head CI PENDING:** do not claim runtime/security coverage or merge until GitHub Foundation Actions succeed for this head SHA; after merge, independently verify merged-main CI.
+
+
+## 2026-11-03 — Internal candidate batch uniqueness: no first-wins Worker conflicts (MERGED, VERIFIED)
 
 - **Real code defect addressed, non-Android:** `apps/api/src/modules/discovery/candidate-policy.ts` previously skipped repeat `workerAccountId` records in a batch. Distinct internal states/Category lists could make matching depend on arbitrary query order and silently discard contradictory facts. The pure selector now **fails closed for ANY duplicate worker ID** (even identical duplicates) and for any duplicate Category within a single Worker row; distinct Workers can still share a Category.
 - **Complete preflight before a policy callback:** The entire 100-row-bounded source is validated prior to any injected approval function or any partial result, including trailing duplicates beyond the requested limit, self-rows or rows lacking the selected Category. Existing policy injection, no-self, Category filtering, 25-result cap and opaque-ID-only return are preserved for valid batches.
 - **Evidence/tests:** regression matrix in `apps/api/tests/candidate-policy.test.mjs` for contradictory block/status/Category facts, exact duplicates, reordered data, trailing duplicates, no pre-validation callback and duplicate intra-worker Category. See [candidate-source uniqueness contract](CANDIDATE_SOURCE_UNIQUENESS_2026-11-03.md).
 - **Policy boundary:** this is a **SYNTHETIC INTERNAL helper**, NOT real Worker matching, approved ranking, real caller contact, D1 transactional admission, published user endpoint, or trust certification. M-003 and M-005 current visibility/abuse/blocks/presence policy, M-006 live Agora, M-007 production and M-008 OAuth remain gated. No new service/category activation, Android, Cloudflare staging/deployment, PII, payment or Finworkar edits.
-- **Verification pending:** require actual green PR-head full Foundation CI and separate green merged-main CI before describing this exact change as verified.
+- **Verified:** [PR #181](https://github.com/rekixo-lab/jodlo/pull/181) merged as `a6e2fe3654a2efcd47c6833c14b85d180d502a36`; [PR-head Foundation CI #41540064463](https://github.com/rekixo-lab/jodlo/actions/runs/41540064463) **SUCCESS**; [independent merged-main CI #41540751818](https://github.com/rekixo-lab/jodlo/actions/runs/41540751818) **SUCCESS**. This is an internal synthetic guard, not a live matching permission.
 
 
 ## 2026-11-03 — Source-verified Category mapping and Service review focus (MERGED, VERIFIED)
