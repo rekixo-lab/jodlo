@@ -51,7 +51,7 @@ const record = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 const exactFields = (value: unknown, fields: readonly string[]): boolean =>
   record(value) &&
-  Object.keys(value).length === fields.length &&
+  Reflect.ownKeys(value).length === fields.length &&
   fields.every(field => Object.hasOwn(value, field));
 
 function validRevision(value: number): boolean {
