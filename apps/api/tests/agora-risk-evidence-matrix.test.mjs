@@ -219,3 +219,84 @@ test("a composed hypothetical pass stays bound to the exact listing", async () =
     fixture.close();
   }
 });
+
+test("hidden, symbol and accessor evidence is rejected in every scripted safety dimension",()=>{
+  const base=checksFor();
+  const valid=composeSyntheticAgoraInviteRisk(identity,NOW,base);
+  assert.ok(valid);
+  for(let i=0;i<base.length;i++){
+    const hidden={...base[i]};
+    Object.defineProperty(hidden,"hiddenAuthBearer",{
+      value:"secret",enumerable:false,
+    });
+    const extraSymbol={...base[i]};
+    extraSymbol[Symbol("privateDevice")]="secret";
+    const accessed={...base[i]};
+    const field=[
+      "workerPresence","workerAvailability","blockedByWorker",
+      "rateGate","privacyApproved",
+    ][i];
+    let getterReads=0;
+    Object.defineProperty(accessed,field,{
+      enumerable:true,configurable:true,
+      get(){getterReads++;return base[i][field];},
+    });
+    const untrusted=[
+      hidden,extraSymbol,accessed,
+      new Proxy({...base[i]},{
+        ownKeys(){throw Error("untrusted adapter");},
+      }),
+    ];
+    for(const one of untrusted){
+      const checks=base.map((part,j)=>j===i?one:part);
+      assert.equal(composeSyntheticAgoraInviteRisk(identity,NOW,checks),null,
+        "unexpected own field/getter/proxy must not certify risk dimension "+i);
+    }
+    assert.equal(getterReads,0,
+      "risk composer must inspect descriptors without invoking getters");
+  }
+  const identityWithHidden={...identity};
+  Object.defineProperty(identityWithHidden,"rawAuthToken",{
+    value:"secret",enumerable:false,
+  });
+  const identityWithSymbol={...identity};
+  identityWithSymbol[Symbol("providerIdentity")]="secret";
+  const identityWithGetter={...identity};
+  let identityGetReads=0;
+  Object.defineProperty(identityWithGetter,"callerAccountId",{
+    enumerable:true,get(){identityGetReads++;return CALLER;},
+  });
+  for(const untrusted of [
+    identityWithHidden,identityWithSymbol,identityWithGetter,
+    new Proxy({...identity},{ownKeys(){throw Error("bad identity");}}),
+  ]){
+    assert.equal(composeSyntheticAgoraInviteRisk(untrusted,NOW,base),null);
+  }
+  assert.equal(identityGetReads,0);
+  assert.deepEqual(composeSyntheticAgoraInviteRisk(identity,NOW,base),valid,
+    "rejecting suspicious fixtures must not reject ordinary strict data");
+});
+
+test("composed safety verdict cannot drift when original presence, block or rate inputs mutate",()=>{
+  const base=checksFor();
+  const captured=composeSyntheticAgoraInviteRisk(identity,NOW,base);
+  assert.ok(captured);
+  for(const item of base){
+    if(item.kind==="synthetic_presence_check_v1") item.workerPresence="offline";
+    if(item.kind==="synthetic_availability_check_v1") item.workerAvailability="busy";
+    if(item.kind==="synthetic_mutual_blocks_check_v1") {
+      item.blockedByCaller=true;
+      item.blockedByWorker=true;
+    }
+    if(item.kind==="synthetic_rate_check_v1") item.rateGate="deny";
+    if(item.kind==="synthetic_connection_check_v1") item.privacyApproved=false;
+    item.expiresAtMs=NOW;
+  }
+  assert.deepEqual(captured,{
+    kind:"synthetic_invite_risk_v1",...identity,
+    checkedAtMs:NOW-10,expiresAtMs:DEADLINE,...allowed,
+  });
+  assert.ok(Object.isFrozen(captured));
+  assert.equal(composeSyntheticAgoraInviteRisk(identity,NOW,base),null,
+    "later mutated sources cannot silently retain valid stale timestamps");
+});

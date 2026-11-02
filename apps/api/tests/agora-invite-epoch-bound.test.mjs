@@ -199,3 +199,107 @@ test("old epoch-less preview remains non-authorizing and does not invent an epoc
     assert.deepEqual(newResult.call,old.call);
   }finally{f.close();}
 });
+
+test("mutating availability, bilateral blocks and rate facts during awaited D1 cannot turn denial into admission",async()=>{
+  const f=await fixture();
+  try{
+    assert.equal((await setOwnWorkerAgoraCallPreference(
+      f.adapter,f.workerBearer,true,0)).kind,"updated");
+    const unsafeFields=[
+      {workerPresence:"offline"},
+      {workerAvailability:"busy"},
+      {blockedByCaller:true},
+      {blockedByWorker:true},
+      {rateGate:"deny"},
+      {recipientVerified:false},
+      {privacyApproved:false},
+    ];
+    for(const initial of unsafeFields){
+      const risk=f.risk(initial);
+      let statements=0;
+      const db={
+        prepare(sql){
+          statements++;
+          const statement=f.adapter.prepare(sql);
+          return {bind(...args){
+            const prepared=statement.bind(...args);
+            return {async all(){
+              // Mimic a provider/cache object being rewritten while D1 is
+              // pending. Previously the post-await read could promote a
+              // denied fact into an all-pass synthetic invitation.
+              Object.assign(risk,{
+                workerPresence:"online",workerAvailability:"available",
+                blockedByCaller:false,blockedByWorker:false,rateGate:"pass",
+                recipientVerified:true,privacyApproved:true,
+              });
+              await Promise.resolve();
+              return prepared.all();
+            }};
+          }};
+        },
+      };
+      assert.deepEqual(await f.prepare(db,risk),denied,
+        "pre-query evidence must remain authoritative: "+
+        JSON.stringify(initial));
+      assert.equal(statements,1);
+
+      const legacyRisk=f.risk(initial);
+      const legacyDb={
+        prepare(sql){
+          const statement=f.adapter.prepare(sql);
+          return {bind(...args){
+            const prepared=statement.bind(...args);
+            return {async all(){
+              Object.assign(legacyRisk,{
+                workerPresence:"online",workerAvailability:"available",
+                blockedByCaller:false,blockedByWorker:false,rateGate:"pass",
+                recipientVerified:true,privacyApproved:true,
+              });
+              await Promise.resolve();
+              return prepared.all();
+            }};
+          }};
+        },
+      };
+      assert.deepEqual(await prepareSyntheticSafetyCheckedAgoraInvite(
+        legacyDb,f.callerBearer,f.listing.id,CALL_ID,NOW,DEADLINE,legacyRisk),
+        denied,"epoch-less legacy preview must also reject async risk upgrades");
+    }
+    assert.equal((await f.prepare()).kind,"prepared",
+      "ordinary all-pass test evidence remains valid");
+  }finally{f.close();}
+});
+
+test("invisible fields, symbols and getters never authorize raw invitation risk or hit D1",async()=>{
+  const f=await fixture();
+  try{
+    const raw=[
+      f.risk(),
+      f.risk(),
+      f.risk(),
+      new Proxy(f.risk(),{
+        ownKeys(){throw Error("untrusted risk adapter");},
+      }),
+    ];
+    Object.defineProperty(raw[0],"hiddenProviderToken",{
+      value:"secret",enumerable:false,
+    });
+    raw[1][Symbol("privateSession")]="secret";
+    let getterCalls=0;
+    Object.defineProperty(raw[2],"blockedByWorker",{
+      enumerable:true,configurable:true,
+      get(){getterCalls++;return false;},
+    });
+    let queryCount=0;
+    const noD1={prepare(){queryCount++;throw Error("no read permitted");}};
+    for(const evidence of raw){
+      assert.deepEqual(await f.prepare(noD1,evidence),denied);
+      assert.deepEqual(await prepareSyntheticSafetyCheckedAgoraInvite(
+        noD1,f.callerBearer,f.listing.id,CALL_ID,NOW,DEADLINE,evidence),denied);
+    }
+    assert.equal(queryCount,0,
+      "all invalid risk facts must fail before opening a D1 statement");
+    assert.equal(getterCalls,0,
+      "risk descriptors must be checked without evaluating accessors");
+  }finally{f.close();}
+});

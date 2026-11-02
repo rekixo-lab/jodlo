@@ -32,15 +32,50 @@ const CHECK_FIELDS: Readonly<Record<string, readonly string[]>> = Object.freeze(
   synthetic_connection_check_v1: [...ENVELOPE_FIELDS, "recipientVerified", "privacyApproved"],
 });
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
+/** Read a fixed set of OWN DATA properties exactly once, never invoking
+ * getters and never carrying hidden symbols or extra adapter/provider fields.
+ * Returned facts are detached from mutable scripted inputs and cannot drift
+ * during the rest of the composition operation.
+ */
+function snapshotDescriptors(
+  descriptors: PropertyDescriptorMap,
+  fields: readonly string[],
+): Record<string, unknown> | null {
+  if (Reflect.ownKeys(descriptors).length !== fields.length ||
+      fields.some(field =>
+        !Object.hasOwn(descriptors, field) ||
+        !Object.hasOwn(descriptors[field], "value"))) return null;
+  return Object.freeze(Object.fromEntries(
+    fields.map(field => [field, descriptors[field].value]),
+  ));
 }
 
-function exactFields(record: Record<string, unknown>, fields: readonly string[]): boolean {
-  return Object.keys(record).length === fields.length &&
-    fields.every(field => Object.hasOwn(record, field));
+function snapshotIdentity(value: unknown): Record<string, unknown> | null {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  try {
+    return snapshotDescriptors(Object.getOwnPropertyDescriptors(value),
+      IDENTITY_FIELDS);
+  } catch {
+    return null;
+  }
+}
+
+function snapshotCheck(value: unknown): Record<string, unknown> | null {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  try {
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const kind = descriptors.kind?.value;
+    if (typeof kind !== "string" || !Object.hasOwn(CHECK_FIELDS, kind)) {
+      return null;
+    }
+    return snapshotDescriptors(descriptors, CHECK_FIELDS[kind]);
+  } catch {
+    return null;
+  }
 }
 
 function validCheckValue(kind: string, check: Record<string, unknown>): boolean {
@@ -81,8 +116,8 @@ export function composeSyntheticAgoraInviteRisk(
   nowMs: number,
   checks: readonly unknown[],
 ): SyntheticAgoraInviteRisk | null {
-  const identity = asRecord(identityInput);
-  if (!identity || !exactFields(identity, IDENTITY_FIELDS) ||
+  const identity = snapshotIdentity(identityInput);
+  if (!identity ||
       !validOpaqueId(identity.callerAccountId) ||
       !validOpaqueId(identity.workerAccountId) ||
       identity.callerAccountId === identity.workerAccountId ||
@@ -95,11 +130,9 @@ export function composeSyntheticAgoraInviteRisk(
   let newestCheckedAt = 0;
   let earliestExpiry = Number.MAX_SAFE_INTEGER;
   for (const raw of checks) {
-    const check = asRecord(raw);
+    const check = snapshotCheck(raw);
     if (!check || typeof check.kind !== "string" ||
-        !Object.hasOwn(CHECK_FIELDS, check.kind) ||
         verified.has(check.kind) ||
-        !exactFields(check, CHECK_FIELDS[check.kind]) ||
         check.callerAccountId !== identity.callerAccountId ||
         check.workerAccountId !== identity.workerAccountId ||
         check.listingId !== identity.listingId ||
