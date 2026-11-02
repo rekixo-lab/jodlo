@@ -22,7 +22,11 @@ const MAX_RETURNED = 25;
 
 /** Fail-closed if the caller omits a trusted approval policy.
  * Order follows trusted input, never inventing scores/verification.
- * Returns only opaque IDs; callers must recheck eligibility at write time.
+ * Rejects duplicate worker IDs across the batch and repeated category IDs
+ * within any single worker row BEFORE invoking any approval policy. Repeated rows
+ * could conceal conflicting trust or availability facts; "first wins" is
+ * not a safe resolution. Returns only opaque IDs; callers must recheck
+ * eligibility at write time.
  */
 export function selectCandidateIds(
   context: CandidateContext,
@@ -39,6 +43,9 @@ export function selectCandidateIds(
   }
   // Validate the complete trusted-source batch, even if the requested result
   // limit would have been reached before an invalid later candidate.
+  // Every worker must appear ONCE: a duplicate could change policy outcome
+  // depending on arbitrary database query order ("first wins").
+  const sourceWorkerIds = new Set<string>();
   for (const candidate of candidates) {
     if (!validOpaqueId(candidate?.workerAccountId) ||
         !Array.isArray(candidate.categoryIds) ||
@@ -47,13 +54,15 @@ export function selectCandidateIds(
       // Bad trusted-source candidate invalidates the batch: no partial exposure.
       throw new Error("Invalid internal candidate");
     }
+    if (sourceWorkerIds.has(candidate.workerAccountId) ||
+        new Set(candidate.categoryIds).size !== candidate.categoryIds.length) {
+      throw new Error("Duplicate worker or category in trusted candidate batch");
+    }
+    sourceWorkerIds.add(candidate.workerAccountId);
   }
   const accepted: string[] = [];
-  const seen = new Set<string>();
   for (const candidate of candidates) {
-    if (candidate.workerAccountId === context.requesterAccountId ||
-        seen.has(candidate.workerAccountId)) continue;
-    seen.add(candidate.workerAccountId);
+    if (candidate.workerAccountId === context.requesterAccountId) continue;
     if (!candidate.categoryIds.includes(context.categoryId)) continue;
     if (approve(candidate, context) !== true) continue;
     accepted.push(candidate.workerAccountId);

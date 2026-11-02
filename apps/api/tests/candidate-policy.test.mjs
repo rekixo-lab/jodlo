@@ -16,7 +16,7 @@ test("candidate selection requires an injected trusted policy and has no public 
 test("selects only category-qualified, approved, non-self opaque IDs in stable order",()=>{
   const rows=[
     candidate("account-owner1"), candidate("worker-aaaa1"),
-    candidate("worker-bbbb2",["other-category"]), candidate("worker-aaaa1"),
+    candidate("worker-bbbb2",["other-category"]),
     candidate("worker-cccc3"), candidate("worker-dddd4"),
   ];
   const eligible = new Set(["worker-aaaa1","worker-dddd4"]);
@@ -73,4 +73,68 @@ test("selection never opens worker-discovery APIs or requires any database bindi
     const res=await worker.fetch(new Request("https://jodlo.rekixo.com"+path));
     assert.equal(res.status,404);
   }
+});
+
+test("duplicate worker source IDs fail closed, even if candidate rows look identical",()=>{
+  const cases=[
+    [candidate("worker-aaaa1"),candidate("worker-aaaa1")],
+    [candidate("worker-aaaa1",["category1"],{internalStatus:"ready"}),
+      candidate("worker-aaaa1",["category1"],{internalStatus:"disabled"})],
+    [candidate("worker-aaaa1",["category1"]),
+      candidate("worker-aaaa1",["other-category"])],
+    [candidate("worker-aaaa1",["other-category"]),
+      candidate("worker-aaaa1",["category1"])],
+    [candidate("worker-aaaa1",["category1"],{blocked:true}),
+      candidate("worker-aaaa1",["category1"],{blocked:false})],
+  ];
+  for(const rows of cases){
+    let approvals=0;
+    assert.throws(()=>selectCandidateIds(context,rows,()=>{
+      approvals++;return true;
+    }),/Duplicate worker/);
+    assert.equal(approvals,0,"no policy callback before validating every source row");
+    assert.throws(()=>selectCandidateIds(context,[...rows].reverse(),()=>true),
+      /Duplicate worker/);
+  }
+});
+
+test("bad trailing worker row is rejected even after first eligible result fills the limit",()=>{
+  const rows=[
+    candidate("worker-aaaa1",["category1"],{internalStatus:"ready"}),
+    candidate("worker-bbbb2",["category1"],{internalStatus:"ready"}),
+    candidate("worker-aaaa1",["category1"],{internalStatus:"disabled"}),
+  ];
+  let calls=0;
+  assert.throws(()=>selectCandidateIds(context,rows,()=>{
+    calls++;return true;
+  },1),/Duplicate worker/);
+  assert.equal(calls,0);
+  // A duplicate belonging to the requester cannot hide behind self-exclusion.
+  assert.throws(()=>selectCandidateIds(context,[
+    candidate(context.requesterAccountId),candidate("worker-aaaa1"),
+    candidate(context.requesterAccountId),
+  ],()=>true,1),/Duplicate worker/);
+});
+
+test("repeated category memberships within a single worker are rejected before eligibility",()=>{
+  let called=false;
+  assert.throws(()=>selectCandidateIds(context,[
+    candidate("worker-aaaa1",["category1","category1"]),
+  ],()=>{called=true;return true;}),/Duplicate worker or category/);
+  assert.equal(called,false);
+  assert.deepEqual(selectCandidateIds(context,[
+    candidate("worker-aaaa1",["category1","other-category"]),
+    candidate("worker-bbbb2",["category1"]),
+  ],()=>true),["worker-aaaa1","worker-bbbb2"]);
+});
+
+test("candidate IDs remain opaque and policy stays required after uniqueness checks",()=>{
+  const rows=[
+    candidate("worker-aaaa1",["category1"],{phone:"+91-PRIVATE",blocked:false}),
+    candidate("worker-bbbb2",["category1"],{phone:"+91-HIDDEN",blocked:true}),
+  ];
+  const allowed=selectCandidateIds(context,rows,c=>c.blocked===false,1);
+  assert.deepEqual(allowed,["worker-aaaa1"]);
+  assert.equal(JSON.stringify(allowed).includes("phone"),false);
+  assert.throws(()=>selectCandidateIds(context,rows),/trusted policy/);
 });
