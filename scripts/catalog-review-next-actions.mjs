@@ -12,18 +12,46 @@ import {
   loadPinnedHumanReviewActionQueue,emptyHumanReviewActionPacketSet,
   loadHumanReviewActionDirectory,reconcileHumanReviewActionPackets,
 } from "./catalog-human-review-progress.mjs";
+import {loadPinnedCatalogMappingReadiness} from "./catalog-mapping-readiness.mjs";
 
 const KIND="JODLO_GLOBAL_HUMAN_REVIEW_NEXT_ACTIONS_ONLY";
 const STATE="UNVERIFIED_HUMAN_TASKS_ZERO_CATALOG_AUTHORIZATION";
 const MAX_PAGE=25;
+const FOCUSES=["all","mapping","service"];
+
+// Baseline D1 syntax-only candidates are independently source-verified, never
+// inferred from unverified reviewer declarations. One immutable archive read
+// per local process prevents repeated decompression during batch pagination.
+let cachedOriginalMappings=null;
+function originalMappings() {
+  if(cachedOriginalMappings!==null)return cachedOriginalMappings;
+  const {result}=loadPinnedCatalogMappingReadiness();
+  if(result.kind!=="JODLO_ALL_CATEGORY_MAPPING_COMPATIBILITY_REVIEW_ONLY"||
+     result.state!=="ALL_CATEGORIES_UNAPPROVED_NO_SQL_NO_SEED"||
+     result.summary?.sourceCategories!==889||
+     result.summary?.categoriesAuthorizedForActivation!==0||
+     result.summary?.sqlStatementsGenerated!==0||
+     !Array.isArray(result.categories)||result.categories.length!==889)
+    throw Error("Untrusted original category mapping evidence");
+  const byId=new Map();
+  for(const category of result.categories){
+    if(byId.has(category.sourceCategoryId))
+      throw Error("Duplicate historical category mapping evidence");
+    byId.set(category.sourceCategoryId,category);
+  }
+  cachedOriginalMappings={sourceJsonSha256:result.sourceJsonSha256,byId};
+  return cachedOriginalMappings;
+}
+
 
 export function selectNextHumanReviewActions(queue,progress,options={}) {
   if(!options||typeof options!=="object"||Array.isArray(options)||
-     Object.keys(options).some(key=>!["limit","after"].includes(key)))
+     Object.keys(options).some(key=>!["limit","after","focus"].includes(key)))
     throw Error("Invalid reviewer batch options");
-  const {limit=20,after=null}=options;
+  const {limit=20,after=null,focus="all"}=options;
   if(!Number.isSafeInteger(limit)||limit<1||limit>MAX_PAGE||
-      (after!==null&&(typeof after!=="string"||!after.length)))
+      (after!==null&&(typeof after!=="string"||!after.length))||
+      !FOCUSES.includes(focus))
     throw Error("Invalid reviewer batch limit or anchor");
 
   // Existing strict validators protect all 889 original Category IDs,
@@ -36,6 +64,11 @@ export function selectNextHumanReviewActions(queue,progress,options={}) {
      checked.summary.categoriesAuthorizedForActivation!==0||
      checked.summary.servicesAuthorizedForActivation!==0)
     throw Error("Incomplete or authorizing human review source");
+
+  const mapping=originalMappings();
+  if(mapping.sourceJsonSha256!==queue.sourceJsonSha256||
+     mapping.byId.size!==checked.summary.historicalCategories)
+    throw Error("Mapping reference differs from reviewed source");
 
   // Join by immutable original Category ID. Never assume packet ordering
   // matches review-priority ordering; never silently drop the 889th item.
