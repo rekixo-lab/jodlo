@@ -172,3 +172,81 @@ test("valid historical receipts still replay after later legitimate revisions", 
     {kind:"replay",receipt:first.receipt});
   assert.equal(second.result.revision,2);
 });
+
+test("untrusted extra current fields cannot leak into transition result or retry receipt",()=>{
+  const expected={kind:"reject",code:"INVALID_INPUT"};
+  for(const property of [
+    {workerPhoneNumber:"+91-DO-NOT-PUBLISH"},
+    {googleSub:"private-provider-id"},
+    {callerAccountId:"account-other2"},
+    {authorization:"Bearer PRIVATE"},
+    {verified:true},
+  ]){
+    const contaminated={...baseline(),...property};
+    assert.deepEqual(decideRequestTransition(contaminated,attempt(),policy),expected);
+    assert.equal(JSON.stringify(contaminated).includes("PRIVATE")||
+      JSON.stringify(contaminated).includes("DO-NOT-PUBLISH"),
+      Object.values(property).some(value=>String(value).includes("PRIVATE")||
+        String(value).includes("DO-NOT-PUBLISH")));
+  }
+  // Arrays and fake adapter rows are not authoritative request snapshots.
+  assert.deepEqual(decideRequestTransition([baseline()],attempt(),policy),expected);
+  const withHidden=baseline();
+  Object.defineProperty(withHidden,"rawSessionToken",{
+    value:"hidden-token",enumerable:false,
+  });
+  assert.deepEqual(decideRequestTransition(withHidden,attempt(),policy),expected);
+  const withSymbol=baseline();
+  withSymbol[Symbol("raw-provider-secret")]="secret";
+  assert.deepEqual(decideRequestTransition(withSymbol,attempt(),policy),expected);
+  const clean=decideRequestTransition(baseline(),attempt(),policy);
+  assert.equal(clean.kind,"apply");
+  assert.deepEqual(Object.keys(clean.result),[
+    "requestId","ownerAccountId","categoryId","state","revision",
+  ]);
+  assert.equal(JSON.stringify(clean).includes("PRIVATE"),false);
+});
+
+test("unexpected command-side ownership and privileged fields fail before state change",()=>{
+  for(const field of [
+    {requesterAccountId:"account-other2"},
+    {ownerAccountId:"account-other2"},
+    {isAdmin:true},
+    {bypassModeration:true},
+    {workerBearer:"raw-provider-token"},
+  ])assert.deepEqual(
+    decideRequestTransition(baseline(),attempt(field),policy),
+    {kind:"reject",code:"INVALID_INPUT"},
+  );
+  const special=attempt();
+  Object.defineProperty(special,"untrustedContext",{
+    value:"private",enumerable:false,
+  });
+  assert.deepEqual(decideRequestTransition(baseline(),special,policy),
+    {kind:"reject",code:"INVALID_INPUT"});
+});
+
+test("stored retry receipts reject extra fields and leaked nested properties",()=>{
+  const applied=decideRequestTransition(baseline(),attempt(),policy);
+  assert.equal(applied.kind,"apply");
+  const current=applied.result;
+  for(const tampered of [
+    {...applied.receipt,privateWorkerContact:"+91-PRIVATE"},
+    {...applied.receipt,actorBearer:"raw-token"},
+    {...applied.receipt,result:{...applied.receipt.result,rawSessionToken:"secret"}},
+    {...applied.receipt,result:{...applied.receipt.result,ownerPhone:"secret"}},
+  ]){
+    assert.deepEqual(decideRequestTransition(current,attempt(),policy,tampered),
+      {kind:"reject",code:"KEY_CONFLICT"});
+  }
+  const withSymbol={...applied.receipt};
+  withSymbol[Symbol("opaque-private-token")]="secret";
+  assert.deepEqual(decideRequestTransition(current,attempt(),policy,withSymbol),
+    {kind:"reject",code:"KEY_CONFLICT"});
+  // A normal prior receipt still replays for the same and later valid revisions.
+  assert.deepEqual(decideRequestTransition(current,attempt(),policy,applied.receipt),
+    {kind:"replay",receipt:applied.receipt});
+  const later={...current,state:"reviewed",revision:2};
+  assert.deepEqual(decideRequestTransition(later,attempt(),policy,applied.receipt),
+    {kind:"replay",receipt:applied.receipt});
+});
