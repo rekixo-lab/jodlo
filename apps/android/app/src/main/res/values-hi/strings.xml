@@ -56,4 +56,9 @@
     <string name="worker_acknowledge_uncertainty">अनिश्चित परिणाम समझकर स्वीकारें</string>
     <string name="worker_review_acknowledged">अनिश्चितता स्वीकार की गई, हल नहीं हुई। नई कार्रवाई से पहले सर्वर स्थिति जाँचें।</string>
     <string name="worker_dev_notice">विकास पूर्वावलोकन। वास्तविक Google प्रवेश, कॉल, जीपीएस, भुगतान या प्रोडक्शन चालू नहीं हैं।</string>
+    <string name="customer_more_categories">और श्रेणियाँ देखें</string>
+    <string name="customer_more_listings">और सार्वजनिक सेवा सूचियाँ देखें</string>
+    <string name="customer_page_failed">अगले पृष्ठ की पुष्टि नहीं हुई। पहले की सूची दिख रही है; जानकारी बदली हो तो फिर से ताज़ा करें।</string>
+    <string name="customer_retry_page">इसी पृष्ठ को फिर से देखें</string>
+    <string name="search_query_caption">खोज के परिणाम: %1$s</string>
 </resources>

@@ -1,5 +1,11 @@
 # JODLO — current state, 2026-10-27
 
+## 2026-11-02 — Native Customer public pagination PR (CI verification pending)
+- Android Customer now wires existing Kotlin Core `browse(after)`, exhaustive `searchCursor(after)` and `pageListings(after)` into visible, tap-triggered 20-row continuation controls. Legacy ambiguity/choice Search still runs first; long searches restart in cursor mode instead of combining different pagination protocols.
+- One vertically scrollable flat-outline Customer screen, Hindi/English copy, explicit retry for failed next page, stale/cross-navigation response rejection and invalidated-anchor refresh required. No new API, account, GPS, call, payment or cloud resources.
+- Pending: exact PR + merged-main Android APK CI, Kotlin/Node regression and actual device screenshot/back/large-font review. No production readiness or activated 889 trade catalog is claimed.
+
+
 ## 2026-11-02 — Native Google/Worker screen integration (engineering PR; tests pending)
 - **New code:** Credential Manager Google ID token adapter gated on a public Web OAuth client ID + trusted HTTPS API origin, connected to existing backend session verification. Worker tab reuses one in-memory session, headless private listing pages, opt-in and write uncertainty safeguards. No real Google provider/Android device has been tested by this source change.
 - **Pending CI:** native :app:assembleDebug and existing worker/Kotlin suites on exact PR SHA and merged main; no release claim until both green.

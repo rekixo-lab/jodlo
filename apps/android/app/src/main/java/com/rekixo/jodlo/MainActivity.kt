@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -113,221 +112,447 @@ private fun JodloApp(activity: ComponentActivity) {
     }
 }
 
+private enum class FeedMode { BROWSE, SEARCH, CHOICES }
+private const val PUBLIC_PAGE_SIZE = 20
+
+private data class CategoryChunk(val rows: List<PublicCategory>, val next: String?)
+
+/** Read-only network actions. Leave cancellation intact, but never expose network
+ * exception details in customer UI, and never retry GETs without a user action.
+ */
+private suspend fun <T> publicRead(action: () -> ApiOutcome<T>): ApiOutcome<T> =
+    withContext(Dispatchers.IO) {
+        try {
+            action()
+        } catch (cancelled: kotlin.coroutines.cancellation.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            ApiOutcome.Failed(FailureKind.BAD_RESPONSE, retryable = false)
+        }
+    }
+
 @Composable
 private fun GuestDiscovery(repository: RemoteCatalogRepository?) {
     val scope = rememberCoroutineScope()
     var language by remember { mutableStateOf(Language.HI) }
     var searchText by rememberSaveable { mutableStateOf("") }
+    var submittedQuery by remember { mutableStateOf("") }
+    var feedMode by remember { mutableStateOf(FeedMode.BROWSE) }
     var categories by remember { mutableStateOf<List<PublicCategory>>(emptyList()) }
+    var categoryCursor by remember { mutableStateOf<String?>(null) }
     var listings by remember { mutableStateOf<List<PublicListing>>(emptyList()) }
+    var listingCursor by remember { mutableStateOf<String?>(null) }
     var selected by remember { mutableStateOf<PublicCategory?>(null) }
     var showChoiceHint by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
     var failure by remember { mutableStateOf<FailureKind?>(null) }
+    var pageFailure by remember { mutableStateOf(false) }
     var invalidQuery by remember { mutableStateOf(false) }
     var requestRevision by remember { mutableIntStateOf(0) }
 
     fun backToCategories() {
-        requestRevision += 1 // Prevent an old listing response from repainting the screen.
+        requestRevision++ // Late Listing responses are never allowed to repaint Browse.
         selected = null
         listings = emptyList()
+        listingCursor = null
         loading = false
         failure = null
+        pageFailure = false
     }
 
-    fun browse() {
+    fun refreshBrowse() {
         val client = repository ?: return
+        if (loading) return
         val revision = ++requestRevision
+        val requestedLanguage = language
+        feedMode = FeedMode.BROWSE
+        submittedQuery = ""
         selected = null
         categories = emptyList()
+        categoryCursor = null
+        listings = emptyList()
+        listingCursor = null
         showChoiceHint = false
         loading = true
         failure = null
+        pageFailure = false
         invalidQuery = false
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                client.browse(language, limit = 20)
+            val outcome = publicRead {
+                client.browse(requestedLanguage, limit = PUBLIC_PAGE_SIZE)
             }
-            if (revision != requestRevision) return@launch
+            if (requestRevision != revision) return@launch
             loading = false
-            when (result) {
-                is ApiOutcome.Ok -> categories = result.value.categories
-                is ApiOutcome.Failed -> failure = result.kind
+            when (outcome) {
+                is ApiOutcome.Failed -> failure = outcome.kind
+                is ApiOutcome.Ok -> {
+                    val page = outcome.value
+                    categories = page.categories
+                    categoryCursor = page.nextCursor
+                }
             }
         }
     }
 
     fun search() {
         val client = repository ?: return
+        if (loading) return
         val query = searchText.trim()
-        if (query.codePointCount(0, query.length) !in 2..64) {
+        if (query.codePointCount(0, query.length) !in 2..64 ||
+            query.any { Character.isISOControl(it) }) {
             invalidQuery = true
             return
         }
+        val requestedLanguage = language
         val revision = ++requestRevision
-        invalidQuery = false
+        submittedQuery = query
+        feedMode = FeedMode.SEARCH
         selected = null
         categories = emptyList()
+        categoryCursor = null
+        listings = emptyList()
+        listingCursor = null
         showChoiceHint = false
+        invalidQuery = false
         loading = true
         failure = null
+        pageFailure = false
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                client.search(query, language, includeChoices = true, limit = 20)
+            // Preserve the server's first-page ambiguity/choice contract.
+            val probe = publicRead {
+                client.search(query, requestedLanguage, includeChoices = true, limit = PUBLIC_PAGE_SIZE)
             }
-            if (revision != requestRevision) return@launch
-            loading = false
-            when (result) {
-                is ApiOutcome.Ok -> {
-                    showChoiceHint = result.value.needsChoice
-                    categories = if (result.value.needsChoice)
-                        result.value.choices else result.value.categories
+            if (requestRevision != revision) return@launch
+            when (probe) {
+                is ApiOutcome.Failed -> {
+                    loading = false
+                    failure = probe.kind
                 }
-                is ApiOutcome.Failed -> failure = result.kind
+                is ApiOutcome.Ok -> {
+                    val result = probe.value
+                    if (result.needsChoice) {
+                        feedMode = FeedMode.CHOICES
+                        showChoiceHint = true
+                        categories = result.choices
+                        loading = false
+                    } else if (result.nextOffset == null) {
+                        // One bounded legacy page is complete; no duplicate fetch.
+                        categories = result.categories
+                        loading = false
+                    } else {
+                        // Offset Search stops after the first 100 results. Switch
+                        // explicitly to the existing exhaustive cursor mode,
+                        // restarting from page one without mixing the two DTOs.
+                        val cursorPage = publicRead {
+                            client.searchCursor(query, requestedLanguage, limit = PUBLIC_PAGE_SIZE)
+                        }
+                        if (requestRevision != revision) return@launch
+                        loading = false
+                        when (cursorPage) {
+                            is ApiOutcome.Failed -> failure = cursorPage.kind
+                            is ApiOutcome.Ok -> {
+                                categories = cursorPage.value.categories
+                                categoryCursor = cursorPage.value.nextCursor
+                            }
+                        }
+                    }
+                }
             }
         }
     }
 
-    fun showListings(category: PublicCategory) {
+    fun nextCategoryPage() {
         val client = repository ?: return
+        val after = categoryCursor ?: return
+        if (loading || feedMode == FeedMode.CHOICES || selected != null) return
         val revision = ++requestRevision
-        selected = category // Explicit user selection; never infer a Category from Search.
-        listings = emptyList()
+        val requestedLanguage = language
+        val mode = feedMode
+        val requestedQuery = submittedQuery
         loading = true
-        failure = null
+        pageFailure = false
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                client.listings(category.id)
+            val outcome: ApiOutcome<CategoryChunk> = publicRead {
+                when (mode) {
+                    FeedMode.BROWSE -> when (
+                        val page = client.browse(
+                            requestedLanguage, limit = PUBLIC_PAGE_SIZE, after = after
+                        )
+                    ) {
+                        is ApiOutcome.Ok -> ApiOutcome.Ok(
+                            CategoryChunk(page.value.categories, page.value.nextCursor)
+                        )
+                        is ApiOutcome.Failed -> page
+                    }
+                    FeedMode.SEARCH -> when (
+                        val page = client.searchCursor(
+                            requestedQuery, requestedLanguage,
+                            limit = PUBLIC_PAGE_SIZE, after = after
+                        )
+                    ) {
+                        is ApiOutcome.Ok -> ApiOutcome.Ok(
+                            CategoryChunk(page.value.categories, page.value.nextCursor)
+                        )
+                        is ApiOutcome.Failed -> page
+                    }
+                    FeedMode.CHOICES -> ApiOutcome.Failed(
+                        FailureKind.BAD_RESPONSE, retryable = false
+                    )
+                }
             }
-            if (revision != requestRevision) return@launch
+            if (requestRevision != revision) return@launch
             loading = false
-            when (result) {
-                is ApiOutcome.Ok -> listings = result.value
-                is ApiOutcome.Failed -> failure = result.kind
+            when (outcome) {
+                is ApiOutcome.Failed -> pageFailure = true
+                is ApiOutcome.Ok -> {
+                    val rows = outcome.value.rows
+                    val oldIds = categories.map { it.id }.toSet()
+                    if (rows.isEmpty() || rows.map { it.id }.toSet().size != rows.size ||
+                        rows.any { it.id in oldIds }) {
+                        // Anchor disappeared or pages overlap. Never display a
+                        // potentially mixed/hidden Category snapshot as fresh.
+                        categories = emptyList()
+                        categoryCursor = null
+                        failure = FailureKind.BAD_RESPONSE
+                    } else {
+                        categories = categories + rows
+                        categoryCursor = outcome.value.next
+                    }
+                }
             }
         }
     }
 
-    // Language switching invalidates any in-flight old-language response.
+    fun showListings(category: PublicCategory, after: String? = null) {
+        val client = repository ?: return
+        if (loading) return
+        if (after != null && (selected?.id != category.id || after != listingCursor)) return
+        val revision = ++requestRevision
+        if (after == null) {
+            selected = category // Explicit tap only: Search cannot publish/contact.
+            listings = emptyList()
+            listingCursor = null
+            failure = null
+        }
+        loading = true
+        pageFailure = false
+        scope.launch {
+            val outcome = publicRead {
+                client.pageListings(category.id, limit = PUBLIC_PAGE_SIZE, after = after)
+            }
+            if (requestRevision != revision) return@launch
+            loading = false
+            when (outcome) {
+                is ApiOutcome.Failed -> {
+                    if (after == null) failure = outcome.kind else pageFailure = true
+                }
+                is ApiOutcome.Ok -> {
+                    val page = outcome.value
+                    val newRows = page.listings
+                    val oldIds = listings.map { it.id }.toSet()
+                    if ((after != null && newRows.isEmpty()) ||
+                        newRows.map { it.id }.toSet().size != newRows.size ||
+                        (after != null && newRows.any { it.id in oldIds })) {
+                        // Listing anchor may have been unpublished or hidden.
+                        // Clear rather than retain stale public eligibility.
+                        listings = emptyList()
+                        listingCursor = null
+                        failure = FailureKind.BAD_RESPONSE
+                    } else {
+                        listings = if (after == null) newRows else listings + newRows
+                        listingCursor = page.nextCursor
+                    }
+                }
+            }
+        }
+    }
+
+    // Language and injected API-origin changes invalidate all existing public
+    // data. A stale asynchronous response can never cross that boundary.
     LaunchedEffect(language, repository) {
-        requestRevision += 1
-        categories = emptyList()
+        requestRevision++
+        loading = false
         selected = null
+        categories = emptyList()
+        categoryCursor = null
         listings = emptyList()
+        listingCursor = null
         failure = null
-        if (repository != null) browse()
+        pageFailure = false
+        if (repository != null) refreshBrowse()
     }
     BackHandler(enabled = selected != null) { backToCategories() }
 
     Scaffold { insets ->
-        Column(
-            modifier = Modifier.fillMaxSize().padding(insets).padding(JodloSizes.ScreenPadding),
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(insets),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(JodloSizes.ScreenPadding),
             verticalArrangement = Arrangement.spacedBy(JodloSizes.Gap),
         ) {
-            Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineLarge)
-            Text(stringResource(R.string.discovery_subtitle), style = MaterialTheme.typography.bodyMedium)
-            Row(horizontalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
-                JodloChip(
-                    selected = language == Language.HI,
-                    onClick = { language = Language.HI },
-                    label = { Text(stringResource(R.string.language_hindi)) },
+            item {
+                Text(
+                    stringResource(R.string.app_name),
+                    style = MaterialTheme.typography.headlineLarge,
                 )
-                JodloChip(
-                    selected = language == Language.EN,
-                    onClick = { language = Language.EN },
-                    label = { Text(stringResource(R.string.language_english)) },
+            }
+            item {
+                Text(
+                    stringResource(R.string.discovery_subtitle),
+                    style = MaterialTheme.typography.bodyMedium,
                 )
+            }
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
+                    JodloChip(
+                        selected = language == Language.HI,
+                        onClick = { language = Language.HI },
+                        label = { Text(stringResource(R.string.language_hindi)) },
+                    )
+                    JodloChip(
+                        selected = language == Language.EN,
+                        onClick = { language = Language.EN },
+                        label = { Text(stringResource(R.string.language_english)) },
+                    )
+                }
             }
             if (repository == null) {
-                Text(stringResource(R.string.no_api_origin), color = MaterialTheme.colorScheme.error)
-            } else if (selected == null) {
-                JodloSearchField(
-                    value = searchText,
-                    onValueChange = { searchText = it; invalidQuery = false },
-                    label = { Text(stringResource(R.string.search_label)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                if (invalidQuery) Text(
-                    stringResource(R.string.search_validation),
-                    color = MaterialTheme.colorScheme.error,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
-                    JodloButton(onClick = { search() }, enabled = !loading) {
-                        Text(stringResource(R.string.search_action))
-                    }
-                    JodloTextAction(onClick = { browse() }, enabled = !loading) {
-                        Text(stringResource(R.string.browse_action))
-                    }
+                item {
+                    Text(
+                        stringResource(R.string.no_api_origin),
+                        color = MaterialTheme.colorScheme.error,
+                    )
                 }
-                if (showChoiceHint) Text(stringResource(R.string.choose_category))
             } else {
-                JodloTextAction(onClick = { backToCategories() }) {
-                    Text(stringResource(R.string.back_action))
-                }
-                Text(selected!!.name, style = MaterialTheme.typography.titleLarge)
-            }
-
-            if (loading) {
-                CircularProgressIndicator()
-            } else if (failure != null) {
-                Text(
-                    stringResource(R.string.request_failed),
-                    color = MaterialTheme.colorScheme.error,
-                )
-                JodloTextAction(onClick = {
-                    selected?.let { showListings(it) } ?: browse()
-                }) { Text(stringResource(R.string.retry_action)) }
-            } else if (repository != null) {
                 if (selected == null) {
-                    if (categories.isEmpty()) {
-                        Text(stringResource(R.string.empty_catalog))
-                    } else {
-                        LazyColumn(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap),
-                        ) {
-                            items(categories, key = { it.id }) { category ->
-                                JodloCard(
-                                    onClick = { showListings(category) },
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) {
-                                    Column(Modifier.padding(JodloSizes.ScreenPadding)) {
-                                        Text(category.name, style = MaterialTheme.typography.titleMedium)
-                                        Text(category.slug, style = MaterialTheme.typography.bodySmall)
-                                    }
-                                }
+                    item {
+                        JodloSearchField(
+                            value = searchText,
+                            onValueChange = { searchText = it; invalidQuery = false },
+                            label = { Text(stringResource(R.string.search_label)) },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    if (invalidQuery) item {
+                        Text(
+                            stringResource(R.string.search_validation),
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                    item {
+                        Row(horizontalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
+                            JodloButton(onClick = { search() }, enabled = !loading) {
+                                Text(stringResource(R.string.search_action))
                             }
+                            JodloTextAction(onClick = { refreshBrowse() }, enabled = !loading) {
+                                Text(stringResource(R.string.browse_action))
+                            }
+                        }
+                    }
+                    if (showChoiceHint) item {
+                        Text(stringResource(R.string.choose_category))
+                    }
+                    if (feedMode == FeedMode.SEARCH && submittedQuery.isNotEmpty()) item {
+                        Text(
+                            stringResource(R.string.search_query_caption, submittedQuery),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                } else {
+                    item {
+                        JodloTextAction(onClick = { backToCategories() }) {
+                            Text(stringResource(R.string.back_action))
+                        }
+                    }
+                    item {
+                        Text(selected!!.name, style = MaterialTheme.typography.titleLarge)
+                    }
+                }
+                if (failure != null) {
+                    item {
+                        Text(
+                            stringResource(R.string.request_failed),
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                    item {
+                        JodloTextAction(onClick = {
+                            val chosen = selected
+                            if (chosen != null) showListings(chosen)
+                            else if (feedMode == FeedMode.SEARCH ||
+                                feedMode == FeedMode.CHOICES) search()
+                            else refreshBrowse()
+                        }, enabled = !loading) {
+                            Text(stringResource(R.string.retry_action))
+                        }
+                    }
+                } else if (selected == null) {
+                    if (categories.isEmpty() && !loading) item {
+                        Text(stringResource(R.string.empty_catalog))
+                    }
+                    items(categories, key = { "category-" + it.id }) { category ->
+                        JodloCard(
+                            onClick = { showListings(category) },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column(Modifier.padding(JodloSizes.CardPadding)) {
+                                Text(category.name, style = MaterialTheme.typography.titleMedium)
+                                Text(category.slug, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                    if (categoryCursor != null) item {
+                        JodloTextAction(onClick = { nextCategoryPage() }, enabled = !loading) {
+                            Text(stringResource(R.string.customer_more_categories))
                         }
                     }
                 } else {
-                    if (listings.isEmpty()) {
+                    if (listings.isEmpty() && !loading) item {
                         Text(stringResource(R.string.empty_listings))
-                    } else {
-                        LazyColumn(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap),
-                        ) {
-                            items(listings, key = { it.id }) { listing ->
-                                JodloCard(modifier = Modifier.fillMaxWidth()) {
-                                    Column(Modifier.padding(JodloSizes.ScreenPadding)) {
-                                        Text(stringResource(R.string.public_listing))
-                                        Text(
-                                            stringResource(R.string.listing_reference, listing.id),
-                                            style = MaterialTheme.typography.bodySmall,
-                                        )
-                                    }
-                                }
+                    }
+                    items(listings, key = { "public-" + it.id }) { listing ->
+                        JodloCard(modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(JodloSizes.CardPadding)) {
+                                Text(stringResource(R.string.public_listing))
+                                Text(
+                                    stringResource(R.string.listing_reference, listing.id),
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
                             }
+                        }
+                    }
+                    if (listingCursor != null) item {
+                        JodloTextAction(onClick = {
+                            selected?.let { showListings(it, listingCursor) }
+                        }, enabled = !loading) {
+                            Text(stringResource(R.string.customer_more_listings))
+                        }
+                    }
+                }
+                if (loading) item { CircularProgressIndicator() }
+                if (pageFailure) {
+                    item {
+                        Text(
+                            stringResource(R.string.customer_page_failed),
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                    item {
+                        JodloTextAction(onClick = {
+                            val chosen = selected
+                            if (chosen != null) showListings(chosen, listingCursor)
+                            else nextCategoryPage()
+                        }, enabled = !loading) {
+                            Text(stringResource(R.string.customer_retry_page))
                         }
                     }
                 }
             }
-            Spacer(Modifier.weight(0.01f))
-            Text(
-                stringResource(R.string.prototype_notice),
-                style = MaterialTheme.typography.labelSmall,
-            )
+            item {
+                Text(
+                    stringResource(R.string.prototype_notice),
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            }
         }
     }
 }

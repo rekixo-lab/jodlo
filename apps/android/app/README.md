@@ -98,3 +98,14 @@ The default APK intentionally has no live HTTPS backend origin or Google OAuth
 Web client ID; it is an **offline UI smoke-test build**, not a functional
 Cloudflare/Agora/payment release. An automated command cannot prove that
 the phone rendered every screen correctly—verify it on-device.
+
+## 2026-11-02 — User-driven native Customer cursor pagination
+
+The native Customer screen now explicitly supports:
+- **Browse:** 20 active Categories per bounded GET, with a visible "Load more categories" control using the existing `nextCursor` from the HTTPS catalog API.
+- **Search:** keep the existing first-page `includeChoices=1` ambiguity safety probe; when search actually spans beyond that first page, switch to the existing `cursor=1` exhaustive Search protocol **from page one** rather than mixing offset rows with cursor rows. Each later page requires another user tap. Short/unambiguous first-page Search stays one GET.
+- **Public listings:** 20 public listing references per user-triggered GET via the existing `GET /api/v1/listings` keyset mode. No extra private fields, calling, ratings, contact details or publish actions are added.
+- On language change, category selection/back, a new Search/Browse, or source replacement, old responses are discarded. Lost/stale/overlapping cursor pages cannot be added to a fresh list; unreadable next pages keep previous verified rows visible with a manual retry control. Invalidated public listing/category anchors clear the old rows rather than pretending they are still valid.
+- All screen content scrolls in **one Compose LazyColumn**, including header, small-screen controls, item cards and pagination actions, using founder-approved flat dark outline tokens and English/Hindi strings.
+
+This is a UI integration of **existing tested headless cursor APIs**, not a new backend route or approval/activation of historic Categories. The default debug APK still has no live HTTPS backend configured. Local compiled APK CI and future real-device UI tests must be distinguished.
