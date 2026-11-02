@@ -2,7 +2,11 @@ import type { D1Database } from "../../data/d1.ts";
 import { validOpaqueId } from "../shared/identifiers.ts";
 import { prepareSyntheticAgoraInvite, type AgoraCallSnapshot } from "./agora-call-lifecycle.ts";
 import type { DirectCallPolicyFacts } from "./direct-call.ts";
-import { readCallerSessionBoundAgoraOptInTarget } from "./request-target.ts";
+import {
+  readCallerSessionBoundAgoraOptInTarget,
+  readCallerSessionBoundAgoraConsentEpoch,
+  type RequestTargetFacts,
+} from "./request-target.ts";
 
 /**
  * OFFLINE ONLY: scripted, server-injected evidence for call-invitation safety
@@ -71,6 +75,56 @@ export type SyntheticInviteSafetyDecision =
   | Readonly<{ kind: "prepared"; call: AgoraCallSnapshot }>
   | Readonly<{ kind: "denied" }>;
 
+/** Original worker preference epoch is measured in the SAME caller/session/
+ * listing D1 statement as all current eligibility evidence. An epoch-less
+ * preview must never be silently promoted to durable call admission.
+ */
+export type SyntheticEpochBoundInviteSafetyDecision =
+  | Readonly<{
+      kind: "prepared";
+      call: AgoraCallSnapshot;
+      originalConsentRevision: number;
+    }>
+  | Readonly<{ kind: "denied" }>;
+
+const DENIED = Object.freeze({ kind: "denied" as const });
+
+/** Share the exact hypothetical risk checks; no query, token or provider
+ * side effect occurs here. The caller identity and actual worker identity
+ * must always originate in the D1-backed server projection, not risk JSON.
+ */
+function prepareForCurrentTarget(
+  target: RequestTargetFacts | null,
+  risk: SyntheticAgoraInviteRisk,
+  callId: string,
+  nowMs: number,
+  ringDeadlineMs: number,
+): SyntheticInviteSafetyDecision {
+  if (!target ||
+      risk.callerAccountId !== target.requesterAccountId ||
+      risk.workerAccountId !== target.workerAccountId ||
+      risk.listingId !== target.listingId ||
+      risk.workerPresence !== "online" ||
+      risk.workerAvailability !== "available" ||
+      risk.blockedByCaller || risk.blockedByWorker ||
+      risk.rateGate !== "pass" ||
+      !risk.recipientVerified || !risk.privacyApproved) return DENIED;
+
+  const policy: DirectCallPolicyFacts = {
+    listingAvailable: true,
+    blockedByRequester: risk.blockedByCaller,
+    blockedByWorker: risk.blockedByWorker,
+    workerConsentedToCalls: true,
+    callDestinationVerified: risk.recipientVerified,
+    connectionPrivacyApproved: risk.privacyApproved,
+    abuseLimitPassed: risk.rateGate === "pass",
+  };
+  const result = prepareSyntheticAgoraInvite(
+    target, policy, callId, nowMs, ringDeadlineMs,
+  );
+  return result.kind === "prepared" ? result : DENIED;
+}
+
 /**
  * Test-only rehearsal for a customer-initiated Agora ring, NOT RTC grant.
  * The worker's explicit consent is checked by a single D1 SELECT with
@@ -93,42 +147,59 @@ export async function prepareSyntheticSafetyCheckedAgoraInvite(
   ringDeadlineMs: number,
   risk: SyntheticAgoraInviteRisk | null,
 ): Promise<SyntheticInviteSafetyDecision> {
-  const denied = Object.freeze({ kind: "denied" as const });
   if (!Number.isSafeInteger(nowMs) || nowMs < 0 ||
       !Number.isSafeInteger(ringDeadlineMs) ||
-      !validRisk(risk, nowMs)) return denied;
-
+      !validRisk(risk, nowMs)) return DENIED;
   try {
     const target = await readCallerSessionBoundAgoraOptInTarget(
       db, callerBearer, listingId,
     );
-    if (!target ||
-        risk.callerAccountId !== target.requesterAccountId ||
-        risk.workerAccountId !== target.workerAccountId ||
-        risk.listingId !== target.listingId ||
-        risk.workerPresence !== "online" ||
-        risk.workerAvailability !== "available" ||
-        risk.blockedByCaller || risk.blockedByWorker ||
-        risk.rateGate !== "pass" ||
-        !risk.recipientVerified || !risk.privacyApproved) return denied;
-
-    // The consent in the real read is mandatory; remaining policy inputs
-    // are SIMULATED. No quota, busy claim, notification or call is made.
-    const policy: DirectCallPolicyFacts = {
-      listingAvailable: true,
-      blockedByRequester: risk.blockedByCaller,
-      blockedByWorker: risk.blockedByWorker,
-      workerConsentedToCalls: true,
-      callDestinationVerified: risk.recipientVerified,
-      connectionPrivacyApproved: risk.privacyApproved,
-      abuseLimitPassed: risk.rateGate === "pass",
-    };
-    const result = prepareSyntheticAgoraInvite(
-      target, policy, callId, nowMs, ringDeadlineMs,
-    );
-    return result.kind === "prepared" ? result : denied;
+    return prepareForCurrentTarget(target, risk, callId, nowMs, ringDeadlineMs);
   } catch {
     // No leakage of D1 errors, identity, presence or block relationships.
-    return denied;
+    return DENIED;
+  }
+}
+
+/**
+ * STRONGER OFFLINE INVITE PREVIEW: one caller-owned live session-bound D1
+ * SELECT captures both current listing/worker eligibility AND the exact
+ * original enabled preference revision. No second independent consent read,
+ * no worker bearer and no client-selected worker or epoch are accepted.
+ *
+ * Intended only for test fixture writers that begin a local write transaction
+ * BEFORE calling this helper and commit their call+UNSENT intent within it.
+ * Without the surrounding transaction this is still merely a stale-able
+ * preview: never a live ringing, RTC token or provider-send permission.
+ */
+export async function prepareSyntheticConsentEpochBoundAgoraInvite(
+  db: D1Database,
+  callerBearer: string,
+  listingId: string,
+  callId: string,
+  nowMs: number,
+  ringDeadlineMs: number,
+  risk: SyntheticAgoraInviteRisk | null,
+): Promise<SyntheticEpochBoundInviteSafetyDecision> {
+  if (!Number.isSafeInteger(nowMs) || nowMs < 0 ||
+      !Number.isSafeInteger(ringDeadlineMs) ||
+      !validRisk(risk, nowMs)) return DENIED;
+  try {
+    const evidence = await readCallerSessionBoundAgoraConsentEpoch(
+      db, callerBearer, listingId,
+    );
+    if (!evidence) return DENIED;
+    const result = prepareForCurrentTarget(
+      evidence.target, risk, callId, nowMs, ringDeadlineMs,
+    );
+    return result.kind === "prepared"
+      ? Object.freeze({
+          kind: "prepared" as const,
+          call: result.call,
+          originalConsentRevision: evidence.consentRevision,
+        })
+      : DENIED;
+  } catch {
+    return DENIED;
   }
 }
