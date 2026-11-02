@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">JODLO</string>
+    <string name="discovery_subtitle">Explore approved services. No location or account information is collected in guest mode.</string>
+    <string name="language_hindi">हिन्दी</string>
+    <string name="language_english">English</string>
+    <string name="no_api_origin">Live catalog is not connected. An approved HTTPS API origin must be configured at build time.</string>
+    <string name="search_label">Search services</string>
+    <string name="search_validation">Enter 2 to 64 characters.</string>
+    <string name="search_action">Search</string>
+    <string name="browse_action">Browse all</string>
+    <string name="choose_category">Choose the matching service category to continue.</string>
+    <string name="back_action">Back to categories</string>
+    <string name="request_failed">Could not load the requested page. No changes were made.</string>
+    <string name="retry_action">Retry browsing</string>
+    <string name="empty_catalog">No approved categories are available.</string>
+    <string name="empty_listings">No public listings are available for this category.</string>
+    <string name="public_listing">Public service listing</string>
+    <string name="listing_reference">Reference: %1$s</string>
+    <string name="prototype_notice">Development preview • No sign-in, calls, payments or worker publishing.</string>
+</resources>
