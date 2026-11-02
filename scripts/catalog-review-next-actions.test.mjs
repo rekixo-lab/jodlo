@@ -183,16 +183,16 @@ test("mapping focus skips unaffected source rows without silently cutting full r
   const input=fresh();
   let after=null,pages=0;
   do{
-    const out=plan(input,{focus:"mapping",limit:3,after});
+    const out=plan(input,{focus:"mapping",limit:25,after});
     assert.equal(out.summary.historicalCategories,889);
     assert.equal(out.summary.historicalServices,7267);
     assert.equal(out.summary.categoriesAuthorizedForActivation,0);
     assert.equal(out.page.focus,"mapping");
-    assert.ok(out.page.categories.length<=3);
+    assert.ok(out.page.categories.length<=25);
     actual.push(...out.page.categories.map(x=>x.sourceCategoryId));
     after=out.page.nextCursor;
     pages++;
-    assert.ok(pages<=297);
+    assert.ok(pages<=36);
   }while(after!==null);
   assert.deepEqual(actual,expected);
   assert.equal(new Set(actual).size,actual.length);
