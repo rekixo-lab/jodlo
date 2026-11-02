@@ -4,12 +4,31 @@ set -Eeuo pipefail
 source_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-mkdir -p "$tmp/repo/scripts" "$tmp/bin" "$tmp/sdk/platforms/android-35" "$tmp/sdk/build-tools/35.0.0"
+mkdir -p "$tmp/repo/scripts" "$tmp/bin" "$tmp/sdk/platforms/android-35" "$tmp/sdk/build-tools/35.0.0" "$tmp/jdk17/bin" "$tmp/jdk21/bin"
 cp "$source_dir/android-device.sh" "$tmp/repo/scripts/android-device.sh"
+cat > "$tmp/jdk17/bin/javac" <<'MOCK_JAVAC'
+#!/usr/bin/env bash
+printf 'javac 17.0.16\n'
+MOCK_JAVAC
+cat > "$tmp/jdk21/bin/javac" <<'MOCK_JAVAC21'
+#!/usr/bin/env bash
+printf 'javac 21.0.1\n'
+MOCK_JAVAC21
+cat > "$tmp/jdk17/bin/java" <<'MOCK_JAVA'
+#!/usr/bin/env bash
+printf 'openjdk version "17.0.16"\n' >&2
+MOCK_JAVA
+cat > "$tmp/jdk21/bin/java" <<'MOCK_JAVA21'
+#!/usr/bin/env bash
+printf 'openjdk version "21.0.1"\n' >&2
+MOCK_JAVA21
+chmod +x "$tmp/jdk17/bin/"* "$tmp/jdk21/bin/"*
+ln -s "$tmp/jdk17/bin/javac" "$tmp/bin/javac"
 cat > "$tmp/bin/gradle" <<'GRADLE'
 #!/usr/bin/env bash
 set -Eeuo pipefail
 printf 'gradle %s\n' "$*" >> "$MOCK_CALLS"
+printf 'java-home %s\n' "${JAVA_HOME:-unset}" >> "$MOCK_CALLS"
 [[ "${MOCK_BUILD_FAIL:-0}" != 1 ]] || exit 42
 if [[ "${MOCK_NO_APK:-0}" != 1 ]]; then
   out="$MOCK_REPO_ROOT/apps/android/app/build/outputs/apk/debug"
@@ -39,13 +58,15 @@ chmod +x "$tmp/bin/gradle" "$tmp/bin/adb"
 export PATH="$tmp/bin:$PATH"
 export ANDROID_HOME="$tmp/sdk" ANDROID_SDK_ROOT="$tmp/sdk"
 export MOCK_REPO_ROOT="$tmp/repo" MOCK_CALLS="$tmp/calls"
+export JAVA_HOME="$tmp/jdk17"
 apk="$tmp/repo/apps/android/app/build/outputs/apk/debug/app-debug.apk"
 reset() {
   : > "$MOCK_CALLS"
   rm -f "$apk"
   MOCK_DEVICES=""
   export MOCK_DEVICES
-  unset ANDROID_SERIAL MOCK_BUILD_FAIL MOCK_NO_APK MOCK_INSTALL_FAIL
+  unset ANDROID_SERIAL MOCK_BUILD_FAIL MOCK_NO_APK MOCK_INSTALL_FAIL JODLO_JDK17_HOME
+  export JAVA_HOME="$tmp/jdk17"
 }
 ok() {
   if ! bash "$tmp/repo/scripts/android-device.sh" "$@" >"$tmp/result" 2>&1; then
@@ -65,6 +86,26 @@ has() {
 lacks() {
   if grep -Fq -- "$1" "$MOCK_CALLS"; then echo "Unexpected call: $1" >&2; exit 1; fi
 }
+reset
+MOCK_DEVICES=$'D1\tdevice'
+export JODLO_JDK17_HOME="$tmp/jdk21"
+bad run
+lacks gradle
+lacks 'adb -s '
+grep -Fq 'Java 17 JDK not found' "$tmp/result"
+echo '✓ incompatible JDK fails before Gradle or install'
+reset
+MOCK_DEVICES=$'D1\tdevice'
+export JAVA_HOME="$tmp/jdk21"
+ok build
+has "java-home $tmp/jdk17"
+echo '✓ wrong JAVA_HOME falls back to full JDK 17 on PATH'
+reset
+MOCK_DEVICES=$'D1\tdevice'
+export JODLO_JDK17_HOME="$tmp/jdk17"
+ok build
+has "java-home $tmp/jdk17"
+echo '✓ explicit valid JDK override works'
 reset
 bad install
 lacks gradle

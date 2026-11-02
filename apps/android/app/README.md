@@ -61,7 +61,7 @@ For a **developer debug APK** (Android 8.0+), this repo now contains the
 self-contained `scripts/android-device.sh`. It **never** deploys to Cloudflare,
 uninstalls an app, uploads an APK, requests a password or changes release signing.
 
-Requirements (install once): JDK 17, Gradle 8.10.2, Android SDK platform 35,
+Requirements (install once): **full JDK 17 (including javac)**, Gradle 8.10.2, Android SDK platform 35,
 build-tools 35.0.0, Android platform-tools/ADB, and Node 22 for npm shortcuts.
 On a phone: enable Developer Options → USB debugging, connect a data-capable
 USB cable, unlock it and approve the RSA USB debugging authorization prompt.
@@ -109,3 +109,29 @@ The native Customer screen now explicitly supports:
 - All screen content scrolls in **one Compose LazyColumn**, including header, small-screen controls, item cards and pagination actions, using founder-approved flat dark outline tokens and English/Hindi strings.
 
 This is a UI integration of **existing tested headless cursor APIs**, not a new backend route or approval/activation of historic Categories. The default debug APK still has no live HTTPS backend configured. Local compiled APK CI and future real-device UI tests must be distinguished.
+
+### Error: No locally installed Java 17 toolchain
+
+If Gradle reports `Cannot find a Java installation ... languageVersion=17`,
+the phone is already correctly connected; the build computer has no
+discoverable **full JDK 17**. A Java runtime alone or Java 21 is insufficient
+for `apps/android/core/build.gradle.kts`'s `jvmToolchain(17)`.
+On Ubuntu/Debian:
+
+```bash
+sudo apt update
+sudo apt install -y openjdk-17-jdk
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+export PATH="$JAVA_HOME/bin:$PATH"
+java -version
+javac -version
+npm run android:run
+```
+
+The local installer now finds a full JDK 17 by checking `JAVA_HOME`, the
+actual `javac` resolved from `PATH`, and common Linux JDK directories.
+It verifies `javac 17` **before Gradle runs**, selecting the matching
+`JAVA_HOME` for this one command. For a custom location use
+`JODLO_JDK17_HOME=/absolute/path/to/jdk17 npm run android:run`.
+The installer never silently downloads packages or changes system Java
+alternatives; a missing toolchain stops before any ADB install.

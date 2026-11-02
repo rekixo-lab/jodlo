@@ -91,11 +91,38 @@ fi
 
 [[ -d "$sdk/platforms/android-35" ]] || die "Android SDK platform 35 missing. Install sdkmanager 'platforms;android-35'."
 [[ -d "$sdk/build-tools/35.0.0" ]] || die "Android build-tools 35.0.0 missing. Install sdkmanager 'build-tools;35.0.0'."
-if [[ -z "${JAVA_HOME:-}" && -x /usr/lib/jvm/java-17-openjdk-amd64/bin/java ]]; then
-  export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-  export PATH="$JAVA_HOME/bin:$PATH"
+# ':core' pins jvmToolchain(17). A Java runtime or JDK 21 can run
+# Gradle itself while still failing to compile the Core after several minutes.
+# Select a complete JDK 17 (java + javac), not merely 'java' on PATH.
+jdk_candidates=()
+if [[ -n "${JODLO_JDK17_HOME:-}" ]]; then
+  # Explicit override: fail on invalid input rather than unexpectedly use another JDK.
+  jdk_candidates+=("$JODLO_JDK17_HOME")
+else
+  if [[ -n "${JAVA_HOME:-}" ]]; then jdk_candidates+=("$JAVA_HOME"); fi
+  if command -v javac >/dev/null 2>&1; then
+    resolved_javac="$(readlink -f "$(command -v javac)" 2>/dev/null || true)"
+    if [[ -n "$resolved_javac" && -x "$resolved_javac" ]]; then
+      jdk_candidates+=("$(dirname "$(dirname "$resolved_javac")")")
+    fi
+  fi
+  for standard_jdk in /usr/lib/jvm/java-17-openjdk-* /usr/lib/jvm/temurin-17-* "$HOME/.sdkman/candidates/java/current"; do
+    if [[ -d "$standard_jdk" ]]; then jdk_candidates+=("$standard_jdk"); fi
+  done
 fi
-command -v java >/dev/null 2>&1 || die "Java not found. Install OpenJDK 17."
+
+jdk17=""
+for candidate in "${jdk_candidates[@]}"; do
+  [[ -x "$candidate/bin/java" && -x "$candidate/bin/javac" ]] || continue
+  version="$("$candidate/bin/javac" -version 2>&1)" || continue
+  case "$version" in
+    "javac 17"|"javac 17."*) jdk17="$candidate"; break ;;
+  esac
+done
+[[ -n "$jdk17" ]] || die "Java 17 JDK not found (Gradle :core requires javac 17). Install with: sudo apt update && sudo apt install -y openjdk-17-jdk ; then rerun npm run android:run. For a custom JDK set JODLO_JDK17_HOME=/absolute/path/to/jdk17."
+export JAVA_HOME="$jdk17"
+export PATH="$JAVA_HOME/bin:$PATH"
+printf 'JODLO: Java 17 JDK selected: %s\n' "$JAVA_HOME"
 if command -v gradle >/dev/null 2>&1; then
   gradle_bin="$(command -v gradle)"
 elif [[ -x "$HOME/.local/opt/gradle-8.10.2/bin/gradle" ]]; then
