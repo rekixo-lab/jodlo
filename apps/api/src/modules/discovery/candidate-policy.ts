@@ -22,8 +22,8 @@ const MAX_RETURNED = 25;
 
 /** Fail-closed if the caller omits a trusted approval policy.
  * Order follows trusted input, never inventing scores/verification.
- * Rejects duplicate worker IDs and duplicate category memberships across the
- * COMPLETE source batch before invoking any approval policy. Repeated rows
+ * Rejects duplicate worker IDs across the batch and repeated category IDs
+ * within any single worker row BEFORE invoking any approval policy. Repeated rows
  * could conceal conflicting trust or availability facts; "first wins" is
  * not a safe resolution. Returns only opaque IDs; callers must recheck
  * eligibility at write time.
