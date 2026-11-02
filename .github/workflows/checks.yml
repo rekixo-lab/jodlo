@@ -36,6 +36,8 @@ jobs:
         run: npm run audit:prod
       - name: Audit all locked dependencies (high or critical blocks CI)
         run: npm run audit:all
+      - name: Test connected-device installer safely with mocked ADB and Gradle
+        run: npm run android:device-tests
       - name: Node API and design-guard fixture tests
         run: npm test
       - name: Apply catalog D1 migrations locally (no remote resources)

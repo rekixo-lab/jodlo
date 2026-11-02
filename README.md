@@ -1,5 +1,7 @@
 # JODLO
 
+> **LOCAL PHONE TEST:** After a fresh `git pull --ff-only origin main`, connect an authorized Android phone over USB and run `npm run android:run`. This builds a debug APK, installs it on the single ready device and launches JODLO. [Full instructions](apps/android/app/README.md#local-ubuntulinux-one-command-build-and-install-on-connected-android). No release/deploy; default backend and Google sign-in remain unconfigured.
+
 > **FOUNDER UI REFERENCE APPROVED — 2026-11-02:** The entire JODLO application uses the [flat black + hairline teal/green UI spec](docs/UI_REFERENCE_2026-11-02.md), based on the founder's two screenshots. Android screens share checked dark-only Compose tokens and outlined components; code style approval is not approval to deploy Agora, ads, payments, location or live Google OAuth.
 
 > **NATIVE ANDROID APP SOURCE CHECKPOINT — 2026-11-02:** [PR #169](https://github.com/rekixo-lab/jodlo/pull/169) adds a separate opt-in `:app` launcher and Compose guest Browse/Search/public Listings flow, backed by existing headless Kotlin Core. Build CI and review are mandatory; this is not a verified release APK, working cloud backend, Google Sign-In, Agora calling, payments or approved final visual design. Historical sections below describe earlier stages.

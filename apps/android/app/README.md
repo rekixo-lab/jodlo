@@ -54,3 +54,47 @@ The [no-deploy Android CI workflow](../../../.github/workflows/android-native.ym
 5. This **default APK has no configured HTTPS API origin or Google OAuth Web client ID**. Catalog fetch, worker login, publishing, Agora calls, messaging, payments and live provider discovery are not functional. This is an offline UI/build smoke test, **not** a usable live marketplace or production-ready release.
 
 Use the workflow's **Run workflow** action (on the default branch) to regenerate an artifact after its seven-day expiration. Never treat this debug-signed APK as a store/release build.
+
+## Local Ubuntu/Linux: one-command build and install on connected Android
+
+For a **developer debug APK** (Android 8.0+), this repo now contains the
+self-contained `scripts/android-device.sh`. It **never** deploys to Cloudflare,
+uninstalls an app, uploads an APK, requests a password or changes release signing.
+
+Requirements (install once): JDK 17, Gradle 8.10.2, Android SDK platform 35,
+build-tools 35.0.0, Android platform-tools/ADB, and Node 22 for npm shortcuts.
+On a phone: enable Developer Options → USB debugging, connect a data-capable
+USB cable, unlock it and approve the RSA USB debugging authorization prompt.
+
+```bash
+cd ~/jodlo
+git pull --ff-only origin main
+npm run android:devices  # inspect "device" rather than "unauthorized"/"offline"
+npm run android:run      # BUILD → adb install -r → launch app automatically
+```
+
+Choose a particular phone when two devices/emulators are attached:
+
+```bash
+npm run android:run -- --serial DEVICE_SERIAL
+# or: ANDROID_SERIAL=DEVICE_SERIAL npm run android:run
+```
+
+Other shortcuts: `npm run android:build` builds without a phone;
+`npm run android:install` builds and installs without opening it;
+`npm run android:device-tests` exercises the guard with fake ADB and Gradle,
+never touching a phone. APK stays at
+`apps/android/app/build/outputs/apk/debug/app-debug.apk`.
+
+The installer checks exactly one **authorized** connected device and a
+nonempty APK, stops on any failed Gradle/ADB command and **never deletes
+existing app data**. If `adb devices` is blank/unauthorized, fix USB
+debugging/phone prompt/udev permission first. When an older app has a
+different debug signature, `adb install -r` may reject the update; manual
+uninstall **will erase that app's local data**, so do not do it casually.
+If the device isn't reachable from Linux, no remote install is possible.
+
+The default APK intentionally has no live HTTPS backend origin or Google OAuth
+Web client ID; it is an **offline UI smoke-test build**, not a functional
+Cloudflare/Agora/payment release. An automated command cannot prove that
+the phone rendered every screen correctly—verify it on-device.
