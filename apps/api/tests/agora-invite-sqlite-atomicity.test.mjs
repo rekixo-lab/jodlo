@@ -11,8 +11,10 @@ import { optInAsWorker } from "../src/modules/workers/profile.ts";
 import { publishListing } from "../src/modules/workers/listings.ts";
 import { issueSession, revokeSession } from "../src/modules/identity/sessions.ts";
 import { setOwnWorkerAgoraCallPreference } from "../src/modules/workers/agora-call-preference.ts";
-import { prepareSyntheticSafetyCheckedAgoraInvite } from
-  "../src/modules/interactions/agora-invite-safety.ts";
+import {
+  prepareSyntheticSafetyCheckedAgoraInvite,
+  prepareSyntheticConsentEpochBoundAgoraInvite,
+} from "../src/modules/interactions/agora-invite-safety.ts";
 import { validIdempotencyKey, validOpaqueId } from "../src/modules/shared/identifiers.ts";
 
 /**
@@ -166,7 +168,7 @@ async function stageSyntheticInvite(db,options) {
   try {
     db.exec("BEGIN IMMEDIATE");
     inTransaction=true;
-    const candidate=await prepareSyntheticSafetyCheckedAgoraInvite(
+    const candidate=await prepareSyntheticConsentEpochBoundAgoraInvite(
       localD1Adapter(db),callerBearer,listingId,
       callId,nowMs,ringDeadlineMs,risk,
     );
@@ -176,17 +178,12 @@ async function stageSyntheticInvite(db,options) {
       return {kind:"denied"};
     }
 
+    // The SAME D1 SELECT resolved the caller's live bearer, listing owner,
+    // publication/moderation and this ORIGINAL consent epoch. The write lock
+    // protects the evidence until both synthetic records commit; there is no
+    // independent second read that might silently substitute a fresh epoch.
     const call=candidate.call;
-    const liveConsent=db.prepare(
-      "SELECT revision FROM worker_agora_call_preferences " +
-      "WHERE account_id=? AND calls_enabled=1"
-    ).get(call.workerAccountId);
-    if(!liveConsent || !Number.isSafeInteger(liveConsent.revision) ||
-        liveConsent.revision < 1) {
-      db.exec("ROLLBACK");
-      inTransaction=false;
-      return {kind:"denied"};
-    }
+    const originalEpoch=candidate.originalConsentRevision;
     const old=db.prepare("SELECT * FROM synthetic_voice_invites WHERE call_id=?")
       .get(callId);
     if(old){
@@ -195,7 +192,7 @@ async function stageSyntheticInvite(db,options) {
         old.listing_id===call.listingId &&
         old.retry_key===retryKey &&
         old.ring_deadline_ms===call.ringDeadlineMs &&
-        old.consent_revision===liveConsent.revision;
+        old.consent_revision===originalEpoch;
       db.exec("ROLLBACK");
       inTransaction=false;
       return {kind:exact?"replay_suppressed":"denied"};
@@ -204,7 +201,7 @@ async function stageSyntheticInvite(db,options) {
     db.prepare(
       "INSERT INTO synthetic_voice_invites VALUES(?,?,?,?,?,?,?)"
     ).run(callId,call.callerAccountId,call.workerAccountId,
-      call.listingId,retryKey,call.ringDeadlineMs,liveConsent.revision);
+      call.listingId,retryKey,call.ringDeadlineMs,originalEpoch);
     if(failAfterInsert) throw Error("synthetic failure before outbox commit");
     db.prepare("INSERT INTO synthetic_voice_outbox(call_id,kind) VALUES(?,?)")
       .run(callId,"ring_intent_only");
