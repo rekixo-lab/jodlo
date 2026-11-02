@@ -1,3 +1,5 @@
+import java.net.URI
+
 plugins {
     id("com.android.application") version "8.6.1"
     id("org.jetbrains.kotlin.android") version "1.9.24"
@@ -10,7 +12,7 @@ repositories {
 
 val apiOrigin = providers.gradleProperty("jodloApiOrigin").orNull?.trim().orEmpty()
 if (apiOrigin.isNotEmpty()) {
-    val uri = java.net.URI(apiOrigin)
+    val uri = URI(apiOrigin)
     require(uri.scheme == "https" && uri.host != null && uri.userInfo == null &&
         uri.port in listOf(-1, 443) && uri.rawQuery == null && uri.rawFragment == null &&
         (uri.rawPath.isNullOrEmpty() || uri.rawPath == "/")) {
