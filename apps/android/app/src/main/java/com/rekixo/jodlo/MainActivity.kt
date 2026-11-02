@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -24,6 +25,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -37,35 +39,72 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.rekixo.jodlo.core.network.ApiOutcome
 import com.rekixo.jodlo.core.network.FailureKind
+import com.rekixo.jodlo.core.network.HeadlessWorkerWriteScope
 import com.rekixo.jodlo.core.network.HttpsTransport
+import com.rekixo.jodlo.core.network.InMemorySessionCoordinator
 import com.rekixo.jodlo.core.network.Language
 import com.rekixo.jodlo.core.network.PublicCategory
 import com.rekixo.jodlo.core.network.PublicListing
 import com.rekixo.jodlo.core.network.RemoteCatalogRepository
+import com.rekixo.jodlo.core.network.RemoteWorkerRepository
 import com.rekixo.jodlo.core.network.asRequestSender
 import com.rekixo.jodlo.ui.theme.JodloTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** Guest read-only entrypoint. Authentication, publishing, RTC and payments are NOT enabled. */
+/** Native application entrypoint. Real Google sign-in is disabled until configured. */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            JodloTheme { GuestDiscovery() }
+            JodloTheme { JodloApp(this) }
         }
     }
 }
 
 @Composable
-private fun GuestDiscovery() {
-    val repository = remember {
-        BuildConfig.API_ORIGIN.takeIf { it.isNotBlank() }?.let { origin ->
-            RemoteCatalogRepository(HttpsTransport(origin).asRequestSender())
+private fun JodloApp(activity: ComponentActivity) {
+    val sender = remember {
+        BuildConfig.API_ORIGIN.takeIf { it.isNotBlank() }?.let {
+            HttpsTransport(it).asRequestSender()
         }
     }
+    val catalog = remember(sender) { sender?.let(::RemoteCatalogRepository) }
+    val session = remember(sender) {
+        sender?.let { InMemorySessionCoordinator(RemoteWorkerRepository(it), it) }
+    }
+    val writes = remember(session) { session?.let(::HeadlessWorkerWriteScope) }
+    DisposableEffect(writes) {
+        onDispose { writes?.close() }
+    }
+    var section by rememberSaveable { mutableStateOf("customer") }
+    Column(Modifier.fillMaxSize()) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            FilterChip(
+                selected = section == "customer",
+                onClick = { section = "customer" },
+                label = { Text(stringResource(R.string.tab_customer)) },
+            )
+            FilterChip(
+                selected = section == "worker",
+                onClick = { section = "worker" },
+                label = { Text(stringResource(R.string.tab_worker)) },
+            )
+        }
+        Box(Modifier.weight(1f)) {
+            if (section == "customer") GuestDiscovery(catalog)
+            else WorkerDashboard(activity, session, writes, catalog)
+        }
+    }
+}
+
+@Composable
+private fun GuestDiscovery(repository: RemoteCatalogRepository?) {
     val scope = rememberCoroutineScope()
     var language by remember { mutableStateOf(Language.HI) }
     var searchText by rememberSaveable { mutableStateOf("") }
