@@ -56,4 +56,9 @@
     <string name="worker_acknowledge_uncertainty">Acknowledge uncertain result</string>
     <string name="worker_review_acknowledged">Uncertainty acknowledged, not resolved. Recheck server state before a new action.</string>
     <string name="worker_dev_notice">Developer preview. No live Google OAuth, calls, GPS, payments or production deployment is configured.</string>
+    <string name="customer_more_categories">Load more categories</string>
+    <string name="customer_more_listings">Load more public listings</string>
+    <string name="customer_page_failed">Next page could not be verified. Earlier rows remain visible; use Refresh if listings have changed.</string>
+    <string name="customer_retry_page">Retry this page</string>
+    <string name="search_query_caption">Results for: %1$s</string>
 </resources>
