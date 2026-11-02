@@ -65,7 +65,7 @@ reset() {
   rm -f "$apk"
   MOCK_DEVICES=""
   export MOCK_DEVICES
-  unset ANDROID_SERIAL MOCK_BUILD_FAIL MOCK_NO_APK MOCK_INSTALL_FAIL JODLO_JDK17_HOME
+  unset ANDROID_SERIAL MOCK_BUILD_FAIL MOCK_NO_APK MOCK_INSTALL_FAIL JODLO_JDK17_HOME JODLO_JDK_HOME
   export JAVA_HOME="$tmp/jdk17"
 }
 ok() {
@@ -88,24 +88,42 @@ lacks() {
 }
 reset
 MOCK_DEVICES=$'D1\tdevice'
+export JODLO_JDK_HOME="$tmp/jdk21"
+ok run
+has "java-home $tmp/jdk21"
+has 'adb -s D1 install -r '
+has 'adb -s D1 shell am start -n com.rekixo.jodlo/.MainActivity'
+echo '✓ Java 21 alone builds, installs and launches safely'
+
+reset
+export JAVA_HOME="$tmp/jdk21"
+ok build
+has "java-home $tmp/jdk21"
+echo '✓ existing JAVA_HOME=JDK21 is selected automatically'
+
+reset
+MOCK_DEVICES=$'D1\tdevice'
+export JODLO_JDK_HOME="$tmp/no-such-jdk"
+bad run
+lacks gradle
+lacks 'adb -s '
+grep -Fq 'No full JDK 17 or 21 found' "$tmp/result"
+echo '✓ invalid JDK override refuses build and install'
+
+reset
+MOCK_DEVICES=$'D1\tdevice'
 export JODLO_JDK17_HOME="$tmp/jdk21"
 bad run
 lacks gradle
 lacks 'adb -s '
-grep -Fq 'Java 17 JDK not found' "$tmp/result"
-echo '✓ incompatible JDK fails before Gradle or install'
+echo '✓ legacy JDK17-only override rejects JDK21'
+
 reset
-MOCK_DEVICES=$'D1\tdevice'
 export JAVA_HOME="$tmp/jdk21"
+export JODLO_JDK_HOME="$tmp/jdk17"
 ok build
 has "java-home $tmp/jdk17"
-echo '✓ wrong JAVA_HOME falls back to full JDK 17 on PATH'
-reset
-MOCK_DEVICES=$'D1\tdevice'
-export JODLO_JDK17_HOME="$tmp/jdk17"
-ok build
-has "java-home $tmp/jdk17"
-echo '✓ explicit valid JDK override works'
+echo '✓ explicit JDK17 override remains supported'
 reset
 bad install
 lacks gradle
