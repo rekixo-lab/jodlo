@@ -37,6 +37,23 @@ export type TransitionDecision<S extends string> =
   | { kind: "replay"; receipt: RequestReceipt<S> }
   | { kind: "reject"; code: "INVALID_INPUT" | "NOT_OWNER" | "KEY_CONFLICT" | "STALE_REVISION" | "TRANSITION_DENIED" };
 
+const SNAPSHOT_FIELDS = [
+  "requestId", "ownerAccountId", "categoryId", "state", "revision",
+] as const;
+const COMMAND_FIELDS = [
+  "actorAccountId", "expectedRevision", "idempotencyKey", "toState",
+] as const;
+const RECEIPT_FIELDS = [
+  "requestId", "actorAccountId", "idempotencyKey",
+  "expectedRevision", "toState", "result",
+] as const;
+const record = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+const exactFields = (value: unknown, fields: readonly string[]): boolean =>
+  record(value) &&
+  Object.keys(value).length === fields.length &&
+  fields.every(field => Object.hasOwn(value, field));
+
 function validRevision(value: number): boolean {
   return Number.isSafeInteger(value) && value >= 0;
 }
@@ -55,10 +72,11 @@ export function decideRequestTransition<S extends string>(
   policy: TransitionPolicy<S>,
   priorReceipt: RequestReceipt<S> | null = null,
 ): TransitionDecision<S> {
-  // SQLite rows and adapter inputs are runtime values, regardless of their
-  // TypeScript declaration. Reject absent snapshots/commands without throwing.
-  if (!current || typeof current !== "object" ||
-      !command || typeof command !== "object" ||
+  // Runtime adapter objects must carry EXACTLY the documented fields.
+  // Extra internal/provider/user fields must never leak into a receipt, while
+  // missing/array-like snapshots or commands fail closed before authorization.
+  if (!exactFields(current, SNAPSHOT_FIELDS) ||
+      !exactFields(command, COMMAND_FIELDS) ||
       !validOpaqueId(current.requestId) ||
       !validOpaqueId(current.ownerAccountId) ||
       !validCategoryId(current.categoryId) ||
@@ -76,10 +94,10 @@ export function decideRequestTransition<S extends string>(
   }
 
   if (priorReceipt !== null) {
-    // A receipt is hydrated from storage at runtime. A malformed result must
-    // never throw or be mistaken for a successful idempotent replay.
-    if (!priorReceipt || typeof priorReceipt !== "object" ||
-        !priorReceipt.result || typeof priorReceipt.result !== "object" ||
+    // A receipt is hydrated from storage at runtime. Reject extra and
+    // malformed fields before any idempotent replay (never echo secrets).
+    if (!exactFields(priorReceipt, RECEIPT_FIELDS) ||
+        !exactFields(priorReceipt?.result, SNAPSHOT_FIELDS) ||
         !validOpaqueId(priorReceipt.requestId) ||
         !validOpaqueId(priorReceipt.actorAccountId) ||
         !validIdempotencyKey(priorReceipt.idempotencyKey) ||
@@ -127,8 +145,14 @@ export function decideRequestTransition<S extends string>(
   if (current.revision === Number.MAX_SAFE_INTEGER) {
     return { kind: "reject", code: "INVALID_INPUT" };
   }
+  // Project ONLY the five documented fields. Never spread arbitrary SQL,
+  // adapter or caller properties into a state/receipt used by retry handlers.
   const result: RequestSnapshot<S> = Object.freeze({
-    ...current, state: command.toState, revision: current.revision + 1,
+    requestId: current.requestId,
+    ownerAccountId: current.ownerAccountId,
+    categoryId: current.categoryId,
+    state: command.toState,
+    revision: current.revision + 1,
   });
   const receipt: RequestReceipt<S> = Object.freeze({
     requestId: current.requestId,
