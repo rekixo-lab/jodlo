@@ -55,7 +55,7 @@
     "catalog:review-triage": "node scripts/catalog-review-triage.mjs",
     "catalog:review-progress": "node scripts/catalog-human-review-progress.mjs",
     "catalog:review-evidence-audit": "node scripts/catalog-human-review-evidence-audit.mjs",
-    "catalog:review-next": "node scripts/catalog-review-next-actions.mjs --next",
+    "catalog:review-next": "node scripts/catalog-review-next-actions.mjs",
     "catalog:review-next-check": "node scripts/catalog-review-next-actions.mjs --check",
     "lock:check": "node scripts/verify-dependency-lock.mjs",
     "audit:prod": "npm audit --omit=dev --audit-level=moderate",
