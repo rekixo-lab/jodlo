@@ -89,6 +89,21 @@ export function selectNextHumanReviewActions(queue,progress,options={}) {
        original.categoriesAuthorizedForActivation!==0||
        category.categoriesAuthorizedForActivation!==0)
       throw Error("Human review attention/progress mismatch");
+    const baseline=mapping.byId.get(category.sourceCategoryId);
+    if(!baseline||
+       baseline.historicalNameEn!==category.historicalNameEn||
+       baseline.historicalNameHi!==category.historicalNameHi||
+       baseline.sourceGroupId!==category.sourceGroupId||
+       baseline.sourceFamilyId!==category.sourceFamilyId||
+       baseline.reviewState!=="HUMAN_ID_SLUG_LABEL_AND_SAFETY_REVIEW_REQUIRED"||
+       !Array.isArray(baseline.syntaxIssues)||
+       !Array.isArray(category.flaggedSourceServiceIds)||
+       !Array.isArray(category.outstandingNameScopeHandoffs)||
+       !Array.isArray(category.unresolvedProposedNameConflicts)||
+       !Number.isSafeInteger(category.serviceNameDraftsUnverified)||
+       !Number.isSafeInteger(category.serviceScopeDraftsUnverified)||
+       !Number.isSafeInteger(category.serviceScopeConcernRowsUnverified))
+      throw Error("Category mapping and Service review evidence diverged");
     return {
       packetNumber:category.packetNumber,
       sourceCategoryId:category.sourceCategoryId,
@@ -98,6 +113,25 @@ export function selectNextHumanReviewActions(queue,progress,options={}) {
       originalServiceCount:category.sourceServiceCount,
       attentionLane:category.attentionLane,
       attentionReasonCodes:category.attentionReasonCodes,
+      // A valid syntax candidate is NEVER approval, even with no syntax issues.
+      originalCategoryMapping:{
+        categoryIdSyntaxCandidate:baseline.categoryIdCandidate,
+        slugSyntaxCandidate:baseline.slugCandidate,
+        syntaxIssues:[...baseline.syntaxIssues],
+        sourceReviewFlags:[...baseline.historicalReviewFlags],
+        reviewState:baseline.reviewState,
+      },
+      // These are human-review diagnostics, not verified Service eligibility.
+      serviceReviewIssues:{
+        flaggedOriginalServiceIds:[...category.flaggedSourceServiceIds],
+        serviceNameDraftsUnverified:category.serviceNameDraftsUnverified,
+        serviceScopeDraftsUnverified:category.serviceScopeDraftsUnverified,
+        scopeConcernRowsUnverified:category.serviceScopeConcernRowsUnverified,
+        proposedNameConflictsUnresolved:structuredClone(
+          category.unresolvedProposedNameConflicts),
+        outstandingNameScopeHandoffs:structuredClone(
+          category.outstandingNameScopeHandoffs),
+      },
       tasks:original.tasks.map(({taskType,status,evidenceUrl})=>
         ({taskType,status,evidenceUrl,qualifiedSignoffVerified:false})),
       stillRequiresQualifiedHumanReview:true,
@@ -107,14 +141,35 @@ export function selectNextHumanReviewActions(queue,progress,options={}) {
 
   const start=after===null?0:rows.findIndex(x=>x.sourceCategoryId===after)+1;
   if(start===0&&after!==null)throw Error("Unknown reviewer batch anchor");
-  const selected=rows.slice(start,start+limit);
+  const serviceSignal=row=>(
+    row.serviceReviewIssues.flaggedOriginalServiceIds.length>0||
+    row.serviceReviewIssues.serviceNameDraftsUnverified>0||
+    row.serviceReviewIssues.serviceScopeDraftsUnverified>0||
+    row.serviceReviewIssues.scopeConcernRowsUnverified>0||
+    row.serviceReviewIssues.proposedNameConflictsUnresolved.length>0||
+    row.serviceReviewIssues.outstandingNameScopeHandoffs.length>0);
+  const matches=row=>focus==="all"||
+    (focus==="mapping"&&row.originalCategoryMapping.syntaxIssues.length>0)||
+    (focus==="service"&&serviceSignal(row));
+  // Continue through the GLOBAL attention order, including filtered-out rows.
+  // An unchanged original Category ID, never a filtered index, is the cursor.
+  const selected=[];
+  let position=start;
+  for(;position<rows.length;position++){
+    if(matches(rows[position]))selected.push(rows[position]);
+    if(selected.length===limit){position++;break;}
+  }
   const last=selected.at(-1);
+  const more=last&&rows.slice(position).some(matches);
   return {
     kind:KIND,state:STATE,sourceJsonSha256:queue.sourceJsonSha256,
     languages:["en","hi"],
     summary:{
       historicalCategories:889,historicalServices:7267,
       reviewPackets:45,requiredHumanReviewTasks:2667,
+      categoriesWithHistoricalSyntaxIssues:rows.filter(x=>
+        x.originalCategoryMapping.syntaxIssues.length>0).length,
+      categoriesWithServiceReviewSignals:rows.filter(serviceSignal).length,
       selfReportedTaskStatuses:checked.summary.selfReportedTaskStatuses,
       categoriesStillRequiringQualifiedHumanReview:889,
       servicesStillRequiringQualifiedHumanReview:7267,
@@ -127,9 +182,8 @@ export function selectNextHumanReviewActions(queue,progress,options={}) {
       approvedAliases:0,sqlStatementsGenerated:0,
     },
     page:{
-      limit,after,
-      nextCursor:start+selected.length<rows.length&&last
-        ?last.sourceCategoryId:null,
+      limit,after,focus,
+      nextCursor:more?last.sourceCategoryId:null,
       categories:selected,
     },
   };
