@@ -42,3 +42,15 @@ gradle -p apps/android -PincludeAndroidApp=true \
 The worker screen checks a private worker draft, offers explicit opt-in, reads owner-only paged listings, and lets a signed-in worker explicitly select a currently approved Category to publish or select a private listing to unpublish. Every mutation is mediated by the existing headless `HeadlessWorkerWriteScope`: uncertain POST/DELETE acknowledgements are NEVER retried automatically. Rechecks are read-only and are not transaction proof; local sign-out is first and server revocation may be uncertain. Google OAuth real-device proof, actual domain deployment, device accessibility, persistent session UX and production authorization remain unverified.
 
 This feature adds no server route or D1 table and does not enable Agora, payments, or live customer-worker messaging. The default build with empty OAuth client ID remains safe and the Worker tab explains that configuration is missing.
+
+## Install the debug APK on an Android phone (developer-only test)
+
+The [no-deploy Android CI workflow](../../../.github/workflows/android-native.yml) now uploads a **seven-day temporary APK artifact** for successful `main` builds. This contains only the generated debug build; there is no release keystore, production build signing, Play Store upload or remote backend deployment.
+
+1. Open [GitHub Actions — JODLO native Android APK compile](https://github.com/rekixo-lab/jodlo/actions/workflows/android-native.yml).
+2. Open the newest **successful main-branch** run (not an unmerged PR check). In its **Artifacts** section download `jodlo-debug-apk-<commit-sha>` (a ZIP). The artifacts section may require signing in to GitHub.
+3. Extract the ZIP on your phone (or computer), find `app-debug.apk`, then open that APK on an Android device running **Android 8.0 or newer**. If Android asks, allow installation **only for the app/file manager you trust**; do not disable Google Play Protect.
+4. Check the launcher, flat black/green/outlined Customer/Worker screens, Hindi/English text, scrolling, rotation and system-back behavior. Report screenshots/crashes, especially on small screens and large font sizes.
+5. This **default APK has no configured HTTPS API origin or Google OAuth Web client ID**. Catalog fetch, worker login, publishing, Agora calls, messaging, payments and live provider discovery are not functional. This is an offline UI/build smoke test, **not** a usable live marketplace or production-ready release.
+
+Use the workflow's **Run workflow** action (on the default branch) to regenerate an artifact after its seven-day expiration. Never treat this debug-signed APK as a store/release build.
