@@ -1,5 +1,9 @@
 # JODLO — Complete AI handoff and source-of-truth index
 
+## 2026-11-03 — Worker-to-Customer real feature delivery
+
+The latest engineering PR adds a Worker-facing **Check current public listing** action to the existing real Kotlin Compose Worker Dashboard. It reuses the exact anonymous Guest detail repository and server-side current public authorization, with distinct visible/404/unknown UX, no reused owner session for Customer reads, and clears the result across owner refresh/selection/write/logout. A single migrated-D1/HTTP product journey test covers opt-in → owner publish → bilingual Guest available-only Search/Browse/Detail → owner unpublish → detail 404/facet gone → re-publish, plus private-account isolation and moderation/current-status revocation. [Acceptance](WORKER_TO_CUSTOMER_PUBLIC_VISIBILITY_2026-11-03.md). Exact PR Foundation + Android-native JDK17/21 CI and independently merged main still must be verified. No actual OAuth/Cloudflare, no live data, no Agora credentials, no staging, no Finworkar mutation.
+
 ## 2026-11-03 — next Worker product milestone: searchable service selection
 
 Working branch implements **Worker Hindi/English approved-Category Search** with keyset pagination, error/empty states, a Browse fallback and preserved explicit owner-authorized Publish; it reuses current `RemoteCatalogRepository.searchCursor` and `HeadlessWorkerWriteScope`, without a new API or a fake debug Worker backend. Source/acceptance: [Worker category search](WORKER_CATEGORY_SEARCH_PUBLISH_2026-11-03.md). Verify the actual PR-head Foundation and Android-native JDK 17/21 workflows and independently check merged-main SHA before marking complete. No live OAuth, cloud backend, 889-category import or physical device verification.
