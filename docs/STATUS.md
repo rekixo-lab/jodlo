@@ -1,12 +1,19 @@
 # JODLO — current state, 2026-11-03
 
-## 2026-11-03 — Non-disclosing bilateral block verdict for private Agora safety read (ENGINEERING PR, CI PENDING)
+## 2026-11-03 — Private D1 safety checked under disposable UNSENT SQLite write lock (ENGINEERING PR, CI PENDING)
+
+- **Concurrency gap rehearsed:** the merged synthetic Agora invite preview reads private D1 availability and blocks independently, which cannot atomically protect a later real writer. A separate, **test-owned fake UNSENT** SQLite transaction now rechecks the actual caller session, listing/Category, original Worker consent, independent Worker availability revision and combined private block veto under `BEGIN IMMEDIATE` before storing only a local fictitious intent.
+- **Two-connection regressions:** default OFF, revoked/foreign bearer, Customer and Worker block independently, unrelated caller, late block or availability OFF after an earlier read, second writer SQLITE_BUSY while first holds the lock, post-commit block suppressing use of a historical UNSENT record, OFF→ON consent and availability old-epoch rejection, conflicting/same-ID replay, and rollback on injected precommit crash. The old table 0008 and owner-only privacy logic are reused; no remote or production migration.
+- **Limits:** `unsent_test_only` is NOT a real call admission, online/presence proof, rate or slot reservation, callback, provider send, RTC token or cloud transaction guarantee. With no block-generation schema, historical block→unblock ABA across independent reads remains unresolved. M-003/M-005 operational/personal-data choices, M-006 provider, M-007 release, M-004 UI and M-008 live OAuth are separate gates.
+- **Evidence:** [test-only lock trial contract](AGORA_PRIVATE_UNSENT_LOCK_TRIAL_2026-11-03.md). Exact PR-head Foundation CI and independently green merged-main CI required; no deployment.
+
+## 2026-11-03 — Non-disclosing bilateral block verdict for private Agora safety read (MERGED, VERIFIED)
 
 - **Privacy gap:** the private, caller-session-scoped D1 safety reader returned separate `blockedByCaller` and `blockedByWorker` booleans. The synthetic server preflight needs to know only whether *either* direction blocks contact. Even an internal result should not expose the other party's block direction in an accidental future caller-facing projection.
 - **Implementation:** return a single `contactBlocked` boolean from one SQL `CASE WHEN EXISTS(...) OR EXISTS(...)` projection. Verify exact 0/1, reject malformed adapter data and deny synthetic invites on `contactBlocked:true`; keep authenticated actor-only directional writes and underlying private D1 schema unchanged.
 - **Regression:** local SQLite D1 tests verify caller-only and worker-only blocks yield **identical** caller-scoped safety facts, both deny contact, the unrelated customer remains separate, malformed combined verdicts fail closed and no direction field is returned. Existing consent/availability/epoch-race and Node/TypeScript/Kotlin/local workerd checks remain required.
 - **Limits:** local test-only fence; no live Agora/RTC route, new migration, caller-facing reverse-block API, block reason/timestamp, retention/quota/presence policy, Android UI, Cloudflare staging or production. M-003/M-005/M-006/M-007/M-008 remain independent.
-- **CI pending:** require exact PR-head Foundation CI before merge and independent merged-main CI after. See [private safety contract](AGORA_PRIVATE_SAFETY_D1_PRIVACY_2026-11-03.md).
+- **Verified:** [PR #189](https://github.com/rekixo-lab/jodlo/pull/189) merged as `a65f2a7f95afef8cafff0fef9c3f8c6286b34302`; [PR-head Foundation CI #41558353689](https://github.com/rekixo-lab/jodlo/actions/runs/41558353689) SUCCESS and [independent merged-main CI #41558837257](https://github.com/rekixo-lab/jodlo/actions/runs/41558837257) SUCCESS. [Privacy contract](AGORA_PRIVATE_SAFETY_D1_PRIVACY_2026-11-03.md). No deployment.
 
 ## 2026-11-03 — D1 bilateral-block and availability revision fence around synthetic Agora preflight (MERGED, VERIFIED)
 
