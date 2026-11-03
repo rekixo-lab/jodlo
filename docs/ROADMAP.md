@@ -1,3 +1,12 @@
+## 2026-11-03 — Exact JODLO API Custom Domain preflight passed
+
+- [x] **Local real-ID config:** owner successfully ran `production:config:harden/check` and `production:domain:write/check`, plus a 92.37 KiB Cloudflare Custom Domain `--dry-run` with actual D1 and both auth limiters
+- [ ] **CF-05:** inspect Worker-name ownership and any legacy routes/previews; deploy **no-route** `jodlo-api` on the known dedicated Cloudflare account and confirm actual version
+- [ ] **CF-06:** verify the `rekixo.com` zone is Active, exact `api.jodlo` hostname free of conflicting records/routes, then intentionally attach Custom Domain and verify real HTTPS health
+- [ ] **GOOGLE-01:** real Google Web/Android OAuth clients + approved server audience, test from connected native Android phone
+
+**Evidence boundary:** User has run only preparation/dry-run, NOT `wrangler deploy`. [Runbook](REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md).
+
 ## 2026-11-03 — API domain decision LOCKED; Cloudflare DNS/Custom Domain not attached
 
 - [x] **Founder approved exact API hostname:** `api.jodlo.rekixo.com`, API origin `https://api.jodlo.rekixo.com`, version prefix `/api/v1`; website `jodlo.rekixo.com` is a separate service. [ADR-0016](decisions/0016-jodlo-dedicated-custom-api-domain.md)

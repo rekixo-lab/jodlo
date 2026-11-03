@@ -1,5 +1,22 @@
 # JODLO — real-provider connection and controlled deployment runbook
 
+## VERIFIED on owner computer (2026-11-03): DNS/CF-06 local Custom Domain dry-run, NOT deployed
+
+**Founder-operated actual Ubuntu CLI (2026-11-03):** `git pull` reached merged PR #210; `npm run production:config:harden` successfully upgraded the existing local real-ID no-route configuration; `production:config:check`, `production:domain:write` and `production:domain:check` all **SUCCEEDED**; `npx wrangler deploy --dry-run --config apps/api/wrangler.production.domain.generated.jsonc` compiled the real `jodlo-api` Worker (**92.37 KiB / 21.67 KiB gzip**) and listed `DB=jodlo-production`, `LOGIN_BURST_LIMITER` (100/10s) and `ACCOUNT_LOGIN_LIMITER` (20/60s). The CLI explicitly ended `--dry-run: exiting now`. This is positive evidence of **local production config + exact Custom Domain dry-run**, **NOT** a Cloudflare Worker upload, activated DNS, issued TLS certificate, live API, real Google OAuth or public launch.
+
+**First external action still pending (CF-05):** Check in the correct Cloudflare account that `jodlo-api` is unused or belongs only to JODLO; verify no existing public routes or preview URLs. Check `rekixo.com` zone **Active**, inspect `api.jodlo` DNS and other routing conflicts. The founder's screenshot showed all 11 DNS entries and no explicit `api.jodlo.rekixo.com` entry, but did **not** itself verify zone status or Worker-name ownership. The owner can run read-only `npx wrangler deployments list --name jodlo-api --config apps/api/wrangler.production.generated.jsonc` and confirm in Workers & Pages. A not-found error is not proof of ownership. **Only after those checks** do the first actual `wrangler deploy --config apps/api/wrangler.production.generated.jsonc` with **no route**, confirm deployment, then intentionally attach exact `api.jodlo.rekixo.com` with the **separate** `wrangler.production.domain.generated.jsonc` (this public domain deploy is another distinct release) and verify TLS plus `https://api.jodlo.rekixo.com/api/v1/health`. Both commands actually deploy to Cloudflare and have NOT been run.
+
+**Next read-only checks** (this is the next operator command, not deploy):
+
+```bash
+cd ~/jodlo
+npx wrangler whoami
+npx wrangler deployments list --name jodlo-api --config apps/api/wrangler.production.generated.jsonc
+```
+
+Also verify in **Cloudflare dashboard → rekixo.com → Overview** that the zone is **Active**, and in **Workers & Pages** whether `jodlo-api` exists or has an attached domain. The previous screenshot of DNS Records showed 11 records without the exact API hostname but is not sufficient evidence of zone Active status or Worker ownership. **Stop before deployment on any name, DNS, zone or domain conflict.** When safe, follow the below two-stage protected deploy guidance: first no-route Worker upload, then exact-host Custom Domain attach. Never create a manual placeholder DNS record, touch the website `jodlo.rekixo.com`, or equate a dry-run with live URL.
+
+
 ## DNS-01 / CF-06 — founder-confirmed dedicated API Custom Domain (2026-11-03)
 
 **Exact confirmed hostname:** `api.jodlo.rekixo.com` (NOT `jodlo.rekixo.com`). Android `jodloApiOrigin` is **`https://api.jodlo.rekixo.com`**, with NO `/api/v1` suffix; the app's existing repository methods add `/api/v1`. After actual domain attach and TLS verification the health check is **`https://api.jodlo.rekixo.com/api/v1/health`**. Website and API remain separate. Binding decision: [ADR-0016](decisions/0016-jodlo-dedicated-custom-api-domain.md).
