@@ -205,3 +205,88 @@ test("paged public query uses the existing published index, never scans owners b
     }
   }finally{f.db.close();}
 });
+
+
+test("fresh GET selected public listing detail returns ONLY the original two-field allowlist",async()=>{
+  const f=fixture();
+  try{
+    const listing=f.expected[4];
+    const response=await f.get("/api/v1/listings/"+listing.id);
+    assert.equal(response.status,200);
+    assert.deepEqual(response.body,{ok:true,data:{listing}});
+    assert.deepEqual(Object.keys(response.body.data.listing),["id","categoryId"]);
+    assert.equal(JSON.stringify(response.body).includes("account-list-page"),false);
+    assert.equal(JSON.stringify(response.body).includes("moderation"),false);
+    assert.equal(JSON.stringify(response.body).includes("workerId"),false);
+    assert.equal(JSON.stringify(response.body).includes("status"),false);
+    assert.deepEqual((await f.get("/api/v1/listings/"+f.other.id)).body.data,
+      {listing:f.other},"an active listing from another Category is still public");
+    for(const record of [f.hidden,f.unpublished,f.inactive]){
+      const r=await f.get("/api/v1/listings/"+record.id);
+      assert.equal(r.status,404,record.id);
+      assert.equal(r.body.error.code,"NOT_FOUND");
+    }
+    assert.equal((await f.get("/api/v1/listings/00000000-0000-4000-8000-999999999999")).status,404);
+  }finally{f.db.close();}
+});
+
+test("detail rechecks moderation, publication, account and Category AFTER old public page",async()=>{
+  const f=fixture();
+  try{
+    const id=f.expected[3].id;
+    assert.equal((await f.get(path+"&limit=6")).body.data.listings.some(x=>x.id===id),true);
+    const detail=()=>f.get("/api/v1/listings/"+id);
+    assert.equal((await detail()).status,200);
+    const transitions=[
+      ["UPDATE worker_listings SET moderation_status='hidden' WHERE id=?",id],
+      ["UPDATE worker_listings SET status='unpublished' WHERE id=?",id],
+      ["UPDATE accounts SET status='disabled' WHERE id=?","account-list-page-003"],
+      ["UPDATE categories SET is_active=0 WHERE id=?","synthetic-main"],
+    ];
+    const restore=[
+      ["UPDATE worker_listings SET moderation_status='allowed' WHERE id=?",id],
+      ["UPDATE worker_listings SET status='published' WHERE id=?",id],
+      ["UPDATE accounts SET status='active' WHERE id=?","account-list-page-003"],
+      ["UPDATE categories SET is_active=1 WHERE id=?","synthetic-main"],
+    ];
+    for(let i=0;i<transitions.length;i++){
+      f.db.prepare(transitions[i][0]).run(transitions[i][1]);
+      assert.equal((await detail()).status,404,"old page cannot grant fresh detail visibility");
+      f.db.prepare(restore[i][0]).run(restore[i][1]);
+      assert.equal((await detail()).status,200,"current D1 state independently governs detail");
+    }
+    f.db.prepare("DELETE FROM worker_profiles WHERE account_id=?").run("account-list-page-003");
+    assert.equal((await detail()).status,404,"removed Worker profile cascades the listing");
+  }finally{f.db.close();}
+});
+
+test("public detail rejects malformed path, query, wrong method and absent D1",async()=>{
+  const f=fixture();
+  try{
+    const detail="/api/v1/listings/"+f.expected[0].id;
+    for(const bad of [
+      "/api/v1/listings/","/api/v1/listings/not-id",
+      detail+"?categoryId=synthetic-main",detail+"?id="+f.expected[1].id,
+      detail+"?limit=1",detail+"?after=oops",
+    ]){
+      const r=await f.get(bad);
+      assert.equal(r.status,bad.endsWith("/")?404:400,bad);
+      assert.equal(Object.hasOwn(r.body,"data"),false,bad);
+    }
+    const post=await worker.fetch(new Request(origin+detail,{method:"POST"}),{
+      DB:{prepare(){throw Error("DB should not be accessed");}},
+    });
+    assert.equal(post.status,405);
+    assert.equal(post.headers.get("Allow"),"GET");
+    const noDb=await worker.fetch(new Request(origin+detail),{});
+    assert.equal(noDb.status,503);
+    const errorDb=await worker.fetch(new Request(origin+detail),{
+      DB:{prepare(){throw Error("synthetic SQL read failure");}},
+    });
+    assert.equal(errorDb.status,503);
+    assert.equal(JSON.stringify(await errorDb.json()).includes("synthetic"),false);
+    // The original paginated public collection DTO remains unchanged.
+    assert.deepEqual(Object.keys((await f.get(path+"&limit=2")).body.data),
+      ["listings","nextCursor"]);
+  }finally{f.db.close();}
+});
