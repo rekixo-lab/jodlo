@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.rekixo.jodlo.core.network.ApiOutcome
+import com.rekixo.jodlo.core.network.FailureKind
 import com.rekixo.jodlo.core.network.HeadlessWorkerWriteScope
 import com.rekixo.jodlo.core.network.InMemorySessionCoordinator
 import com.rekixo.jodlo.core.network.Language
@@ -45,6 +46,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private enum class WorkerCatalogMode { BROWSE, SEARCH }
+private enum class PublicPreview { UNCHECKED, VISIBLE, NOT_PUBLIC, FAILED }
 private data class WorkerCategoryPage(val rows: List<PublicCategory>, val next: String?)
 
 /**
@@ -80,6 +82,7 @@ internal fun WorkerDashboard(
     var invalidCategoryQuery by remember(session) { mutableStateOf(false) }
     var selectedCategory by remember(session) { mutableStateOf<String?>(null) }
     var selectedListing by remember(session) { mutableStateOf<String?>(null) }
+    var publicPreview by remember(session) { mutableStateOf(PublicPreview.UNCHECKED) }
     var writeState by remember(session) {
         mutableStateOf(writes?.snapshot()?.state ?: WorkerWriteState.Idle)
     }
@@ -106,6 +109,7 @@ internal fun WorkerDashboard(
             ownListings = emptyList()
             ownerCursor = null
             selectedListing = null
+            publicPreview = PublicPreview.UNCHECKED
             clearCategoryResults()
         }
     }
@@ -132,6 +136,7 @@ internal fun WorkerDashboard(
             (session.snapshot() as? LoginState.SignedIn)?.worker != WorkerState.DRAFT) return
         busy = true
         message = 0
+        publicPreview = PublicPreview.UNCHECKED // Owner status is NOT a public read.
         scope.launch {
             val reply = try {
                 withContext(Dispatchers.IO) { session.pageMyListings(20, after) }
@@ -228,10 +233,42 @@ internal fun WorkerDashboard(
             ownerCursor = null
             selectedListing = null
             selectedCategory = null
+            publicPreview = PublicPreview.UNCHECKED
             message = when (writeState) {
                 is WorkerWriteState.Confirmed -> R.string.worker_write_confirmed
                 is WorkerWriteState.NeedsReview -> R.string.worker_uncertain_write
                 else -> R.string.worker_operation_failed
+            }
+        }
+    }
+
+
+    /** Fresh anonymous Customer projection for an explicitly selected owner's
+     * Listing. Owner-visible status is not itself evidence of public visibility.
+     * No Worker bearer, account ID, contact, or call consent enters this GET.
+     */
+    fun checkPublicPreview() {
+        val chosen = ownListings.firstOrNull { it.id == selectedListing } ?: return
+        if (busy || uncertain || catalog == null ||
+            (session?.snapshot() as? LoginState.SignedIn)?.worker != WorkerState.DRAFT) return
+        publicPreview = PublicPreview.UNCHECKED
+        busy = true
+        message = 0
+        scope.launch {
+            val reply = try {
+                withContext(Dispatchers.IO) {
+                    catalog.listingDetail(chosen.id, chosen.categoryId)
+                }
+            } catch (_: Exception) { null }
+            busy = false
+            // A late response must never become a badge for another selected row.
+            if (selectedListing != chosen.id) return@launch
+            publicPreview = when (reply) {
+                is ApiOutcome.Ok -> PublicPreview.VISIBLE
+                is ApiOutcome.Failed ->
+                    if (reply.kind == FailureKind.NOT_FOUND) PublicPreview.NOT_PUBLIC
+                    else PublicPreview.FAILED
+                else -> PublicPreview.FAILED
             }
         }
     }
@@ -285,6 +322,7 @@ internal fun WorkerDashboard(
                             ownerCursor = null
                             selectedCategory = null
                             selectedListing = null
+                            publicPreview = PublicPreview.UNCHECKED
                             checkedAction({ session.logout() }, R.string.worker_logout_local)
                         },
                         enabled = !busy,
@@ -342,7 +380,12 @@ internal fun WorkerDashboard(
                         }
                         items(ownListings, key = { "own-" + it.id }) { listing ->
                             JodloCard(
-                                onClick = { selectedListing = listing.id },
+                                onClick = {
+                                    if (!busy) {
+                                        selectedListing = listing.id
+                                        publicPreview = PublicPreview.UNCHECKED
+                                    }
+                                },
                                 selected = selectedListing == listing.id,
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
@@ -362,13 +405,37 @@ internal fun WorkerDashboard(
                             }
                         }
                         if (selectedListing != null) item {
-                            JodloButton(
-                                onClick = {
-                                    val id = selectedListing ?: return@JodloButton
-                                    mutate { writes.unpublish(id) }
-                                },
-                                enabled = canWrite,
-                            ) { Text(stringResource(R.string.worker_unpublish_selected)) }
+                            JodloCard(modifier = Modifier.fillMaxWidth()) {
+                                Column(Modifier.padding(JodloSizes.CardPadding),
+                                    verticalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
+                                    Text(stringResource(R.string.worker_customer_preview_heading),
+                                        style = MaterialTheme.typography.titleMedium)
+                                    Text(stringResource(R.string.worker_customer_preview_explainer))
+                                    JodloTextAction(
+                                        onClick = { checkPublicPreview() },
+                                        enabled = !busy,
+                                    ) {
+                                        Text(stringResource(R.string.worker_customer_preview_check))
+                                    }
+                                    when (publicPreview) {
+                                        PublicPreview.VISIBLE -> Text(
+                                            stringResource(R.string.worker_customer_preview_visible))
+                                        PublicPreview.NOT_PUBLIC -> Text(
+                                            stringResource(R.string.worker_customer_preview_not_public))
+                                        PublicPreview.FAILED -> Text(
+                                            stringResource(R.string.worker_customer_preview_failed),
+                                            color = MaterialTheme.colorScheme.error)
+                                        PublicPreview.UNCHECKED -> { /* Never claim visibility from owner state. */ }
+                                    }
+                                    JodloButton(
+                                        onClick = {
+                                            val id = selectedListing ?: return@JodloButton
+                                            mutate { writes.unpublish(id) }
+                                        },
+                                        enabled = canWrite,
+                                    ) { Text(stringResource(R.string.worker_unpublish_selected)) }
+                                }
+                            }
                         }
                         item {
                             Text(stringResource(R.string.worker_publish_category),
