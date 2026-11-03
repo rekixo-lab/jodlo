@@ -1,5 +1,8 @@
 # JODLO — Code completion and first production release gates
 
+**CURRENT EXECUTION UPDATE (2026-11-03):** [ADR-0015](decisions/0015-real-provider-integration-and-controlled-production.md) authorizes **real Cloudflare/Google onboarding and controlled production deployments now**, superseding the delayed-provisioning policy stated below. This checklist is still essential **before broad public access**; controlled protected production integration is a milestone, not final launch. [Manual actions](MANUAL_ACTIONS.md) · [real setup runbook](REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md). No live resources are verified connected yet. Never automatically deploy from a GitHub push, store secrets in the repo or skip backup/privacy/security checks.
+
+
 **Founder-approved strategy (2026-10-27): no deployed staging, no Cloudflare deployment before product readiness.** Development uses local cloud simulations, mock integrations and GitHub CI. First external deployment is a separately approved production release.
 
 **Latest source/CI gap ledger:** [Release Gap Audit — 2026-10-28](RELEASE_GAP_AUDIT_2026-10-28.md). It distinguishes previously verified headless tests from all still-open device, provider, operational and founder gates. The Kotlin suite inventory/aggregate checks are only **coverage wiring checks**, not release acceptance or numerical code coverage.

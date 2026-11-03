@@ -1,5 +1,8 @@
 # JODLO — mission and working agreement
 
+> **CURRENT FOUNDER DIRECTIVE 2026-11-03:** [ADR-0015](decisions/0015-real-provider-integration-and-controlled-production.md) **supersedes** the 2026-10-27 local-only/no-remote-deploy agreement recorded below **for future execution**. Prioritize real provider connections (Cloudflare/Google and subsequently Agora/FCM/eligible payments) and controlled protected production deployment. [Owner steps](REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md). Retain JODLO identity, broad 889 Category review target (ADR-0011), approved UI, privacy/security/review gates, no secrets in git, no fictional live data, and Finworkar read-only.
+
+
 JODLO is a new India-first local work/service discovery platform for real nearby worker/customer matching. It aims to feel fast, native, lightweight, multilingual and safe.
 
 ## Immutable owner decisions

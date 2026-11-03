@@ -1,5 +1,8 @@
 # M-005 — Agora in-app audio: operational decisions for founder approval
 
+> **Policy update (2026-11-03):** External provider onboarding (including Agora) is now authorized in principle by [ADR-0015](decisions/0015-real-provider-integration-and-controlled-production.md); do not defer connection solely because of the old no-deploy rule. **This does not select missing worker-presence, numeric anti-spam, retention, report/appeal or in-flight call safety values.** Live RTC dispatch remains fail-closed until these specific checks and real vendor credentials are configured. [Runbook](REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md).
+
+
 > **STATUS: DRAFT / NOT APPROVED — 2026-11-01.** This is a decision pack, not an ADR, authorization to implement production behavior, or a release checklist marked complete. No numerical timeouts, quotas, online-source guarantees, retention durations or delivery assumptions below are approved. Until each required gate has an explicit recorded decision, **real call admission, external signaling, token issuance and cloud deployment stay DISABLED**.
 
 ## What is already binding — do not ask again

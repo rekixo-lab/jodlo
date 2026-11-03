@@ -1,4 +1,8 @@
-/** Narrow pre-approval CI tripwire, not a security scanner or owner approval. */
+/** Safety checks on CI/npm scripts and unapproved API/data changes.
+ * ADR-0015 authorizes operator-controlled Cloudflare/Google onboarding and
+ * production deployment, but NEVER auto-deploy on GitHub PR/push workflows.
+ * This guard intentionally does not ban protected manual CLI releases.
+ */
 import { readFile, readdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -50,11 +54,11 @@ function localOnlyCommands(text, label, errors) {
     // A dry-run in one command cannot authorize another deploy on the same line.
     for (const command of line.split(/&&|\|\||[;|]/)) {
       if (/\bwrangler\s+(?:deploy|publish)\b/i.test(command) && !/--dry-run\b/.test(command))
-        errors.push(label + ": remote Wrangler deployment forbidden until M-007");
+        errors.push(label + ": remote Wrangler deployment forbidden from CI/npm automation; use approved operator release runbook (ADR-0015)");
       if (/\bwrangler\s+(?:d1\s+[^\n]*--remote|pages\s+deploy|secret\s+put)\b/i.test(command) ||
           /\bfirebase\s+deploy\b/i.test(command) ||
           /cloudflare\/(?:wrangler|pages)-action/i.test(command))
-        errors.push(label + ": remote infrastructure forbidden until M-007");
+        errors.push(label + ": remote infrastructure forbidden from CI/npm automation; use approved operator release runbook (ADR-0015)");
     }
   }
 }

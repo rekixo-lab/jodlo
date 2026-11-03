@@ -1,5 +1,5 @@
 {
-  // JODLO Foundation. No external storage, route or secrets until separately reviewed.
+  // Production-first ADR-0015: add ONLY verified dedicated JODLO Cloudflare bindings (DB/login rate limits) after owner CF-01; never deploy this incomplete config or commit secrets.
   "name": "jodlo-api",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-27",

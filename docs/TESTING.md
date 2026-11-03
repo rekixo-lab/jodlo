@@ -1,5 +1,8 @@
 # Verification gates — JODLO
 
+> **CURRENT EXECUTION RULE (2026-11-03):** [ADR-0015](decisions/0015-real-provider-integration-and-controlled-production.md) authorizes real Cloudflare and Google integration, protected remote deployment and actual device/provider smoke checks. Keep local mocks/SQLite fixtures **for reproducible CI**, never claim those are live provider acceptance; use production-only owned JODLO resources for real tests. The older local-only/deferred policy below is historical. **No direct cloud deploy from untrusted GitHub PR/push CI**; remote migrations and deployments require intentional operator preflights. [Runbook](REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md).
+
+
 ## Foundation
 - `npm run docs:check`: tests required permanent JODLO docs, identity/payment/UI gates and repository-relative document links.
 - `npm test`: seven native Node 22 tests for health JSON/methods/privacy and Google Pay/Google Play Billing documentation.

@@ -1,5 +1,8 @@
 # JODLO D1 migrations — local-first
 
+> **CURRENT PRODUCTION D1 POLICY (2026-11-03):** [ADR-0015](../../docs/decisions/0015-real-provider-integration-and-controlled-production.md) authorizes **preparing and explicitly applying reviewed migrations to a separate real JODLO D1** after CF-01 owner account binding, backups, safety and budget checks. Old "no remote migration until final product readiness" wording below is historical. CI remains local-only; never treat local D1 ID as production, never run remote writes on unverified account, and record actual migration evidence. [Runbook](../../docs/REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md).
+
+
 - `0001_public_catalog.sql` creates only a safe public taxonomy `categories` table, with English/Hindi label fallback, draft-hidden state, constraints and active-only ordering index. No identity, GPS, payments, customer records or seed data.
 - To test locally after `npm install`: `npm run db:migrate:local`. It uses the **local-only** Wrangler config `apps/api/wrangler.local.jsonc` with a placeholder UUID and never connects to Cloudflare.
 - `npm test` checks constraints, exact SQL query, index query plan and HTTP errors via Node SQLite/fake D1. CI applies migrations to a disposable local Wrangler D1. No real Cloudflare D1 database has been provisioned.

@@ -1,5 +1,8 @@
 # JODLO native Android app — Customer and Worker flows
 
+> **REAL PROVIDER INTEGRATION AUTHORIZED (2026-11-03):** Per [ADR-0015](../../../docs/decisions/0015-real-provider-integration-and-controlled-production.md), configure an actual verified JODLO HTTPS API origin and Google Web OAuth client ID in the **owner's local Gradle properties** and exercise the real installed Worker/Customer journey. Old debug-preview-only instructions below are historical build evidence, not an ongoing ban on cloud connection. [Ubuntu phone commands and owner steps](../../../docs/REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md). Never commit OAuth client secrets, signing keys or real tokens, and do not mistake an unconfigured debug APK for a connected release.
+
+
 ## 2026-11-03 — fresh Customer-visible verification after Worker publication
 
 After a genuine Worker session has published a Category, the app performs one owner read-only listing refresh **only if that write was confirmed** (never on an uncertain result). refresh **My listings**, tap an owned Listing and choose **Check current public listing**. This performs the **same anonymous, strict two-field Listing detail GET** as a Customer, with no owner bearer or private worker fields. It displays fresh **visible**, **not public (404)** or **unable to verify** states, never inferring verified identity, Agora availability or permission to call. Selecting another row, logging out or starting a write clears the previous check. Existing owner-only Unpublish remains explicit and uncertain writes are not automatically retried.
