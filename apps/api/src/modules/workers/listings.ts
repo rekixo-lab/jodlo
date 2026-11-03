@@ -51,7 +51,10 @@ export const PAGED_PUBLIC_LISTINGS_QUERY =
  * pagination and this detail. No owner ID / profile / phone is projected.
  */
 export const PUBLIC_LISTING_DETAIL_QUERY =
-  PUBLIC_LISTINGS_SELECT + " AND wl.id=? LIMIT 1";
+  "SELECT wl.id,wl.category_id AS categoryId,wl.worker_account_id AS workerId " +
+  "FROM worker_listings AS wl JOIN accounts AS a ON a.id=wl.worker_account_id " +
+  "JOIN worker_profiles AS wp ON wp.account_id=a.id JOIN categories AS c ON c.id=wl.category_id " +
+  "WHERE wl.id=? AND " + PUBLIC_LISTING_ELIGIBILITY + " LIMIT 1";
 
 /** Cursor eligibility is evaluated inside the SAME SQL statement as the
  * page. Reuse the exact public listing predicate so moderation and account
@@ -199,7 +202,7 @@ export async function publicListingDetail(
   db:D1Database,id:string,
 ):Promise<PublicListing|null> {
   if(!validOpaqueId(id))return null;
-  const {results}=await db.prepare(PUBLIC_LISTING_DETAIL_QUERY).bind(null,id)
+  const {results}=await db.prepare(PUBLIC_LISTING_DETAIL_QUERY).bind(id)
     .all<PublicListingDbRow>();
   return publicListingProjections(results)[0]??null;
 }
