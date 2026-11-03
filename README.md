@@ -1,5 +1,8 @@
 # JODLO
 
+> **CF-04 LIVE JODLO D1 SCHEMA DONE (2026-11-03):** Founder-applied all eight migrations to the correct remote `jodlo-production` D1; pending count is zero, 13 tables are reported, and JODLO table names were read back. Earlier CF-04 pending / 0-table paragraphs are historical. `PRAGMA integrity_check` returned D1 `SQLITE_AUTH` (unsupported/restricted PRAGMA), **not a migration failure**. The replacement read-only checks `PRAGMA quick_check` and `PRAGMA foreign_key_check` are **not yet verified**. No real Worker deployment, DNS, Google OAuth or public release. [Exact next commands](docs/REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md) · [ADR-0015](docs/decisions/0015-real-provider-integration-and-controlled-production.md).
+
+
 > **CLOUDFLARE CF-03 COMPLETE (2026-11-03):** owner verified remote `jodlo-production` is empty, current Time Travel recovery bookmark exists and **all eight** repo migrations are pending. No remote writes or live Worker deployment yet. The **next real task** is explicit, confirmed, JODLO-only production schema application and post-migration read-back. [Exact CF-04 commands](docs/REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md#cf-04--apply-only-jodlo-production-schema-with-interactive-confirmation). Do not automatically migrate or enable account/Agora/push/payment features.
 
 

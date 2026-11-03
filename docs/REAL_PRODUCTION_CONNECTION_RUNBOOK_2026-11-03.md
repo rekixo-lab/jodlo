@@ -1,8 +1,30 @@
 # JODLO — real-provider connection and controlled deployment runbook
 
+## CF-04: real schema application complete; supported D1 verification still pending (2026-11-03)
+
+**Owner evidence:** All eight real remote migrations `0001`–`0008` completed ✅ on `jodlo-production` / `723080b5-f165-4b31-839f-3063175824c7`, `migrations list --remote` returned no pending files, D1 reported 13 tables, and the expected JODLO table names were returned by an ordinary read-only `sqlite_master` query. Do **not** run `migrations apply` a second time as a troubleshooting step. The app has **not** been deployed publicly and real OAuth is still unconfigured.
+
+**Correction to older runbook below:** Plain SQLite `PRAGMA integrity_check` was **rejected** by remote Cloudflare D1 with `SQLITE_AUTH`. This is consistent with D1's limited authorized PRAGMA set and does not undo successful schema migration. Cloudflare explicitly lists **`PRAGMA quick_check`** and **`PRAGMA foreign_key_check`** as supported. The quick check is *less thorough* than full integrity_check; use it as D1-supported verification, not as proof of a complete low-level file integrity audit.
+
+Run these two commands **one at a time**, without combining or pasting additional quoted SQL. They are read-only and select the correct actual production D1 from the locally generated Wrangler configuration:
+
+```bash
+cd ~/jodlo
+git switch main
+git pull --ff-only origin main
+npm run production:config:check
+npx wrangler d1 execute jodlo-production --remote --config apps/api/wrangler.production.generated.jsonc --command "PRAGMA quick_check;"
+npx wrangler d1 execute jodlo-production --remote --config apps/api/wrangler.production.generated.jsonc --command "PRAGMA foreign_key_check;"
+```
+
+Expected: `quick_check` reports `ok`; `foreign_key_check` returns **no violation rows**. These are **expected values, NOT yet observed results**. If either fails, stop and send only the redacted terminal error; do not reset Cloudflare permissions, rerun migrations or restore D1. A new Time Travel bookmark can be recorded **privately** before any future migration; never execute restore as ordinary verification.
+
+**Next release work:** inspect the intended Worker name and Cloudflare routing isolation, security/privacy/account costs and rate namespaces. Prepare real Google Cloud Web and Android OAuth clients and exact `GOOGLE_CLIENT_ID` Worker secret. Worker deployment and restricted DNS/TLS smoke testing are distinct next milestones requiring their actual operator output. Keep JODLO separate from unrelated production databases in this shared account. [Official D1 SQL/PRAGMA list](https://developers.cloudflare.com/d1/sql-api/sql-statements/).
+
+
 ## CF-04 — apply only `jodlo-production` schema with interactive confirmation
 
-**Status: NOT EXECUTED.** CF-03 owner's real `d1 info` showed 0 tables on the exact JODLO UUID, and `migrations list --remote` showed eight pending files. The command below is a **real, irreversible-until-restored** change of *that production D1*; it is authorized by ADR-0015 but not a claim that the remote schema exists yet. No call/notification/provider/payment features become live merely because tables exist.
+**HISTORICAL PRE-MIGRATION INSTRUCTIONS (not current commands):** CF-03 owner's real `d1 info` showed 0 tables on the exact JODLO UUID, and `migrations list --remote` showed eight pending files. The command below is a **real, irreversible-until-restored** change of *that production D1*; it is authorized by ADR-0015 but not a claim that the remote schema exists yet. No call/notification/provider/payment features become live merely because tables exist.
 
 Before proceeding, confirm no other engineer is concurrently modifying this D1, verify Cloudflare account **`8f31060fbcfee2b3e9309138cad7f12f`** and dedicated D1 **`723080b5-f165-4b31-839f-3063175824c7`**; inspect this database rather than the other production DBs in the shared account. The D1 Time Travel bookmark from the current read-only command should be kept **privately** with the local operator; it is not a substitute for a recovery procedure. On an empty fresh database, risk to pre-existing users is low, but the migration is a real change. Cloudflare states `d1 migrations apply` applies all currently unapplied files in order, takes a backup, and rolls back a failing migration; earlier successful migrations may remain applied. Time Travel restore overwrites live state and must never be executed as routine testing. Sources: [Cloudflare D1 migration CLI](https://developers.cloudflare.com/workers/wrangler/commands/d1/), [Time Travel](https://developers.cloudflare.com/d1/reference/time-travel/).
 
@@ -27,10 +49,10 @@ npx wrangler d1 migrations apply jodlo-production --remote --config apps/api/wra
 npx wrangler d1 migrations list jodlo-production --remote --config apps/api/wrangler.production.generated.jsonc
 npx wrangler d1 info jodlo-production
 npx wrangler d1 execute jodlo-production --remote --config apps/api/wrangler.production.generated.jsonc --command "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;"
-npx wrangler d1 execute jodlo-production --remote --config apps/api/wrangler.production.generated.jsonc --command "PRAGMA integrity_check;"
+npx wrangler d1 execute jodlo-production --remote --config apps/api/wrangler.production.generated.jsonc --command "PRAGMA quick_check;"
 ```
 
-Expected outcome: all eight migrations applied, no remaining pending migrations, new JODLO tables present and integrity check `ok`. **Do not invent the outcome; use actual operator output.** If a migration fails, stop—do not delete/recreate the D1 or rerun blindly. Report exact error and remaining pending files; review Cloudflare's rollback/recovery guidance before any second write. Preserve secrets and bookmarks outside public git.
+Historical expected outcome for the earlier phase: eight migrations applied, none pending, JODLO tables listed, and supported D1 `quick_check` returning `ok` (with no foreign-key violations). The schema steps are now observed complete; the new D1 consistency check remains pending. **Do not invent the outcome; use actual operator output.** If a migration fails, stop—do not delete/recreate the D1 or rerun blindly. Report exact error and remaining pending files; review Cloudflare's rollback/recovery guidance before any second write. Preserve secrets and bookmarks outside public git.
 
 **Following milestone:** only when CF-04 is independently verified, review production Worker target name, Cloudflare DNS and privacy controls; then prepare protected live `wrangler deploy` with actual Google OAuth configuration and controlled traffic. A successful D1 migration by itself does not create a public API URL, does not activate the 889-category review inventory and does not allow unauthenticated Worker writes.
 
