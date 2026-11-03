@@ -1,3 +1,10 @@
+## 2026-11-03 — Real Cloudflare D1 created: execute CF-02 next
+
+- [x] **CF-01 DONE from owner's real CLI:** Wrangler OAuth login succeeded on Cloudflare account `8f31060fbcfee2b3e9309138cad7f12f`; new dedicated JODLO **D1 resource** `jodlo-production` (`723080b5-f165-4b31-839f-3063175824c7`) created APAC with no tables or queries. Account also has unrelated real production D1 resources: **do not touch them**. Separate Cloudflare account isolation not verified.
+- [ ] **CF-02 NOW:** choose two distinct unique rate limit namespace IDs in the account and use `production:config:write`/`production:config:check` with **real** IDs. Verify generated `DB` binding, no public route and no secrets, then explicit Wrangler dry-run and read-only remote migration list.
+- [ ] **CF-03 protected future work:** data retention/legal privacy and backup/restore plan; reviewed D1 migration to correct real DB, Worker bundle and Google audience, narrow DNS/TLS route, staged production safety acceptance. No automatic remote write.
+- [ ] **Real Android / Google:** Google Cloud Web and Android OAuth clients with signing SHA and own Cloudflare secret, physical-phone sign-in -> Worker publish -> Customer discover -> unpublish with live D1 evidence.
+
 > **CURRENT FOUNDER DIRECTIVE (2026-11-03):** [ADR-0015](decisions/0015-real-provider-integration-and-controlled-production.md) **supersedes the 2026-10-27 no-deploy/local-only decision quoted below**. Connect actual dedicated JODLO Cloudflare and Google OAuth, initiate protected production rollout work now; no mock service as live proof. [Real connection runbook](REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md) · [Manual actions](MANUAL_ACTIONS.md). Keep green CI, secure secrets, privacy, rollback, actual provider/on-device verification and Finworkar separation.
 
 ## Real Cloudflare integration — execute CF-01 → CF-02 → protected production API

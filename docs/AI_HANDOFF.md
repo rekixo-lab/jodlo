@@ -1,5 +1,12 @@
 # JODLO — Complete AI handoff and source-of-truth index
 
+## 2026-11-03 — Real Cloudflare CF-01 confirmed by owner's Wrangler output
+
+**Important new external fact:** `wrangler login` succeeded for account `8f31060fbcfee2b3e9309138cad7f12f` (`ai@rekixo.com`), and founder ran a **real** `wrangler d1 create jodlo-production --location apac`. D1 `723080b5-f165-4b31-839f-3063175824c7` exists in APAC with zero tables, no queries as of first `d1 info`. Same account has four other production databases; JODLO resource isolated but separate-account isolation not verified. **No JODLO Worker deployed and no remote D1 migrations or DNS/Google OAuth actions completed**. Source: founder's pasted actual CLI logs, not assistant's provider access.
+
+**Immediate next:** CF-02 local operator production config from these real IDs and two *unused* Cloudflare-account rate-limit namespace numbers, using [runbook](REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md). The expected Worker D1 binding is `DB`, **not** Wrangler's generated `jodlo_production`. Generate gitignored production config then validate and `--dry-run` only; do not accidentally modify other databases, or mistake a dry run for a live deploy. Cross-role Android Google OAuth, backup/recovery/privacy, actual remote schema migration and controlled production route follow separately. Prior local-only/pending statements below are historical.
+
+
 ## 2026-11-03 — real Cloudflare production config milestone (PR CI pending)
 
 Binding policy remains ADR-0015: real providers/deployment authorized, but no external account access is yet evidenced. New `scripts/prepare-production-wrangler.mjs` validates real operator-provided JODLO Cloudflare account ID, real dedicated D1 UUID and unique login rate namespaces; it emits **only** untracked `apps/api/wrangler.production.generated.jsonc`, with no route, no secrets and no remote calls. Run `npm run production:config:write`, `npm run production:config:check`, then operator-only `wrangler deploy --dry-run --config apps/api/wrangler.production.generated.jsonc` after CF-01. Exact [owner instructions](REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md); never generate dummy production resources or automatically run remote migration/deploy in CI. Verify PR and independent merged-main CI before marking engineering milestone complete.

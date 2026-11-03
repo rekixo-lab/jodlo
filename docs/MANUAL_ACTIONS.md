@@ -1,5 +1,14 @@
 # JODLO — founder manual actions, owner gates and notification register
 
+## CF-01 OWNER RESULT — DONE 2026-11-03; CF-02 NOW REQUIRED
+
+**Verified from founder-provided terminal output:** Wrangler 4.156.0 OAuth sign-in success for `ai@rekixo.com`, account `8f31060fbcfee2b3e9309138cad7f12f`; `jodlo-production` created in APAC with **real D1 UUID `723080b5-f165-4b31-839f-3063175824c7`** on 2026-11-03T11:28:49.367Z, zero tables, no reads/writes. Owner controls the external login. This is **DONE for CF-01 (account login + JODLO-specific D1 creation)**, not proof of a dedicated separate Cloudflare account, Worker deployment, DNS, migrations or Google OAuth. Account has other production databases, so never migrate or route to those.
+
+**मैनुअल काम CF-02 — NEEDS_DECISION_NOW:** Run [real-ID configuration commands](REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md#cf-02--executable-real-id-wrangler-production-config-new-after-owner-cf-01) on the owner's authenticated Ubuntu machine. Cloudflare namespace IDs are user-defined positive integer strings; choose **two distinct IDs unused by other Workers in the same account**. Reuse known nonsecret Account/D1 IDs; `npm run production:config:write` must generate `binding: DB`, not the `jodlo_production` name Wrangler suggested. Return only the `production:config:check` / `deploy --dry-run` status and pending migration names (no tokens or secrets). **Do not run remote `migrations apply` or deploy yet.**
+
+**Next external dependencies:** GOOGLE-01 remains upcoming for actual client IDs/Android SHA; DNS-01 only the approved JODLO host and protected launch; backup/restore, privacy and rate-limit review precede real migration. Old "CF-01 pending" notes below are superseded by this owner-result entry.
+
+
 ## 2026-11-03 — CF-02 real production Wrangler binding preflight (ENGINEERING PR; CI PENDING)
 
 **Engineering in scope:** a source-controlled generator, `scripts/prepare-production-wrangler.mjs`, builds an untracked `apps/api/wrangler.production.generated.jsonc` only from **real, operator-provided Cloudflare Account ID, dedicated jodlo-production D1 UUID and two unique operator-selected rate-limit namespace IDs**. The generator rejects the disposable local IDs, missing/malformed IDs, same account explicitly identified as Finworkar, unsafe routes, unexpected binding fields and silent overwrites. `npm run production:config:write` and `npm run production:config:check` are **strictly offline** and make NO Cloudflare changes. See [CF-02 exact Ubuntu commands](REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md).

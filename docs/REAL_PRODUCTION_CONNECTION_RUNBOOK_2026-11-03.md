@@ -1,5 +1,42 @@
 # JODLO — real-provider connection and controlled deployment runbook
 
+## CF-01 real account/D1 result and next copyable CF-02 commands (2026-11-03)
+
+**Owner-executed successfully:** `npx wrangler login` for account `8f31060fbcfee2b3e9309138cad7f12f`, followed by `npx wrangler d1 create jodlo-production --location apac`: real D1 `723080b5-f165-4b31-839f-3063175824c7`, APAC, zero tables. The account also hosts other real production D1 databases. JODLO's database is separate; **account-level isolation is not proven**, so confirm the right account, database, Worker and namespaces before any remote operation. Cloudflare's create output may suggest binding `jodlo_production`; JODLO **must bind as `DB`** for existing `env.DB` code.
+
+The following is **CF-02 only, no remote writes**. Choose two **unused, distinct positive integer rate-limit namespaces** unique across this same account's other Workers (these are namespace identifiers, not secrets or D1 IDs). On the already logged-in Ubuntu machine:
+
+```bash
+cd ~/jodlo
+git switch main
+git pull --ff-only origin main
+npx wrangler whoami
+npx wrangler d1 info jodlo-production
+
+export JODLO_CF_ACCOUNT_ID=8f31060fbcfee2b3e9309138cad7f12f
+export JODLO_D1_DATABASE_ID=723080b5-f165-4b31-839f-3063175824c7
+
+read -r -p 'Choose UNIQUE unused login-burst namespace integer: ' JODLO_LOGIN_BURST_NAMESPACE_ID
+read -r -p 'Choose a DIFFERENT unused verified-login namespace integer: ' JODLO_ACCOUNT_LOGIN_NAMESPACE_ID
+export JODLO_LOGIN_BURST_NAMESPACE_ID JODLO_ACCOUNT_LOGIN_NAMESPACE_ID
+
+npm run production:config:write
+npm run production:config:check
+git check-ignore apps/api/wrangler.production.generated.jsonc
+npx wrangler deploy --dry-run --config apps/api/wrangler.production.generated.jsonc
+```
+
+**Stop at dry-run.** The account/D1 IDs here are not passwords; do not paste tokens, secret client credentials or Wrangler's private OAuth storage. If the generated file already exists, the generator intentionally refuses to overwrite it; **review before changing**. `wrangler deploy --dry-run` does not deploy code. Cloudflare rate-limit namespace IDs are account-unique integer strings and per-location approximate caps. <https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/>.
+
+After the dry run is successful, you may inspect unapplied remote migrations **without applying them**:
+
+```bash
+npx wrangler d1 migrations list jodlo-production --remote --config apps/api/wrangler.production.generated.jsonc
+```
+
+**Do not run `migrations apply`, `wrangler deploy` without `--dry-run`, `wrangler secret put`, or attach public DNS yet.** Those are intentional protected future steps after checking migrations, backups and privacy. [Cloudflare D1 official commands](https://developers.cloudflare.com/workers/wrangler/commands/d1/). The older CF-01 pending examples below are historical.
+
+
 **Effective 3 November 2026.** [ADR-0015](decisions/0015-real-provider-integration-and-controlled-production.md) is the operative policy. Real provider onboarding, Cloudflare provisioning and controlled deployment are now **authorized engineering work**. The commands below are an operator runbook, **not proof the operations occurred**. No Cloudflare account, D1, DNS, Google OAuth or real Agora is assumed to be connected.
 
 ## CF-02 — Executable real-ID Wrangler production config (new, after owner CF-01)
