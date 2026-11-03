@@ -18,6 +18,7 @@
     <string name="public_listing">Public service listing</string>
     <string name="listing_reference">Reference: %1$s</string>
     <string name="prototype_notice">Development preview • Worker functions require configured Google OAuth and a reachable approved HTTPS backend.</string>
+    <string name="live_catalog_notice">This view reads only approved, active Categories from the configured JODLO API.</string>
     <string name="tab_customer">Customer</string>
     <string name="tab_worker">Worker</string>
     <string name="worker_dashboard">Worker Dashboard</string>
@@ -52,6 +53,7 @@
     <string name="worker_publish_explainer">Choose an approved active Category. Publishing is not identity verification.</string>
     <string name="worker_category_search_hint">Search in Hindi or English across approved active Categories. A Category can be selected even if nobody has published it yet.</string>
     <string name="worker_category_empty">No approved Categories matched this search. Try a different term or browse all.</string>
+    <string name="worker_category_empty_browse">No approved active Categories are available yet. Services can be published after Category review and activation.</string>
     <string name="worker_category_page_failed">Could not verify this Category page. Earlier results remain visible; retry or start a new search.</string>
     <string name="worker_choose_category">Browse approved Categories</string>
     <string name="worker_category_selected">Selected Category</string>
@@ -64,7 +66,8 @@
     <string name="worker_recheck_not_proof">Current visibility is not proof that the prior write committed.</string>
     <string name="worker_acknowledge_uncertainty">Acknowledge uncertain result</string>
     <string name="worker_review_acknowledged">Uncertainty acknowledged, not resolved. Recheck server state before a new action.</string>
-    <string name="worker_dev_notice">Developer preview. No live Google OAuth, calls, GPS, payments or production deployment is configured.</string>
+    <string name="worker_dev_notice">Worker Google sign-in requires a configured JODLO API and Google client. Internet voice calls, location discovery and payments are not yet available.</string>
+    <string name="worker_configured_notice">Google sign-in is verified by the JODLO API. Internet voice calls, location discovery and payments are not yet available.</string>
     <string name="customer_more_categories">Load more categories</string>
     <string name="customer_more_listings">Load more public listings</string>
     <string name="customer_page_failed">Next page could not be verified. Earlier rows remain visible; use Refresh if listings have changed.</string>

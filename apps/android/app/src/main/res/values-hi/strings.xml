@@ -18,6 +18,7 @@
     <string name="public_listing">सार्वजनिक सेवा सूची</string>
     <string name="listing_reference">संदर्भ: %1$s</string>
     <string name="prototype_notice">विकास पूर्वावलोकन • वर्कर सुविधाओं के लिए स्वीकृत HTTPS सर्वर और Google सेटिंग आवश्यक हैं।</string>
+    <string name="live_catalog_notice">यह सूची कॉन्फ़िगर किए गए JODLO API से केवल स्वीकृत और सक्रिय श्रेणियाँ दिखाती है।</string>
     <string name="tab_customer">ग्राहक</string>
     <string name="tab_worker">वर्कर</string>
     <string name="worker_dashboard">वर्कर डैशबोर्ड</string>
@@ -52,6 +53,7 @@
     <string name="worker_publish_explainer">स्वीकृत सक्रिय श्रेणी चुनें। प्रकाशन से पहचान सत्यापित नहीं होती।</string>
     <string name="worker_category_search_hint">स्वीकृत सक्रिय श्रेणियों में हिन्दी या English से खोजें। किसी श्रेणी में अभी सेवा प्रकाशित न हो तब भी उसे चुन सकते हैं।</string>
     <string name="worker_category_empty">इस खोज में कोई स्वीकृत श्रेणी नहीं मिली। दूसरे शब्द से खोजें या सभी श्रेणियाँ देखें।</string>
+    <string name="worker_category_empty_browse">अभी कोई स्वीकृत सक्रिय श्रेणी उपलब्ध नहीं है। श्रेणी की समीक्षा और सक्रियण के बाद सेवा प्रकाशित की जा सकेगी।</string>
     <string name="worker_category_page_failed">इस श्रेणी पृष्ठ की पुष्टि नहीं हुई। पहले के परिणाम दिख रहे हैं; फिर प्रयास करें या नई खोज करें।</string>
     <string name="worker_choose_category">स्वीकृत श्रेणियाँ देखें</string>
     <string name="worker_category_selected">चुनी हुई श्रेणी</string>
@@ -64,7 +66,8 @@
     <string name="worker_recheck_not_proof">वर्तमान दृश्यता पिछले बदलाव की पुष्टि नहीं है।</string>
     <string name="worker_acknowledge_uncertainty">अनिश्चित परिणाम समझकर स्वीकारें</string>
     <string name="worker_review_acknowledged">अनिश्चितता स्वीकार की गई, हल नहीं हुई। नई कार्रवाई से पहले सर्वर स्थिति जाँचें।</string>
-    <string name="worker_dev_notice">विकास पूर्वावलोकन। वास्तविक Google प्रवेश, कॉल, जीपीएस, भुगतान या प्रोडक्शन चालू नहीं हैं।</string>
+    <string name="worker_dev_notice">इस बिल्ड में वर्कर Google प्रवेश के लिए JODLO API और Google सेटिंग आवश्यक हैं। इंटरनेट वॉइस कॉल, स्थान-आधारित खोज और भुगतान अभी उपलब्ध नहीं हैं।</string>
+    <string name="worker_configured_notice">Google प्रवेश JODLO API से सत्यापित होता है। इंटरनेट वॉइस कॉल, स्थान-आधारित खोज और भुगतान अभी उपलब्ध नहीं हैं।</string>
     <string name="customer_more_categories">और श्रेणियाँ देखें</string>
     <string name="customer_more_listings">और सार्वजनिक सेवा सूचियाँ देखें</string>
     <string name="customer_page_failed">अगले पृष्ठ की पुष्टि नहीं हुई। पहले की सूची दिख रही है; जानकारी बदली हो तो फिर से ताज़ा करें।</string>

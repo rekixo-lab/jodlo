@@ -57,7 +57,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** Native application entrypoint. Real Google sign-in is disabled until configured. */
+/** Native app entrypoint; Google sign-in is attempted only with explicit configuration. */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -134,7 +134,7 @@ private fun JodloApp(activity: ComponentActivity) {
             }
         }
         Box(Modifier.weight(1f)) {
-            if (section == "customer") GuestDiscovery(customerCatalog)
+            if (section == "customer") GuestDiscovery(customerCatalog, liveApiConfigured = sender != null)
             else WorkerDashboard(activity, session, writes, catalog)
         }
     }
@@ -160,7 +160,7 @@ private suspend fun <T> publicRead(action: () -> ApiOutcome<T>): ApiOutcome<T> =
     }
 
 @Composable
-private fun GuestDiscovery(repository: RemoteCatalogRepository?) {
+private fun GuestDiscovery(repository: RemoteCatalogRepository?, liveApiConfigured: Boolean) {
     val scope = rememberCoroutineScope()
     var language by remember { mutableStateOf(Language.HI) }
     // Published listing existence is NOT online presence, busy status or
@@ -686,7 +686,8 @@ private fun GuestDiscovery(repository: RemoteCatalogRepository?) {
             }
             item {
                 Text(
-                    stringResource(R.string.prototype_notice),
+                    stringResource(if (liveApiConfigured) R.string.live_catalog_notice
+                        else R.string.prototype_notice),
                     style = MaterialTheme.typography.labelSmall,
                 )
             }

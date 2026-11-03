@@ -503,7 +503,8 @@ internal fun WorkerDashboard(
                             }
                         }
                         if (categoryLoaded && categoryRows.isEmpty() && !categoryFailed) item {
-                            Text(stringResource(R.string.worker_category_empty))
+                            Text(stringResource(if (categoryMode == WorkerCatalogMode.BROWSE)
+                                R.string.worker_category_empty_browse else R.string.worker_category_empty))
                         }
                         if (categoryFailed) item {
                             Text(stringResource(R.string.worker_category_page_failed),
@@ -555,7 +556,8 @@ internal fun WorkerDashboard(
             Text(stringResource(message), color = MaterialTheme.colorScheme.secondary)
         }
         item {
-            Text(stringResource(R.string.worker_dev_notice),
+            Text(stringResource(if (session != null && BuildConfig.GOOGLE_WEB_CLIENT_ID.isNotBlank())
+                R.string.worker_configured_notice else R.string.worker_dev_notice),
                 style = MaterialTheme.typography.labelSmall)
         }
     }
