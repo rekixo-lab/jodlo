@@ -211,7 +211,7 @@ test("fresh GET selected public listing detail returns ONLY the original two-fie
   const f=fixture();
   try{
     const listing=f.expected[4];
-    const response=await f.get("/api/v1/listings/"+listing.id);
+    const response=await f.get("/api/v1/listings?id="+listing.id);
     assert.equal(response.status,200);
     assert.deepEqual(response.body,{ok:true,data:{listing}});
     assert.deepEqual(Object.keys(response.body.data.listing),["id","categoryId"]);
@@ -219,14 +219,14 @@ test("fresh GET selected public listing detail returns ONLY the original two-fie
     assert.equal(JSON.stringify(response.body).includes("moderation"),false);
     assert.equal(JSON.stringify(response.body).includes("workerId"),false);
     assert.equal(JSON.stringify(response.body).includes("status"),false);
-    assert.deepEqual((await f.get("/api/v1/listings/"+f.other.id)).body.data,
+    assert.deepEqual((await f.get("/api/v1/listings?id="+f.other.id)).body.data,
       {listing:f.other},"an active listing from another Category is still public");
     for(const record of [f.hidden,f.unpublished,f.inactive]){
-      const r=await f.get("/api/v1/listings/"+record.id);
+      const r=await f.get("/api/v1/listings?id="+record.id);
       assert.equal(r.status,404,record.id);
       assert.equal(r.body.error.code,"NOT_FOUND");
     }
-    assert.equal((await f.get("/api/v1/listings/00000000-0000-4000-8000-999999999999")).status,404);
+    assert.equal((await f.get("/api/v1/listings?id=00000000-0000-4000-8000-999999999999")).status,404);
   }finally{f.db.close();}
 });
 
@@ -235,7 +235,7 @@ test("detail rechecks moderation, publication, account and Category AFTER old pu
   try{
     const id=f.expected[3].id;
     assert.equal((await f.get(path+"&limit=6")).body.data.listings.some(x=>x.id===id),true);
-    const detail=()=>f.get("/api/v1/listings/"+id);
+    const detail=()=>f.get("/api/v1/listings?id="+id);
     assert.equal((await detail()).status,200);
     const transitions=[
       ["UPDATE worker_listings SET moderation_status='hidden' WHERE id=?",id],
@@ -263,11 +263,11 @@ test("detail rechecks moderation, publication, account and Category AFTER old pu
 test("public detail rejects malformed path, query, wrong method and absent D1",async()=>{
   const f=fixture();
   try{
-    const detail="/api/v1/listings/"+f.expected[0].id;
+    const detail="/api/v1/listings?id="+f.expected[0].id;
     for(const bad of [
-      "/api/v1/listings/","/api/v1/listings/not-id",
-      detail+"?categoryId=synthetic-main",detail+"?id="+f.expected[1].id,
-      detail+"?limit=1",detail+"?after=oops",
+      "/api/v1/listings?id=","/api/v1/listings?id=not-id",
+      detail+"&categoryId=synthetic-main",detail+"&id="+f.expected[1].id,
+      detail+"&limit=1",detail+"&after=oops",
     ]){
       const r=await f.get(bad);
       assert.equal(r.status,400,bad);
