@@ -33,6 +33,20 @@ function baseline() {
       "REFERENCES worker_profiles(account_id) ON DELETE CASCADE, " +
       "calls_enabled INTEGER NOT NULL DEFAULT 0 CHECK(calls_enabled IN (0,1)), " +
       "revision INTEGER NOT NULL CHECK(revision BETWEEN 1 AND 2147483647));",
+    "infra/migrations/0008_agora_private_safety_state.sql":
+      "CREATE TABLE worker_agora_availability_preferences (" +
+      "account_id TEXT REFERENCES worker_profiles(account_id) ON DELETE CASCADE, " +
+      "accepting_calls INTEGER CHECK(accepting_calls IN (0,1)), " +
+      "revision INTEGER CHECK(revision BETWEEN 1 AND 2147483647)); " +
+      "CREATE TABLE agora_account_blocks (" +
+      "blocker_account_id TEXT REFERENCES accounts(id) ON DELETE CASCADE, " +
+      "blocked_account_id TEXT REFERENCES accounts(id) ON DELETE CASCADE, " +
+      "CHECK(blocker_account_id<>blocked_account_id)); " +
+      "CREATE TABLE agora_abuse_window_counters (" +
+      "actor_account_id TEXT REFERENCES accounts(id) ON DELETE CASCADE, " +
+      "scope TEXT CHECK(scope='invite'), " +
+      "window_start_ms INTEGER, expires_at_ms INTEGER, " +
+      "attempt_count INTEGER, revision INTEGER);",
     "docs/decisions/0008-hindi-english-only.md":"Hinglish is NOT a supported language",
     ".github/workflows/checks.yml":"run: npm run build:api",
     "package.json":JSON.stringify({scripts:{"build:api":"wrangler deploy --dry-run --config apps/api/wrangler.jsonc"}}),
@@ -55,7 +69,7 @@ test("approved routes, tables, draft state and languages pass",async()=>{
   const result=await fixture();
   assert.deepEqual(result.errors,[]);
   assert.equal(result.routes.length,9);
-  assert.equal(result.tables.length,9);
+  assert.equal(result.tables.length,12);
 });
 test("unapproved workers, requests, area and listing routes fail",async()=>{
   for(const p of ["/api/v1/workers","/api/v1/requests","/api/v1/areas","/api/v1/contact"]){
@@ -237,4 +251,35 @@ test("approved worker Agora opt-in table cannot contain phone, push, PII, other 
   });
   assert.match(relaxed.errors.join("\n"),
     /Agora preference migration must retain only 3 guarded fields and worker owner FK/);
+});
+
+test("scoped founder permission allows ONLY the minimal private Agora migration fields",async()=>{
+  assert.deepEqual((await fixture()).errors,[]);
+  for(const extra of [
+    "phone TEXT", "location TEXT", "raw_token TEXT", "event_body BLOB",
+  ]){
+    const modified=await fixture(f=>{
+      const p="infra/migrations/0008_agora_private_safety_state.sql";
+      f[p]=f[p].replace("attempt_count INTEGER, revision INTEGER)",
+        "attempt_count INTEGER, revision INTEGER, "+extra+")");
+    });
+    assert.match(modified.errors.join(" "),/Private Agora safety table must keep exact bounded fields/,
+      extra);
+  }
+  const moved=await fixture(f=>{
+    f["infra/migrations/0009_rogue.sql"]=
+      "CREATE TABLE agora_account_blocks(blocker_account_id TEXT);";
+  });
+  assert.match(moved.errors.join(" "),
+    /Agora private safety table must use reviewed local migration/);
+  const altered=await fixture(f=>{
+    f["infra/migrations/0009_rogue.sql"]=
+      "ALTER TABLE agora_account_blocks ADD COLUMN phone TEXT;";
+  });
+  assert.match(altered.errors.join(" "),
+    /Unauthorized private Agora safety schema mutation/);
+  const omitted=await fixture(f=>{
+    delete f["infra/migrations/0008_agora_private_safety_state.sql"];
+  });
+  assert.match(omitted.errors.join(" "),/Expected D1 table missing/);
 });

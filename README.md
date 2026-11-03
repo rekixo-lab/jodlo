@@ -1,4 +1,6 @@
 # JODLO
+> **FOUNDER APPROVED PRIVATE AGORA SAFETY BACKEND PREPARATION — 2026-11-03:** Implemented local-only D1 migration `0008_agora_private_safety_state.sql` and internal authenticated, owner-bound availability and directional account-block operations, plus a private caller safety-state read. The aggregate abuse-counter table has **no live writer/limits**; real presence and rate verdicts remain **unknown**, not authorized. Approval is for engineering/schema/privacy preparation; M-003 retention/deletion and M-005 operational thresholds/appeals still need explicit choices before activation. No public API, actual calling, Android or cloud deployment. [Data minimization and retention design](docs/AGORA_PRIVATE_SAFETY_D1_PRIVACY_2026-11-03.md).
+
 
 > **LOCAL PHONE TEST:** After a fresh `git pull --ff-only origin main`, connect an authorized Android phone over USB and run `npm run android:run`. This builds a debug APK, installs it on the single ready device and launches JODLO. [Full instructions](apps/android/app/README.md#local-ubuntulinux-one-command-build-and-install-on-connected-android). No release/deploy; default backend and Google sign-in remain unconfigured.
 

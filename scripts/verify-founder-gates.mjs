@@ -17,12 +17,27 @@ const allowedTables = new Set([
   "notification_delivery_dead_letters",
   // Founder ADR-0014 explicitly approved this ONE private worker call switch.
   "worker_agora_call_preferences",
+  // Founder 2026-11-03 approved offline implementation and schema preparation,
+  // NOT actual call admission, data retention, live thresholds or provider use.
+  "worker_agora_availability_preferences",
+  "agora_account_blocks",
+  "agora_abuse_window_counters",
 ]);
 const RECEIPT_MIGRATION = "0005_notification_delivery_receipts.sql";
 const DEAD_LETTER_MIGRATION = "0006_notification_dead_letters.sql";
 const DEAD_LETTER_FIELDS = ["event_id", "reason", "recorded_at_ms"];
 const AGORA_PREFERENCE_MIGRATION = "0007_worker_agora_call_preferences.sql";
 const AGORA_PREFERENCE_FIELDS = ["account_id", "calls_enabled", "revision"];
+const AGORA_SAFETY_MIGRATION = "0008_agora_private_safety_state.sql";
+const AGORA_SAFETY_SCHEMA = Object.freeze({
+  worker_agora_availability_preferences:
+    ["account_id", "accepting_calls", "revision"],
+  agora_account_blocks:
+    ["blocker_account_id", "blocked_account_id"],
+  agora_abuse_window_counters:
+    ["actor_account_id", "scope", "window_start_ms", "expires_at_ms",
+      "attempt_count", "revision"],
+});
 const RECEIPT_FIELDS = [
   "event_id", "state", "claim_token", "lease_until_ms", "completed_at_ms",
 ];
@@ -95,6 +110,9 @@ export async function auditFounderGates(root = rootDefault) {
         errors.push("Notification dead-letter table must use its reviewed migration: "+name);
       if(table==="worker_agora_call_preferences" && name!==AGORA_PREFERENCE_MIGRATION)
         errors.push("Agora preference table must use its founder-approved migration: "+name);
+      if(Object.hasOwn(AGORA_SAFETY_SCHEMA,table) &&
+         name!==AGORA_SAFETY_MIGRATION)
+        errors.push("Agora private safety table must use reviewed local migration: "+name);
     }
     if(name===RECEIPT_MIGRATION) {
       // The receipt store is strictly an opaque machine-event lease. Prevent
@@ -129,8 +147,33 @@ export async function auditFounderGates(root = rootDefault) {
          !/revision\s+INTEGER\s+NOT\s+NULL\s+CHECK\s*\(\s*revision\s+BETWEEN\s+1\s+AND\s+2147483647\s*\)/i.test(content))
         errors.push("Agora preference migration must retain only 3 guarded fields and worker owner FK");
     }
+    if(name===AGORA_SAFETY_MIGRATION) {
+      // Only the minimal account-linked fields explicitly approved for
+      // ENGINEERING PREPARATION may appear. No private event log or PII.
+      for(const [table,allowedFields] of Object.entries(AGORA_SAFETY_SCHEMA)) {
+        const pattern=new RegExp(
+          String.raw`CREATE\s+TABLE\s+${table}\s*\(([\s\S]*?)\)\s*;`, "i",
+        );
+        const match=content.match(pattern);
+        const fields=match===null?[]:[...match[1].matchAll(
+          /(?:^|[,(])\s*([a-z][a-z0-9_]*)\s+(?:TEXT|INTEGER|REAL|BLOB)\b/gim,
+        )].map(m=>m[1].toLowerCase());
+        if(fields.join(",")!==allowedFields.join(",") ||
+           !/ON\s+DELETE\s+CASCADE/i.test(match?.[1]??"") ||
+           !/CHECK\s*\(/i.test(match?.[1]??"")) {
+          errors.push("Private Agora safety table must keep exact bounded fields: "+table);
+        }
+      }
+      if(/\b(?:phone|gps|location|email|call_id|channel|raw_token|device_id|ip_address|message_text|reason_text)\b/i
+        .test(content))
+        errors.push("Private Agora safety migration added forbidden contact/event data");
+    }
     if(/\b(?:ALTER|DROP)\s+TABLE\s+worker_agora_call_preferences\b/i.test(content))
       errors.push("Unauthorized Agora preference schema mutation: "+name);
+    for(const table of Object.keys(AGORA_SAFETY_SCHEMA)) {
+      if(new RegExp("\\b(?:ALTER|DROP)\\s+TABLE\\s+"+table+"\\b","i").test(content))
+        errors.push("Unauthorized private Agora safety schema mutation: "+table);
+    }
     if(/\b(?:ALTER|DROP)\s+TABLE\s+notification_delivery_dead_letters\b/i.test(content))
       errors.push("Unauthorized notification dead-letter table mutation: "+name);
     if(name!=="0002_shared_accounts_worker_drafts.sql" &&
