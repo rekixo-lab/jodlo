@@ -27,7 +27,7 @@ fun main() {
             call.resource == "/api/v1/listings?categoryId=carpenter" -> ok(
                 """{"listings":[{"id":"$LISTING_ID","categoryId":"carpenter"}]}"""
             )
-            call.resource == "/api/v1/listings/$LISTING_ID" -> ok(
+            call.resource == "/api/v1/listings?id=$LISTING_ID" -> ok(
                 """{"listing":{"id":"$LISTING_ID","categoryId":"carpenter"}}"""
             )
             call.resource == "/api/v1/me/worker-profile" ->
