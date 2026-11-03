@@ -1,5 +1,19 @@
 # JODLO native Android app — Customer and Worker flows
 
+## 2026-11-03 — usable OFFLINE Customer discovery preview in debug APK
+
+**This is executable app UI, not another backend test-only call experiment.** When the default debug APK has no configured HTTPS origin, Customer now offers **Explore offline sample services**. It is **off by default**, requires an explicit tap, and prominently says the data is synthetic—not real worker accounts or approved live Categories. The example adapter `DebugCustomerPreviewSender.kt` implements the existing **read-only** Kotlin `RequestSender`, feeding actual `RemoteCatalogRepository`, route validation, pagination validation and strict JSON DTO decoding. It never opens a socket and cannot be used to log in, post a listing, make a call or pay.
+
+Try it on your phone after a successful **main** Android-native workflow artifact:
+
+1. Launch the debug APK, open **Customer**, tap **Explore offline sample services**.
+2. Browse sample Categories; switch Hindi/English. Search `service` in English or `सेवा` in Hindi, select a Category and use **Load more** for the 31-item sample. Try `Plumbing sample` for a synthetic 27-listing continuation.
+3. Use Back, then **Close offline sample**; the screen clears sample results and returns to the unconfigured-API notice. Worker tab remains unable to authenticate against fake data.
+
+The sample data uses only a `demo_` namespace, and it exists only in memory. The sample switch is gated by `BuildConfig.DEBUG` and is **hidden when a genuine build-time API origin is configured**. It does not claim active business listings, verification or a live service. Do not screenshot/market the sample as a real worker marketplace.
+
+This is **milestone A** of the [product-first delivery plan](../../../docs/PRODUCT_DELIVERY_MILESTONES_2026-11-03.md). It does not replace actual on-device inspection, active Category review, Google OAuth setup, Agora tokens, backend deployment or founder privacy decisions. Android-native compile under JDK 17/21 and Foundation CI must both succeed on PR head and merged main.
+
 > **Founder-approved UI theme (2026-11-02):** Every Android screen now shares the [black/teal flat outlined reference](../../../docs/UI_REFERENCE_2026-11-02.md) through `JodloTheme` and `JodloComponents`. No light-mode substitution, raised cards, glossy visuals or fake active calling/ads.
 
 This module adds a real Android `:app` with a launcher Activity, Compose UI, Hindi and English resources, and **read-only guest** Category browse/search/public-listing screens. It reuses the existing compiled `:core` secure one-shot HTTPS transport, typed DTOs and repository validation; no duplicate HTTP stack.
