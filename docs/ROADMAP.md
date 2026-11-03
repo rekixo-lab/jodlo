@@ -1,3 +1,10 @@
+## 2026-11-03 — Real JODLO D1 is now verified; Cloudflare Worker is NEXT
+
+- [x] **CF-04 remote D1:** Eight schema migrations applied and no pending; actual `quick_check` was `ok` and `foreign_key_check` returned no violations
+- [ ] **CF-05:** upgrade owner-local real-ID Wrangler config using `npm run production:config:harden`, verify no other Worker owns `jodlo-api`, confirm no public domains/preview URLs, then controlled **real Worker deploy** and dashboard version evidence
+- [ ] **GOOGLE-01:** real owner Web + Android Google OAuth, `GOOGLE_CLIENT_ID` as protected Cloudflare variable/secret, verified Cloudflare API endpoint and actual Android device customer-worker acceptance
+- [ ] **Remaining privacy and operations gates:** no unreviewed Category bulk-activation, public user release, production payments, or live Agora without specific safety/consent/privacy checks
+
 - [x] **CF-04 REAL D1:** Eight remote schema migrations applied to the exact JODLO UUID, no pending, 13 tables. No Worker deploy or real OAuth yet.
 - [ ] **D1 verification:** Cloudflare-supported `PRAGMA quick_check` and `PRAGMA foreign_key_check` (not the restricted `integrity_check`) on the true remote D1.
 - [ ] **Next:** real Worker deployment preflight, protected Google Web/Android OAuth and a scoped DNS/HTTPS launch with genuine phone acceptance. [Runbook](REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md).

@@ -1,5 +1,46 @@
 # JODLO — real-provider connection and controlled deployment runbook
 
+## CF-04 verified, CF-05 — first protected real Cloudflare Worker deployment
+
+**CF-04 database integrity evidence (owner's actual Wrangler CLI, 2026-11-03):** `npx wrangler d1 execute jodlo-production --remote` returned **`PRAGMA quick_check = ok`**, and a separate **`PRAGMA foreign_key_check` returned no rows** on the specific real JODLO D1 UUID `723080b5-f165-4b31-839f-3063175824c7`. The eight production migrations and zero pending migrations were confirmed in the prior terminal output. D1 `quick_check` is limited verification, not a full SQLite `integrity_check`. **The Cloudflare Worker has NOT yet been deployed, no DNS route attached, real Google OAuth not configured and public acceptance is not green.**
+
+**Reason for new hardening:** Cloudflare permits Version/Preview URLs to be independently enabled; disabling `workers.dev` alone may not clear an existing setting. For the initial API upload we explicitly set `workers_dev:false`, `preview_urls:false`, **no `routes`**. This prevents accidental preview URLs, but is not a substitute for checking any existing dashboard-managed custom routes on a Worker with the same name. [Cloudflare docs](https://developers.cloudflare.com/workers/versions-and-deployments/version-urls/).
+
+**A. Operator's local existing config upgrade — no remote changes.** Run on the Ubuntu workstation already authenticated to the actual Cloudflare account, after this PR has merged and `git pull` has retrieved it:
+
+```bash
+cd ~/jodlo
+git switch main
+git pull --ff-only origin main
+npm ci
+npx wrangler whoami
+npm run production:config:harden
+npm run production:config:check
+git check-ignore apps/api/wrangler.production.generated.jsonc
+npx wrangler deploy --dry-run --config apps/api/wrangler.production.generated.jsonc
+```
+
+The `--harden` command is **idempotent** and updates the existing generated config locally through an atomic replace; it retains its actual account ID, D1 UUID and verified rate limiter IDs. It refuses unknown fields, malformed IDs, wrong binding, enabled preview URLs and public routes, and will not write any secrets. Never run `production:config:write` over the existing file or commit the generated file. If the harden command fails, stop and show the error with all secrets removed.
+
+**B. Account/name collision review — read-only Cloudflare step.** In [Cloudflare dashboard](https://dash.cloudflare.com) > Workers & Pages for the logged-in account, inspect whether `jodlo-api` already exists. If so, determine whether it belongs to JODLO, whether it has users or routes/custom domains/preview URLs, and whether this owner authorizes replacing it. Wrangler can also inspect the current known deployment (errors may mean no Worker or access issues, so don't mistake a failure for an empty safe name):
+
+```bash
+npx wrangler deployments list --name jodlo-api --config apps/api/wrangler.production.generated.jsonc
+```
+
+Double-check Cloudflare Account ID `8f31060fbcfee2b3e9309138cad7f12f`, `jodlo-production` D1 `723080b5-f165-4b31-839f-3063175824c7`, no other databases, two unique login rate limiter namespaces, cost alerts and rollback. Do **not** overwrite an unknown existing Worker, deploy to Finworkar or attach wildcard DNS. The configured authentication endpoint returns **503** until its genuine `GOOGLE_CLIENT_ID` Web OAuth client is safely configured; this is a deliberate fail-closed state, not a usable sign-in.
+
+**C. Real Worker deployment (owner-executed, intentionally not CI).** Only after A and B, and after confirming no unrelated Worker/name or existing public routes:
+
+```bash
+npx wrangler deploy --config apps/api/wrangler.production.generated.jsonc
+```
+
+**This command actually uploads and deploys code to the real Cloudflare account.** Expect an actual Worker version/deployment record. With the guarded config alone, there is **no public hostname**, so a successful deployment will *not* prove an HTTP endpoint is reachable from an Android phone. Inspect Cloudflare > Workers & Pages > `jodlo-api` > Deployments/Settings > Domains & Routes to verify the Worker version and absence of public `workers.dev`, Version URL, Custom Domain or unintended Route. Do not treat a successful deploy as a public launch, OAuth success or finished personal-data policy.
+
+**D. Next following real integration:** Google Cloud Console JODLO project Web+Android OAuth clients (package `com.rekixo.jodlo`, correct SHA-1), protected Cloudflare `GOOGLE_CLIENT_ID` binding, reviewed exact JODLO HTTPS hostname/DNS with TLS and access control, then real phone Google login, Worker publish -> Customer read -> unpublish. Founder call consent remains OFF; no fake production Categories or Agora. No public DNS/Google auth actions are performed by this PR.
+
+
 ## CF-04: real schema application complete; supported D1 verification still pending (2026-11-03)
 
 **Owner evidence:** All eight real remote migrations `0001`–`0008` completed ✅ on `jodlo-production` / `723080b5-f165-4b31-839f-3063175824c7`, `migrations list --remote` returned no pending files, D1 reported 13 tables, and the expected JODLO table names were returned by an ordinary read-only `sqlite_master` query. Do **not** run `migrations apply` a second time as a troubleshooting step. The app has **not** been deployed publicly and real OAuth is still unconfigured.

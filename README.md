@@ -1,5 +1,8 @@
 # JODLO
 
+> **REAL CLOUDFLARE STATUS (2026-11-03):** Owner verified the actual remote `jodlo-production` D1: `PRAGMA quick_check=ok`, `foreign_key_check` no violations, eight migrations already applied. **Live Worker deployment is STILL pending.** The repository now provides `npm run production:config:harden` to safely upgrade the *existing gitignored real-ID* file to deny Cloudflare Version/Preview URLs. [Exact protected Cloudflare deployment instructions](docs/REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md) · [Owner actions](docs/MANUAL_ACTIONS.md).
+
+
 > **CF-04 LIVE JODLO D1 SCHEMA DONE (2026-11-03):** Founder-applied all eight migrations to the correct remote `jodlo-production` D1; pending count is zero, 13 tables are reported, and JODLO table names were read back. Earlier CF-04 pending / 0-table paragraphs are historical. `PRAGMA integrity_check` returned D1 `SQLITE_AUTH` (unsupported/restricted PRAGMA), **not a migration failure**. The replacement read-only checks `PRAGMA quick_check` and `PRAGMA foreign_key_check` are **not yet verified**. No real Worker deployment, DNS, Google OAuth or public release. [Exact next commands](docs/REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md) · [ADR-0015](docs/decisions/0015-real-provider-integration-and-controlled-production.md).
 
 
