@@ -1,5 +1,10 @@
 > **Current founder directive, 2026-10-27:** finish the whole JODLO source **locally and in green CI first**; **no Cloudflare staging or other deployment** until product-ready. Eventual *direct, controlled production* release requires separate approval. [ADR-0004](decisions/0004-local-first-no-staging-until-production.md) · [Release gates](RELEASE_READINESS.md).
 
+## 2026-11-03 — next end-to-end Worker → Customer visibility delivery (ENGINEERING PR)
+
+- [ ] Expose a Worker-selected Listing's **fresh actual Customer-facing public visibility**, using the already-reviewed anonymous Listing GET, distinct 404 vs unknown status, safe selection/logout/write invalidation and no extra public fields. Add migrated D1 + real router journey covering Worker opt-in → explicit publish → bilingual Customer available-only Search/Browse/detail → unpublish → revocation. [Contract](WORKER_TO_CUSTOMER_PUBLIC_VISIBILITY_2026-11-03.md).
+- [ ] Verify PR Foundation and Android-native builds, merge only with green checks and independently inspect main checks. The release, OAuth, real 889 import, complete Worker public profile and actual calling remain separately gated.
+
 ## 2026-11-03 — Worker publication navigation milestone (ENGINEERING PR, CI PENDING)
 
 - [ ] Make the already-built owner-authenticated Worker create/unpublish flow usable across a large approved catalog: **Hindi/English Search + cursor paging + explicit selection**, Browse fallback, safe query/language reset, failure/empty/retry UX. Existing server and Kotlin search/publish APIs are reused; only native Android UI/localization and documentation change. [Acceptance plan](WORKER_CATEGORY_SEARCH_PUBLISH_2026-11-03.md). PR/native CI and physical phone acceptance remain separate.
