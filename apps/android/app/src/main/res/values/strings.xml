@@ -58,7 +58,7 @@
     <string name="worker_publish_selected">Publish selected Category</string>
     <string name="worker_read_failed">Could not verify current data; nothing has been changed.</string>
     <string name="worker_operation_failed">Operation not confirmed. Review current status before trying again.</string>
-    <string name="worker_write_confirmed">Server confirmed the change. Refresh listings to inspect current visibility.</string>
+    <string name="worker_write_confirmed">Server confirmed the change. Review My listings and check the current Customer view; refresh again if the list is missing.</string>
     <string name="worker_uncertain_write">Network result uncertain: the change MAY have happened. Do not retry it automatically.</string>
     <string name="worker_recheck_read_only">Read one owner page (no write)</string>
     <string name="worker_recheck_not_proof">Current visibility is not proof that the prior write committed.</string>
