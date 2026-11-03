@@ -242,3 +242,28 @@ test("time is sampled after async facts AND consent recheck; expired or regressi
     assert.deepEqual(await f.prepare(bad),DENIED);
   }finally{f.close();}
 });
+
+test("real D1 directional blocks veto all-pass synthetic reader evidence",async()=>{
+  const f=await fixture();
+  try{
+    assert.equal((await f.opt(true,0)).kind,"updated");
+    assert.equal((await f.availability(true,0)).kind,"updated");
+    let reads=0;
+    const sources=sourcePorts({},()=>reads++);
+    assert.equal((await f.prepare(sources)).kind,"prepared");
+    reads=0;
+    assert.deepEqual(await f.block(f.caller,WORKER),{kind:"updated"});
+    assert.deepEqual(await f.prepare(sources),DENIED);
+    assert.equal(reads,0,"D1 caller block denies before test-only readers");
+    const other=await f.prepare(sources,()=>NOW,f.other);
+    assert.equal(other.kind,"prepared");
+    assert.equal(other.call.callerAccountId,OTHER);
+    assert.deepEqual(await f.block(f.caller,WORKER,false),{kind:"updated"});
+    reads=0;
+    assert.deepEqual(await f.block(f.worker,CALLER),{kind:"updated"});
+    assert.deepEqual(await f.prepare(sources),DENIED);
+    assert.equal(reads,0,"D1 worker block denies before test-only readers");
+    assert.deepEqual(await f.block(f.worker,CALLER,false),{kind:"updated"});
+    assert.equal((await f.prepare(sources)).kind,"prepared");
+  }finally{f.close();}
+});
