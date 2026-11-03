@@ -64,4 +64,9 @@
     <string name="demo_enable">बिना इंटरनेट नमूना सेवाएँ देखें (केवल परीक्षण)</string>
     <string name="demo_disable">नमूना बंद करें</string>
     <string name="demo_readonly_notice">केवल नमूना डेटा • ये वास्तविक वर्कर या स्वीकृत लाइव श्रेणियाँ नहीं हैं। यहाँ नेटवर्क अनुरोध, कॉल, प्रवेश या प्रकाशन नहीं होते।</string>
+    <string name="filter_published_services">केवल प्रकाशित सेवाओं वाली श्रेणियाँ</string>
+    <string name="back_to_listings">सेवा सूचियों पर लौटें</string>
+    <string name="listing_detail_heading">वर्तमान सार्वजनिक सेवा सूची</string>
+    <string name="listing_no_longer_public">यह सेवा सूची अब सार्वजनिक नहीं है। श्रेणी पर लौटकर सूची ताज़ा करें।</string>
+    <string name="listing_detail_private_notice">यहाँ केवल सेवा श्रेणी और संदर्भ सार्वजनिक हैं। वर्कर की संपर्क जानकारी, सत्यापित पहचान या कॉल उपलब्धता की पुष्टि नहीं है।</string>
 </resources>
