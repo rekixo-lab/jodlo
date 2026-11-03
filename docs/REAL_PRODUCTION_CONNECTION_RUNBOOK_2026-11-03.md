@@ -1,5 +1,73 @@
 # JODLO — real-provider connection and controlled deployment runbook
 
+## DNS-01 / CF-06 — founder-confirmed dedicated API Custom Domain (2026-11-03)
+
+**Exact confirmed hostname:** `api.jodlo.rekixo.com` (NOT `jodlo.rekixo.com`). Android `jodloApiOrigin` is **`https://api.jodlo.rekixo.com`**, with NO `/api/v1` suffix; the app's existing repository methods add `/api/v1`. After actual domain attach and TLS verification the health check is **`https://api.jodlo.rekixo.com/api/v1/health`**. Website and API remain separate. Binding decision: [ADR-0016](decisions/0016-jodlo-dedicated-custom-api-domain.md).
+
+**Status:** decision LOCKED; actual Custom Domain, DNS, TLS, Worker deployment, Google OAuth and health response **NOT YET CONFIRMED**. Owner stated **no new deployment commands have been run** as of this confirmation. Do not interpret the existing real D1 as a publicly deployed API.
+
+### Why Custom Domain rather than a Worker path route?
+
+The `jodlo-api` Worker owns all requests to **only** `api.jodlo.rekixo.com`; Cloudflare Workers Custom Domains are designed for an origin Worker and automatically create the necessary DNS record and managed TLS certificate when their zone is active. This uses `routes:[{"pattern":"api.jodlo.rekixo.com","custom_domain":true}]` — not `"jodlo.rekixo.com/api/v1/*"`, not a wildcard. [Cloudflare official docs](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/).
+
+### First verify zone and DNS ownership — MANUAL and read-only
+
+1. Open [Cloudflare dashboard](https://dash.cloudflare.com) and select the **JODLO authenticated account** ending `7f12f` (Account ID from previous owner CLI). Verify the **`rekixo.com` Cloudflare zone is ACTIVE in that same account**. If that zone belongs to another account, stop and investigate; do not move nameservers or DNS casually.
+2. In **rekixo.com → DNS → Records**, look specifically for **`api.jodlo`** (full hostname `api.jodlo.rekixo.com`) and any colliding CNAME, A/AAAA, wildcard or custom-domain route. Also inspect **Workers & Pages → jodlo-api → Settings → Domains & Routes**, if it already exists. **Never delete or overwrite an existing live record** without identifying its owner and dependent apps. Do not touch `jodlo.rekixo.com`, apex `rekixo.com`, `www` or other Cloudflare Workers.
+3. Confirm `jodlo-api` Worker name is unused or is the founder's intended JODLO Worker. Cost limits/alerts, reviewed personal-data constraints and protection from unwanted public traffic must be ready **before** attaching the Custom Domain.
+
+### Exact repository commands — LOCAL ONLY; no deployment
+
+After this PR is merged and fetched, on the owner's trusted Ubuntu machine:
+
+```bash
+cd ~/jodlo
+git switch main
+git pull --ff-only origin main
+npm ci
+
+# Harden the original real-account, gitignored, no-route config once.
+npm run production:config:harden
+npm run production:config:check
+
+# Create a DIFFERENT gitignored config for the exact custom API hostname.
+# This does not request API tokens and makes no remote Cloudflare changes.
+npm run production:domain:write
+npm run production:domain:check
+
+# Build/validate without deploying or attaching the public domain.
+npx wrangler deploy --dry-run --config apps/api/wrangler.production.domain.generated.jsonc
+```
+
+`production:domain:write` refuses to overwrite a previous domain file and requires the safe real account/D1/rate-limit bindings and both `workers_dev:false` and `preview_urls:false`. It creates a **separate ignored file**, so the original no-route config remains available for a safer first Worker upload. If the domain file already exists, use `production:domain:check` rather than rerunning `--write`. Changes to actual D1 or rate-limit IDs after generation will fail the check rather than silently deploying an old-account config.
+
+### EXPLICIT REAL PUBLISHING STEP — only after external checks
+
+- First, if there is **no previously deployed JODLO Worker**, use the **original no-route configuration** for a controlled upload, **only after verifying no Worker name collision**:
+
+```bash
+npx wrangler deploy --config apps/api/wrangler.production.generated.jsonc
+```
+
+This is a real code deployment, but does not intentionally attach the custom hostname. Verify in the dashboard that it belongs to JODLO and has no accidental existing domain/preview routes.
+
+- **After** correct `rekixo.com` zone ownership, exact hostname record safety, user-data protections, owner-controlled release and dry-run checks, this separate command **DEPLOYS and ATTACHES THE PUBLIC Custom Domain**:
+
+```bash
+npx wrangler deploy --config apps/api/wrangler.production.domain.generated.jsonc
+```
+
+This last command is **not a dry-run**: it creates/updates an Internet-reachable Custom Domain for the JODLO Worker. Do **not** run it before Cloudflare zone/hostname collision checks or assume any existing dashboard-managed route is safe. Cloudflare will handle the Custom Domain DNS/TLS, but you must confirm DNS activation/certificate validity from actual live evidence. Do not create a manual dummy AAAA record or point the website at this Worker.
+
+### After controlled attachment — actual read-only smoke
+
+```bash
+curl -i --max-time 20 https://api.jodlo.rekixo.com/api/v1/health
+```
+
+Only report the exact observed status/body after that command succeeds. A successful health response is NOT proof of Google sign-in, Customer/Worker onboarding or approved Categories. Real Google OAuth requires the dedicated Google Cloud project, Web Client ID as server audience, Android OAuth client for `com.rekixo.jodlo`, signing SHA-1 and protected Worker `GOOGLE_CLIENT_ID` configuration. Keep Worker calling OFF and no unreviewed Category activation. Follow [Manual Actions](MANUAL_ACTIONS.md).
+
+
 ## CF-04 verified, CF-05 — first protected real Cloudflare Worker deployment
 
 **CF-04 database integrity evidence (owner's actual Wrangler CLI, 2026-11-03):** `npx wrangler d1 execute jodlo-production --remote` returned **`PRAGMA quick_check = ok`**, and a separate **`PRAGMA foreign_key_check` returned no rows** on the specific real JODLO D1 UUID `723080b5-f165-4b31-839f-3063175824c7`. The eight production migrations and zero pending migrations were confirmed in the prior terminal output. D1 `quick_check` is limited verification, not a full SQLite `integrity_check`. **The Cloudflare Worker has NOT yet been deployed, no DNS route attached, real Google OAuth not configured and public acceptance is not green.**

@@ -1,5 +1,8 @@
 # Cloudflare-first architecture — JODLO
 
+> **CURRENT API ROUTING CONTRACT — FOUNDER 2026-11-03:** Dedicated API Worker `jodlo-api` uses **Cloudflare Custom Domain** `api.jodlo.rekixo.com`, origin `https://api.jodlo.rekixo.com` and versioned API `https://api.jodlo.rekixo.com/api/v1`. Separate website `https://jodlo.rekixo.com` is **not** the API Worker hostname. Any older topology drawing sharing `jodlo.rekixo.com/api/v1` is historical. [ADR-0016](decisions/0016-jodlo-dedicated-custom-api-domain.md) overrides it. Real custom domain attachment is still pending.
+
+
 > **LIVE INTEGRATION ARCHITECTURE UPDATE (2026-11-03):** Founder accepted [ADR-0015](decisions/0015-real-provider-integration-and-controlled-production.md) and prioritized real dedicated Cloudflare D1/Worker provisioning and Google authentication. Older "not deployed", "Android later" and "provider not selected" statements in the historical blueprint describe past snapshots; the actual source now has native Compose Customer/Worker screens and Agora is selected for future direct in-app audio, but real provider deployment/RTC still unverified. [Current runbook](REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md). Preserve data isolation, default-OFF consent, controlled release and no automatic deploy-on-push.
 
 

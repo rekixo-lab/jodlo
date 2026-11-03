@@ -1,5 +1,12 @@
 # JODLO — Complete AI handoff and source-of-truth index
 
+## CURRENT FOUNDER ROUTING DECISION — separate JODLO API hostname
+
+**Founder-confirmed production API hostname (2026-11-03):** `api.jodlo.rekixo.com`, canonical Android API **origin** `https://api.jodlo.rekixo.com` (without `/api/v1`), versioned API `https://api.jodlo.rekixo.com/api/v1`, health `https://api.jodlo.rekixo.com/api/v1/health`. The website stays at **`https://jodlo.rekixo.com`** and must NOT be routed to the API Worker. [ADR-0016](decisions/0016-jodlo-dedicated-custom-api-domain.md) supersedes old proposals placing the API under `jodlo.rekixo.com/api/v1`. **No Custom Domain, DNS/TLS, Worker deploy or live API is verified yet.** This records a founder decision, not a completed external action.
+
+**Do not invent routes.** The no-route first Worker config stays separate. Use `scripts/prepare-api-custom-domain.mjs` only after existing config is hardened, with `production:domain:write/check` offline; real `wrangler deploy -c apps/api/wrangler.production.domain.generated.jsonc` attaches the public hostname. The founder has NOT executed new deployment commands. Read [ADR-0016](decisions/0016-jodlo-dedicated-custom-api-domain.md) and [Manual Actions](MANUAL_ACTIONS.md) for exact Cloudflare owner zone/DNS verification.
+
+
 ## 2026-11-03 — Cloudflare verified D1; first real Worker release is next
 
 **CF-04 database integrity evidence (owner's actual Wrangler CLI, 2026-11-03):** `npx wrangler d1 execute jodlo-production --remote` returned **`PRAGMA quick_check = ok`**, and a separate **`PRAGMA foreign_key_check` returned no rows** on the specific real JODLO D1 UUID `723080b5-f165-4b31-839f-3063175824c7`. The eight production migrations and zero pending migrations were confirmed in the prior terminal output. D1 `quick_check` is limited verification, not a full SQLite `integrity_check`. **The Cloudflare Worker has NOT yet been deployed, no DNS route attached, real Google OAuth not configured and public acceptance is not green.**
