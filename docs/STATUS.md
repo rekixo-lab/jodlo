@@ -1,5 +1,10 @@
 # JODLO — current state, 2026-11-03
 
+## 2026-11-03 — Worker selectable Category Search + safe publish UI (ENGINEERING PR; CI PENDING)
+
+- **Product journey rather than a test-only PR:** real Android Worker Dashboard now offers Hindi/English search over the server-approved active Category set, exact submitted-query keyset continuation, Browse-all fallback, reset-on-language/query, selected-Category-only publish, honest empty/error/retry states, and localized copy. Reuses *existing* server Search, Kotlin Core repository/decoder and owner-authenticated Worker publish scope. Does not duplicate endpoints, data storage or client networking. [Acceptance](WORKER_CATEGORY_SEARCH_PUBLISH_2026-11-03.md).
+- **Honest boundary:** JODLO's 889 Category coverage remains a review target, NOT a live 889 seed. Worker Google OAuth, production backend, private profile disclosure, RTC, payments and phone acceptance are still pending. Existing default-OFF consent, no-staging and Finworkar read-only rules unchanged. Exact PR Foundation + Android-native JDK 17/21 checks and independent main checks still required.
+
 ## 2026-11-03 — milestone B: published-service Customer discovery + fresh Listing detail (ENGINEERING PR, CI PENDING)
 
 - **One functional vertical slice across API, Kotlin and Android:** new anonymous `GET /api/v1/listings/:id` checks the **same live server-owned public eligibility** as public list pagination and returns only `{listing:{id,categoryId}}`; hidden/unpublished/inactive/deleted entries are indistinguishable from unknown. Existing Guest discovery now exposes a Hindi/English **published-listings-only** filter using the existing `availableOnly=1` browse/Search/keyset API, with one explicit fresh detail GET on listing tap and truthful stale/404/failed states/back navigation. It never equates published to worker online, able to receive a call, or verified.
