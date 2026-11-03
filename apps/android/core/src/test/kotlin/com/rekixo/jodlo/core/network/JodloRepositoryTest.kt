@@ -27,6 +27,9 @@ fun main() {
             call.resource == "/api/v1/listings?categoryId=carpenter" -> ok(
                 """{"listings":[{"id":"$LISTING_ID","categoryId":"carpenter"}]}"""
             )
+            call.resource == "/api/v1/listings/$LISTING_ID" -> ok(
+                """{"listing":{"id":"$LISTING_ID","categoryId":"carpenter"}}"""
+            )
             call.resource == "/api/v1/me/worker-profile" ->
                 ok("""{"profile":{"status":"draft"}}""")
             call.resource == "/api/v1/me/listings" && call.method == HttpMethod.POST ->
@@ -53,6 +56,33 @@ fun main() {
 
     val listings = catalog.listings("carpenter")
     check(listings is ApiOutcome.Ok && listings.value.single().categoryId=="carpenter")
+    val detailReader: PublicListingDetailRepository = RemoteCatalogRepository(sender)
+    check(detailReader.listingDetail(LISTING_ID, "carpenter") ==
+        ApiOutcome.Ok(PublicListing(LISTING_ID, "carpenter")))
+    check(seen.last().method == HttpMethod.GET)
+    check(seen.last().headers()["Authorization"] == null)
+    requireRejected("path traversal is not a listing") {
+        JodloRoutes.publicListingDetail("../../private")
+    }
+    for (malformed in listOf(
+        """{"listing":{"id":"$LISTING_ID","categoryId":"carpenter","workerId":"private"}}""",
+        """{"listing":{"id":"$LISTING_ID","categoryId":"carpenter"},"workerId":"private"}""",
+        """{"listing":{"id":"other-id","categoryId":"carpenter"}}""",
+    )) {
+        val invalid = RemoteCatalogRepository(RequestSender { ok(malformed) })
+        check(invalid.listingDetail(LISTING_ID, "carpenter") == bad())
+    }
+    val categoryMismatch = RemoteCatalogRepository(RequestSender {
+        ok("""{"listing":{"id":"$LISTING_ID","categoryId":"wrong"}}""")
+    })
+    check(categoryMismatch.listingDetail(LISTING_ID, "carpenter") == bad())
+    val noLongerPublic = RemoteCatalogRepository(RequestSender {
+        TransportReply(404,
+            """{"ok":false,"error":{"code":"NOT_FOUND","message":"Not available"}}""")
+    })
+    check(noLongerPublic.listingDetail(LISTING_ID, "carpenter") ==
+        bad(FailureKind.NOT_FOUND))
+
     val profile = worker.myDraft(TOKEN)
     check(profile==ApiOutcome.Ok(WorkerDraft("draft")))
     check(worker.optIn(TOKEN)==ApiOutcome.Ok(WorkerDraft("draft")))
