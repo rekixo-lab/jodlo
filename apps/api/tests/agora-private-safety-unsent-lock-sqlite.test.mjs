@@ -1454,10 +1454,10 @@ test("real owner-authenticated block and unblock automatically advance test-only
     assert.deepEqual(await f.block(f.worker, CALLER),
       { kind: "updated" });
     assert.equal(fakePairRevision(f.b, WORKER, CALLER), 1);
-    assert.deepEqual(await f.block(f.worker, CALLER), DENIED,
+    assert.deepEqual(await f.block(f.worker, CALLER), { kind: "denied" },
       "duplicate block does not count as a relationship mutation");
     assert.equal(fakePairRevision(f.a, CALLER, WORKER), 1);
-    assert.deepEqual(await f.block(f.caller, WORKER, false), DENIED,
+    assert.deepEqual(await f.block(f.caller, WORKER, false), { kind: "denied" },
       "unblock on other unblocked direction is a no-op");
     assert.equal(fakePairRevision(f.a, CALLER, WORKER), 1);
     assert.deepEqual(await f.block(f.worker, CALLER, false),
@@ -1597,7 +1597,7 @@ test("epoch persistence failure and competing writer roll back real block mutati
       "BEFORE INSERT ON fake_block_pair_epochs BEGIN " +
       "SELECT RAISE(ABORT,'synthetic revision persistence fault'); END",
     );
-    assert.deepEqual(await f.block(f.worker, CALLER), DENIED);
+    assert.deepEqual(await f.block(f.worker, CALLER), { kind: "denied" });
     assert.equal(fakePairRevision(f.a, CALLER, WORKER), 0);
     assert.equal(f.a.prepare(
       "SELECT COUNT(*) AS n FROM agora_account_blocks",
@@ -1605,7 +1605,7 @@ test("epoch persistence failure and competing writer roll back real block mutati
     f.a.exec("DROP TRIGGER test_only_pair_epoch_fault");
     f.a.exec("BEGIN IMMEDIATE");
     try {
-      assert.deepEqual(await f.block(f.worker, CALLER), DENIED,
+      assert.deepEqual(await f.block(f.worker, CALLER), { kind: "denied" },
         "another SQLite connection holding a writer lock forces refusal");
       assert.equal(fakePairRevision(f.a, CALLER, WORKER), 0);
     } finally {
@@ -1631,7 +1631,7 @@ test("revision exhaustion is a blocking safety incident, not a wrapped permissio
       "UPDATE fake_block_pair_epochs SET revision=2147483647 " +
       "WHERE lower_id=? AND upper_id=?",
     ).run(...[CALLER, WORKER].sort());
-    assert.deepEqual(await f.block(f.worker, CALLER), DENIED,
+    assert.deepEqual(await f.block(f.worker, CALLER), { kind: "denied" },
       "test-only 32-bit epoch exhausted; cannot silently wrap to zero");
     assert.equal(fakePairRevision(f.a, CALLER, WORKER), 2147483647);
     assert.equal(f.a.prepare(
