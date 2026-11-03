@@ -2,6 +2,16 @@
 
 # JODLO — Living delivery roadmap
 
+## 2026-11-03 — Private Agora safety D1 engineering authorized (LOCAL ONLY)
+
+- [x] Founder authorized **backend implementation and schema/privacy design** for worker availability, mutual blocking and abuse control on 2026-11-03. [Manual owner register](MANUAL_ACTIONS.md).
+- [x] Versioned local-only migration `0008_agora_private_safety_state.sql`: private worker availability intent (default unavailable), directional account blocks and constrained, empty abuse-counter schema; no phone, device, GPS, call log or personal messages.
+- [x] Owner-session availability CAS and directional account-owned block writes, one private caller-session eligibility read. Presence and rate verdict are **unknown**, not live connection permission.
+- [ ] M-003 retention, deletion/export, counter expiry purge, any call metadata and user disclosure/appeals must be specifically approved before collecting real data.
+- [ ] M-005 real online/busy/push presence, blocks/reports enforcement, rate window/threshold and multiwriter atomic admission must be specifically approved and tested before live calling.
+- [ ] M-006 actual Agora provider setup/tokens and M-007 controlled production release remain deferred; no staging. [Privacy contract](AGORA_PRIVATE_SAFETY_D1_PRIVACY_2026-11-03.md).
+
+
 **Status 2026-10-27: GitHub Foundation merged with GREEN CI; Cloudflare NOT YET DEPLOYED.** No fixed deadline, no dropped tasks.
 
 ## Phase 0 — Repository foundation / NOW
