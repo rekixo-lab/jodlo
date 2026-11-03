@@ -2,6 +2,15 @@
 
 # JODLO — Living delivery roadmap
 
+## 2026-11-03 — standing founder authorization + next nonvisual safety milestone
+
+- [x] Founder gave **broad standing permission on 2026-11-03** to continue all JODLO engineering tasks. Do not ask repeatedly for routine permission; keep [manual register](MANUAL_ACTIONS.md) and source of truth up to date.
+- [x] PR #190 merged `f6d9bda1410127d677cd6d606571e382682b8938`; exact PR CI #41560374502 and main CI #41560912915 were green.
+- [ ] Verify the **test-only** bilateral block→unblock ABA model with the real owner-authenticated D1 block writer, two local SQLite connections, an experiment-only pair-revision fence, rollback, stale snapshot and independent-pair checks. No production block-generation table or private history enabled before M-003/M-005 data rules; no live Agora.
+- [ ] Follow with an explicit production atomicity/privacy design and safe testable actor action contract once retention, rate/capacity and provider constraints are actually defined. Continue other non-blocked code without a new generic approval.
+- [ ] Deployment, credentials, qualified content review and actual operational parameter choices still require their corresponding real-world readiness; broad permission is not a measured rate limit or retention number. No staging, no Finworkar writes.
+
+
 ## 2026-11-03 — Private Agora safety D1 engineering authorized (LOCAL ONLY)
 
 - [x] Founder authorized **backend implementation and schema/privacy design** for worker availability, mutual blocking and abuse control on 2026-11-03. [Manual owner register](MANUAL_ACTIONS.md).
