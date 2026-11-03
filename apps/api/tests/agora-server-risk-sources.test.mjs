@@ -7,6 +7,9 @@ import { optInAsWorker } from "../src/modules/workers/profile.ts";
 import { publishListing } from "../src/modules/workers/listings.ts";
 import { setOwnWorkerAgoraCallPreference } from
   "../src/modules/workers/agora-call-preference.ts";
+import {
+  setOwnWorkerAvailability, setOwnAgoraAccountBlock,
+} from "../src/modules/interactions/agora-private-safety-state.ts";
 import { prepareSyntheticServerRiskReadAgoraInvite } from
   "../src/modules/interactions/agora-server-risk-sources.ts";
 
@@ -57,10 +60,14 @@ async function fixture(){
     assert.ok(caller&&worker&&other);
     const opt=(enabled,revision)=>setOwnWorkerAgoraCallPreference(
       adapter,worker,enabled,revision);
+    const availability=(enabled,revision)=>setOwnWorkerAvailability(
+      adapter,worker,enabled,revision);
+    const block=(bearer,target,enabled=true)=>setOwnAgoraAccountBlock(
+      adapter,bearer,target,enabled);
     const prepare=(readers=sourcePorts(),clock=()=>NOW,bearer=caller,
       dbSource=adapter)=>prepareSyntheticServerRiskReadAgoraInvite(
         dbSource,bearer,listing.id,CALL,DEADLINE,readers,clock);
-    return {db,adapter,listing,caller,worker,other,opt,prepare,
+    return {db,adapter,listing,caller,worker,other,opt,availability,block,prepare,
       close(){db.close();}};
   }catch(e){db.close();throw e;}
 }
@@ -103,6 +110,11 @@ test("default OFF never invokes risk readers; enabled consent provides only scop
     assert.deepEqual(await f.prepare(readers),DENIED);
     assert.equal(scopes.length,0,"no source reads without caller session/consent");
     assert.equal((await f.opt(true,0)).kind,"updated");
+    assert.deepEqual(await f.prepare(readers),DENIED,
+      "Explicit call consent alone does not imply availability");
+    assert.equal(scopes.length,0,
+      "no synthetic risk reader is used until D1 availability intent is ON");
+    assert.equal((await f.availability(true,0)).kind,"updated");
     const prepared=await f.prepare(readers);
     assert.equal(prepared.kind,"prepared");
     assert.equal(prepared.originalConsentRevision,1);
@@ -137,6 +149,7 @@ test("unknown/busy/blocked/rate denied or privacy false facts never prepare",asy
   const f=await fixture();
   try{
     assert.equal((await f.opt(true,0)).kind,"updated");
+    assert.equal((await f.availability(true,0)).kind,"updated");
     const cases=[
       {presence:{workerPresence:"offline"}},
       {presence:{workerPresence:"unknown"}},
@@ -172,6 +185,7 @@ test("consent OFF or OFF then ON while sources read never resurrects the earlier
   const f=await fixture();
   try{
     assert.equal((await f.opt(true,0)).kind,"updated");
+    assert.equal((await f.availability(true,0)).kind,"updated");
     const off=sourcePorts();
     off.abuse=async scope=>{
       const changed=await f.opt(false,1);
@@ -204,6 +218,7 @@ test("time is sampled after async facts AND consent recheck; expired or regressi
   const f=await fixture();
   try{
     assert.equal((await f.opt(true,0)).kind,"updated");
+    assert.equal((await f.availability(true,0)).kind,"updated");
     const clockValues=[
       [NOW,NOW,NOW],                 // valid, no policy timeout inferred
       [NOW,NOW+500,NOW+500],         // expired during source collection
