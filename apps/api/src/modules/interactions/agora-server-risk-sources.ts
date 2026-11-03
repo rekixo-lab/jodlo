@@ -84,8 +84,7 @@ function privateStateAllowsRehearsal(
     facts.acceptingCalls === true &&
     Number.isSafeInteger(facts.availabilityRevision) &&
     facts.availabilityRevision > 0 &&
-    facts.blockedByCaller === false &&
-    facts.blockedByWorker === false;
+    facts.contactBlocked === false;
 }
 
 /**

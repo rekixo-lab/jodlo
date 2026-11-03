@@ -113,7 +113,7 @@ test("owner-only availability is OFF by absence; CAS guards stale writes and can
     });
     assert.deepEqual(await f.read(),{
       acceptingCalls:true,availabilityRevision:3,consentRevision:1,
-      blockedByCaller:false,blockedByWorker:false,
+      contactBlocked:false,
       rateGate:"unknown",workerPresence:"unknown",
     });
     assert.deepEqual(await f.consent(false,1),{
@@ -136,26 +136,26 @@ test("two-way block privacy: only the caller/worker may set their OWN direction"
     assert.deepEqual(await f.block(f.caller,WORKER),{kind:"updated"});
     assert.deepEqual(await f.block(f.caller,WORKER),DENIED);
     facts=await f.read();
-    assert.equal(facts.blockedByCaller,true);
-    assert.equal(facts.blockedByWorker,false);
+    assert.equal(facts.contactBlocked,true);
+    const callerOnlyProjection=facts;
     assert.deepEqual(await f.block(f.worker,CALLER),{kind:"updated"});
     facts=await f.read();
-    assert.equal(facts.blockedByCaller,true);
-    assert.equal(facts.blockedByWorker,true);
+    assert.equal(facts.contactBlocked,true);
     assert.deepEqual(await f.block(f.other,CALLER),{kind:"updated"},
       "other user may only set a relationship for their OWN account");
     facts=await f.read();
-    assert.equal(facts.blockedByCaller,true);
-    assert.equal(facts.blockedByWorker,true);
+    assert.equal(facts.contactBlocked,true);
     assert.deepEqual(await f.block(f.caller,WORKER,false),{kind:"updated"});
     facts=await f.read();
-    assert.equal(facts.blockedByCaller,false);
-    assert.equal(facts.blockedByWorker,true);
+    assert.equal(facts.contactBlocked,true);
+    assert.deepEqual(facts,callerOnlyProjection,
+      "either block direction must give the same caller-scoped projection");
+    assert.equal(Object.hasOwn(facts,"blockedByCaller"),false);
+    assert.equal(Object.hasOwn(facts,"blockedByWorker"),false);
     assert.deepEqual(await f.block(f.caller,WORKER,false),DENIED);
     assert.deepEqual(await f.block(f.worker,CALLER,false),{kind:"updated"});
     facts=await f.read();
-    assert.equal(facts.blockedByCaller,false);
-    assert.equal(facts.blockedByWorker,false);
+    assert.equal(facts.contactBlocked,false);
     assert.equal(Object.isFrozen(facts),true);
     const rows=f.db.prepare("SELECT * FROM agora_account_blocks").all();
     assert.deepEqual(rows.map(x=>Object.keys(x).sort()),[
@@ -176,7 +176,7 @@ test("private safety read denies stale sessions, disabled accounts and unpublish
     assert.equal(await f.read("forged"),null);
     assert.equal(await f.read(f.worker),null,
       "worker cannot self-call through its own worker listing");
-    assert.equal((await f.read(f.other))?.blockedByCaller,false,
+    assert.equal((await f.read(f.other))?.contactBlocked,false,
       "second caller gets a separate private relationship state");
     assert.equal(await revokeSession(f.adapter,f.caller),true);
     assert.equal(await f.read(),null);
@@ -202,7 +202,7 @@ test("invalid or spoofed fake-D1 read rows fail closed; block facts are not publ
     assert.ok(base);
     const brokenField=[
       {consentRevision:0},{consentRevision:"1"},
-      {blockedByCaller:2},{blockedByWorker:null},
+      {contactBlocked:2},{contactBlocked:null},{contactBlocked:"1"},
       {acceptingCalls:1,availabilityRevision:null},
       {acceptingCalls:true,availabilityRevision:1},
       {acceptingCalls:null,availabilityRevision:1},
@@ -211,7 +211,7 @@ test("invalid or spoofed fake-D1 read rows fail closed; block facts are not publ
       const fake={prepare:()=>({bind:()=>({all:async()=>({
         results:[{
           consentRevision:1,acceptingCalls:null,availabilityRevision:null,
-          blockedByCaller:0,blockedByWorker:0,...tamper,
+          contactBlocked:0,...tamper,
         }],
       })})})};
       assert.equal(await readLocalCallerAgoraSafetyFacts(fake,f.caller,f.listing.id),null,
@@ -226,8 +226,8 @@ test("invalid or spoofed fake-D1 read rows fail closed; block facts are not publ
     assert.ok(READ_CALLER_AGORA_PRIVATE_SAFETY_QUERY.includes("pref.calls_enabled=1"));
     assert.equal(READ_CALLER_AGORA_PRIVATE_SAFETY_QUERY.includes("auth_sessions"),true);
     assert.deepEqual(Object.keys(base).sort(),[
-      "acceptingCalls","availabilityRevision","blockedByCaller",
-      "blockedByWorker","consentRevision","rateGate","workerPresence",
+      "acceptingCalls","availabilityRevision","consentRevision",
+      "contactBlocked","rateGate","workerPresence",
     ]);
     assert.equal(JSON.stringify(base).includes(f.caller),false);
     assert.equal(JSON.stringify(base).includes(f.worker),false);

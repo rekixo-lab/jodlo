@@ -156,7 +156,8 @@ export async function setOwnAgoraAccountBlock(
 
 /** ONE private caller-owned D1 read: current listing/owner/category/moderation,
  * current explicit call consent, separate availability preference and BOTH
- * directional blocks. An omitted availability row means unavailable; no row
+ * directional blocks internally, exposing only a combined contactBlocked bit.
+ * An omitted availability row means unavailable; no row
  * or bad adapter can fabricate affirmative state. This read does not know
  * whether a device is actually ONLINE, nor can it approve abuse/privacy.
  */
@@ -164,12 +165,13 @@ export const READ_CALLER_AGORA_PRIVATE_SAFETY_QUERY =
   "SELECT pref.revision AS consentRevision, " +
   "avail.accepting_calls AS acceptingCalls, " +
   "avail.revision AS availabilityRevision, " +
-  "EXISTS(SELECT 1 FROM agora_account_blocks AS b " +
+  "CASE WHEN EXISTS(SELECT 1 FROM agora_account_blocks AS b " +
   "WHERE b.blocker_account_id=caller.id " +
-  "AND b.blocked_account_id=worker.id) AS blockedByCaller, " +
+  "AND b.blocked_account_id=worker.id) OR " +
   "EXISTS(SELECT 1 FROM agora_account_blocks AS b " +
   "WHERE b.blocker_account_id=worker.id " +
-  "AND b.blocked_account_id=caller.id) AS blockedByWorker " +
+  "AND b.blocked_account_id=caller.id) " +
+  "THEN 1 ELSE 0 END AS contactBlocked " +
   "FROM auth_sessions AS s " +
   "JOIN accounts AS caller ON caller.id=s.account_id " +
   "JOIN worker_listings AS wl ON wl.id=? " +
@@ -190,8 +192,8 @@ export type LocalAgoraSafetyFacts = Readonly<{
   acceptingCalls: boolean;
   availabilityRevision: number;
   consentRevision: number;
-  blockedByCaller: boolean;
-  blockedByWorker: boolean;
+  /** Never disclose which party initiated the private block. */
+  contactBlocked: boolean;
   /** No approved anti-abuse threshold, period or rate reservation exists. */
   rateGate: "unknown";
   /** No actual device presence has been implemented. */
@@ -209,7 +211,7 @@ export async function readLocalCallerAgoraSafetyFacts(
       .all<{
         consentRevision: unknown; acceptingCalls: unknown;
         availabilityRevision: unknown;
-        blockedByCaller: unknown; blockedByWorker: unknown;
+        contactBlocked: unknown;
       }>();
     if (!Array.isArray(results) || results.length !== 1) return null;
     const row = results[0];
@@ -217,8 +219,7 @@ export async function readLocalCallerAgoraSafetyFacts(
         typeof row.consentRevision !== "number" ||
         !Number.isSafeInteger(row.consentRevision) ||
         row.consentRevision < 1 || row.consentRevision > MAX_REVISION ||
-        (row.blockedByCaller !== 0 && row.blockedByCaller !== 1) ||
-        (row.blockedByWorker !== 0 && row.blockedByWorker !== 1)) return null;
+        (row.contactBlocked !== 0 && row.contactBlocked !== 1)) return null;
     const missing = row.acceptingCalls === null &&
       row.availabilityRevision === null;
     if (!missing &&
@@ -231,8 +232,7 @@ export async function readLocalCallerAgoraSafetyFacts(
       acceptingCalls: !missing && row.acceptingCalls === 1,
       availabilityRevision: missing ? 0 : row.availabilityRevision as number,
       consentRevision: row.consentRevision,
-      blockedByCaller: row.blockedByCaller === 1,
-      blockedByWorker: row.blockedByWorker === 1,
+      contactBlocked: row.contactBlocked === 1,
       rateGate: "unknown" as const,
       workerPresence: "unknown" as const,
     });
