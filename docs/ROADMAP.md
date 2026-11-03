@@ -1,5 +1,10 @@
 > **Current founder directive, 2026-10-27:** finish the whole JODLO source **locally and in green CI first**; **no Cloudflare staging or other deployment** until product-ready. Eventual *direct, controlled production* release requires separate approval. [ADR-0004](decisions/0004-local-first-no-staging-until-production.md) · [Release gates](RELEASE_READINESS.md).
 
+## 2026-11-03 — Worker publication navigation milestone (ENGINEERING PR, CI PENDING)
+
+- [ ] Make the already-built owner-authenticated Worker create/unpublish flow usable across a large approved catalog: **Hindi/English Search + cursor paging + explicit selection**, Browse fallback, safe query/language reset, failure/empty/retry UX. Existing server and Kotlin search/publish APIs are reused; only native Android UI/localization and documentation change. [Acceptance plan](WORKER_CATEGORY_SEARCH_PUBLISH_2026-11-03.md). PR/native CI and physical phone acceptance remain separate.
+- [ ] Continue real Worker Google OAuth, approved backend and Category activation when separately ready. Do not imply all 889 categories are live or substitute synthetic Worker writes for OAuth.
+
 # JODLO — Living delivery roadmap
 
 ## 2026-11-03 — product-first shift after founder feedback
