@@ -1,5 +1,12 @@
 # JODLO — founder manual actions, owner gates and notification register
 
+## 2026-11-03 — CF-02 real production Wrangler binding preflight (ENGINEERING PR; CI PENDING)
+
+**Engineering in scope:** a source-controlled generator, `scripts/prepare-production-wrangler.mjs`, builds an untracked `apps/api/wrangler.production.generated.jsonc` only from **real, operator-provided Cloudflare Account ID, dedicated jodlo-production D1 UUID and two unique operator-selected rate-limit namespace IDs**. The generator rejects the disposable local IDs, missing/malformed IDs, same account explicitly identified as Finworkar, unsafe routes, unexpected binding fields and silent overwrites. `npm run production:config:write` and `npm run production:config:check` are **strictly offline** and make NO Cloudflare changes. See [CF-02 exact Ubuntu commands](REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md).
+
+**मैनुअल काम CF-01 remains NEEDS_DECISION_NOW:** Founder must choose/log into their own dedicated Cloudflare account, run `npx wrangler login` / `whoami` and create/identify the **real** JODLO D1. Only after that, run CF-02 in their local shell. No real account, remote D1, deployment, DNS, Google credential or actual production test is evidenced yet. Never paste access tokens or passwords into chat; Cloudflare IDs are nonsecret but should be verified against the signed-in owner account. Previous CF-01 steps below remain valid.
+
+
 ## 2026-11-03 — Founder changed deployment policy: ADR-0015 now ACCEPTED (binding)
 
 **AUTHORIZATION DONE:** Founder explicitly instructed JODLO to stop local-only work as the operating restriction and **start connecting actual Cloudflare, Google sign-in and further real providers, plus controlled production deployments**. No repeat generic permission question; new [ADR-0015](decisions/0015-real-provider-integration-and-controlled-production.md) supersedes old ADR-0004's deferred deployment restriction. Historical entries further down are not ongoing prohibitions. Follow [real provider runbook](REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md); no Cloudflare/Google connection is evidenced by this document.
