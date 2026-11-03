@@ -227,13 +227,27 @@ internal fun WorkerDashboard(
             } catch (_: Exception) {
                 // Read the defensive write-scope state; do NOT replay a POST/DELETE.
             }
-            busy = false
             updateSession()
             ownListings = emptyList()
             ownerCursor = null
             selectedListing = null
             selectedCategory = null
             publicPreview = PublicPreview.UNCHECKED
+
+            // Only after a CONFIRMED owner write, refresh the current
+            // private Listing list through an existing read-only route.
+            // An uncertain POST/DELETE is never retried or marked committed.
+            if (writeState is WorkerWriteState.Confirmed &&
+                login is LoginState.SignedIn && session != null) {
+                val fresh = try {
+                    withContext(Dispatchers.IO) { session.pageMyListings(20) }
+                } catch (_: Exception) { null }
+                if (fresh is SessionResult.Success) {
+                    ownListings = fresh.value.listings
+                    ownerCursor = fresh.value.nextCursor
+                }
+            }
+            busy = false
             message = when (writeState) {
                 is WorkerWriteState.Confirmed -> R.string.worker_write_confirmed
                 is WorkerWriteState.NeedsReview -> R.string.worker_uncertain_write
