@@ -2,6 +2,13 @@
 
 # JODLO — Living delivery roadmap
 
+## 2026-11-03 — product-first shift after founder feedback
+
+Work in **end-to-end Customer/Worker milestones**, not endless small test-only Agora PRs. [Product delivery milestone ladder](PRODUCT_DELIVERY_MILESTONES_2026-11-03.md) is the current delivery sequence. Native Compose app and downloadable debug APK are **already implemented**; founder **approved black/green visual direction on 2026-11-02**. Active backend/category/OAuth/provider readiness and real-device acceptance are separate.
+
+- [ ] **A NOW:** actual Android debug Customer **offline sample mode**, explicitly enabled, with browse, bilingual search, category selection and paged synthetic listing cards, using the existing Kotlin repository/decoder; Worker authentication remains genuinely disabled. Check PR-head **Foundation + native Android** CI, merged-main both workflows, then a **manual phone walkthrough**; no fake worker contact.
+- [ ] **B–F:** real worker discovery/disclosure, authenticated Worker onboarding, full Agora with policy/provider integration, privacy/admin/storage completeness, payments and production release. Never publish unreviewed 889 Categories or infer personal location, provider tokens, retention, call quotas or deployment consent. [Milestone acceptance details](PRODUCT_DELIVERY_MILESTONES_2026-11-03.md).
+
 ## 2026-11-03 — standing founder authorization + next nonvisual safety milestone
 
 - [x] Founder gave **broad standing permission on 2026-11-03** to continue all JODLO engineering tasks. Do not ask repeatedly for routine permission; keep [manual register](MANUAL_ACTIONS.md) and source of truth up to date.

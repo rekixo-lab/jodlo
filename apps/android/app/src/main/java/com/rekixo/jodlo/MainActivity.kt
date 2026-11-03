@@ -81,6 +81,14 @@ private fun JodloApp(activity: ComponentActivity) {
         }
     }
     val catalog = remember(sender) { sender?.let(::RemoteCatalogRepository) }
+    // An explicit debug-only Customer preview never supplies the Worker tab
+    // with a fake backend, identity, token, listings write or provider call.
+    var debugPreview by rememberSaveable { mutableStateOf(false) }
+    val customerCatalog = remember(catalog, debugPreview) {
+        catalog ?: if (BuildConfig.DEBUG && debugPreview) {
+            RemoteCatalogRepository(DebugCustomerPreviewSender())
+        } else null
+    }
     val session = remember(sender) {
         sender?.let { InMemorySessionCoordinator(RemoteWorkerRepository(it), it) }
     }
@@ -105,8 +113,28 @@ private fun JodloApp(activity: ComponentActivity) {
                 label = { Text(stringResource(R.string.tab_worker)) },
             )
         }
+        if (BuildConfig.DEBUG && sender == null && section == "customer") {
+            JodloTextAction(
+                onClick = { debugPreview = !debugPreview },
+                modifier = Modifier.padding(horizontal = JodloSizes.ScreenPadding),
+            ) {
+                Text(stringResource(if (debugPreview) R.string.demo_disable
+                    else R.string.demo_enable))
+            }
+            if (debugPreview) {
+                Text(
+                    stringResource(R.string.demo_readonly_notice),
+                    modifier = Modifier.padding(
+                        horizontal = JodloSizes.ScreenPadding,
+                        vertical = JodloSizes.SmallGap,
+                    ),
+                    color = MaterialTheme.colorScheme.secondary,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
         Box(Modifier.weight(1f)) {
-            if (section == "customer") GuestDiscovery(catalog)
+            if (section == "customer") GuestDiscovery(customerCatalog)
             else WorkerDashboard(activity, session, writes, catalog)
         }
     }

@@ -61,4 +61,7 @@
     <string name="customer_page_failed">Next page could not be verified. Earlier rows remain visible; use Refresh if listings have changed.</string>
     <string name="customer_retry_page">Retry this page</string>
     <string name="search_query_caption">Results for: %1$s</string>
+    <string name="demo_enable">Explore offline sample services (debug only)</string>
+    <string name="demo_disable">Close offline sample</string>
+    <string name="demo_readonly_notice">SAMPLE DATA ONLY • Not real workers or approved live Categories. This preview makes no network requests and cannot call, sign in or publish.</string>
 </resources>
