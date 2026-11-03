@@ -1,5 +1,13 @@
 > **CURRENT FOUNDER DIRECTIVE (2026-11-03):** [ADR-0015](decisions/0015-real-provider-integration-and-controlled-production.md) **supersedes the 2026-10-27 no-deploy/local-only decision quoted below**. Connect actual dedicated JODLO Cloudflare and Google OAuth, initiate protected production rollout work now; no mock service as live proof. [Real connection runbook](REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md) · [Manual actions](MANUAL_ACTIONS.md). Keep green CI, secure secrets, privacy, rollback, actual provider/on-device verification and Finworkar separation.
 
+## Real Cloudflare integration — execute CF-01 → CF-02 → protected production API
+
+- [ ] **CF-01 owner:** login to dedicated Cloudflare account, verify MFA/cost limits and non-Finworkar isolation, create real `jodlo-production` D1 and record its true UUID.
+- [ ] **CF-02 engineer/operator:** use `npm run production:config:write` with real Account/D1 IDs and independently chosen Cloudflare rate-limit namespace IDs. New repo generator refuses local placeholders/unsafe routes and writes only gitignored config. [Manual runbook](REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md).
+- [ ] **Controlled Cloudflare:** confirm backup/recovery, real Google audience/secret, privacy, rate controls, domain isolation and CI; inspect remote migrations and perform only explicitly reviewed protected remote actions. No auto-deploy on push.
+- [ ] **Real phone:** publish/discover/unpublish with real Google session and verified API; report precise acceptance, not fake record counts. Continue later actual Agora/FCM/payment integration.
+
+
 ## Current priority — LIVE provider connection (replaces historical deferred M-007)
 
 - [ ] **CF-01 manual owner:** choose/login to dedicated Cloudflare JODLO account; provision real Worker/D1 with budget/backup and no Finworkar overlap; record nonsecret IDs and bind real production config.
