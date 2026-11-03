@@ -115,7 +115,10 @@ export async function handleRequest(
         return json({ ok: false, error: { code: "RATE_LIMITED", message: "Sign-in temporarily limited" } },
           429, { "Retry-After": String(LOGIN_BURST_RETRY_SECONDS) });
       }
-      const subject = await verifyGoogle(idToken, env.GOOGLE_CLIENT_ID);
+      // Web audience is always required. Only the owner's explicitly configured
+      // Android OAuth client may additionally appear as the signed `azp` claim.
+      const subject = await verifyGoogle(idToken, env.GOOGLE_CLIENT_ID, undefined,
+        env.GOOGLE_ANDROID_CLIENT_ID);
       if (!subject) return json({ ok: false, error: { code: "UNAUTHORIZED", message: "Invalid sign-in" } }, 401);
       // Stage 2: stops repeat valid Google proofs from overwhelming account/session D1 writes.
       if (!await allowGoogleAccountLogin(env.ACCOUNT_LOGIN_LIMITER, subject)) {
