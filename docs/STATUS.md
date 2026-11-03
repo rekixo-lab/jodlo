@@ -1,5 +1,14 @@
 # JODLO — current state, 2026-11-03
 
+## 2026-11-03 — CF-02 DONE: actual production config validated and Cloudflare Worker dry-run passed
+
+**Founder-provided real terminal evidence, 2026-11-03:** On the authenticated Cloudflare account `8f31060fbcfee2b3e9309138cad7f12f`, the owner ran `npm run production:config:write`, `npm run production:config:check` and `npx wrangler deploy --dry-run --config apps/api/wrangler.production.generated.jsonc`. Output confirmed a locally generated gitignored production configuration, successful shape validation, a compiled **92.37 KiB** Worker bundle (**21.67 KiB gzip**) with `env.DB (jodlo-production)`, `env.LOGIN_BURST_LIMITER (100 requests/10s)` and `env.ACCOUNT_LOGIN_LIMITER (20 requests/60s)`. Real dedicated D1 is `723080b5-f165-4b31-839f-3063175824c7`; the owner supplied two namespace IDs `45130001` and `45130002`. These numbers passed local validation; uniqueness against other Workers in the shared account has **not** been independently checked. **No remote schema, Worker deploy, route, OAuth secret or device login was changed by this dry-run.**
+
+**CF-03 NEXT — read-only verification on the founder's authenticated Ubuntu machine:** `npx wrangler whoami`, `npm run production:config:check`, `npx wrangler d1 info jodlo-production`, `npx wrangler d1 time-travel info jodlo-production --config apps/api/wrangler.production.generated.jsonc`, then `npx wrangler d1 migrations list jodlo-production --remote --config apps/api/wrangler.production.generated.jsonc`. Inspect the exact remote database and pending migration filenames. **STOP before `migrations apply`, `wrangler deploy`, Worker secrets, DNS or live public exposure** until the real database/account is rechecked, recovery and privacy/security preconditions are reviewed, and the results are known. Another D1 in this shared Cloudflare account must never be touched.
+
+Earlier "CF-02 pending" notes below are superseded by this completed owner-result checkpoint. **Cloudflare production is NOT deployed**.
+
+
 ## 2026-11-03 — CF-01 REAL CLOUDFLARE LOGIN AND D1 CREATED (owner evidence received)
 
 **Real external progress:** Founder supplied Wrangler 4.156.0 terminal output showing OAuth `Successfully logged in` to owner account `ai@rekixo.com` (Cloudflare Account ID `8f31060fbcfee2b3e9309138cad7f12f`), followed by an actual successful `npx wrangler d1 create jodlo-production --location apac`. **New live D1 UUID: `723080b5-f165-4b31-839f-3063175824c7`**, region `APAC`, created 2026-11-03T11:28:49.367Z. `wrangler d1 info` showed **zero tables, read/write queries 0**. This was owner-executed on a real Cloudflare account, **not a fixture**.

@@ -1,5 +1,14 @@
 # JODLO — founder manual actions, owner gates and notification register
 
+## 2026-11-03 — CF-02 DONE; CF-03 remote migration *inspection* is the next manual action
+
+**Founder-provided real terminal evidence, 2026-11-03:** On the authenticated Cloudflare account `8f31060fbcfee2b3e9309138cad7f12f`, the owner ran `npm run production:config:write`, `npm run production:config:check` and `npx wrangler deploy --dry-run --config apps/api/wrangler.production.generated.jsonc`. Output confirmed a locally generated gitignored production configuration, successful shape validation, a compiled **92.37 KiB** Worker bundle (**21.67 KiB gzip**) with `env.DB (jodlo-production)`, `env.LOGIN_BURST_LIMITER (100 requests/10s)` and `env.ACCOUNT_LOGIN_LIMITER (20 requests/60s)`. Real dedicated D1 is `723080b5-f165-4b31-839f-3063175824c7`; the owner supplied two namespace IDs `45130001` and `45130002`. These numbers passed local validation; uniqueness against other Workers in the shared account has **not** been independently checked. **No remote schema, Worker deploy, route, OAuth secret or device login was changed by this dry-run.**
+
+**मैनुअल काम CF-03 — NEEDS_DECISION_NOW for read-only inspection:** **CF-03 NEXT — read-only verification on the founder's authenticated Ubuntu machine:** `npx wrangler whoami`, `npm run production:config:check`, `npx wrangler d1 info jodlo-production`, `npx wrangler d1 time-travel info jodlo-production --config apps/api/wrangler.production.generated.jsonc`, then `npx wrangler d1 migrations list jodlo-production --remote --config apps/api/wrangler.production.generated.jsonc`. Inspect the exact remote database and pending migration filenames. **STOP before `migrations apply`, `wrangler deploy`, Worker secrets, DNS or live public exposure** until the real database/account is rechecked, recovery and privacy/security preconditions are reviewed, and the results are known. Another D1 in this shared Cloudflare account must never be touched.
+
+Do not request/repeat authentication credentials in chat. CF-01/CF-02 are **DONE only for the evidence stated**, not permission to imply deployed production. No Google OAuth, phone login or DNS connection is yet verified. Older CF-02 pending entries below remain historical.
+
+
 ## CF-01 OWNER RESULT — DONE 2026-11-03; CF-02 NOW REQUIRED
 
 **Verified from founder-provided terminal output:** Wrangler 4.156.0 OAuth sign-in success for `ai@rekixo.com`, account `8f31060fbcfee2b3e9309138cad7f12f`; `jodlo-production` created in APAC with **real D1 UUID `723080b5-f165-4b31-839f-3063175824c7`** on 2026-11-03T11:28:49.367Z, zero tables, no reads/writes. Owner controls the external login. This is **DONE for CF-01 (account login + JODLO-specific D1 creation)**, not proof of a dedicated separate Cloudflare account, Worker deployment, DNS, migrations or Google OAuth. Account has other production databases, so never migrate or route to those.
