@@ -1,5 +1,10 @@
 # JODLO — Complete AI handoff and source-of-truth index
 
+## CURRENT BINDING POLICY — 2026-11-03 real production integrations are now authorized
+
+**Founder decision ADR-0015** [real external connection and deployment](decisions/0015-real-provider-integration-and-controlled-production.md) replaces the old *develop everything locally; no Cloudflare/Google until final product* rule. Start actual JODLO Cloudflare account/Worker/D1, real OAuth, protected deployment, cross-device acceptance, then Agora/FCM/payments when safe. **No external account, real deploy or provider sign-in has yet been verified.** Immediately tell founder [CF-01 and GOOGLE-01 manual actions](MANUAL_ACTIONS.md) with [exact runbook](REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md) and phone commands. Keep security/privacy/domain/budget checks, no fake as live, no unreviewed category activation or automatic deploy-on-push, Finworkar read-only. Everything below is dated implementation history; old "M-007 deferred/no staging or deploy" future instructions are superseded by this paragraph.
+
+
 ## 2026-11-03 — Worker-to-Customer real feature delivery
 
 The latest engineering PR adds a Worker-facing **Check current public listing** action to the existing real Kotlin Compose Worker Dashboard. It reuses the exact anonymous Guest detail repository and server-side current public authorization, with distinct visible/404/unknown UX, no reused owner session for Customer reads, and clears the result across owner refresh/selection/write/logout. A single migrated-D1/HTTP product journey test covers opt-in → owner publish → bilingual Guest available-only Search/Browse/Detail → owner unpublish → detail 404/facet gone → re-publish, plus private-account isolation and moderation/current-status revocation. [Acceptance](WORKER_TO_CUSTOMER_PUBLIC_VISIBILITY_2026-11-03.md). Exact PR Foundation + Android-native JDK17/21 CI and independently merged main still must be verified. No actual OAuth/Cloudflare, no live data, no Agora credentials, no staging, no Finworkar mutation.
