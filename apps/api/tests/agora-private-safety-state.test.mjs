@@ -132,7 +132,7 @@ test("two-way block privacy: only the caller/worker may set their OWN direction"
     assert.equal(facts.availabilityRevision,0);
     assert.equal(facts.workerPresence,"unknown");
     assert.equal(facts.rateGate,"unknown");
-    assert.equal(await f.block(f.caller,CALLER),DENIED);
+    assert.deepEqual(await f.block(f.caller,CALLER),DENIED);
     assert.deepEqual(await f.block(f.caller,WORKER),{kind:"updated"});
     assert.deepEqual(await f.block(f.caller,WORKER),DENIED);
     facts=await f.read();
