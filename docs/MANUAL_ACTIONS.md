@@ -1,5 +1,9 @@
 # JODLO — founder manual actions, owner gates and notification register
 
+## 2026-11-03 — M-004 visual direction already APPROVED; phone acceptance UPCOMING
+
+The [founder-provided black/green flat UI screenshots](UI_REFERENCE_2026-11-02.md) are recorded as **APPROVED and binding (2026-11-02)**. Actual Android `:app`, Compose Customer/Worker screens and downloadable **debug APK** now exist. Historical “no Android UI” / “M-004 palette not approved” notes elsewhere are stale. This **does not** mean finished usability, device accessibility, complete screens or production release: real-device smoke checks and optional final polish remain UPCOMING, not a request for a new visual palette. The [product delivery plan](PRODUCT_DELIVERY_MILESTONES_2026-11-03.md) prioritizes full user journeys over more isolated test-only calling PRs. First action is an explicit offline debug preview usable without secrets; a phone install/check is **UPCOMING**, not an engineering blocker.
+
 **Founder directive (2026-10-27): Whenever a manual action becomes genuinely necessary, the AI must tell the founder clearly and promptly during the active JODLO chat.** Persist it here so each future engineer/chat knows what is pending, why, and how to continue. The assistant handles automatable engineering itself; only the founder makes decisions, approvals and external account actions.
 
 ## 2026-11-03 — standing founder permission for ongoing JODLO execution (DONE)
