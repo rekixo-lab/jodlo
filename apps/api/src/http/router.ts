@@ -191,29 +191,27 @@ export async function handleRequest(
       return json({ ok: false, error: { code: "SERVICE_UNAVAILABLE", message: "Identity unavailable" } }, 503);
     }
   }
-  // Read-only listing detail: recheck CURRENT published/moderated eligibility.
-  // This deliberately discloses only the existing two-field public DTO:
-  // no worker ID, location, identity, phone, trust badge or call permission.
-  if (url.pathname.startsWith("/api/v1/listings/")) {
-    const methodError=getOnly(request);
-    if(methodError)return methodError;
-    const id=url.pathname.slice("/api/v1/listings/".length);
-    if(url.search||!validOpaqueId(id)||!(await hasEmptyBody(request))) {
-      return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid listing detail request"}},400);
-    }
-    if(!env.DB)return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Listings unavailable"}},503);
-    try {
-      const listing=await publicListingDetail(env.DB,id);
-      if(!listing)return json({ok:false,error:{code:"NOT_FOUND",message:"Listing not found"}},404);
-      return json({ok:true,data:{listing}});
-    }catch{
-      return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Listings unavailable"}},503);
-    }
-  }
   if (url.pathname === "/api/v1/listings") {
     const methodError=getOnly(request);
     if(methodError)return methodError;
     const params=url.searchParams;
+    // Opt-in fresh public detail on the EXISTING founder-reviewed listings
+    // route. Exactly one opaque id; no extra params, body or private metadata.
+    if(params.has("id")) {
+      const id=params.get("id");
+      if(params.size!==1||params.getAll("id").length!==1||
+          !validOpaqueId(id)||!(await hasEmptyBody(request))) {
+        return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid listing detail request"}},400);
+      }
+      if(!env.DB)return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Listings unavailable"}},503);
+      try {
+        const listing=await publicListingDetail(env.DB,id!);
+        if(!listing)return json({ok:false,error:{code:"NOT_FOUND",message:"Listing not found"}},404);
+        return json({ok:true,data:{listing}});
+      }catch{
+        return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Listings unavailable"}},503);
+      }
+    }
     const categoryId=params.get("categoryId");
     const rawLimit=params.get("limit");
     const after=params.get("after");
