@@ -33,3 +33,6 @@ apps/android/local.properties
 
 # Native Gradle Android app output (never commit APKs or generated resources)
 apps/android/app/build/
+
+# Real JODLO Cloudflare account IDs/production binding config generated on owner machine
+apps/api/wrangler.production.generated.jsonc
