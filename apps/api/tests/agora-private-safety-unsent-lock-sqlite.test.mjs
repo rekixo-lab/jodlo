@@ -1206,7 +1206,7 @@ test("one authenticated D1-shaped INSERT atomically persists fake UNSENT and mat
     assert.deepEqual(auditFakeAtomicEnqueue(f.b),
       { kind: "consistent_test_only" });
     assert.equal(f.rows().length, 1);
-    assert.deepEqual(fakeRecoveryRows(f.b), [{
+    assert.deepEqual(fakeRecoveryRows(f.b).map(row => ({ ...row })), [{
       call_id: CALL, phase: "pending_unsent_test_only",
       generation: 0, lease_until_ms: null,
       deadline_ms: FAKE_RECOVERY_DEADLINE, pair_revision: 0,
