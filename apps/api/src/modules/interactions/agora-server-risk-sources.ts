@@ -20,9 +20,10 @@ import {
  * READ-ONLY source ports. Never fill them from a customer body or reuse this
  * module as a live invitation, quota reservation or RTC token issuer.
  *
- * Their check shapes are verified by composeSyntheticAgoraInviteRisk. Real
- * presence, block storage, rate thresholds, expiry and retention are NOT
- * implemented or approved (M-003/M-005/M-006).
+ * Their check shapes are verified by composeSyntheticAgoraInviteRisk.
+ * Minimal private D1 directional blocks and availability intent exist, but
+ * operational presence, quota, rate thresholds, retention and real provider
+ * delivery are NOT implemented or approved (M-003/M-005/M-006).
  */
 export type SyntheticAgoraRiskReader = (
   identity: SyntheticAgoraRiskIdentity,
