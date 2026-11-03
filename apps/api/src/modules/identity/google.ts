@@ -19,6 +19,7 @@ export async function verifyGoogleIdToken(
   idToken: string,
   audience: string,
   keys: JWTVerifyGetKey = GOOGLE_KEYS,
+  approvedAndroidClientId?: string,
 ): Promise<string | null> {
   if (!validGoogleClientId(audience) || idToken.length > 4096 ||
       !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(idToken)) return null;
@@ -33,11 +34,16 @@ export async function verifyGoogleIdToken(
     });
     // jose confirms the audience CONTAINS this client, but OIDC also requires
     // checking additional audiences and the authorized-party (azp) claim.
-    // JODLO currently trusts exactly one server OAuth client ID; don't accept
-    // a token simultaneously issued to another, unapproved client/application.
+    // Google's Android -> backend ID token uses the WEB client as audience,
+    // but may identify the originating Android OAuth client in `azp`.
+    // Only the exact operator-approved Android client is additionally trusted.
+    // Never widen the audience to all clients in the Google Cloud project.
     const solelyForClient = payload.aud === audience ||
       (Array.isArray(payload.aud) && payload.aud.length === 1 && payload.aud[0] === audience);
-    if (!solelyForClient || (payload.azp !== undefined && payload.azp !== audience)) return null;
+    const trustedAndroid = validGoogleClientId(approvedAndroidClientId) &&
+      approvedAndroidClientId !== audience && payload.azp === approvedAndroidClientId;
+    if (!solelyForClient || (payload.azp !== undefined &&
+        payload.azp !== audience && !trustedAndroid)) return null;
     if (typeof payload.sub !== "string" || !/^[0-9]{6,255}$/.test(payload.sub)) return null;
     return payload.sub;
   } catch (error) {
