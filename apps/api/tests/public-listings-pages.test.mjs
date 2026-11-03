@@ -270,7 +270,7 @@ test("public detail rejects malformed path, query, wrong method and absent D1",a
       detail+"?limit=1",detail+"?after=oops",
     ]){
       const r=await f.get(bad);
-      assert.equal(r.status,bad.endsWith("/")?404:400,bad);
+      assert.equal(r.status,400,bad);
       assert.equal(Object.hasOwn(r.body,"data"),false,bad);
     }
     const post=await worker.fetch(new Request(origin+detail,{method:"POST"}),{
