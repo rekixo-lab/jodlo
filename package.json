@@ -11,7 +11,7 @@
     "apps/api"
   ],
   "scripts": {
-    "test": "node --experimental-strip-types --test scripts/verify-m005-operational-approvals.test.mjs apps/api/tests/*.test.mjs scripts/verify-design-guards.test.mjs scripts/verify-founder-gates.test.mjs scripts/legacy-category-review.test.mjs scripts/legacy-service-review.test.mjs scripts/legacy-phrase-review.test.mjs scripts/editorial-phrase-proposals.test.mjs scripts/catalog-activation-preflight.test.mjs scripts/catalog-review-packets.test.mjs scripts/verify-m005-first-scope-review.test.mjs scripts/verify-m005-official-evidence.test.mjs scripts/m005-scope-bound-review-intake.test.mjs scripts/verify-kotlin-suite-coverage.test.mjs scripts/catalog-mapping-readiness.test.mjs scripts/catalog-correction-evidence.test.mjs scripts/catalog-cross-packet-reconcile.test.mjs scripts/catalog-service-evidence-packets.test.mjs scripts/catalog-review-exception-register.test.mjs scripts/catalog-service-correction-evidence.test.mjs scripts/catalog-service-cross-packet-reconcile.test.mjs scripts/catalog-service-scope-intake.test.mjs scripts/catalog-unified-human-review.test.mjs scripts/catalog-review-triage.test.mjs scripts/catalog-human-review-progress.test.mjs scripts/catalog-human-review-evidence-audit.test.mjs scripts/catalog-review-next-actions.test.mjs scripts/verify-dependency-lock.test.mjs scripts/verify-npm-audit-policy.test.mjs",
+    "test": "node --experimental-strip-types --test scripts/prepare-production-wrangler.test.mjs scripts/verify-m005-operational-approvals.test.mjs apps/api/tests/*.test.mjs scripts/verify-design-guards.test.mjs scripts/verify-founder-gates.test.mjs scripts/legacy-category-review.test.mjs scripts/legacy-service-review.test.mjs scripts/legacy-phrase-review.test.mjs scripts/editorial-phrase-proposals.test.mjs scripts/catalog-activation-preflight.test.mjs scripts/catalog-review-packets.test.mjs scripts/verify-m005-first-scope-review.test.mjs scripts/verify-m005-official-evidence.test.mjs scripts/m005-scope-bound-review-intake.test.mjs scripts/verify-kotlin-suite-coverage.test.mjs scripts/catalog-mapping-readiness.test.mjs scripts/catalog-correction-evidence.test.mjs scripts/catalog-cross-packet-reconcile.test.mjs scripts/catalog-service-evidence-packets.test.mjs scripts/catalog-review-exception-register.test.mjs scripts/catalog-service-correction-evidence.test.mjs scripts/catalog-service-cross-packet-reconcile.test.mjs scripts/catalog-service-scope-intake.test.mjs scripts/catalog-unified-human-review.test.mjs scripts/catalog-review-triage.test.mjs scripts/catalog-human-review-progress.test.mjs scripts/catalog-human-review-evidence-audit.test.mjs scripts/catalog-review-next-actions.test.mjs scripts/verify-dependency-lock.test.mjs scripts/verify-npm-audit-policy.test.mjs",
     "typecheck": "tsc --noEmit -p apps/api/tsconfig.json",
     "check": "npm run audit:policy-check && npm run lock:check && npm run docs:check && npm run design:check && npm run founder:check && npm run reference:check && npm run test && npm run typecheck",
     "dev:api": "wrangler dev --config apps/api/wrangler.local.jsonc --local",
@@ -65,7 +65,9 @@
     "android:build": "bash scripts/android-device.sh build",
     "android:install": "bash scripts/android-device.sh install",
     "android:run": "bash scripts/android-device.sh run",
-    "android:device-tests": "bash scripts/android-device.test.sh"
+    "android:device-tests": "bash scripts/android-device.test.sh",
+    "production:config:write": "node scripts/prepare-production-wrangler.mjs --write",
+    "production:config:check": "node scripts/prepare-production-wrangler.mjs --check"
   },
   "devDependencies": {
     "typescript": "~5.8.3",
