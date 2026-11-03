@@ -1,5 +1,20 @@
 # JODLO — founder manual actions, owner gates and notification register
 
+## 2026-11-03 — Founder changed deployment policy: ADR-0015 now ACCEPTED (binding)
+
+**AUTHORIZATION DONE:** Founder explicitly instructed JODLO to stop local-only work as the operating restriction and **start connecting actual Cloudflare, Google sign-in and further real providers, plus controlled production deployments**. No repeat generic permission question; new [ADR-0015](decisions/0015-real-provider-integration-and-controlled-production.md) supersedes old ADR-0004's deferred deployment restriction. Historical entries further down are not ongoing prohibitions. Follow [real provider runbook](REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md); no Cloudflare/Google connection is evidenced by this document.
+
+**मैनुअल काम CF-01 — NEEDS_DECISION_NOW:** Open [Cloudflare dashboard](https://dash.cloudflare.com), choose an owner-controlled JODLO account (not Finworkar), enable MFA/budget alerts, authorize interactive Wrangler login, confirm/create dedicated Worker/D1; provide **nonsecret** Cloudflare Account ID, Worker name, D1 database UUID once generated. Do not send tokens/passwords. Concrete commands in [runbook](REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md).
+
+**मैनुअल काम GOOGLE-01 — NEEDS_DECISION_NOW (after matching Cloudflare setup):** Open [Google Cloud Console](https://console.cloud.google.com/apis/credentials), select/create JODLO project; configure OAuth audience/consent, Web OAuth client ID and Android client for `com.rekixo.jodlo` with real signing certificate SHA-1. Provide the **public** Web Client ID and SHA fingerprint only, never OAuth secret, signing key or ID token. Engineer configures server audience and real Android build and verifies authenticated flow.
+
+**मैनुअल काम DNS-01 — UPCOMING:** Confirm control of `rekixo.com`; authorize *only* `jodlo.rekixo.com` Worker route after secure smoke tests. Never affect Finworkar or apex/www records.
+
+**मैनुअल काम PHONE-01 — UPCOMING:** Use `cd ~/jodlo && git pull --ff-only origin main`, `adb devices -l`, and `npm run android:run` on Ubuntu with JDK 17/21, Android SDK 35 and separately configured **real** Gradle `jodloApiOrigin` / `jodloGoogleWebClientId`. Full setup and troubleshooting in runbook. A default debug APK remains unconnected without those values.
+
+**M-007 status change:** `AUTHORIZATION_DONE / CONNECTION_PENDING`. Do not conflate permitted engineering/protected deployment with an externally configured Cloudflare account, production-ready authentication, unrestricted traffic or legal launch approval. M-003 data retention, M-005 numeric presence/rate/report policy and real Category editorial review still require precise implementation decisions before those *particular features* collect users or dispatch calls. Agora consent default OFF. No secret in git/chat, no unsafe auto-deploy on push.
+
+
 ## 2026-11-03 — M-004 visual direction already APPROVED; phone acceptance UPCOMING
 
 The [founder-provided black/green flat UI screenshots](UI_REFERENCE_2026-11-02.md) are recorded as **APPROVED and binding (2026-11-02)**. Actual Android `:app`, Compose Customer/Worker screens and downloadable **debug APK** now exist. Historical “no Android UI” / “M-004 palette not approved” notes elsewhere are stale. This **does not** mean finished usability, device accessibility, complete screens or production release: real-device smoke checks and optional final polish remain UPCOMING, not a request for a new visual palette. The [product delivery plan](PRODUCT_DELIVERY_MILESTONES_2026-11-03.md) prioritizes full user journeys over more isolated test-only calling PRs. First action is an explicit offline debug preview usable without secrets; a phone install/check is **UPCOMING**, not an engineering blocker.

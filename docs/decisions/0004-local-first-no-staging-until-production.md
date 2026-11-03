@@ -1,10 +1,13 @@
 # ADR-0004 — Local-first development, production-only release
 
+> **SUPERSEDED FOR FUTURE EXECUTION — 2026-11-03:** [ADR-0015](0015-real-provider-integration-and-controlled-production.md) is founder-approved and **authorizes immediate dedicated Cloudflare/Google connections and controlled production deployments**. The former "do not provision/remote-deploy until entire product is complete" instruction below is historical, **not a current operational prohibition**. No separate staging environment is required; preserve protected traffic, migration/rollback checks and Finworkar separation. [Actual operator steps](../REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md).
+
+
 - Date: 2026-10-27
-- Status: **Accepted founder decision.** Supersedes all former JODLO staging-deployment directions.
+- Status: **SUPERSEDED by ADR-0015 (2026-11-03)** for provisioning/deployment timing; historical founder decision retained for audit.
 - Identity: JODLO; Android `com.rekixo.jodlo`; eventual website `jodlo.rekixo.com`.
 
-## Decision
+## Historical decision — NOT current deployment restriction
 Complete the native Android app, Cloudflare Worker API, D1/R2/Queue-backed features and all feasible RTC/payment/notification integration code **before any Cloudflare deployment**. A deployed **staging environment is NOT required and must not be created**. Use local Wrangler/workerd and simulated D1/R2/Queues, fixtures, mocks/fake payment and RTC providers, Android emulator/physical-device tests and GitHub CI instead. No Cloudflare API token, DNS, live data, merchant account or provider secret is needed during routine coding.
 
 At *final product readiness* request explicit founder authorization to provision a **production** Worker and resources, connect `jodlo.rekixo.com`, configure secure secrets, enable real services, verify backups/restore, controlled smoke tests, observability, and rollback. Never automatically deploy on GitHub push. Retain low-traffic rollout/abort controls even without staging.

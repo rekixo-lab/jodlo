@@ -1,5 +1,8 @@
 # JODLO Native Android — Activity, component and feature architecture
 
+> **CURRENT ANDROID STATUS (2026-11-03):** A real Compose Android launcher, Customer/Worker UI, Google Credential Manager integration source and native debug APK build **already exist**. The early "no Android UI/APK" paragraphs below are historical. Founder now prioritizes connection of the app to real Cloudflare/Google per [ADR-0015](decisions/0015-real-provider-integration-and-controlled-production.md). Use the [real Ubuntu phone/Gradle setup](REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md), but do not claim on-device OAuth verified before evidence.
+
+
 **Stage (2026-10-28):** A [standalone Kotlin networking core](../apps/android/README.md) has been introduced and compiled in CI, with **no Android APK, Activity, Android SDK integration or UI screen created/approved**. The visual architecture below remains an unimplemented proposal. Android application ID must be **`com.rekixo.jodlo`**. Kotlin native, targeting lower-end Android devices; Hindi (Devanagari) and English ONLY (ADR-0008).
 
 ## Why we are changing the current structure

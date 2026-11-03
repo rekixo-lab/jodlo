@@ -1,3 +1,13 @@
+> **CURRENT FOUNDER DIRECTIVE (2026-11-03):** [ADR-0015](decisions/0015-real-provider-integration-and-controlled-production.md) **supersedes the 2026-10-27 no-deploy/local-only decision quoted below**. Connect actual dedicated JODLO Cloudflare and Google OAuth, initiate protected production rollout work now; no mock service as live proof. [Real connection runbook](REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md) · [Manual actions](MANUAL_ACTIONS.md). Keep green CI, secure secrets, privacy, rollback, actual provider/on-device verification and Finworkar separation.
+
+## Current priority — LIVE provider connection (replaces historical deferred M-007)
+
+- [ ] **CF-01 manual owner:** choose/login to dedicated Cloudflare JODLO account; provision real Worker/D1 with budget/backup and no Finworkar overlap; record nonsecret IDs and bind real production config.
+- [ ] **GOOGLE-01 manual owner:** create real JODLO Google Cloud project, OAuth Web + Android clients, certificate SHA-1; configure exact backend audience securely and build real connected Android APK.
+- [ ] **Verified deploy:** protect and test real D1 migrations, rate limiter, secrets, health and rollback; deploy JODLO-only Worker with controlled traffic and report real Cloudflare evidence.
+- [ ] **Real end-to-end phone:** Google login -> Worker draft -> approved-category publish -> Customer discover -> unpublish; record live-device evidence. No dummy login or fake worker data in production.
+- [ ] **Follow-ons:** real Agora/FCM/moderation/payment provider integrations only with necessary retention, anti-abuse and transaction permissions. No auto-deploy from CI.
+
 > **Current founder directive, 2026-10-27:** finish the whole JODLO source **locally and in green CI first**; **no Cloudflare staging or other deployment** until product-ready. Eventual *direct, controlled production* release requires separate approval. [ADR-0004](decisions/0004-local-first-no-staging-until-production.md) · [Release gates](RELEASE_READINESS.md).
 
 ## 2026-11-03 — next end-to-end Worker → Customer visibility delivery (ENGINEERING PR)

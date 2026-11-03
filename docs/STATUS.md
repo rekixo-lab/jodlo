@@ -1,5 +1,10 @@
 # JODLO — current state, 2026-11-03
 
+## 2026-11-03 — CURRENT production-first connection directive (AUTHORIZATION DONE; PROVIDERS NOT YET CONNECTED)
+
+Founder approved **real dedicated Cloudflare Worker/D1 + Google OAuth setup and protected production deployment work NOW**; previous local-only ADR-0004 prohibition is superseded by [ADR-0015](decisions/0015-real-provider-integration-and-controlled-production.md). [Operator runbook](REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md) and [manual actions](MANUAL_ACTIONS.md) list CF-01 and GOOGLE-01 as **NEEDS_DECISION_NOW**, DNS-01/PHONE-01 as upcoming. **No actual cloud account link, D1 ID, OAuth credentials, production migration, DNS or live rollout is verified yet**; do not invent status. Code milestones #201 and #202 are merged, but Android connected-provider acceptance remains pending. Keep privacy/CI/default-OFF consent and Finworkar read-only isolation.
+
+
 ## 2026-11-03 — Worker ↔ Customer publishing visibility journey (ENGINEERING PR; CI PENDING)
 
 - **User-visible Worker improvement:** Confirmed Worker publication/unpublication now attempts one private **read-only owner-page refresh**; an uncertain write still does not auto-retry or auto-reconcile.  select an owned Listing and check whether a **fresh anonymous Customer detail GET** currently returns it. Explicit `visible`, `not public (404)` and `unknown/unverified` states; no bearer/Worker identity in the Customer request. Old verification clears on changing selected Listing, owner refresh, logout or write; no public identity verification or Agora presence is inferred.

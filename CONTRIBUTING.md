@@ -1,5 +1,8 @@
 # Contributing to JODLO
 
+> **Current founder policy:** [ADR-0015](docs/decisions/0015-real-provider-integration-and-controlled-production.md) authorizes real JODLO Cloudflare/Google onboarding and controlled production deployment. Protected production actions must follow [the owner runbook](docs/REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md) and secure review; PR/push CI never auto-deploys. Older local-only notes elsewhere remain historical.
+
+
 1. Read `AGENTS.md`, `docs/AI_HANDOFF.md`, `README.md`, `docs/STATUS.md`, `docs/PROJECT.md`, `docs/ARCHITECTURE.md`, `docs/ANDROID_STRUCTURE.md`, `docs/CLOUDFLARE_INFRASTRUCTURE.md`, `docs/MODULE_BOUNDARIES.md` and ADRs.
 2. Use small, reviewable feature branches. Specify intent, affected modules, privacy risk, test commands and manual migration/deploy steps.
 3. No production deployment, migration, paid feature, old-repository modification or UI creation without the required owner review.

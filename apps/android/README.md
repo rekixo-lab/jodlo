@@ -1,5 +1,8 @@
 # JODLO — Headless Android-compatible Kotlin Core (2026-10-28)
 
+> **CURRENT CONNECTION PRIORITY (2026-11-03):** [ADR-0015](../../docs/decisions/0015-real-provider-integration-and-controlled-production.md) authorizes real Cloudflare/Google Android integration and controlled deployment. Local-only Core build notes below are historical; see the [Ubuntu phone commands](../../docs/REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md) and actual native app. No mock authorization in production.
+
+
 > **Native preview source added for PR #169 (2026-11-02):** a separate opt-in `apps/android/app` module now contains a Compose launcher and guest read-only flows. See [app README](app/README.md). Existing statements about *this Core* being headless remain true. Do not claim an APK/build pass until the independent native Android workflow succeeds; no provider or cloud deployment was added.
 
 **Real Kotlin/JVM-compiled network source, not an APK or Android UI.** No founder-approved screen, theme, Activity, Android plugin, Manifest or user location permissions exist yet; M-004 visual approval is still required.

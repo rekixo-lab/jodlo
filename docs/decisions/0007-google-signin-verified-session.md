@@ -1,5 +1,8 @@
 # ADR-0007 — Initial Google Sign-In with server-verified ID tokens and revocable JODLO sessions
 
+> **Current execution update (2026-11-03):** Real Google Cloud Console project, consent configuration, Android + Web OAuth clients and protected Cloudflare `GOOGLE_CLIENT_ID` configuration are **now authorized and prioritized** by [ADR-0015](0015-real-provider-integration-and-controlled-production.md). Historical deferral of M-008 / Android UI or no-Cloudflare wording below is no longer an authorization blocker. Actual Google credentials, signer SHA and real login still require configuration/verification; never commit secrets or bypass server JWT checks. [Manual setup](../REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md).
+
+
 - Date: 2026-10-27 (India)
 - Status: **Accepted founder login choice (M-002)**; backend source and synthetic tests subject to real PR/main CI. Real Google Console credentials/device/provider flow are **NOT configured/verified**.
 - Founder expressly selected **Google Sign-In** for the first release (no phone OTP initially).

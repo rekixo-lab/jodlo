@@ -1,5 +1,8 @@
 # JODLO — release-readiness gap audit (2026-10-28)
 
+> **HISTORICAL AUDIT — policy superseded on 2026-11-03:** The release gaps and old CI evidence below reflect **28 October**, not today's live readiness. New [ADR-0015](decisions/0015-real-provider-integration-and-controlled-production.md) authorizes real JODLO Cloudflare + Google setup and protected deployment work immediately; earlier owner gate "M-007 only at final product-ready launch" no longer blocks setup/protected deployment. Public-user safety, privacy, review and release verification still apply. [Current runbook](REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md).
+
+
 **Decision:** NOT READY FOR PRODUCTION. This is a source/CI evidence audit, **not** a release or permission to ship. JODLO is completely separate from Finworkar. The latest independently verified pre-audit main at the start of this work was `0e49740cb5bb2c8eaeb05869a6bf678e89befe15`, [GitHub Actions #40691727089](https://github.com/rekixo-lab/jodlo/actions/runs/40691727089), completed success. Evidence from that run: **211 Node tests**, **21 executable Kotlin/JVM suites**, local D1 migration/bundle, strict TypeScript, founder/design/reference/docs guards and nondeploy Worker dry-run. This audit itself needs separate PR and exact new main CI verification.
 
 ## Current implementation evidence versus missing acceptance

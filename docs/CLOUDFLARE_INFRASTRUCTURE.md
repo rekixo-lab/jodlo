@@ -1,5 +1,8 @@
 # JODLO Cloudflare-first infrastructure — detailed blueprint
 
+> **CURRENT POLICY 2026-11-03:** [ADR-0015](decisions/0015-real-provider-integration-and-controlled-production.md) prioritizes connecting a **real dedicated JODLO Cloudflare Worker/D1 and protected production configuration**, not postponing provisioning until product completion. This document remains the infrastructure blueprint; actual provisioned resources, IDs, migrations, cost alerts, DNS and smoke checks must be separately evidenced. [Runbook](REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md). No staging is required, no automatic CI deployment and absolutely no Finworkar writes.
+
+
 **Status:** Proposed; NOT provisioned/deployed. New product and Cloudflare project completely separate from the live Finworkar/Firebase infrastructure. Design prioritizes simple safe releases, low idle overhead, predictable spend and smooth Indian mobile UX.
 
 ## Recommended runtime topology

@@ -1,5 +1,8 @@
 # JODLO — product-first execution plan (3 November 2026)
 
+> **UPDATE — FOUNDER 2026-11-03:** [ADR-0015](decisions/0015-real-provider-integration-and-controlled-production.md) changes the working order: **connect actual Cloudflare + real Google OAuth + protected production deployment early** so usable Customer/Worker journeys can be exercised against real services. The old "No Cloudflare staging or production deployment" instruction below is **superseded**. No separate staging required; gate real users, secure production data, CI, privacy and rollback. [Manual runbook](REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md). Synthetic debug demo remains allowed as a labelled dev fixture, not as real progress evidence.
+
+
 **Purpose:** stop confusing repeated green synthetic safety tests with an actual usable marketplace. This delivery plan supersedes the pattern of opening one Pull Request per tiny Agora experiment. It does not discard reviewed safety work.
 
 ## Source-of-truth corrections

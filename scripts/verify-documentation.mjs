@@ -4,12 +4,22 @@ import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 const root=resolve(dirname(fileURLToPath(import.meta.url)),"..");
 const required=[
-"README.md","AGENTS.md","CONTRIBUTING.md","UPLOAD_INSTRUCTIONS.md","docs/PROJECT.md","docs/AI_HANDOFF.md","docs/STATUS.md","docs/ROADMAP.md","docs/ARCHITECTURE.md","docs/ARCHITECTURE_RESEARCH_20261027.md","docs/ANDROID_STRUCTURE.md","docs/CLOUDFLARE_INFRASTRUCTURE.md","docs/MODULE_BOUNDARIES.md","docs/PAYMENTS.md","docs/TESTING.md","docs/DESIGN_SYSTEM.md","docs/MOTION_3D.md","docs/REUSE_ASSET_POLICY.md","docs/RELEASE_READINESS.md","docs/MANUAL_ACTIONS.md","docs/reference/LEGACY_MAPPING.md","docs/reference/FINWORKAR_CATALOG_AUDIT_2026-10-27.md","docs/decisions/0001-cloudflare-modular-monolith.md","docs/decisions/0002-google-pay-and-play-billing.md","docs/decisions/0004-local-first-no-staging-until-production.md","docs/decisions/0005-reuse-tokens-premium-motion.md","docs/decisions/0003-native-android-single-activity.md","docs/decisions/0006-shared-account-opt-in-worker.md","docs/decisions/0007-google-signin-verified-session.md","docs/decisions/0008-hindi-english-only.md","docs/decisions/0009-instant-service-publication.md","docs/decisions/0010-bilaspur-raipur-pilot-city-names.md","docs/decisions/0011-all-category-coverage-smart-discovery.md"
+"README.md","AGENTS.md","CONTRIBUTING.md","UPLOAD_INSTRUCTIONS.md","docs/PROJECT.md","docs/AI_HANDOFF.md","docs/STATUS.md","docs/ROADMAP.md","docs/ARCHITECTURE.md","docs/ARCHITECTURE_RESEARCH_20261027.md","docs/ANDROID_STRUCTURE.md","docs/CLOUDFLARE_INFRASTRUCTURE.md","docs/MODULE_BOUNDARIES.md","docs/PAYMENTS.md","docs/TESTING.md","docs/DESIGN_SYSTEM.md","docs/MOTION_3D.md","docs/REUSE_ASSET_POLICY.md","docs/RELEASE_READINESS.md","docs/MANUAL_ACTIONS.md","docs/reference/LEGACY_MAPPING.md","docs/reference/FINWORKAR_CATALOG_AUDIT_2026-10-27.md","docs/decisions/0001-cloudflare-modular-monolith.md","docs/decisions/0002-google-pay-and-play-billing.md","docs/decisions/0004-local-first-no-staging-until-production.md","docs/decisions/0015-real-provider-integration-and-controlled-production.md","docs/REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md","docs/decisions/0005-reuse-tokens-premium-motion.md","docs/decisions/0003-native-android-single-activity.md","docs/decisions/0006-shared-account-opt-in-worker.md","docs/decisions/0007-google-signin-verified-session.md","docs/decisions/0008-hindi-english-only.md","docs/decisions/0009-instant-service-publication.md","docs/decisions/0010-bilaspur-raipur-pilot-city-names.md","docs/decisions/0011-all-category-coverage-smart-discovery.md"
 ];
 async function walk(dir){let all=[];for(const item of await readdir(dir,{withFileTypes:true})){if(item.name.startsWith(".git")||item.name==="node_modules")continue;const p=join(dir,item.name);if(item.isDirectory())all.push(...await walk(p));else if(item.isFile()&&extname(p)===".md")all.push(p);}return all;}
 async function main(){for(const p of required)assert.equal((await stat(join(root,p))).isFile(),true,"Missing "+p);
 for(const path of ["README.md","AGENTS.md","docs/AI_HANDOFF.md","docs/STATUS.md"]){let t=await readFile(join(root,path),"utf8");for(const id of ["JODLO","com.rekixo.jodlo","jodlo.rekixo.com"])assert.ok(t.includes(id),path+" missing "+id);}
 for(const path of ["README.md","AGENTS.md","docs/AI_HANDOFF.md"]){let t=await readFile(join(root,path),"utf8");assert.ok(t.includes("Google Pay")&&t.includes("Razorpay")&&/UI/.test(t)&&/approval|approve|consent|सहमति/.test(t),path+" missing owner gates");}
+// Newer founder instruction supersedes prior deployment prohibition. Ensure
+// all canonical handoff files point to current ADR and owner runbook.
+for (const path of ["README.md","AGENTS.md","docs/MANUAL_ACTIONS.md",
+                    "docs/STATUS.md","docs/AI_HANDOFF.md","docs/ROADMAP.md",
+                    "docs/RELEASE_READINESS.md"]) {
+  const current=await readFile(join(root,path),"utf8");
+  assert.ok(current.includes("ADR-0015") &&
+            current.includes("REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md"),
+            path+" missing current founder real-deployment directive");
+}
 // Founder explicitly rejected a ten-category public scope. Keep the binding
 // correction visible in the canonical entry points; old ten-trade review
 // samples can remain as historical evidence, never as a launch restriction.
