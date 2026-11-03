@@ -44,6 +44,9 @@
     <string name="worker_unpublish_selected">Unpublish selected listing</string>
     <string name="worker_publish_category">Publish a service Category</string>
     <string name="worker_publish_explainer">Choose an approved active Category. Publishing is not identity verification.</string>
+    <string name="worker_category_search_hint">Search in Hindi or English across approved active Categories. A Category can be selected even if nobody has published it yet.</string>
+    <string name="worker_category_empty">No approved Categories matched this search. Try a different term or browse all.</string>
+    <string name="worker_category_page_failed">Could not verify this Category page. Earlier results remain visible; retry or start a new search.</string>
     <string name="worker_choose_category">Browse approved Categories</string>
     <string name="worker_category_selected">Selected Category</string>
     <string name="worker_publish_selected">Publish selected Category</string>
