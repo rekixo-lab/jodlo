@@ -1,5 +1,14 @@
 # JODLO — Complete AI handoff and source-of-truth index
 
+## 2026-11-03 — CF-02 owner dry-run verified; remote D1 inspection next
+
+**Founder-provided real terminal evidence, 2026-11-03:** On the authenticated Cloudflare account `8f31060fbcfee2b3e9309138cad7f12f`, the owner ran `npm run production:config:write`, `npm run production:config:check` and `npx wrangler deploy --dry-run --config apps/api/wrangler.production.generated.jsonc`. Output confirmed a locally generated gitignored production configuration, successful shape validation, a compiled **92.37 KiB** Worker bundle (**21.67 KiB gzip**) with `env.DB (jodlo-production)`, `env.LOGIN_BURST_LIMITER (100 requests/10s)` and `env.ACCOUNT_LOGIN_LIMITER (20 requests/60s)`. Real dedicated D1 is `723080b5-f165-4b31-839f-3063175824c7`; the owner supplied two namespace IDs `45130001` and `45130002`. These numbers passed local validation; uniqueness against other Workers in the shared account has **not** been independently checked. **No remote schema, Worker deploy, route, OAuth secret or device login was changed by this dry-run.**
+
+**CF-03 NEXT — read-only verification on the founder's authenticated Ubuntu machine:** `npx wrangler whoami`, `npm run production:config:check`, `npx wrangler d1 info jodlo-production`, `npx wrangler d1 time-travel info jodlo-production --config apps/api/wrangler.production.generated.jsonc`, then `npx wrangler d1 migrations list jodlo-production --remote --config apps/api/wrangler.production.generated.jsonc`. Inspect the exact remote database and pending migration filenames. **STOP before `migrations apply`, `wrangler deploy`, Worker secrets, DNS or live public exposure** until the real database/account is rechecked, recovery and privacy/security preconditions are reviewed, and the results are known. Another D1 in this shared Cloudflare account must never be touched.
+
+Check CF-03 results before discussing real migration/deployment. ADR-0015 authorizes controlled production work but never invent readiness, do not confuse a Wrangler dry-run with live code, preserve the existing JODLO-only D1 and other-account database boundaries.
+
+
 ## 2026-11-03 — Real Cloudflare CF-01 confirmed by owner's Wrangler output
 
 **Important new external fact:** `wrangler login` succeeded for account `8f31060fbcfee2b3e9309138cad7f12f` (`ai@rekixo.com`), and founder ran a **real** `wrangler d1 create jodlo-production --location apac`. D1 `723080b5-f165-4b31-839f-3063175824c7` exists in APAC with zero tables, no queries as of first `d1 info`. Same account has four other production databases; JODLO resource isolated but separate-account isolation not verified. **No JODLO Worker deployed and no remote D1 migrations or DNS/Google OAuth actions completed**. Source: founder's pasted actual CLI logs, not assistant's provider access.

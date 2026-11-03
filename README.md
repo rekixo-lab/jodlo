@@ -1,5 +1,8 @@
 # JODLO
 
+> **REAL CLOUDFLARE CF-02 COMPLETE (2026-11-03):** Owner's actual Wrangler output confirms `production:config:write`, `production:config:check` and the `jodlo-api` **dry-run** (92.37 KiB) with real JODLO D1 and both auth rate-limit bindings. This is **NOT an actual Worker deployment or D1 migration**. Next action: real-account `d1 time-travel info` + `d1 migrations list --remote` inspection before any live write. [Commands](docs/REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md) · [ADR-0015](docs/decisions/0015-real-provider-integration-and-controlled-production.md).
+
+
 > **REAL CLOUDFLARE NEXT STEP — 2026-11-03:** An operator-only, fail-closed Cloudflare production config generator is now available: `npm run production:config:write` and `npm run production:config:check`. It requires **real** JODLO Cloudflare account + D1 identifiers and two unique rate-limit namespace IDs and writes a local gitignored Wrangler configuration. No provider secrets/Cloudflare requests, migration or deploy are performed by the generator. Cloudflare login/D1 creation still require the owner's action. [Exact CF-02 commands](docs/REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md) and [ADR-0015](docs/decisions/0015-real-provider-integration-and-controlled-production.md).
 
 

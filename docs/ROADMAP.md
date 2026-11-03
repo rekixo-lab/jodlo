@@ -1,3 +1,12 @@
+## 2026-11-03 — CF-02 DONE (real founder Cloudflare dry-run); CF-03 NEXT
+
+- [x] **CF-01:** Wrangler OAuth account and distinct `jodlo-production` D1 confirmed (APAC); no schema yet in earlier owner observation
+- [x] **CF-02:** Real account/D1 and namespaces supplied; `production:config:write` and `production:config:check` successful; 92.37 KiB Worker dry-run reported DB and both login rate-limit bindings
+- [ ] **CF-03 NOW:** Reconfirm account ID and real D1, inspect Time Travel recovery and `d1 migrations list --remote`; review pending schema and backup strategy before any real write, then controlled worker deployment and domain smoke when the prerequisites are complete
+- [ ] **GOOGLE-01:** Real Web/Android OAuth clients, secure Worker audience configuration, and physical-device sign-in, Worker publication and Customer visibility verification
+
+**Important:** Generated config / build checks do not prove namespace uniqueness in the shared Cloudflare account, remote data changes, real DNS, public API access or Google provider readiness. [Commands](REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md).
+
 ## 2026-11-03 — Real Cloudflare D1 created: execute CF-02 next
 
 - [x] **CF-01 DONE from owner's real CLI:** Wrangler OAuth login succeeded on Cloudflare account `8f31060fbcfee2b3e9309138cad7f12f`; new dedicated JODLO **D1 resource** `jodlo-production` (`723080b5-f165-4b31-839f-3063175824c7`) created APAC with no tables or queries. Account also has unrelated real production D1 resources: **do not touch them**. Separate Cloudflare account isolation not verified.

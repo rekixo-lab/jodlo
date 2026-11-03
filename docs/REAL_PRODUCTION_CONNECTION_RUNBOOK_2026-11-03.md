@@ -1,5 +1,25 @@
 # JODLO — real-provider connection and controlled deployment runbook
 
+## CF-02 verified (2026-11-03); next: CF-03 read-only remote D1 inspection
+
+**Founder-provided real terminal evidence, 2026-11-03:** On the authenticated Cloudflare account `8f31060fbcfee2b3e9309138cad7f12f`, the owner ran `npm run production:config:write`, `npm run production:config:check` and `npx wrangler deploy --dry-run --config apps/api/wrangler.production.generated.jsonc`. Output confirmed a locally generated gitignored production configuration, successful shape validation, a compiled **92.37 KiB** Worker bundle (**21.67 KiB gzip**) with `env.DB (jodlo-production)`, `env.LOGIN_BURST_LIMITER (100 requests/10s)` and `env.ACCOUNT_LOGIN_LIMITER (20 requests/60s)`. Real dedicated D1 is `723080b5-f165-4b31-839f-3063175824c7`; the owner supplied two namespace IDs `45130001` and `45130002`. These numbers passed local validation; uniqueness against other Workers in the shared account has **not** been independently checked. **No remote schema, Worker deploy, route, OAuth secret or device login was changed by this dry-run.**
+
+The following commands **inspect** the authenticated account and dedicated JODLO D1; they do **not** apply SQL migrations or deploy a Worker. Do not attempt to create `jodlo-production` again (it already exists). Verify the operator's account and real database identity before continuing:
+
+```bash
+cd ~/jodlo
+git switch main
+git pull --ff-only origin main
+npx wrangler whoami
+npm run production:config:check
+npx wrangler d1 info jodlo-production
+npx wrangler d1 time-travel info jodlo-production --config apps/api/wrangler.production.generated.jsonc
+npx wrangler d1 migrations list jodlo-production --remote --config apps/api/wrangler.production.generated.jsonc
+```
+
+**Stop and inspect the output; do not `migrations apply --remote` or `wrangler deploy` in this step.** Cloudflare D1 [Time Travel](https://developers.cloudflare.com/d1/reference/time-travel/) is available for recovery and `migrations list` reports unapplied SQL files; neither a local dry-run nor a migration listing constitutes a remote schema deployment. If a database is missing, a wrong account appears, or unexpected applied migrations exist, stop without touching any other Cloudflare resource. Review current privacy/security, D1 recovery, namespace uniqueness and release checks before future intentional remote mutation. [Official D1 CLI](https://developers.cloudflare.com/workers/wrangler/commands/d1/).
+
+
 ## CF-01 real account/D1 result and next copyable CF-02 commands (2026-11-03)
 
 **Owner-executed successfully:** `npx wrangler login` for account `8f31060fbcfee2b3e9309138cad7f12f`, followed by `npx wrangler d1 create jodlo-production --location apac`: real D1 `723080b5-f165-4b31-839f-3063175824c7`, APAC, zero tables. The account also hosts other real production D1 databases. JODLO's database is separate; **account-level isolation is not proven**, so confirm the right account, database, Worker and namespaces before any remote operation. Cloudflare's create output may suggest binding `jodlo_production`; JODLO **must bind as `DB`** for existing `env.DB` code.
