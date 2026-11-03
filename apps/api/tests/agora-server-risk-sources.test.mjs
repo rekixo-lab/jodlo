@@ -124,8 +124,12 @@ test("default OFF never invokes risk readers; enabled consent provides only scop
     assert.equal(JSON.stringify(prepared).includes("channel"),false);
     assert.deepEqual(await f.prepare(readers,()=>NOW,f.worker),DENIED,
       "worker bearer cannot impersonate the initiating customer");
-    assert.deepEqual(await f.prepare(readers,()=>NOW,f.other),DENIED,
-      "an unrelated customer cannot select another caller from the source");
+    const secondCustomer=await f.prepare(readers,()=>NOW,f.other);
+    assert.equal(secondCustomer.kind,"prepared",
+      "a distinct active customer can initiate with their OWN bearer");
+    assert.equal(secondCustomer.call.callerAccountId,OTHER);
+    assert.notEqual(secondCustomer.call.callerAccountId,CALLER,
+      "the test source must derive the caller identity from the new bearer");
   }finally{f.close();}
 });
 
