@@ -46,6 +46,13 @@ const PUBLIC_LISTINGS_SELECT =
 export const PAGED_PUBLIC_LISTINGS_QUERY =
   PUBLIC_LISTINGS_SELECT + " ORDER BY wl.created_at,wl.id LIMIT ?";
 
+/** Fresh, single-record public visibility read for a selected Listing.
+ * The same current DB predicate is used by browse, availability facets,
+ * pagination and this detail. No owner ID / profile / phone is projected.
+ */
+export const PUBLIC_LISTING_DETAIL_QUERY =
+  PUBLIC_LISTINGS_SELECT + " AND wl.id=? LIMIT 1";
+
 /** Cursor eligibility is evaluated inside the SAME SQL statement as the
  * page. Reuse the exact public listing predicate so moderation and account
  * changes invalidate a previously public cursor without a race-prone pre-read.
@@ -182,6 +189,19 @@ export async function publicListings(db:D1Database,categoryId:string):Promise<Pu
   const {results}=await db.prepare(PUBLIC_LISTINGS_QUERY).bind(categoryId)
     .all<PublicListingDbRow>();
   return publicListingProjections(results);
+}
+
+/** Read the selected public listing AGAIN on navigation, rather than treating
+ * a previous page as permission to disclose worker metadata/contact.
+ * Hidden, unpublished, inactive Category/worker rows all yield the same null.
+ */
+export async function publicListingDetail(
+  db:D1Database,id:string,
+):Promise<PublicListing|null> {
+  if(!validOpaqueId(id))return null;
+  const {results}=await db.prepare(PUBLIC_LISTING_DETAIL_QUERY).bind(null,id)
+    .all<PublicListingDbRow>();
+  return publicListingProjections(results)[0]??null;
 }
 
 export type PublicListingPage = Readonly<{
