@@ -1135,3 +1135,275 @@ test("private recovery deadlines, bad generations, two SQLite writers and missin
     f.close();
   }
 });
+
+
+/**
+ * A disposable SQLite trigger rehearses one *all-or-nothing* original
+ * admission + recovery enqueue. It is installed ONLY in explicitly scoped
+ * tests and NEVER added to a production migration or callable API.
+ *
+ * The BEFORE work is the existing D1-shaped authenticated conditional
+ * INSERT in stageOneStatementFakeUnsent. The AFTER trigger runs inside
+ * that very same SQLite statement, so failure to persist the recovery row
+ * must undo the original UNSENT insert. This does not make remote delivery
+ * or cross-store D1/DO/Ago​ra operations atomic.
+ */
+function installFakeAtomicEnqueue(f, deadlineMs = FAKE_RECOVERY_DEADLINE) {
+  assert.ok(Number.isSafeInteger(deadlineMs) && deadlineMs > 0);
+  f.a.exec(
+    "CREATE TRIGGER test_only_atomic_recovery_enqueue " +
+    "AFTER INSERT ON fake_private_unsent_intents BEGIN " +
+    "INSERT INTO fake_private_recovery_leases " +
+    "(call_id,phase,generation,lease_until_ms,deadline_ms,pair_revision) " +
+    "VALUES (NEW.call_id,'pending_unsent_test_only',0,NULL," +
+    String(deadlineMs) + ",COALESCE((" +
+    "SELECT epoch.revision FROM fake_block_pair_epochs AS epoch " +
+    "WHERE epoch.lower_id=MIN(NEW.caller_id,NEW.worker_id) " +
+    "AND epoch.upper_id=MAX(NEW.caller_id,NEW.worker_id)),0)); " +
+    "END",
+  );
+}
+
+/** Read-only integrity check; NEVER silently reconstruct a missing record.
+ * Orphans are not safe to resend or to call a successful recovery.
+ * Return only aggregate shape, no personal pair, bearer or block direction.
+ */
+function auditFakeAtomicEnqueue(f, db = f.a) {
+  try {
+    const missing = db.prepare(
+      "SELECT COUNT(*) AS n FROM fake_private_unsent_intents AS intent " +
+      "LEFT JOIN fake_private_recovery_leases AS lease " +
+      "ON lease.call_id=intent.call_id " +
+      "WHERE lease.call_id IS NULL",
+    ).get()?.n;
+    const foreign = db.prepare(
+      "SELECT COUNT(*) AS n FROM fake_private_recovery_leases AS lease " +
+      "LEFT JOIN fake_private_unsent_intents AS intent " +
+      "ON intent.call_id=lease.call_id " +
+      "WHERE intent.call_id IS NULL",
+    ).get()?.n;
+    if (typeof missing !== "number" || typeof foreign !== "number" ||
+        missing !== 0 || foreign !== 0 ||
+        db.prepare("PRAGMA foreign_key_check").all().length !== 0) return DENIED;
+    return Object.freeze({ kind: "consistent_test_only" });
+  } catch {
+    return DENIED;
+  }
+}
+
+test("one authenticated D1-shaped INSERT atomically persists fake UNSENT and matching recovery row", async () => {
+  const f = await trial();
+  try {
+    installFakeAtomicEnqueue(f);
+    assert.deepEqual(auditFakeAtomicEnqueue(f), { kind: "consistent_test_only" });
+    assert.deepEqual(await stageOneStatementFakeUnsent(f), DENIED,
+      "default-OFF cannot create either linked record");
+    assert.deepEqual(f.rows(), []);
+    assert.deepEqual(fakeRecoveryRows(f.b), []);
+    await enable(f);
+    assert.deepEqual(await stageOneStatementFakeUnsent(f),
+      { kind: "unsent_staged_test_only" });
+    assert.deepEqual(auditFakeAtomicEnqueue(f, f.b),
+      { kind: "consistent_test_only" });
+    assert.equal(f.rows().length, 1);
+    assert.deepEqual(fakeRecoveryRows(f.b).map(row => ({ ...row })), [{
+      call_id: CALL, phase: "pending_unsent_test_only",
+      generation: 0, lease_until_ms: null,
+      deadline_ms: FAKE_RECOVERY_DEADLINE, pair_revision: 0,
+    }]);
+    assert.deepEqual(await stageOneStatementFakeUnsent(f), DENIED,
+      "duplicate call ID must not fire a second enqueue");
+    assert.equal(fakeRecoveryRows(f.b).length, 1);
+    assert.deepEqual(await claimFakePrivateRecovery(f, { db: f.b }),
+      { kind: "pre_send_lease_test_only", generation: 1 });
+    assert.equal(f.rows()[0].state, "unsent_test_only",
+      "lease is not a delivered call or transport attempt");
+  } finally {
+    f.close();
+  }
+});
+
+test("child INSERT crash aborts the original fake intent and leaves no recoverable orphan", async () => {
+  const f = await trial();
+  try {
+    await enable(f);
+    installFakeAtomicEnqueue(f);
+    // Fault injected before the trigger's child row can persist. The parent
+    // insert is rolled back by SQLite's single-statement atomicity.
+    f.a.exec(
+      "CREATE TRIGGER test_only_fail_recovery_child " +
+      "BEFORE INSERT ON fake_private_recovery_leases BEGIN " +
+      "SELECT RAISE(ABORT,'synthetic child persistence failure'); END",
+    );
+    assert.deepEqual(await stageOneStatementFakeUnsent(f), DENIED);
+    assert.deepEqual(f.rows(), []);
+    assert.deepEqual(fakeRecoveryRows(f.b), []);
+    assert.deepEqual(auditFakeAtomicEnqueue(f, f.b),
+      { kind: "consistent_test_only" });
+    f.a.exec("DROP TRIGGER test_only_fail_recovery_child");
+    assert.deepEqual(await stageOneStatementFakeUnsent(f),
+      { kind: "unsent_staged_test_only" });
+    assert.equal(f.rows().length, 1);
+    assert.equal(fakeRecoveryRows(f.b).length, 1);
+    assert.deepEqual(auditFakeAtomicEnqueue(f),
+      { kind: "consistent_test_only" });
+  } finally {
+    f.close();
+  }
+});
+
+test("old separately staged UNSENT without recovery is detected and not silently reconstructed", async () => {
+  const f = await trial();
+  try {
+    await enable(f);
+    assert.equal((await stageOneStatementFakeUnsent(f)).kind,
+      "unsent_staged_test_only");
+    assert.deepEqual(fakeRecoveryRows(f.a), [],
+      "old fixture path had no atomic recovery enqueue");
+    installFakeAtomicEnqueue(f);
+    assert.deepEqual(auditFakeAtomicEnqueue(f), DENIED,
+      "orphaned original intent is a recovery blocker, not an invitation to replay");
+    assert.deepEqual(await stageOneStatementFakeUnsent(f), DENIED);
+    assert.deepEqual(await claimFakePrivateRecovery(f), DENIED);
+    assert.equal(fakeRecoveryRows(f.a).length, 0,
+      "audit must not backfill unknown historical delivery outcome");
+    // A new, separate test-only call identifier can be staged consistently.
+    assert.deepEqual(await stageOneStatementFakeUnsent(f, {
+      callId: OTHER_CALL,
+    }), { kind: "unsent_staged_test_only" });
+    assert.equal(fakeRecoveryRows(f.a).length, 1);
+    assert.deepEqual(auditFakeAtomicEnqueue(f), DENIED,
+      "one healthy new record does not repair the earlier orphan");
+  } finally {
+    f.close();
+  }
+});
+
+test("two local writers cannot split atomic enqueue and new pair revision remains pinned", async () => {
+  const f = await trial();
+  try {
+    await enable(f);
+    installFakeAtomicEnqueue(f);
+    f.a.exec("BEGIN IMMEDIATE");
+    try {
+      assert.deepEqual(await stageOneStatementFakeUnsent(f, { db: f.b }), DENIED);
+      assert.deepEqual(f.rows(), []);
+      assert.deepEqual(fakeRecoveryRows(f.a), []);
+    } finally {
+      f.a.exec("ROLLBACK");
+    }
+    assert.deepEqual(await mutateTestPairWithEpoch(f, {
+      bearer: f.worker, target: CALLER, blocked: true,
+    }), { kind: "mutated_test_only" });
+    assert.deepEqual(await mutateTestPairWithEpoch(f, {
+      bearer: f.worker, target: CALLER, blocked: false,
+    }), { kind: "mutated_test_only" });
+    assert.deepEqual(await stageOneStatementFakeUnsent(f), DENIED,
+      "stale expected pair revision zero cannot enqueue");
+    assert.deepEqual(await stageOneStatementFakeUnsent(f, {
+      db: f.b, expectedPairRevision: 2,
+    }), { kind: "unsent_staged_test_only" });
+    assert.equal(fakeRecoveryRows(f.a)[0].pair_revision, 2,
+      "original UNSENT and recovery must capture one pair version");
+    assert.deepEqual(auditFakeAtomicEnqueue(f, f.b),
+      { kind: "consistent_test_only" });
+    assert.deepEqual(await claimFakePrivateRecovery(f),
+      { kind: "pre_send_lease_test_only", generation: 1 });
+    assert.deepEqual(await mutateTestPairWithEpoch(f, {
+      bearer: f.caller, target: WORKER, blocked: true,
+    }), { kind: "mutated_test_only" });
+    assert.deepEqual(await claimFakePrivateRecovery(f, {
+      generation: 1, nowMs: FAKE_RECOVERY_NOW + 1000,
+      leaseUntilMs: FAKE_RECOVERY_NOW + 2000,
+    }), DENIED, "a later block invalidates the original recovery epoch");
+  } finally {
+    f.close();
+  }
+});
+
+test("UNKNOWN test-only outcome stays quarantined across a simulated second-worker restart", async () => {
+  const f = await trial();
+  try {
+    await enable(f);
+    installFakeAtomicEnqueue(f);
+    assert.equal((await stageOneStatementFakeUnsent(f)).kind,
+      "unsent_staged_test_only");
+    assert.deepEqual(await claimFakePrivateRecovery(f),
+      { kind: "pre_send_lease_test_only", generation: 1 });
+    assert.deepEqual(await markFakeTransportUnknown(f, {
+      generation: 1,
+    }), { kind: "quarantined_unknown_test_only" });
+    assert.deepEqual(auditFakeAtomicEnqueue(f, f.b),
+      { kind: "consistent_test_only" });
+    assert.deepEqual(await claimFakePrivateRecovery(f, {
+      db: f.b, generation: 1, nowMs: FAKE_RECOVERY_NOW + 1001,
+      leaseUntilMs: FAKE_RECOVERY_NOW + 2001,
+    }), DENIED);
+    assert.deepEqual(await stageOneStatementFakeUnsent(f, {
+      db: f.b,
+    }), DENIED);
+    assert.equal(fakeRecoveryRows(f.b)[0].phase,
+      "outcome_unknown_test_only");
+    assert.equal(f.rows().length, 1);
+    assert.equal(f.rows()[0].state, "unsent_test_only",
+      "UNKNOWN is not delivered, failed, or safe for automatic retransmission");
+  } finally {
+    f.close();
+  }
+});
+
+
+test("failure after fake recovery child INSERT aborts the entire one-statement parent enqueue", async () => {
+  const f = await trial();
+  try {
+    await enable(f);
+    installFakeAtomicEnqueue(f);
+    f.a.exec(
+      "CREATE TRIGGER test_only_after_child_failure " +
+      "AFTER INSERT ON fake_private_recovery_leases BEGIN " +
+      "SELECT RAISE(ABORT,'synthetic crash after recovery child insert'); END",
+    );
+    assert.deepEqual(await stageOneStatementFakeUnsent(f), DENIED);
+    assert.deepEqual(f.rows(), []);
+    assert.deepEqual(fakeRecoveryRows(f.b), [],
+      "even an AFTER-child failure must roll back both linked rows");
+    f.a.exec("DROP TRIGGER test_only_after_child_failure");
+    assert.deepEqual(await stageOneStatementFakeUnsent(f, { db: f.b }),
+      { kind: "unsent_staged_test_only" });
+    assert.deepEqual(auditFakeAtomicEnqueue(f),
+      { kind: "consistent_test_only" });
+  } finally {
+    f.close();
+  }
+});
+
+test("corrupt orphan recovery is withheld, never silently reattached or replayed", async () => {
+  const f = await trial();
+  try {
+    await enable(f);
+    installFakeAtomicEnqueue(f);
+    assert.equal((await stageOneStatementFakeUnsent(f)).kind,
+      "unsent_staged_test_only");
+    // Deliberate disposable DB corruption simulates a broken external repair
+    // or restore process. Not a production cleanup/deletion recipe.
+    f.b.exec("PRAGMA foreign_keys=OFF");
+    try {
+      assert.equal(f.b.prepare(
+        "DELETE FROM fake_private_unsent_intents WHERE call_id=?",
+      ).run(CALL).changes, 1);
+    } finally {
+      f.b.exec("PRAGMA foreign_keys=ON");
+    }
+    assert.deepEqual(f.rows(), []);
+    assert.equal(fakeRecoveryRows(f.a).length, 1);
+    assert.deepEqual(auditFakeAtomicEnqueue(f), DENIED);
+    assert.deepEqual(await claimFakePrivateRecovery(f), DENIED);
+    assert.deepEqual(await stageOneStatementFakeUnsent(f), DENIED,
+      "a stale dangling child must not be overwritten by a fresh parent");
+    assert.deepEqual(f.rows(), []);
+    assert.equal(fakeRecoveryRows(f.b).length, 1,
+      "no automatic repair or unsafe retry after inconsistent restore");
+  } finally {
+    f.close();
+  }
+});
