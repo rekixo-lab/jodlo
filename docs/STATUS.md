@@ -1,5 +1,14 @@
 # JODLO — current state, 2026-11-03
 
+## 2026-11-03 — CF-01 REAL CLOUDFLARE LOGIN AND D1 CREATED (owner evidence received)
+
+**Real external progress:** Founder supplied Wrangler 4.156.0 terminal output showing OAuth `Successfully logged in` to owner account `ai@rekixo.com` (Cloudflare Account ID `8f31060fbcfee2b3e9309138cad7f12f`), followed by an actual successful `npx wrangler d1 create jodlo-production --location apac`. **New live D1 UUID: `723080b5-f165-4b31-839f-3063175824c7`**, region `APAC`, created 2026-11-03T11:28:49.367Z. `wrangler d1 info` showed **zero tables, read/write queries 0**. This was owner-executed on a real Cloudflare account, **not a fixture**.
+
+**Isolation:** The same Cloudflare account also contains existing other real databases (`rekixo-site-production`, `rekixo-geolive-production`, `rekixo-3d-production`, `tiyansh-production`). **A separate JODLO D1 resource is confirmed; a separate Cloudflare *account* is NOT confirmed.** No command should touch those other resources. Cloudflare's suggested binding name `jodlo_production` is just generated guidance: JODLO API code requires `env.DB`; use the existing production generator's `binding: "DB"`.
+
+**Next CF-02:** On owner's already-authenticated Ubuntu, use real Account/D1 IDs and choose **two distinct unused integer namespace IDs** (unique within the shared Cloudflare account), then run `npm run production:config:write`, `npm run production:config:check`, and **only** `wrangler deploy --dry-run --config apps/api/wrangler.production.generated.jsonc` plus an optional read-only remote migration list. See [exact commands](REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md). **Not done:** JODLO Worker deployed, D1 migration applied, Google OAuth, public DNS, real Android authentication, production data or public launch. External owner evidence recorded; no independently authenticated Cloudflare connection available to the assistant. Historical "CF-01 pending" statements below describe earlier checkpoints and are superseded by this entry.
+
+
 ## 2026-11-03 — Live Cloudflare preflight: real ID-only configuration generator (ENGINEERING PR; CI PENDING)
 
 Added an operator-only `npm run production:config:write` and `production:config:check` workflow, plus negative tests; it creates a **gitignored production Wrangler config** only after actual account/D1 IDs and independent Cloudflare login rate-limit namespaces are supplied. Production config has no public route or Worker dev domain, reuses existing safe `DB` and login bindings, never reads/prints provider secrets, and neither command does any remote work. [Owner steps](REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md) and [Manual Actions](MANUAL_ACTIONS.md). **CF-01 owner login/real D1 still pending; no Cloudflare calls, migration, deploy or credentials have occurred.** Historical CI and policy entries remain unchanged.
