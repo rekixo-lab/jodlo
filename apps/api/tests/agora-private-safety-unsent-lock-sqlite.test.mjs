@@ -1203,7 +1203,7 @@ test("one authenticated D1-shaped INSERT atomically persists fake UNSENT and mat
     await enable(f);
     assert.deepEqual(await stageOneStatementFakeUnsent(f),
       { kind: "unsent_staged_test_only" });
-    assert.deepEqual(auditFakeAtomicEnqueue(f.b),
+    assert.deepEqual(auditFakeAtomicEnqueue(f, f.b),
       { kind: "consistent_test_only" });
     assert.equal(f.rows().length, 1);
     assert.deepEqual(fakeRecoveryRows(f.b).map(row => ({ ...row })), [{
@@ -1238,7 +1238,7 @@ test("child INSERT crash aborts the original fake intent and leaves no recoverab
     assert.deepEqual(await stageOneStatementFakeUnsent(f), DENIED);
     assert.deepEqual(f.rows(), []);
     assert.deepEqual(fakeRecoveryRows(f.b), []);
-    assert.deepEqual(auditFakeAtomicEnqueue(f.b),
+    assert.deepEqual(auditFakeAtomicEnqueue(f, f.b),
       { kind: "consistent_test_only" });
     f.a.exec("DROP TRIGGER test_only_fail_recovery_child");
     assert.deepEqual(await stageOneStatementFakeUnsent(f),
@@ -1305,7 +1305,7 @@ test("two local writers cannot split atomic enqueue and new pair revision remain
     }), { kind: "unsent_staged_test_only" });
     assert.equal(fakeRecoveryRows(f.a)[0].pair_revision, 2,
       "original UNSENT and recovery must capture one pair version");
-    assert.deepEqual(auditFakeAtomicEnqueue(f.b),
+    assert.deepEqual(auditFakeAtomicEnqueue(f, f.b),
       { kind: "consistent_test_only" });
     assert.deepEqual(await claimFakePrivateRecovery(f),
       { kind: "pre_send_lease_test_only", generation: 1 });
@@ -1333,7 +1333,7 @@ test("UNKNOWN test-only outcome stays quarantined across a simulated second-work
     assert.deepEqual(await markFakeTransportUnknown(f, {
       generation: 1,
     }), { kind: "quarantined_unknown_test_only" });
-    assert.deepEqual(auditFakeAtomicEnqueue(f.b),
+    assert.deepEqual(auditFakeAtomicEnqueue(f, f.b),
       { kind: "consistent_test_only" });
     assert.deepEqual(await claimFakePrivateRecovery(f, {
       db: f.b, generation: 1, nowMs: FAKE_RECOVERY_NOW + 1001,
