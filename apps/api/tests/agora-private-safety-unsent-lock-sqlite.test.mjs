@@ -1407,3 +1407,269 @@ test("corrupt orphan recovery is withheld, never silently reattached or replayed
     f.close();
   }
 });
+
+
+/**
+ * SELF-CONTAINED LOCAL TRIGGER EXPERIMENT. Existing actor-authenticated
+ * setOwnAgoraAccountBlock writes do not mention the test-owned epoch table.
+ * On this throwaway SQLite database alone, triggers attach the unordered
+ * pair generation to every INSERT / DELETE / changed relationship UPDATE.
+ *
+ * This avoids the earlier manual two-step JS wrapper on the LOCAL fixture:
+ * the real block mutation and test-only revision now commit or fail together
+ * in ONE SQLite statement, irrespective of which authenticated actor writes.
+ *
+ * NOT a production D1 trigger/migration, privacy approval, external provider
+ * fence or guarantee across restores / future uninstrumented write paths.
+ */
+function installAutomaticFakePairEpochTriggers(f) {
+  const bump = alias =>
+    "INSERT INTO fake_block_pair_epochs(lower_id,upper_id,revision) " +
+    "VALUES(MIN(" + alias + ".blocker_account_id," +
+    alias + ".blocked_account_id)," +
+    "MAX(" + alias + ".blocker_account_id," +
+    alias + ".blocked_account_id),1) " +
+    "ON CONFLICT(lower_id,upper_id) " +
+    "DO UPDATE SET revision=revision+1;";
+  f.a.exec(
+    "CREATE TRIGGER test_only_block_epoch_insert " +
+    "AFTER INSERT ON agora_account_blocks BEGIN " + bump("NEW") + " END;" +
+    "CREATE TRIGGER test_only_block_epoch_delete " +
+    "AFTER DELETE ON agora_account_blocks BEGIN " + bump("OLD") + " END;" +
+    "CREATE TRIGGER test_only_block_epoch_update " +
+    "AFTER UPDATE OF blocker_account_id,blocked_account_id " +
+    "ON agora_account_blocks " +
+    "WHEN NEW.blocker_account_id<>OLD.blocker_account_id OR " +
+    "NEW.blocked_account_id<>OLD.blocked_account_id " +
+    "BEGIN " + bump("OLD") + bump("NEW") + " END;",
+  );
+}
+
+test("real owner-authenticated block and unblock automatically advance test-only pair epoch", async () => {
+  const f = await trial();
+  try {
+    await enable(f);
+    installAutomaticFakePairEpochTriggers(f);
+    assert.equal(fakePairRevision(f.a, CALLER, WORKER), 0);
+    assert.deepEqual(await f.block(f.worker, CALLER),
+      { kind: "updated" });
+    assert.equal(fakePairRevision(f.b, WORKER, CALLER), 1);
+    assert.deepEqual(await f.block(f.worker, CALLER), DENIED,
+      "duplicate block does not count as a relationship mutation");
+    assert.equal(fakePairRevision(f.a, CALLER, WORKER), 1);
+    assert.deepEqual(await f.block(f.caller, WORKER, false), DENIED,
+      "unblock on other unblocked direction is a no-op");
+    assert.equal(fakePairRevision(f.a, CALLER, WORKER), 1);
+    assert.deepEqual(await f.block(f.worker, CALLER, false),
+      { kind: "updated" });
+    assert.equal(fakePairRevision(f.a, CALLER, WORKER), 2);
+    assert.equal(f.a.prepare(
+      "SELECT COUNT(*) AS n FROM agora_account_blocks",
+    ).get().n, 0);
+    assert.deepEqual(await readLocalCallerAgoraSafetyFacts(
+      localD1Adapter(f.a), f.caller, f.listing.id,
+    ), {
+      acceptingCalls: true, availabilityRevision: 1, consentRevision: 1,
+      contactBlocked: false, rateGate: "unknown", workerPresence: "unknown",
+    });
+  } finally {
+    f.close();
+  }
+});
+
+test("automatic real block ABA vetoes stale fake UNSENT and postclaim recovery", async () => {
+  const f = await trial();
+  try {
+    await enable(f);
+    installAutomaticFakePairEpochTriggers(f);
+    const first = await readLocalCallerAgoraSafetyFacts(
+      localD1Adapter(f.a), f.caller, f.listing.id,
+    );
+    assert.equal(first.contactBlocked, false);
+    assert.deepEqual(await f.block(f.worker, CALLER), { kind: "updated" });
+    assert.deepEqual(await f.block(f.worker, CALLER, false),
+      { kind: "updated" });
+    const after = await readLocalCallerAgoraSafetyFacts(
+      localD1Adapter(f.a), f.caller, f.listing.id,
+    );
+    assert.deepEqual(after, first,
+      "current private block boolean cannot detect block -> unblock ABA");
+    assert.equal(fakePairRevision(f.b, WORKER, CALLER), 2);
+    assert.deepEqual(await stageOneStatementFakeUnsent(f), DENIED,
+      "original test snapshot expected pair revision zero");
+    assert.deepEqual(await stageOneStatementFakeUnsent(f, {
+      expectedPairRevision: 2,
+    }), { kind: "unsent_staged_test_only" });
+    assert.deepEqual(seedFakeRecovery(f),
+      { kind: "seeded_unsent_test_only" });
+    assert.deepEqual(await claimFakePrivateRecovery(f),
+      { kind: "pre_send_lease_test_only", generation: 1 });
+    assert.deepEqual(await f.block(f.caller, WORKER), { kind: "updated" });
+    assert.deepEqual(await f.block(f.caller, WORKER, false),
+      { kind: "updated" });
+    assert.equal(fakePairRevision(f.a, CALLER, WORKER), 4);
+    assert.deepEqual(await claimFakePrivateRecovery(f, {
+      generation: 1, nowMs: FAKE_RECOVERY_NOW + 1000,
+      leaseUntilMs: FAKE_RECOVERY_NOW + 2000,
+    }), DENIED, "a newer original pair generation invalidates recovery");
+    assert.equal(fakeRecoveryRows(f.a)[0].generation, 1);
+  } finally {
+    f.close();
+  }
+});
+
+test("two directions share one unordered pair epoch and unrelated pair remains isolated", async () => {
+  const f = await trial();
+  try {
+    await enable(f);
+    installAutomaticFakePairEpochTriggers(f);
+    assert.deepEqual(await f.block(f.worker, CALLER), { kind: "updated" });
+    assert.deepEqual(await f.block(f.caller, WORKER), { kind: "updated" });
+    assert.equal(fakePairRevision(f.a, CALLER, WORKER), 2);
+    assert.equal((await readLocalCallerAgoraSafetyFacts(
+      localD1Adapter(f.a), f.caller, f.listing.id,
+    ))?.contactBlocked, true);
+    assert.deepEqual(await f.block(f.worker, CALLER, false),
+      { kind: "updated" });
+    assert.equal((await readLocalCallerAgoraSafetyFacts(
+      localD1Adapter(f.a), f.caller, f.listing.id,
+    ))?.contactBlocked, true,
+    "unblocking one direction does not override the other's block");
+    assert.deepEqual(await f.block(f.caller, WORKER, false),
+      { kind: "updated" });
+    assert.equal(fakePairRevision(f.a, CALLER, WORKER), 4);
+    assert.deepEqual(await f.block(f.worker, OTHER), { kind: "updated" });
+    assert.equal(fakePairRevision(f.a, WORKER, OTHER), 1);
+    assert.equal(fakePairRevision(f.a, CALLER, WORKER), 4);
+    assert.deepEqual(await stageOneStatementFakeUnsent(f, {
+      expectedPairRevision: 4,
+    }), { kind: "unsent_staged_test_only" },
+    "OTHER's independent private block does not contaminate CALLER");
+  } finally {
+    f.close();
+  }
+});
+
+test("changed directional relationship UPDATE invalidates BOTH old and new unordered pair", async () => {
+  const f = await trial();
+  try {
+    await enable(f);
+    installAutomaticFakePairEpochTriggers(f);
+    assert.deepEqual(await f.block(f.worker, CALLER), { kind: "updated" });
+    assert.equal(fakePairRevision(f.a, WORKER, CALLER), 1);
+    assert.equal(fakePairRevision(f.a, WORKER, OTHER), 0);
+    assert.equal(f.a.prepare(
+      "UPDATE agora_account_blocks SET blocked_account_id=blocked_account_id " +
+      "WHERE blocker_account_id=? AND blocked_account_id=?",
+    ).run(WORKER, CALLER).changes, 1);
+    assert.equal(fakePairRevision(f.a, CALLER, WORKER), 1,
+      "same-value SQL UPDATE is not a changed block relationship");
+    assert.equal(f.a.prepare(
+      "UPDATE agora_account_blocks SET blocked_account_id=? " +
+      "WHERE blocker_account_id=? AND blocked_account_id=?",
+    ).run(OTHER, WORKER, CALLER).changes, 1);
+    assert.equal(fakePairRevision(f.b, WORKER, CALLER), 2,
+      "old pair must invalidate its original snapshot");
+    assert.equal(fakePairRevision(f.b, WORKER, OTHER), 1,
+      "newly targeted pair must invalidate its original snapshot");
+    assert.deepEqual(await stageOneStatementFakeUnsent(f), DENIED);
+    assert.deepEqual(await stageOneStatementFakeUnsent(f, {
+      expectedPairRevision: 2,
+    }), { kind: "unsent_staged_test_only" });
+    assert.equal(f.a.prepare(
+      "SELECT COUNT(*) AS n FROM agora_account_blocks " +
+      "WHERE blocker_account_id=? AND blocked_account_id=?",
+    ).get(WORKER, OTHER).n, 1);
+  } finally {
+    f.close();
+  }
+});
+
+test("epoch persistence failure and competing writer roll back real block mutation", async () => {
+  const f = await trial();
+  try {
+    await enable(f);
+    installAutomaticFakePairEpochTriggers(f);
+    // The test-only ledger cannot be written, so the real SQLite block
+    // statement must not commit by itself and fabricate a stable epoch.
+    f.a.exec(
+      "CREATE TRIGGER test_only_pair_epoch_fault " +
+      "BEFORE INSERT ON fake_block_pair_epochs BEGIN " +
+      "SELECT RAISE(ABORT,'synthetic revision persistence fault'); END",
+    );
+    assert.deepEqual(await f.block(f.worker, CALLER), DENIED);
+    assert.equal(fakePairRevision(f.a, CALLER, WORKER), 0);
+    assert.equal(f.a.prepare(
+      "SELECT COUNT(*) AS n FROM agora_account_blocks",
+    ).get().n, 0);
+    f.a.exec("DROP TRIGGER test_only_pair_epoch_fault");
+    f.a.exec("BEGIN IMMEDIATE");
+    try {
+      assert.deepEqual(await f.block(f.worker, CALLER), DENIED,
+        "another SQLite connection holding a writer lock forces refusal");
+      assert.equal(fakePairRevision(f.a, CALLER, WORKER), 0);
+    } finally {
+      f.a.exec("ROLLBACK");
+    }
+    assert.deepEqual(await f.block(f.worker, CALLER),
+      { kind: "updated" });
+    assert.equal(fakePairRevision(f.b, CALLER, WORKER), 1);
+  } finally {
+    f.close();
+  }
+});
+
+test("revision exhaustion is a blocking safety incident, not a wrapped permission", async () => {
+  const f = await trial();
+  try {
+    await enable(f);
+    installAutomaticFakePairEpochTriggers(f);
+    assert.deepEqual(await f.block(f.worker, CALLER), { kind: "updated" });
+    assert.deepEqual(await f.block(f.worker, CALLER, false),
+      { kind: "updated" });
+    f.a.prepare(
+      "UPDATE fake_block_pair_epochs SET revision=2147483647 " +
+      "WHERE lower_id=? AND upper_id=?",
+    ).run(...[CALLER, WORKER].sort());
+    assert.deepEqual(await f.block(f.worker, CALLER), DENIED,
+      "test-only 32-bit epoch exhausted; cannot silently wrap to zero");
+    assert.equal(fakePairRevision(f.a, CALLER, WORKER), 2147483647);
+    assert.equal(f.a.prepare(
+      "SELECT COUNT(*) AS n FROM agora_account_blocks",
+    ).get().n, 0, "failed local mutation cannot produce block/ledger disagreement");
+    assert.deepEqual(await stageOneStatementFakeUnsent(f), DENIED,
+      "no stale zero-epoch snapshot becomes an approval");
+  } finally {
+    f.close();
+  }
+});
+
+test("transport UNKNOWN stays quarantined after automatic block ABA and on second DB connection", async () => {
+  const f = await trial();
+  try {
+    await enable(f);
+    installAutomaticFakePairEpochTriggers(f);
+    assert.equal((await stageOneStatementFakeUnsent(f)).kind,
+      "unsent_staged_test_only");
+    assert.equal(seedFakeRecovery(f).kind, "seeded_unsent_test_only");
+    assert.deepEqual(await claimFakePrivateRecovery(f),
+      { kind: "pre_send_lease_test_only", generation: 1 });
+    assert.deepEqual(await markFakeTransportUnknown(f, {
+      generation: 1,
+    }), { kind: "quarantined_unknown_test_only" });
+    assert.deepEqual(await f.block(f.worker, CALLER), { kind: "updated" });
+    assert.deepEqual(await f.block(f.worker, CALLER, false),
+      { kind: "updated" });
+    assert.equal(fakePairRevision(f.b, CALLER, WORKER), 2);
+    assert.deepEqual(await claimFakePrivateRecovery(f, {
+      db: f.b, generation: 1, nowMs: FAKE_RECOVERY_NOW + 1001,
+      leaseUntilMs: FAKE_RECOVERY_NOW + 2001,
+    }), DENIED, "UNKNOWN is not retried even after block is removed");
+    assert.equal(fakeRecoveryRows(f.b)[0].phase, "outcome_unknown_test_only");
+    assert.equal(fakeRecoveryRows(f.b)[0].generation, 1);
+    assert.equal(f.rows()[0].state, "unsent_test_only",
+      "neither provider delivered nor failed was established by SQLite");
+  } finally {
+    f.close();
+  }
+});
