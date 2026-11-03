@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildProductionConfig, verifyProductionConfig } from "./prepare-production-wrangler.mjs";
+import { buildProductionConfig, verifyProductionConfig, hardenProductionConfig } from "./prepare-production-wrangler.mjs";
 
 const base = Object.freeze({
   name: "jodlo-api", main: "src/index.ts",
@@ -20,9 +20,10 @@ test("real owner-supplied Cloudflare IDs produce exactly one private JODLO DB an
     accountId: env.JODLO_CF_ACCOUNT_ID, databaseId: env.JODLO_D1_DATABASE_ID,
   });
   assert.equal(config.workers_dev, false);
+  assert.equal(config.preview_urls, false);
   assert.equal(config.name, "jodlo-api");
   assert.deepEqual(Object.keys(config), [
-    "name","main","compatibility_date","workers_dev","send_metrics",
+    "name","main","compatibility_date","workers_dev","preview_urls","send_metrics",
     "account_id","d1_databases","ratelimits",
   ]);
   assert.deepEqual(config.d1_databases,[{
@@ -68,6 +69,7 @@ test("no account ID or D1 UUID, malformed identifiers, local D1 fixture and fake
 test("a changed Wrangler baseline or live route cannot silently inherit unsafe values",()=>{
   for(const mutation of [
     {workers_dev:true},
+    {preview_urls:true},
     {name:"finworkar-api"},
     {main:"../private.ts"},
     {routes:["*/*"]},
@@ -83,6 +85,8 @@ test("a changed Wrangler baseline or live route cannot silently inherit unsafe v
 test("validator rejects production route, unsafe binding, deleted limit and extra provider fields",()=>{
   const mutations=[
     x=>{x.workers_dev=true;},
+    x=>{x.preview_urls=true;},
+    x=>{delete x.preview_urls;},
     x=>{x.routes=["*/*"];},
     x=>{x.vars={TOKEN:"secret"};},
     x=>{x.name="finworkar-api";},
@@ -108,4 +112,33 @@ test("production config is JSON serializable with no secret values and no route"
   const config=valid();
   assert.deepEqual(verifyProductionConfig(JSON.parse(JSON.stringify(config))),
     {accountId:env.JODLO_CF_ACCOUNT_ID,databaseId:env.JODLO_D1_DATABASE_ID});
+});
+
+test("hardens existing real-account config without changing actual DB or namespace IDs",()=>{
+  const legacy=structuredClone(valid());
+  delete legacy.preview_urls;
+  const hardened=hardenProductionConfig(legacy);
+  assert.equal(hardened.preview_urls,false);
+  assert.deepEqual(hardened.d1_databases,legacy.d1_databases);
+  assert.deepEqual(hardened.ratelimits,legacy.ratelimits);
+  assert.equal(hardened.account_id,legacy.account_id);
+  assert.deepEqual(hardenProductionConfig(hardened),hardened);
+  assert.throws(()=>verifyProductionConfig(legacy));
+});
+
+test("hardening refuses public URLs, unexpected bindings and incorrect account",()=>{
+  for(const mutate of [
+    x=>{x.preview_urls=true;},
+    x=>{x.route="*/*";},
+    x=>{x.vars={GOOGLE_CLIENT_ID:"example"};},
+    x=>{x.workers_dev=true;},
+    x=>{x.account_id="0".repeat(32);},
+    x=>{x.ratelimits.pop();},
+    x=>{x.d1_databases[0].database_name="other-production";},
+  ]) {
+    const legacy=structuredClone(valid());
+    delete legacy.preview_urls;
+    mutate(legacy);
+    assert.throws(()=>hardenProductionConfig(legacy));
+  }
 });

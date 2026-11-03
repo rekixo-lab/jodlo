@@ -12,7 +12,7 @@
  *     npm run production:config:write
  *   npm run production:config:check
  */
-import { readFile, open } from "node:fs/promises";
+import { readFile, open, rename } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -22,7 +22,7 @@ const templatePath = join(root, "apps/api/wrangler.jsonc");
 const localOnlyD1 = "00000000-0000-0000-0000-000000000001";
 const allowedKeys = [
   "name", "main", "compatibility_date", "workers_dev", "send_metrics",
-  "account_id", "d1_databases", "ratelimits",
+  "account_id", "d1_databases", "ratelimits", "preview_urls",
 ];
 
 function requireAccountId(value) {
@@ -59,6 +59,7 @@ function assertBaseline(config) {
       config.routes !== undefined || config.route !== undefined ||
       config.d1_databases !== undefined || config.ratelimits !== undefined ||
       config.vars !== undefined || config.secrets !== undefined ||
+      config.preview_urls !== undefined ||
       config.account_id !== undefined) {
     throw new Error("Committed Wrangler baseline changed: stop and review production configuration");
   }
@@ -83,6 +84,7 @@ export function buildProductionConfig(env, baseline) {
     main: baseline.main,
     compatibility_date: baseline.compatibility_date,
     workers_dev: false,
+    preview_urls: false,
     send_metrics: false,
     account_id: accountId,
     d1_databases: [{
@@ -105,7 +107,8 @@ export function verifyProductionConfig(config) {
   if (!config || typeof config !== "object" || Array.isArray(config) ||
       Object.keys(config).some(k => !allowedKeys.includes(k)) ||
       config.name !== "jodlo-api" || config.main !== "src/index.ts" ||
-      config.workers_dev !== false || config.send_metrics !== false ||
+      config.workers_dev !== false || config.preview_urls !== false ||
+      config.send_metrics !== false ||
       !/^20[0-9]{2}-[0-9]{2}-[0-9]{2}$/.test(config.compatibility_date)) {
     throw new Error("Unexpected production config, route, secret, or exposure: review required");
   }
@@ -139,6 +142,18 @@ export function verifyProductionConfig(config) {
   return { accountId, databaseId };
 }
 
+/** Upgrade an EXISTING operator-owned generated production file without
+ * requesting its real Cloudflare IDs again. Refuse unsafe/unknown fields.
+ */
+export function hardenProductionConfig(config) {
+  if (!config || typeof config !== "object" || Array.isArray(config) ||
+      (config.preview_urls !== undefined && config.preview_urls !== false))
+    throw new Error("Unsafe existing preview URL setting; manual review required");
+  const hardened = { ...config, preview_urls: false };
+  verifyProductionConfig(hardened);
+  return hardened;
+}
+
 async function readBaseline() {
   const text = await readFile(templatePath, "utf8");
   // This repo's checked-in Wrangler baseline uses only full-line // comments.
@@ -154,6 +169,20 @@ export async function main(mode, env = process.env) {
     try { await file.writeFile(JSON.stringify(config, null, 2) + "\n", "utf8"); }
     finally { await file.close(); }
     process.stdout.write("Real-ID production config written to gitignored apps/api/wrangler.production.generated.jsonc. NO Cloudflare requests or deployment.\n");
+  } else if (mode === "--harden") {
+    const old = JSON.parse(await readFile(generatedPath, "utf8"));
+    const hardened = hardenProductionConfig(old);
+    if (old.preview_urls === false) {
+      process.stdout.write("Existing config already denies Version/Preview URLs. No file changed.\n");
+    } else {
+      // Atomic LOCAL change; file never goes to GitHub or Cloudflare.
+      const next = generatedPath + ".next";
+      const f = await open(next, "wx", 0o600);
+      try { await f.writeFile(JSON.stringify(hardened, null, 2) + "\n", "utf8"); }
+      finally { await f.close(); }
+      await rename(next, generatedPath);
+      process.stdout.write("Existing real-ID production config hardened (LOCAL only).\n");
+    }
   } else if (mode === "--check") {
     const json = JSON.parse(await readFile(generatedPath, "utf8"));
     const checked = verifyProductionConfig(json);
@@ -165,7 +194,7 @@ export async function main(mode, env = process.env) {
       throw new Error("Generated production config points to a DIFFERENT D1 database");
     process.stdout.write("Production config shape validated (not a provider connection/backup/deployment).\n");
   } else {
-    throw new Error("Use --write (requires real Cloudflare IDs) or --check (existing generated config)");
+    throw new Error("Use --write (real IDs), --harden (existing file) or --check");
   }
 }
 

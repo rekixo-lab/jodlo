@@ -36,3 +36,6 @@ apps/android/app/build/
 
 # Real JODLO Cloudflare account IDs/production binding config generated on owner machine
 apps/api/wrangler.production.generated.jsonc
+
+# Atomic local production-config rewrite, never commit a temporary file
+apps/api/wrangler.production.generated.jsonc.next

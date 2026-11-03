@@ -67,7 +67,8 @@
     "android:run": "bash scripts/android-device.sh run",
     "android:device-tests": "bash scripts/android-device.test.sh",
     "production:config:write": "node scripts/prepare-production-wrangler.mjs --write",
-    "production:config:check": "node scripts/prepare-production-wrangler.mjs --check"
+    "production:config:check": "node scripts/prepare-production-wrangler.mjs --check",
+    "production:config:harden": "node scripts/prepare-production-wrangler.mjs --harden"
   },
   "devDependencies": {
     "typescript": "~5.8.3",
