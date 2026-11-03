@@ -42,6 +42,12 @@
     <string name="worker_listing_selected">चुनी हुई सेवा सूची</string>
     <string name="worker_load_more">अगला पृष्ठ देखें</string>
     <string name="worker_unpublish_selected">चुनी हुई सेवा सूची हटाएँ</string>
+    <string name="worker_customer_preview_heading">ग्राहक को दिखने वाली सेवा जाँचें</string>
+    <string name="worker_customer_preview_explainer">ग्राहक की तरह इस सेवा की नई सार्वजनिक जानकारी देखें। इससे वर्कर के ऑनलाइन होने या कॉल उठाने की पुष्टि नहीं होती।</string>
+    <string name="worker_customer_preview_check">अभी सार्वजनिक सेवा जाँचें</string>
+    <string name="worker_customer_preview_visible">यह सेवा अभी सार्वजनिक एपीआई में मिल रही है। इससे पहचान सत्यापित या कॉल की अनुमति नहीं मिलती।</string>
+    <string name="worker_customer_preview_not_public">यह सेवा अभी सार्वजनिक नहीं है। अप्रकाशित, छिपी या अनुपलब्ध हो सकती है; कारण यहाँ नहीं बताया जाता।</string>
+    <string name="worker_customer_preview_failed">सार्वजनिक स्थिति की पुष्टि नहीं हुई। दिखाई देना या न दिखना मानकर न चलें; दोबारा जाँचें।</string>
     <string name="worker_publish_category">सेवा श्रेणी प्रकाशित करें</string>
     <string name="worker_publish_explainer">स्वीकृत सक्रिय श्रेणी चुनें। प्रकाशन से पहचान सत्यापित नहीं होती।</string>
     <string name="worker_category_search_hint">स्वीकृत सक्रिय श्रेणियों में हिन्दी या English से खोजें। किसी श्रेणी में अभी सेवा प्रकाशित न हो तब भी उसे चुन सकते हैं।</string>
