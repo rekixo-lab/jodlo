@@ -1,0 +1,136 @@
+import type { D1Database } from "../../data/d1.ts";
+import {
+  readCallerSessionBoundAgoraConsentEpoch,
+} from "./request-target.ts";
+import {
+  prepareSyntheticConsentEpochBoundAgoraInvite,
+  type SyntheticEpochBoundInviteSafetyDecision,
+} from "./agora-invite-safety.ts";
+import {
+  composeSyntheticAgoraInviteRisk,
+  type SyntheticAgoraRiskIdentity,
+} from "./agora-risk-evidence.ts";
+
+/**
+ * OFFLINE CONTRACT ONLY. These are five separately injected, server-owned,
+ * READ-ONLY source ports. Never fill them from a customer body or reuse this
+ * module as a live invitation, quota reservation or RTC token issuer.
+ *
+ * Their check shapes are verified by composeSyntheticAgoraInviteRisk. Real
+ * presence, block storage, rate thresholds, expiry and retention are NOT
+ * implemented or approved (M-003/M-005/M-006).
+ */
+export type SyntheticAgoraRiskReader = (
+  identity: SyntheticAgoraRiskIdentity,
+) => Promise<unknown>;
+
+export type SyntheticAgoraServerRiskReaders = Readonly<{
+  presence: SyntheticAgoraRiskReader;
+  availability: SyntheticAgoraRiskReader;
+  mutualBlocks: SyntheticAgoraRiskReader;
+  abuse: SyntheticAgoraRiskReader;
+  connection: SyntheticAgoraRiskReader;
+}>;
+
+const SOURCE_NAMES = [
+  "presence", "availability", "mutualBlocks", "abuse", "connection",
+] as const;
+const DENIED = Object.freeze({ kind: "denied" as const });
+
+/** Snapshot the five injected ports BEFORE any D1 or external reads.
+ * Missing, extra, accessor, hidden, symbol or throwing proxy properties
+ * cannot silently turn into a default-allow source.
+ */
+function captureReaders(
+  input: unknown,
+): readonly SyntheticAgoraRiskReader[] | null {
+  if (input === null || typeof input !== "object" ||
+      Array.isArray(input)) return null;
+  try {
+    const props = Object.getOwnPropertyDescriptors(input);
+    if (Reflect.ownKeys(props).length !== SOURCE_NAMES.length ||
+        SOURCE_NAMES.some(name =>
+          !Object.hasOwn(props, name) ||
+          !Object.hasOwn(props[name], "value") ||
+          typeof props[name].value !== "function")) return null;
+    return Object.freeze(
+      SOURCE_NAMES.map(name => props[name].value as SyntheticAgoraRiskReader),
+    );
+  } catch {
+    return null;
+  }
+}
+
+function validTime(value: unknown): value is number {
+  return typeof value === "number" &&
+    Number.isSafeInteger(value) && value >= 0;
+}
+
+/**
+ * Actor-first local call preflight rehearsal:
+ * 1. Current CALLER-owned D1 session/listing and enabled Worker consent epoch
+ * 2. Five explicit independent synthetic source reads, all scoped ONLY to the
+ *    server-resolved opaque caller/worker/listing identity (NO bearer/phone)
+ * 3. Exact five-check composition with earliest source expiry
+ * 4. A second current caller-session/listing/consent read; the original epoch
+ *    MUST still match (OFF -> ON is not an old-call resurrection)
+ * 5. Re-sample the injected test clock after all awaits, denying expired risk.
+ *
+ * IMPORTANT: even a positive "prepared" result is NOT an atomic real-call
+ * permission. Other stores could change immediately after a SELECT. A real
+ * writer needs founder-approved availability/blocks/rate facts, admission
+ * reservations, atomic consent checks and a provider-send boundary.
+ */
+export async function prepareSyntheticServerRiskReadAgoraInvite(
+  db: D1Database,
+  callerBearer: string,
+  listingId: string,
+  callId: string,
+  ringDeadlineMs: number,
+  readersInput: SyntheticAgoraServerRiskReaders | null,
+  clockNow: () => number,
+): Promise<SyntheticEpochBoundInviteSafetyDecision> {
+  const readers = captureReaders(readersInput);
+  if (!readers || typeof clockNow !== "function" ||
+      !validTime(ringDeadlineMs)) return DENIED;
+  try {
+    const startedAt = clockNow();
+    if (!validTime(startedAt) || startedAt >= ringDeadlineMs) return DENIED;
+
+    const initial = await readCallerSessionBoundAgoraConsentEpoch(
+      db, callerBearer, listingId,
+    );
+    if (!initial) return DENIED;
+    // Absolutely no bearer or arbitrary client worker ID in source scope.
+    const identity: SyntheticAgoraRiskIdentity = Object.freeze({
+      callerAccountId: initial.target.requesterAccountId,
+      workerAccountId: initial.target.workerAccountId,
+      listingId: initial.target.listingId,
+    });
+    const evidence = await Promise.all(readers.map(reader => reader(identity)));
+    const gatheredAt = clockNow();
+    if (!validTime(gatheredAt) || gatheredAt < startedAt ||
+        gatheredAt >= ringDeadlineMs) return DENIED;
+
+    const risk = composeSyntheticAgoraInviteRisk(
+      identity, gatheredAt, evidence,
+    );
+    if (!risk) return DENIED;
+    const prepared = await prepareSyntheticConsentEpochBoundAgoraInvite(
+      db, callerBearer, listingId, callId, gatheredAt, ringDeadlineMs, risk,
+    );
+    const finishedAt = clockNow();
+    if (!validTime(finishedAt) || finishedAt < gatheredAt ||
+        finishedAt >= risk.expiresAtMs ||
+        finishedAt >= ringDeadlineMs ||
+        prepared.kind !== "prepared" ||
+        prepared.originalConsentRevision !== initial.consentRevision ||
+        prepared.call.callerAccountId !== identity.callerAccountId ||
+        prepared.call.workerAccountId !== identity.workerAccountId ||
+        prepared.call.listingId !== identity.listingId) return DENIED;
+    return prepared;
+  } catch {
+    // Do not leak source presence, block, abuse or session details.
+    return DENIED;
+  }
+}
