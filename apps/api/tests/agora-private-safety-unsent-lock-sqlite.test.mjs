@@ -80,6 +80,23 @@ async function trial() {
       "CHECK(lower_id < upper_id)," +
       "PRIMARY KEY(lower_id,upper_id))",
     );
+    // A recovery/lease record exists ONLY in this throwaway test database.
+    // It cannot send a message, contact a worker or authorize any live call.
+    a.exec(
+      "CREATE TABLE fake_private_recovery_leases (" +
+      "call_id TEXT PRIMARY KEY REFERENCES fake_private_unsent_intents(call_id)" +
+      " ON DELETE CASCADE," +
+      "phase TEXT NOT NULL CHECK(phase IN (" +
+      "'pending_unsent_test_only','leased_pre_send_test_only'," +
+      "'outcome_unknown_test_only'))," +
+      "generation INTEGER NOT NULL DEFAULT 0 " +
+      "CHECK(generation BETWEEN 0 AND 2147483647)," +
+      "lease_until_ms INTEGER DEFAULT NULL " +
+      "CHECK(lease_until_ms IS NULL OR lease_until_ms>=0)," +
+      "deadline_ms INTEGER NOT NULL CHECK(deadline_ms>0)," +
+      "pair_revision INTEGER NOT NULL " +
+      "CHECK(pair_revision BETWEEN 0 AND 2147483647))",
+    );
     const adapter = localD1Adapter(a);
     for (const id of [CALLER, WORKER, OTHER]) {
       await ensureAccount(adapter, id);
@@ -786,6 +803,334 @@ test("two SQLite connections serialize one SQL writer against a competing block 
       bearer: f.other, callId: CALL,
     }), DENIED);
     assert.deepEqual(await recheckUnsent(f, f.other, OTHER_CALL), DENIED);
+  } finally {
+    f.close();
+  }
+});
+
+
+/**
+ * PR #193: model a server-owned recovery candidate using real migrated
+ * worker/caller/listing/consent/availability/blocks in ONE SQL UPDATE.
+ * This model is not a callable production recovery port.
+ *
+ * The seed stands in for a FUTURE approved atomic original-intent + outbox
+ * commit. No server key, provider response, phone, device ID, real signaling
+ * or per-attempt user history is stored. All phases are TEST-ONLY.
+ */
+const FAKE_RECOVERY_NOW = 1_800_000_000_000;
+const FAKE_RECOVERY_DEADLINE = FAKE_RECOVERY_NOW + 30_000;
+
+function seedFakeRecovery(f, {
+  callId = CALL, deadlineMs = FAKE_RECOVERY_DEADLINE,
+  pairRevision = fakePairRevision(f.a, CALLER, WORKER),
+} = {}) {
+  if (!validOpaqueId(callId) || !Number.isSafeInteger(deadlineMs) ||
+      deadlineMs < 1 || !Number.isSafeInteger(pairRevision) ||
+      pairRevision < 0 || pairRevision > 2_147_483_647) return DENIED;
+  try {
+    const { changes } = f.a.prepare(
+      "INSERT INTO fake_private_recovery_leases(" +
+      "call_id,phase,generation,lease_until_ms,deadline_ms,pair_revision) " +
+      "SELECT call_id,'pending_unsent_test_only',0,NULL,?,? " +
+      "FROM fake_private_unsent_intents WHERE call_id=? " +
+      "ON CONFLICT(call_id) DO NOTHING",
+    ).run(deadlineMs, pairRevision, callId);
+    return changes === 1
+      ? Object.freeze({ kind: "seeded_unsent_test_only" }) : DENIED;
+  } catch {
+    return DENIED;
+  }
+}
+
+const CLAIM_PRIVATE_UNSENT_RECOVERY_QUERY =
+  "UPDATE fake_private_recovery_leases AS lease " +
+  "SET phase='leased_pre_send_test_only',generation=generation+1," +
+  "lease_until_ms=? " +
+  "WHERE lease.call_id=? AND lease.generation=? " +
+  "AND lease.generation<2147483647 AND lease.deadline_ms>? " +
+  "AND ?>? AND ?<=lease.deadline_ms " +
+  "AND ((lease.phase='pending_unsent_test_only' " +
+  "AND lease.generation=0 AND lease.lease_until_ms IS NULL) " +
+  "OR (lease.phase='leased_pre_send_test_only' " +
+  "AND lease.lease_until_ms<=?)) " +
+  "AND EXISTS (" +
+  "SELECT 1 FROM fake_private_unsent_intents AS intent " +
+  "JOIN accounts AS caller ON caller.id=intent.caller_id " +
+  "JOIN worker_listings AS listing ON listing.id=intent.listing_id " +
+  "JOIN accounts AS worker ON worker.id=intent.worker_id " +
+  "AND worker.id=listing.worker_account_id " +
+  "JOIN worker_profiles AS profile ON profile.account_id=worker.id " +
+  "JOIN categories AS category ON category.id=listing.category_id " +
+  "JOIN worker_agora_call_preferences AS consent " +
+  "ON consent.account_id=worker.id AND consent.calls_enabled=1 " +
+  "AND consent.revision=intent.consent_revision " +
+  "JOIN worker_agora_availability_preferences AS availability " +
+  "ON availability.account_id=worker.id " +
+  "AND availability.accepting_calls=1 " +
+  "AND availability.revision=intent.availability_revision " +
+  "WHERE intent.call_id=lease.call_id " +
+  "AND intent.state='unsent_test_only' " +
+  "AND caller.status='active' AND worker.status='active' " +
+  "AND caller.id<>worker.id AND profile.status='draft' " +
+  "AND listing.status='published' " +
+  "AND listing.moderation_status='allowed' " +
+  "AND category.is_active=1 " +
+  "AND NOT EXISTS (SELECT 1 FROM agora_account_blocks AS block " +
+  "WHERE (block.blocker_account_id=caller.id " +
+  "AND block.blocked_account_id=worker.id) OR " +
+  "(block.blocker_account_id=worker.id " +
+  "AND block.blocked_account_id=caller.id)) " +
+  "AND COALESCE((SELECT epoch.revision FROM fake_block_pair_epochs AS epoch " +
+  "WHERE epoch.lower_id=MIN(caller.id,worker.id) " +
+  "AND epoch.upper_id=MAX(caller.id,worker.id)),0)=" +
+  "lease.pair_revision)";
+
+/**
+ * The test lease is only PRE-SEND. A successful local claim does not send or
+ * authorize provider contact. A lease can be retried after expiry ONLY while
+ * the phase still says PRE-SEND; UNKNOWN is a non-retriable quarantine.
+ */
+async function claimFakePrivateRecovery(f, {
+  db = f.a, callId = CALL, generation = 0,
+  nowMs = FAKE_RECOVERY_NOW, leaseUntilMs = FAKE_RECOVERY_NOW + 1000,
+} = {}) {
+  if (!validOpaqueId(callId) ||
+      !Number.isSafeInteger(generation) || generation < 0 ||
+      generation >= 2_147_483_647 ||
+      !Number.isSafeInteger(nowMs) || nowMs < 0 ||
+      !Number.isSafeInteger(leaseUntilMs) ||
+      leaseUntilMs <= nowMs) return DENIED;
+  try {
+    const { meta } = await localD1Adapter(db)
+      .prepare(CLAIM_PRIVATE_UNSENT_RECOVERY_QUERY)
+      .bind(leaseUntilMs, callId, generation,
+        nowMs, leaseUntilMs, nowMs, leaseUntilMs, nowMs).run();
+    return meta?.changes === 1
+      ? Object.freeze({ kind: "pre_send_lease_test_only",
+        generation: generation + 1 }) : DENIED;
+  } catch {
+    return DENIED;
+  }
+}
+
+const MARK_UNCERTAIN_TEST_ONLY_QUERY =
+  "UPDATE fake_private_recovery_leases " +
+  "SET phase='outcome_unknown_test_only',lease_until_ms=NULL " +
+  "WHERE call_id=? AND phase='leased_pre_send_test_only' " +
+  "AND generation=? AND lease_until_ms>?";
+
+/** Just a local durable boundary marker; NO provider request follows. */
+async function markFakeTransportUnknown(f, {
+  db = f.a, callId = CALL, generation,
+  nowMs = FAKE_RECOVERY_NOW + 10,
+} = {}) {
+  if (!validOpaqueId(callId) ||
+      !Number.isSafeInteger(generation) || generation < 1 ||
+      generation > 2_147_483_647 ||
+      !Number.isSafeInteger(nowMs) || nowMs < 0) return DENIED;
+  try {
+    const { meta } = await localD1Adapter(db)
+      .prepare(MARK_UNCERTAIN_TEST_ONLY_QUERY)
+      .bind(callId, generation, nowMs).run();
+    return meta?.changes === 1
+      ? Object.freeze({ kind: "quarantined_unknown_test_only" }) : DENIED;
+  } catch {
+    return DENIED;
+  }
+}
+
+function fakeRecoveryRows(db) {
+  return db.prepare(
+    "SELECT * FROM fake_private_recovery_leases ORDER BY call_id",
+  ).all();
+}
+
+test("private D1 one-statement recovery rechecks actual state and only claims PRE-SEND fixture", async () => {
+  const f = await trial();
+  try {
+    assert.deepEqual(seedFakeRecovery(f), DENIED,
+      "a recovery job without an original server-held intent fails closed");
+    assert.deepEqual(await claimFakePrivateRecovery(f), DENIED);
+    await enable(f);
+    assert.deepEqual(await stageOneStatementFakeUnsent(f),
+      { kind: "unsent_staged_test_only" });
+    assert.deepEqual(seedFakeRecovery(f),
+      { kind: "seeded_unsent_test_only" });
+    assert.deepEqual(seedFakeRecovery(f), DENIED);
+    assert.equal(CLAIM_PRIVATE_UNSENT_RECOVERY_QUERY.includes("auth_sessions"), false,
+      "background recovery does not ask for the caller's bearer");
+    assert.equal(CLAIM_PRIVATE_UNSENT_RECOVERY_QUERY.includes("BEGIN"), false);
+    assert.equal(CLAIM_PRIVATE_UNSENT_RECOVERY_QUERY.includes("COMMIT"), false);
+    assert.deepEqual(await claimFakePrivateRecovery(f),
+      { kind: "pre_send_lease_test_only", generation: 1 });
+    assert.deepEqual(await claimFakePrivateRecovery(f), DENIED,
+      "same generation may never claim the same fake job twice");
+    assert.deepEqual(fakeRecoveryRows(f.b).map(row => ({
+      phase: row.phase, generation: row.generation,
+    })), [{ phase: "leased_pre_send_test_only", generation: 1 }]);
+    assert.equal(fakeRecoveryRows(f.a)[0].pair_revision, 0);
+    assert.equal(f.rows()[0].state, "unsent_test_only");
+  } finally {
+    f.close();
+  }
+});
+
+test("private D1 recovery refuses blocks, OFF->ON epochs, account and listing revocations", async () => {
+  const cases = [
+    ["worker blocks caller", async f => {
+      assert.deepEqual(await f.block(f.worker, CALLER), { kind: "updated" });
+    }],
+    ["caller blocks worker", async f => {
+      assert.deepEqual(await f.block(f.caller, WORKER), { kind: "updated" });
+    }],
+    ["worker availability OFF", async f => {
+      assert.equal((await f.available(false, 1)).kind, "updated");
+    }],
+    ["worker availability OFF ON", async f => {
+      assert.equal((await f.available(false, 1)).kind, "updated");
+      assert.equal((await f.available(true, 2)).kind, "updated");
+    }],
+    ["worker call consent OFF ON", async f => {
+      assert.equal((await f.consent(false, 1)).kind, "updated");
+      assert.equal((await f.consent(true, 2)).kind, "updated");
+    }],
+    ["caller disabled", async f => {
+      f.b.prepare("UPDATE accounts SET status='disabled' WHERE id=?").run(CALLER);
+    }],
+    ["worker disabled", async f => {
+      f.b.prepare("UPDATE accounts SET status='disabled' WHERE id=?").run(WORKER);
+    }],
+    ["listing unpublished", async f => {
+      f.b.prepare(
+        "UPDATE worker_listings SET status='unpublished' WHERE id=?",
+      ).run(f.listing.id);
+    }],
+    ["listing moderation hidden", async f => {
+      f.b.prepare(
+        "UPDATE worker_listings SET moderation_status='hidden' WHERE id=?",
+      ).run(f.listing.id);
+    }],
+    ["category disabled", async f => {
+      f.b.prepare("UPDATE categories SET is_active=0 WHERE id=?").run(CATEGORY);
+    }],
+  ];
+  for (const [label, mutate] of cases) {
+    const f = await trial();
+    try {
+      await enable(f);
+      assert.equal((await stageOneStatementFakeUnsent(f)).kind,
+        "unsent_staged_test_only", label);
+      assert.equal(seedFakeRecovery(f).kind, "seeded_unsent_test_only");
+      await mutate(f);
+      assert.deepEqual(await claimFakePrivateRecovery(f), DENIED, label);
+      assert.equal(fakeRecoveryRows(f.a)[0].phase,
+        "pending_unsent_test_only", label);
+    } finally {
+      f.close();
+    }
+  }
+});
+
+test("historic block->unblock ABA remains fenced only when ALL mutation paths track fake pair revision", async () => {
+  const f = await trial();
+  try {
+    await enable(f);
+    assert.equal((await stageOneStatementFakeUnsent(f)).kind,
+      "unsent_staged_test_only");
+    assert.equal(seedFakeRecovery(f).kind, "seeded_unsent_test_only");
+    assert.deepEqual(await mutateTestPairWithEpoch(f, {
+      bearer: f.worker, target: CALLER, blocked: true,
+    }), { kind: "mutated_test_only" });
+    assert.deepEqual(await mutateTestPairWithEpoch(f, {
+      bearer: f.worker, target: CALLER, blocked: false,
+    }), { kind: "mutated_test_only" });
+    const actual = await readLocalCallerAgoraSafetyFacts(
+      localD1Adapter(f.a), f.caller, f.listing.id,
+    );
+    assert.equal(actual.contactBlocked, false);
+    assert.equal(fakePairRevision(f.a, CALLER, WORKER), 2);
+    assert.deepEqual(await claimFakePrivateRecovery(f), DENIED,
+      "original pair revision zero is now stale, even though current block is false");
+    assert.equal(fakeRecoveryRows(f.a)[0].generation, 0);
+  } finally {
+    f.close();
+  }
+});
+
+test("reclaim expired PRE-SEND lease with new generation; UNKNOWN outcome cannot be auto-retried", async () => {
+  const f = await trial();
+  try {
+    await enable(f);
+    assert.equal((await stageOneStatementFakeUnsent(f)).kind,
+      "unsent_staged_test_only");
+    assert.equal(seedFakeRecovery(f).kind, "seeded_unsent_test_only");
+    assert.deepEqual(await claimFakePrivateRecovery(f),
+      { kind: "pre_send_lease_test_only", generation: 1 });
+    assert.deepEqual(await claimFakePrivateRecovery(f, {
+      db: f.b, generation: 1,
+      nowMs: FAKE_RECOVERY_NOW + 100,
+      leaseUntilMs: FAKE_RECOVERY_NOW + 2_000,
+    }), DENIED, "unexpired lease prevents another dispatcher");
+    assert.deepEqual(await claimFakePrivateRecovery(f, {
+      db: f.b, generation: 1,
+      nowMs: FAKE_RECOVERY_NOW + 1_000,
+      leaseUntilMs: FAKE_RECOVERY_NOW + 2_000,
+    }), { kind: "pre_send_lease_test_only", generation: 2 });
+    assert.deepEqual(await markFakeTransportUnknown(f, {
+      generation: 1, nowMs: FAKE_RECOVERY_NOW + 1_010,
+    }), DENIED, "stale generation cannot cross the transport uncertainty boundary");
+    assert.deepEqual(await markFakeTransportUnknown(f, {
+      db: f.b, generation: 2, nowMs: FAKE_RECOVERY_NOW + 1_020,
+    }), { kind: "quarantined_unknown_test_only" });
+    assert.deepEqual(await claimFakePrivateRecovery(f, {
+      generation: 2, nowMs: FAKE_RECOVERY_NOW + 5_000,
+      leaseUntilMs: FAKE_RECOVERY_NOW + 6_000,
+    }), DENIED, "UNKNOWN is not an affirmative provider failure or safe resend");
+    assert.deepEqual(await markFakeTransportUnknown(f, {
+      generation: 2, nowMs: FAKE_RECOVERY_NOW + 1_030,
+    }), DENIED);
+    assert.equal(fakeRecoveryRows(f.a)[0].phase, "outcome_unknown_test_only");
+    assert.equal(fakeRecoveryRows(f.a)[0].lease_until_ms, null);
+    assert.equal(f.rows()[0].state, "unsent_test_only");
+  } finally {
+    f.close();
+  }
+});
+
+test("private recovery deadlines, bad generations, two SQLite writers and missing state fail closed", async () => {
+  const f = await trial();
+  try {
+    await enable(f);
+    assert.equal((await stageOneStatementFakeUnsent(f)).kind,
+      "unsent_staged_test_only");
+    assert.equal(seedFakeRecovery(f).kind, "seeded_unsent_test_only");
+    for (const bad of [-1, 0.5, NaN, Number.MAX_SAFE_INTEGER]) {
+      assert.deepEqual(await claimFakePrivateRecovery(f, {
+        generation: bad,
+      }), DENIED);
+    }
+    assert.deepEqual(await claimFakePrivateRecovery(f, {
+      leaseUntilMs: FAKE_RECOVERY_DEADLINE + 1,
+    }), DENIED);
+    assert.deepEqual(await claimFakePrivateRecovery(f, {
+      nowMs: FAKE_RECOVERY_DEADLINE,
+      leaseUntilMs: FAKE_RECOVERY_DEADLINE + 1,
+    }), DENIED);
+    f.a.exec("BEGIN IMMEDIATE");
+    try {
+      assert.deepEqual(await claimFakePrivateRecovery(f, {
+        db: f.b,
+      }), DENIED, "SQLite busy must never fabricate an acquired lease");
+      assert.equal(fakeRecoveryRows(f.a)[0].generation, 0);
+    } finally {
+      f.a.exec("ROLLBACK");
+    }
+    assert.deepEqual(await claimFakePrivateRecovery(f, {
+      db: f.b,
+    }), { kind: "pre_send_lease_test_only", generation: 1 });
+    assert.equal(fakeRecoveryRows(f.a).length, 1);
+    assert.equal(fakeRecoveryRows(f.a)[0].generation, 1);
   } finally {
     f.close();
   }
