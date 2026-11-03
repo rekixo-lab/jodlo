@@ -2,6 +2,16 @@
 
 **Founder directive (2026-10-27): Whenever a manual action becomes genuinely necessary, the AI must tell the founder clearly and promptly during the active JODLO chat.** Persist it here so each future engineer/chat knows what is pending, why, and how to continue. The assistant handles automatable engineering itself; only the founder makes decisions, approvals and external account actions.
 
+## 2026-11-03 — standing founder permission for ongoing JODLO execution (DONE)
+
+**Founder statement, 3 November 2026:** "जो करना है करो, मैं अनुमति देता हूँ। सभी चीज के लिए अनुमति देता हूँ अभी। ये तीन तारीख ग्यारहवाँ महीना 2026 है। सभी चीज के लिए अनुमति देता हूँ मैं। इसे नोट कर लो और काम जारी रखो।"
+
+**Permission state: DONE — broad standing authorization.** Continue JODLO engineering automatically without repeatedly requesting generic "करो"/"permission approved": inspect repo, choose the next safe technical priority, write/review code and tests, create isolated branches/PRs, repair failures, merge **only green** checks, update docs/handoff, run local-first simulations, and prepare policy/architecture alternatives. Approved 2026-11-03, founder-owned, recorded in the repository because chat Memory is not the project's source of truth. Previous specific engineering permission remains valid; Android is not the immediate priority.
+
+**Do not invent missing values or third-party actions:** This message gives permission to work, **not exact numeric selections** for M-003 retention/export/erasure, M-005 abuse limits/windows, busy concurrency/call expiry, report/dispute policy, online/push presence, or new block-history collection. It is not an external legal/occupational/editorial signoff, Cloudflare/Agora/Google/PSP credentials, actual provider readiness, or a declaration that production launch checks passed. Keep worker consent default OFF and protect private data. Keep the accepted no-staging, no-remote-deploy architecture until a controlled production release is technically ready and scoped. If one truly indispensable decision is absent, ask only that precise decision at the moment it becomes blocking; continue other work meanwhile.
+
+**Immediate technical action:** demonstrate and test the historical block→unblock ABA gap and a **disposable test-only** pair-revision hypothesis without collecting real relationship history. [Local ABA experiment](AGORA_BLOCK_ABA_PAIR_EPOCH_TRIAL_2026-11-03.md). Future engineering can proceed automatically under this standing authorization, subject to branch CI and safety gates.
+
 ## 2026-11-03 founder permission — private Agora safety D1 engineering (DONE for local implementation; NOT live-policy approval)
 
 **FOUNDER ENGINEERING PERMISSION DONE:** The founder said **"pemission aproovd do it"** after the next priority was identified as *"real availability, mutual-block and abuse-control data के लिए D1 schema तथा privacy/retention design की तैयारी"*. This explicitly authorizes continuing the **local-first backend implementation and privacy/schema design**, including a constrained private worker availability switch, bilateral block relationship model and aggregate-only abuse-counter schema, with tests. Do **not** reinterpret unspecified numeric windows, thresholds, appeal/retention or production release as approved.
