@@ -7,6 +7,10 @@ import { optInAsWorker } from "../src/modules/workers/profile.ts";
 import { publishListing } from "../src/modules/workers/listings.ts";
 import { setOwnWorkerAgoraCallPreference } from
   "../src/modules/workers/agora-call-preference.ts";
+import {
+  setOwnWorkerAvailability, setOwnAgoraAccountBlock,
+  READ_CALLER_AGORA_PRIVATE_SAFETY_QUERY,
+} from "../src/modules/interactions/agora-private-safety-state.ts";
 import { prepareSyntheticServerRiskReadAgoraInvite } from
   "../src/modules/interactions/agora-server-risk-sources.ts";
 
@@ -57,10 +61,14 @@ async function fixture(){
     assert.ok(caller&&worker&&other);
     const opt=(enabled,revision)=>setOwnWorkerAgoraCallPreference(
       adapter,worker,enabled,revision);
+    const availability=(enabled,revision)=>setOwnWorkerAvailability(
+      adapter,worker,enabled,revision);
+    const block=(bearer,target,enabled=true)=>setOwnAgoraAccountBlock(
+      adapter,bearer,target,enabled);
     const prepare=(readers=sourcePorts(),clock=()=>NOW,bearer=caller,
       dbSource=adapter)=>prepareSyntheticServerRiskReadAgoraInvite(
         dbSource,bearer,listing.id,CALL,DEADLINE,readers,clock);
-    return {db,adapter,listing,caller,worker,other,opt,prepare,
+    return {db,adapter,listing,caller,worker,other,opt,availability,block,prepare,
       close(){db.close();}};
   }catch(e){db.close();throw e;}
 }
@@ -103,6 +111,11 @@ test("default OFF never invokes risk readers; enabled consent provides only scop
     assert.deepEqual(await f.prepare(readers),DENIED);
     assert.equal(scopes.length,0,"no source reads without caller session/consent");
     assert.equal((await f.opt(true,0)).kind,"updated");
+    assert.deepEqual(await f.prepare(readers),DENIED,
+      "Explicit call consent alone does not imply availability");
+    assert.equal(scopes.length,0,
+      "no synthetic risk reader is used until D1 availability intent is ON");
+    assert.equal((await f.availability(true,0)).kind,"updated");
     const prepared=await f.prepare(readers);
     assert.equal(prepared.kind,"prepared");
     assert.equal(prepared.originalConsentRevision,1);
@@ -137,6 +150,7 @@ test("unknown/busy/blocked/rate denied or privacy false facts never prepare",asy
   const f=await fixture();
   try{
     assert.equal((await f.opt(true,0)).kind,"updated");
+    assert.equal((await f.availability(true,0)).kind,"updated");
     const cases=[
       {presence:{workerPresence:"offline"}},
       {presence:{workerPresence:"unknown"}},
@@ -172,6 +186,7 @@ test("consent OFF or OFF then ON while sources read never resurrects the earlier
   const f=await fixture();
   try{
     assert.equal((await f.opt(true,0)).kind,"updated");
+    assert.equal((await f.availability(true,0)).kind,"updated");
     const off=sourcePorts();
     off.abuse=async scope=>{
       const changed=await f.opt(false,1);
@@ -204,6 +219,7 @@ test("time is sampled after async facts AND consent recheck; expired or regressi
   const f=await fixture();
   try{
     assert.equal((await f.opt(true,0)).kind,"updated");
+    assert.equal((await f.availability(true,0)).kind,"updated");
     const clockValues=[
       [NOW,NOW,NOW],                 // valid, no policy timeout inferred
       [NOW,NOW+500,NOW+500],         // expired during source collection
@@ -224,5 +240,89 @@ test("time is sampled after async facts AND consent recheck; expired or regressi
     const bad=sourcePorts();
     bad.connection=async()=>null;
     assert.deepEqual(await f.prepare(bad),DENIED);
+  }finally{f.close();}
+});
+
+test("real D1 directional blocks veto all-pass synthetic reader evidence",async()=>{
+  const f=await fixture();
+  try{
+    assert.equal((await f.opt(true,0)).kind,"updated");
+    assert.equal((await f.availability(true,0)).kind,"updated");
+    let reads=0;
+    const sources=sourcePorts({},()=>reads++);
+    assert.equal((await f.prepare(sources)).kind,"prepared");
+    reads=0;
+    assert.deepEqual(await f.block(f.caller,WORKER),{kind:"updated"});
+    assert.deepEqual(await f.prepare(sources),DENIED);
+    assert.equal(reads,0,"D1 caller block denies before test-only readers");
+    const other=await f.prepare(sources,()=>NOW,f.other);
+    assert.equal(other.kind,"prepared");
+    assert.equal(other.call.callerAccountId,OTHER);
+    assert.deepEqual(await f.block(f.caller,WORKER,false),{kind:"updated"});
+    reads=0;
+    assert.deepEqual(await f.block(f.worker,CALLER),{kind:"updated"});
+    assert.deepEqual(await f.prepare(sources),DENIED);
+    assert.equal(reads,0,"D1 worker block denies before test-only readers");
+    assert.deepEqual(await f.block(f.worker,CALLER,false),{kind:"updated"});
+    assert.equal((await f.prepare(sources)).kind,"prepared");
+  }finally{f.close();}
+});
+
+test("private availability OFF or OFF-ON during source awaits denies stale candidate",async()=>{
+  const f=await fixture();
+  try{
+    assert.equal((await f.opt(true,0)).kind,"updated");
+    let reads=0;
+    const sources=sourcePorts({},()=>reads++);
+    assert.deepEqual(await f.prepare(sources),DENIED);
+    assert.equal(reads,0,"no default availability intent");
+    assert.equal((await f.availability(true,0)).kind,"updated");
+    assert.equal((await f.prepare(sources)).kind,"prepared");
+    const off=sourcePorts();
+    off.abuse=async scope=>{
+      assert.equal((await f.availability(false,1)).kind,"updated");
+      return sourcePorts().abuse(scope);
+    };
+    assert.deepEqual(await f.prepare(off),DENIED);
+    assert.deepEqual(await f.prepare(sources),DENIED);
+    assert.equal((await f.availability(true,2)).kind,"updated");
+    assert.equal((await f.prepare(sources)).kind,"prepared");
+    const offOn=sourcePorts();
+    offOn.abuse=async scope=>{
+      assert.equal((await f.availability(false,3)).kind,"updated");
+      assert.equal((await f.availability(true,4)).kind,"updated");
+      return sourcePorts().abuse(scope);
+    };
+    assert.deepEqual(await f.prepare(offOn),DENIED,
+      "availability epoch change cannot reuse an earlier candidate");
+    assert.equal((await f.prepare(sources)).kind,"prepared");
+  }finally{f.close();}
+});
+
+test("a block inserted just before final D1 safety recheck denies",async()=>{
+  const f=await fixture();
+  try{
+    assert.equal((await f.opt(true,0)).kind,"updated");
+    assert.equal((await f.availability(true,0)).kind,"updated");
+    let safetyReads=0;
+    const adapter={
+      prepare(sql){
+        if(sql===READ_CALLER_AGORA_PRIVATE_SAFETY_QUERY){
+          safetyReads++;
+          if(safetyReads===2){
+            f.db.prepare(
+              "INSERT INTO agora_account_blocks(blocker_account_id,blocked_account_id) VALUES(?,?)"
+            ).run(WORKER,CALLER);
+          }
+        }
+        return f.adapter.prepare(sql);
+      },
+    };
+    assert.deepEqual(await f.prepare(sourcePorts(),()=>NOW,f.caller,adapter),
+      DENIED,"scripted unblocked evidence cannot override a late D1 block");
+    assert.equal(safetyReads,2);
+    assert.deepEqual(await f.prepare(),DENIED);
+    assert.deepEqual(await f.block(f.worker,CALLER,false),{kind:"updated"});
+    assert.equal((await f.prepare()).kind,"prepared");
   }finally{f.close();}
 });
