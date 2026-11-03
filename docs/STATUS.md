@@ -1,12 +1,20 @@
 # JODLO — current state, 2026-11-03
 
-## 2026-11-03 — D1 bilateral-block and availability revision fence around synthetic Agora preflight (ENGINEERING PR, CI PENDING)
+## 2026-11-03 — Non-disclosing bilateral block verdict for private Agora safety read (ENGINEERING PR, CI PENDING)
+
+- **Privacy gap:** the private, caller-session-scoped D1 safety reader returned separate `blockedByCaller` and `blockedByWorker` booleans. The synthetic server preflight needs to know only whether *either* direction blocks contact. Even an internal result should not expose the other party's block direction in an accidental future caller-facing projection.
+- **Implementation:** return a single `contactBlocked` boolean from one SQL `CASE WHEN EXISTS(...) OR EXISTS(...)` projection. Verify exact 0/1, reject malformed adapter data and deny synthetic invites on `contactBlocked:true`; keep authenticated actor-only directional writes and underlying private D1 schema unchanged.
+- **Regression:** local SQLite D1 tests verify caller-only and worker-only blocks yield **identical** caller-scoped safety facts, both deny contact, the unrelated customer remains separate, malformed combined verdicts fail closed and no direction field is returned. Existing consent/availability/epoch-race and Node/TypeScript/Kotlin/local workerd checks remain required.
+- **Limits:** local test-only fence; no live Agora/RTC route, new migration, caller-facing reverse-block API, block reason/timestamp, retention/quota/presence policy, Android UI, Cloudflare staging or production. M-003/M-005/M-006/M-007/M-008 remain independent.
+- **CI pending:** require exact PR-head Foundation CI before merge and independent merged-main CI after. See [private safety contract](AGORA_PRIVATE_SAFETY_D1_PRIVACY_2026-11-03.md).
+
+## 2026-11-03 — D1 bilateral-block and availability revision fence around synthetic Agora preflight (MERGED, VERIFIED)
 
 - **Real non-Android integration gap fixed:** previous PR #186 five-reader synthetic preflight could be `prepared` using all-pass scripted availability and mutual-block facts despite the **private authoritative D1 blocker pairs and Worker availability intent** added in PR #187. Synthetic source assertions MUST NOT override existing private D1 denials.
 - **Change:** `apps/api/src/modules/interactions/agora-server-risk-sources.ts` now additionally reads current caller-owned `readLocalCallerAgoraSafetyFacts` after the original consent-epoch read and **before** five injected readers: requires separate available Worker preference with positive revision, neither direction blocked, identical original consent revision. All absent/OFF/blocked states deny before invoking any scripted check. After risk composition and existing original-epoch-bound fake invite, re-read private D1 state: both blocks still absent, intent still ON, **same availability revision** (OFF→ON cannot reuse old check) and **same consent revision**. The injected test clock is sampled after this final read.
 - **Regressions:** local D1-backed tests verify scripted `all-pass` cannot override either persisted block, the second customer remains scoped to their own pair, missing availability cannot imply online, availability OFF or OFF→ON during asynchronous check denies, and a block inserted just before the final private read vetoes fake invitation. See [private safety fence contract](AGORA_PRIVATE_D1_INVITE_FENCE_2026-11-03.md).
 - **Still NOT live contact:** even with Worker availability intent ON, the D1 read always says `workerPresence: unknown`, `rateGate: unknown`; the positive hypothetical tests use **injected fake presence/rate/connection sources**. There is no authenticated real provider presence, quota admission, user-facing call route, token/RTC/signaling, real caller data, Android, Cloudflare release or Finworkar change. M-003 retention, M-005 numeric/risk/presence rules and M-006/M-007/M-008 remain gated. Multiple reads do not provide cross-source atomicity.
-- **CI pending:** require exact PR-head and independently green merged-main Foundation CI, with no deployment.
+- **Verified:** [PR #188](https://github.com/rekixo-lab/jodlo/pull/188) merged as `0697d3c39454e911ee79f3c875538cd6222caf33`; [PR-head CI #41556516742](https://github.com/rekixo-lab/jodlo/actions/runs/41556516742) SUCCESS and [independent merged-main CI #41557059586](https://github.com/rekixo-lab/jodlo/actions/runs/41557059586) SUCCESS. No deployment.
 
 
 ## 2026-11-03 — Founder-approved PRIVATE Agora safety D1 schema implementation (MERGED, VERIFIED)
