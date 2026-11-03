@@ -1,5 +1,12 @@
 # JODLO — current state, 2026-11-03
 
+## 2026-11-03 — founder locked dedicated API Custom Domain (DNS-01 / CF-06)
+
+**Founder-confirmed production API hostname (2026-11-03):** `api.jodlo.rekixo.com`, canonical Android API **origin** `https://api.jodlo.rekixo.com` (without `/api/v1`), versioned API `https://api.jodlo.rekixo.com/api/v1`, health `https://api.jodlo.rekixo.com/api/v1/health`. The website stays at **`https://jodlo.rekixo.com`** and must NOT be routed to the API Worker. [ADR-0016](decisions/0016-jodlo-dedicated-custom-api-domain.md) supersedes old proposals placing the API under `jodlo.rekixo.com/api/v1`. **No Custom Domain, DNS/TLS, Worker deploy or live API is verified yet.** This records a founder decision, not a completed external action.
+
+**Engineering:** New `production:domain:write` / `production:domain:check` generate and locally validate an **opt-in, separate, ignored** Cloudflare release config with the ONLY route `{"pattern":"api.jodlo.rekixo.com","custom_domain":true}`. Existing protected no-route config remains unchanged. Creating/checking files makes **NO** remote Cloudflare changes; deployment/Custom Domain activation, TLS and API health must be owner-verified externally. [Exact operator plan](REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md).
+
+
 ## 2026-11-03 — real D1 consistency verified; CF-05 protected first Worker release prepared
 
 **CF-04 database integrity evidence (owner's actual Wrangler CLI, 2026-11-03):** `npx wrangler d1 execute jodlo-production --remote` returned **`PRAGMA quick_check = ok`**, and a separate **`PRAGMA foreign_key_check` returned no rows** on the specific real JODLO D1 UUID `723080b5-f165-4b31-839f-3063175824c7`. The eight production migrations and zero pending migrations were confirmed in the prior terminal output. D1 `quick_check` is limited verification, not a full SQLite `integrity_check`. **The Cloudflare Worker has NOT yet been deployed, no DNS route attached, real Google OAuth not configured and public acceptance is not green.**

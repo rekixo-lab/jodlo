@@ -1,5 +1,8 @@
 # JODLO native Android app — Customer and Worker flows
 
+> **PRODUCTION CLOUD API ORIGIN CONFIRMED 2026-11-03:** For real Android builds use `jodloApiOrigin=https://api.jodlo.rekixo.com` (no `/api/v1` here; the client adds it). Do not use old website host `jodlo.rekixo.com` as API origin. Domain is founder-confirmed but no live DNS/Worker has been deployed yet; use actual Google Web Client ID only after OAuth setup. [ADR-0016](../../../docs/decisions/0016-jodlo-dedicated-custom-api-domain.md).
+
+
 > **REAL PROVIDER INTEGRATION AUTHORIZED (2026-11-03):** Per [ADR-0015](../../../docs/decisions/0015-real-provider-integration-and-controlled-production.md), configure an actual verified JODLO HTTPS API origin and Google Web OAuth client ID in the **owner's local Gradle properties** and exercise the real installed Worker/Customer journey. Old debug-preview-only instructions below are historical build evidence, not an ongoing ban on cloud connection. [Ubuntu phone commands and owner steps](../../../docs/REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md). Never commit OAuth client secrets, signing keys or real tokens, and do not mistake an unconfigured debug APK for a connected release.
 
 

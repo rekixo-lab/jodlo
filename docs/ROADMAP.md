@@ -1,3 +1,11 @@
+## 2026-11-03 — API domain decision LOCKED; Cloudflare DNS/Custom Domain not attached
+
+- [x] **Founder approved exact API hostname:** `api.jodlo.rekixo.com`, API origin `https://api.jodlo.rekixo.com`, version prefix `/api/v1`; website `jodlo.rekixo.com` is a separate service. [ADR-0016](decisions/0016-jodlo-dedicated-custom-api-domain.md)
+- [ ] **Owner DNS/zone inspection:** correct Cloudflare account contains active `rekixo.com` zone, exact `api.jodlo` hostname has no conflicting records/routes; preserve all old websites and production Workers
+- [ ] **CF-05:** hardened no-route production config and first protected Worker code deployment (not done yet)
+- [ ] **CF-06:** explicit separate exact-host Custom Domain config `production:domain:write/check`, reviewed live deployment/attachment, verify DNS/TLS and `https://api.jodlo.rekixo.com/api/v1/health`
+- [ ] **GOOGLE-01:** real Cloudflare `GOOGLE_CLIENT_ID`, matching Google Web/Android clients, Android `jodloApiOrigin=https://api.jodlo.rekixo.com` and verified physical-phone sign-in
+
 ## 2026-11-03 — Real JODLO D1 is now verified; Cloudflare Worker is NEXT
 
 - [x] **CF-04 remote D1:** Eight schema migrations applied and no pending; actual `quick_check` was `ok` and `foreign_key_check` returned no violations

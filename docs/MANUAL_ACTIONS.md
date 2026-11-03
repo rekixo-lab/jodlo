@@ -1,5 +1,12 @@
 # JODLO — founder manual actions, owner gates and notification register
 
+## 2026-11-03 — DNS-01 custom API hostname FOUNDER CONFIRMED; CF-06 external setup pending
+
+**Founder-confirmed production API hostname (2026-11-03):** `api.jodlo.rekixo.com`, canonical Android API **origin** `https://api.jodlo.rekixo.com` (without `/api/v1`), versioned API `https://api.jodlo.rekixo.com/api/v1`, health `https://api.jodlo.rekixo.com/api/v1/health`. The website stays at **`https://jodlo.rekixo.com`** and must NOT be routed to the API Worker. [ADR-0016](decisions/0016-jodlo-dedicated-custom-api-domain.md) supersedes old proposals placing the API under `jodlo.rekixo.com/api/v1`. **No Custom Domain, DNS/TLS, Worker deploy or live API is verified yet.** This records a founder decision, not a completed external action.
+
+**Manual DNS-01 / CF-06 — NEEDS_OWNER_ACTION:** Cloudflare account must have active `rekixo.com` zone; inspect exact `api.jodlo.rekixo.com` DNS and custom-domain collisions before attaching the Worker. Do **not** touch apex/`www`/website or other Cloudflare projects. After verified no-route Worker upload, owner may intentionally use the separate exact-host Custom Domain config to deploy and attach public route; check actual managed TLS and `GET /api/v1/health`. Step-by-step [runbook](REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md). No real deployment command has yet been executed following the founder's confirmation.
+
+
 ## 2026-11-03 — CF-04 verification DONE, CF-05 owner Worker release NEXT
 
 **CF-04 database integrity evidence (owner's actual Wrangler CLI, 2026-11-03):** `npx wrangler d1 execute jodlo-production --remote` returned **`PRAGMA quick_check = ok`**, and a separate **`PRAGMA foreign_key_check` returned no rows** on the specific real JODLO D1 UUID `723080b5-f165-4b31-839f-3063175824c7`. The eight production migrations and zero pending migrations were confirmed in the prior terminal output. D1 `quick_check` is limited verification, not a full SQLite `integrity_check`. **The Cloudflare Worker has NOT yet been deployed, no DNS route attached, real Google OAuth not configured and public acceptance is not green.**

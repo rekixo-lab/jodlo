@@ -1,5 +1,8 @@
 # JODLO
 
+> **FOUNDER LOCKED CUSTOM API HOST (2026-11-03):** `https://api.jodlo.rekixo.com` is the Android production API **origin**, `https://api.jodlo.rekixo.com/api/v1` the endpoint prefix and `https://api.jodlo.rekixo.com/api/v1/health` the health URL. Website is **separate** at `https://jodlo.rekixo.com`. Do not follow older same-host `jodlo.rekixo.com/api/v1` sketches; [ADR-0016](docs/decisions/0016-jodlo-dedicated-custom-api-domain.md) is current. A **separate gitignored** exact Custom Domain config can be generated with `npm run production:domain:write`; this is **offline**, not an actual deployment. [DNS/operator runbook](docs/REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md). No live API/DNS/TLS has been verified.
+
+
 > **REAL CLOUDFLARE STATUS (2026-11-03):** Owner verified the actual remote `jodlo-production` D1: `PRAGMA quick_check=ok`, `foreign_key_check` no violations, eight migrations already applied. **Live Worker deployment is STILL pending.** The repository now provides `npm run production:config:harden` to safely upgrade the *existing gitignored real-ID* file to deny Cloudflare Version/Preview URLs. [Exact protected Cloudflare deployment instructions](docs/REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md) · [Owner actions](docs/MANUAL_ACTIONS.md).
 
 

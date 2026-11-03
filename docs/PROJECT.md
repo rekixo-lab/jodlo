@@ -1,5 +1,8 @@
 # JODLO — mission and working agreement
 
+> **FOUNDER VERIFIED API HOSTNAME 2026-11-03:** API `https://api.jodlo.rekixo.com/api/v1` is **separate** from planned website `https://jodlo.rekixo.com`. Dedicated `jodlo-api` Worker uses only exact `api.jodlo.rekixo.com` Custom Domain (Cloudflare), not website route. [ADR-0016](decisions/0016-jodlo-dedicated-custom-api-domain.md); no live domain or deployment evidence yet.
+
+
 > **CURRENT FOUNDER DIRECTIVE 2026-11-03:** [ADR-0015](decisions/0015-real-provider-integration-and-controlled-production.md) **supersedes** the 2026-10-27 local-only/no-remote-deploy agreement recorded below **for future execution**. Prioritize real provider connections (Cloudflare/Google and subsequently Agora/FCM/eligible payments) and controlled protected production deployment. [Owner steps](REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md). Retain JODLO identity, broad 889 Category review target (ADR-0011), approved UI, privacy/security/review gates, no secrets in git, no fictional live data, and Finworkar read-only.
 
 

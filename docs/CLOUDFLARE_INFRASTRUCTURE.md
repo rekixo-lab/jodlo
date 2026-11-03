@@ -1,5 +1,8 @@
 # JODLO Cloudflare-first infrastructure — detailed blueprint
 
+> **FOUNDER LOCKED API DOMAIN 2026-11-03:** API Worker `jodlo-api` has a *dedicated* exact-match Cloudflare Custom Domain **`api.jodlo.rekixo.com`** for `https://api.jodlo.rekixo.com/api/v1`; the public website stays `jodlo.rekixo.com`. Old single-host `jodlo.rekixo.com` + `/api/v1` topology below is a historical proposal, not current routing. Use [ADR-0016](decisions/0016-jodlo-dedicated-custom-api-domain.md) and [runbook](REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md). DNS/TLS activation has not occurred.
+
+
 > **CURRENT POLICY 2026-11-03:** [ADR-0015](decisions/0015-real-provider-integration-and-controlled-production.md) prioritizes connecting a **real dedicated JODLO Cloudflare Worker/D1 and protected production configuration**, not postponing provisioning until product completion. This document remains the infrastructure blueprint; actual provisioned resources, IDs, migrations, cost alerts, DNS and smoke checks must be separately evidenced. [Runbook](REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md). No staging is required, no automatic CI deployment and absolutely no Finworkar writes.
 
 
