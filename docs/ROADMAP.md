@@ -1,3 +1,7 @@
+- [x] **CF-04 REAL D1:** Eight remote schema migrations applied to the exact JODLO UUID, no pending, 13 tables. No Worker deploy or real OAuth yet.
+- [ ] **D1 verification:** Cloudflare-supported `PRAGMA quick_check` and `PRAGMA foreign_key_check` (not the restricted `integrity_check`) on the true remote D1.
+- [ ] **Next:** real Worker deployment preflight, protected Google Web/Android OAuth and a scoped DNS/HTTPS launch with genuine phone acceptance. [Runbook](REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md).
+
 ## CF-03 DONE — production D1 inspection verified (owner CLI, 2026-11-03)
 
 **Observed, not inferred:** authenticated Cloudflare account `8f31060fbcfee2b3e9309138cad7f12f`; local `production:config:check` passed; exact production D1 `jodlo-production` / `723080b5-f165-4b31-839f-3063175824c7` in APAC reported **0 tables, 0 recent reads/writes**; `d1 time-travel info` returned a current restore bookmark; `d1 migrations list --remote` returned **all eight** SQL files `0001` through `0008` as pending. The restore bookmark should be held privately by the operator, not committed to a public repository. No remote D1 write or Worker deployment has occurred.
