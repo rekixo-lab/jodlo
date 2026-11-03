@@ -328,7 +328,7 @@ test("same call ID replay, foreign actor and crash rollback never insert a secon
   const f = await trial();
   try {
     await enable(f);
-    assert.rejects(
+    await assert.rejects(
       stageUnsent(f, { crashBeforeCommit: true }),
       /test-only crash before commit/,
     );
