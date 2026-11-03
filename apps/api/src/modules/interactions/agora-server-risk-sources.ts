@@ -10,6 +10,10 @@ import {
   composeSyntheticAgoraInviteRisk,
   type SyntheticAgoraRiskIdentity,
 } from "./agora-risk-evidence.ts";
+import {
+  readLocalCallerAgoraSafetyFacts,
+  type LocalAgoraSafetyFacts,
+} from "./agora-private-safety-state.ts";
 
 /**
  * OFFLINE CONTRACT ONLY. These are five separately injected, server-owned,
@@ -66,15 +70,35 @@ function validTime(value: unknown): value is number {
     Number.isSafeInteger(value) && value >= 0;
 }
 
+/** This is an additional private D1 veto, NEVER positive evidence of
+ * online presence, an available call slot, a budget or provider readiness.
+ * All these must still come from separately approved authoritative sources.
+ */
+function privateStateAllowsRehearsal(
+  facts: LocalAgoraSafetyFacts | null,
+  originalConsentRevision: number,
+): facts is LocalAgoraSafetyFacts {
+  return facts !== null &&
+    facts.consentRevision === originalConsentRevision &&
+    facts.acceptingCalls === true &&
+    Number.isSafeInteger(facts.availabilityRevision) &&
+    facts.availabilityRevision > 0 &&
+    facts.blockedByCaller === false &&
+    facts.blockedByWorker === false;
+}
+
 /**
  * Actor-first local call preflight rehearsal:
  * 1. Current CALLER-owned D1 session/listing and enabled Worker consent epoch
- * 2. Five explicit independent synthetic source reads, all scoped ONLY to the
- *    server-resolved opaque caller/worker/listing identity (NO bearer/phone)
- * 3. Exact five-check composition with earliest source expiry
- * 4. A second current caller-session/listing/consent read; the original epoch
- *    MUST still match (OFF -> ON is not an old-call resurrection)
- * 5. Re-sample the injected test clock after all awaits, denying expired risk.
+ * 2. First PRIVATE D1 safety read rejects missing/off Worker availability
+ *    intent or a block in EITHER direction, bound to original consent epoch.
+ * 3. Five explicit independent synthetic sources receive ONLY the resolved
+ *    opaque caller/worker/listing identity (NO bearer/phone).
+ * 4. Exact five-check composition with earliest source expiry and a fresh
+ *    caller-session/listing/consent-epoch bound hypothetical invite.
+ * 5. Re-read private D1 state AFTER sources: require same consent AND
+ *    availability revisions, current availability ON and no current blocks.
+ * 6. Re-sample the injected test clock after ALL awaits; deny expired risk.
  *
  * IMPORTANT: even a positive "prepared" result is NOT an atomic real-call
  * permission. Other stores could change immediately after a SELECT. A real
@@ -101,6 +125,15 @@ export async function prepareSyntheticServerRiskReadAgoraInvite(
       db, callerBearer, listingId,
     );
     if (!initial) return DENIED;
+    // A synthetic "all-pass" source can NEVER override a real private block,
+    // missing explicit availability preference or a stale consent epoch.
+    const firstSafety = await readLocalCallerAgoraSafetyFacts(
+      db, callerBearer, listingId,
+    );
+    if (!privateStateAllowsRehearsal(
+      firstSafety, initial.consentRevision,
+    )) return DENIED;
+
     // Absolutely no bearer or arbitrary client worker ID in source scope.
     const identity: SyntheticAgoraRiskIdentity = Object.freeze({
       callerAccountId: initial.target.requesterAccountId,
@@ -119,15 +152,26 @@ export async function prepareSyntheticServerRiskReadAgoraInvite(
     const prepared = await prepareSyntheticConsentEpochBoundAgoraInvite(
       db, callerBearer, listingId, callId, gatheredAt, ringDeadlineMs, risk,
     );
-    const finishedAt = clockNow();
-    if (!validTime(finishedAt) || finishedAt < gatheredAt ||
-        finishedAt >= risk.expiresAtMs ||
-        finishedAt >= ringDeadlineMs ||
-        prepared.kind !== "prepared" ||
+    if (prepared.kind !== "prepared" ||
         prepared.originalConsentRevision !== initial.consentRevision ||
         prepared.call.callerAccountId !== identity.callerAccountId ||
         prepared.call.workerAccountId !== identity.workerAccountId ||
         prepared.call.listingId !== identity.listingId) return DENIED;
+
+    // No implicit "block: false" from a scripted source can undo a current
+    // real D1 relationship block. Availability OFF->ON increments its epoch.
+    const finalSafety = await readLocalCallerAgoraSafetyFacts(
+      db, callerBearer, listingId,
+    );
+    const finishedAt = clockNow();
+    if (!validTime(finishedAt) || finishedAt < gatheredAt ||
+        finishedAt >= risk.expiresAtMs ||
+        finishedAt >= ringDeadlineMs ||
+        !privateStateAllowsRehearsal(
+          finalSafety, initial.consentRevision,
+        ) ||
+        finalSafety.availabilityRevision !==
+          firstSafety.availabilityRevision) return DENIED;
     return prepared;
   } catch {
     // Do not leak source presence, block, abuse or session details.
