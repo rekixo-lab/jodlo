@@ -58,8 +58,9 @@ internal class DebugCustomerPreviewSender : RequestSender {
         return when {
             uri.path == "/api/v1/catalog" -> browse(uri)
             uri.path == "/api/v1/catalog/search" -> search(uri)
-            uri.path == "/api/v1/listings" -> listings(uri)
-            uri.path?.startsWith("/api/v1/listings/") == true -> listingDetail(uri)
+            uri.path == "/api/v1/listings" ->
+                if (uri.getQueryParameter("id") != null) listingDetail(uri)
+                else listings(uri)
             else -> unavailable()
         }
     }
@@ -176,8 +177,9 @@ internal class DebugCustomerPreviewSender : RequestSender {
      * does not imply a worker exists or that the synthetic listing is live.
      */
     private fun listingDetail(uri: Uri): TransportReply {
-        if (uri.query != null) return invalid()
-        val id = uri.lastPathSegment ?: return invalid()
+        if (uri.queryParameterNames != setOf("id") ||
+            uri.getQueryParameters("id").size != 1) return invalid()
+        val id = uri.getQueryParameter("id") ?: return invalid()
         val category = categories.firstOrNull { id in demoListingIds(it.id) }
             ?: return notFound()
         return success(JSONObject().put("listing",
