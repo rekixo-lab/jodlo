@@ -64,4 +64,9 @@
     <string name="demo_enable">Explore offline sample services (debug only)</string>
     <string name="demo_disable">Close offline sample</string>
     <string name="demo_readonly_notice">SAMPLE DATA ONLY • Not real workers or approved live Categories. This preview makes no network requests and cannot call, sign in or publish.</string>
+    <string name="filter_published_services">Only categories with published services</string>
+    <string name="back_to_listings">Back to service listings</string>
+    <string name="listing_detail_heading">Current public listing</string>
+    <string name="listing_no_longer_public">This listing is no longer public. Return to the category and refresh.</string>
+    <string name="listing_detail_private_notice">Only the service Category and reference are public. No worker contact, identity verification or call availability is confirmed here.</string>
 </resources>

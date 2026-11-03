@@ -8,7 +8,7 @@ import { resolveGoogleAccount } from "../modules/identity/google-accounts.ts";
 import { issueSession, makeSessionVerifier, revokeAllSessions, revokeSession, SESSION_TTL_SECONDS } from "../modules/identity/sessions.ts";
 import { hasEmptyBody, readGoogleLoginBody, readServiceListingBody } from "./body.ts";
 import { validCategoryId } from "../modules/shared/identifiers.ts";
-import { publishListing, myListings, pageMyListings, parseOwnListingsPage, publicListings, pagePublicListings, unpublishListing } from "../modules/workers/listings.ts";
+import { publishListing, myListings, pageMyListings, parseOwnListingsPage, publicListings, pagePublicListings, publicListingDetail, unpublishListing } from "../modules/workers/listings.ts";
 import {
   allowGoogleAccountLogin, allowLoginBurst,
   LOGIN_BURST_RETRY_SECONDS, ACCOUNT_LOGIN_RETRY_SECONDS,
@@ -195,6 +195,23 @@ export async function handleRequest(
     const methodError=getOnly(request);
     if(methodError)return methodError;
     const params=url.searchParams;
+    // Opt-in fresh public detail on the EXISTING founder-reviewed listings
+    // route. Exactly one opaque id; no extra params, body or private metadata.
+    if(params.has("id")) {
+      const id=params.get("id");
+      if(params.size!==1||params.getAll("id").length!==1||
+          !validOpaqueId(id)||!(await hasEmptyBody(request))) {
+        return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid listing detail request"}},400);
+      }
+      if(!env.DB)return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Listings unavailable"}},503);
+      try {
+        const listing=await publicListingDetail(env.DB,id!);
+        if(!listing)return json({ok:false,error:{code:"NOT_FOUND",message:"Listing not found"}},404);
+        return json({ok:true,data:{listing}});
+      }catch{
+        return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Listings unavailable"}},503);
+      }
+    }
     const categoryId=params.get("categoryId");
     const rawLimit=params.get("limit");
     const after=params.get("after");

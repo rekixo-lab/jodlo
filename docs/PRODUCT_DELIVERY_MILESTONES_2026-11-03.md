@@ -19,8 +19,8 @@ Working order: identify founder-approved scope → implement complete user-visib
 
 | Order | Milestone and outcome | Current gate |
 | --- | --- | --- |
-| **A — NOW** | **Offline debug APK Customer preview.** Explicit opt-in sample dataset for existing Compose Browse, Hindi/English Search, Category selection, public listing pages and back/navigation; no network. User can try the flow on a phone and give screen/UX feedback without fabricating production records. | Code/build; this is the present PR |
-| **B** | **Live public Customer discovery and genuinely useful worker/service details.** Reuse real catalog, moderated listings, safe listing-detail projections and end-to-end Android states. Do not show worker ID, home address, phone, verification, location or calling availability without exact policy/data selection. | Review/activate Categories safely; M-003/M-005 public disclosure details |
+| **A — CI VERIFIED; PHONE PENDING** | **Offline debug APK Customer preview.** Explicit opt-in sample dataset for existing Compose Browse, Hindi/English Search, Category selection, public listing pages and back/navigation; no network. User can try the flow on a phone and give screen/UX feedback without fabricating production records. | Code/build; this is the present PR |
+| **B — IN PROGRESS** | **Live public Customer discovery and genuinely useful worker/service details.** Reuse real catalog, moderated listings, safe listing-detail projections and end-to-end Android states. Do not show worker ID, home address, phone, verification, location or calling availability without exact policy/data selection. | Review/activate Categories safely; M-003/M-005 public disclosure details |
 | **C** | **Actual Google Worker onboarding, own listings and reliable mobile sessions.** Existing Android Core/Compose wiring is present. Verify approved HTTPS backend, Google Web OAuth client, Android credential setup, errors/logout and low-end device behaviour. | M-008 provider setup and M-007 release environment; no fake production login |
 | **D** | **Direct in-app Agora AUDIO call, end-to-end.** Worker default-OFF consent; server-owned admission, actual presence/busy/rate/blocks/report, D1/DO boundary, signaling, device incoming ring, RTC token issuer, no-duplicate and UNKNOWN reconciliation, tests against fake provider then gated real-provider acceptance. | M-003 retention/export/deletion, M-005 live rules, M-006 provider credentials/policy |
 | **E** | **Privacy/admin operational completeness.** Account deletion/export, backups/restores, abuse/appeals/moderation, local service-area consent, secure media/push; no unapproved personal data. | M-003/M-005 decisions and storage design |
@@ -30,7 +30,11 @@ Working order: identify founder-approved scope → implement complete user-visib
 
 **Decisions not yet supplied:** actual public Category approval/activation, service-area and personal-data policy, block-history and call-intent retention/export/deletion, live worker presence/busy and anti-spam numeric thresholds, user-report/appeal process, real provider signaling/ACK and operational credentials, production release acceptance. Broad standing engineering permission does **not** invent values.
 
-## Acceptance for A (this PR)
+## Milestone B first implementation (current PR)
+
+The first cohesive customer discovery step is a published-listing-only filter across **actual** Android Browse, Hindi/English Search and keyset continuation, plus an explicit per-Listing detail tap that rechecks the current server-owned public eligibility using one anonymous API read. The response is the original minimal `id` and `categoryId` allowlist; a useful full Worker profile cannot be invented until M-003/M-005 disclosure and identity policy is chosen. Existing debug sample includes Categories with no synthetic Listings to verify toggle behavior. [Implementation contract and gate](CUSTOMER_PUBLISHED_SERVICE_DISCOVERY_2026-11-03.md). No published unreviewed Categories, real Worker contact, device/provider setup or Cloudflare deploy.
+
+## Acceptance for A (merged PR #199; on-device review pending)
 
 - In **unconfigured debug APK**, Customer tab clearly offers to opt into an **OFFLINE SAMPLE**; it is off by default. The sample uses a bounded, obvious `demo_` namespace and synthetic Category/Listing data. No production D1 Categories, real worker personas or phone numbers are created.
 - Customer can browse sample entries, switch Hindi/English, search and select a Category, display public listing entries, load continuation pages, back out and disable the sample. The same production `RemoteCatalogRepository` and strict reply decoder protect sample results; do not implement a second client/network stack.

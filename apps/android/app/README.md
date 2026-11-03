@@ -1,5 +1,11 @@
 # JODLO native Android app — Customer and Worker flows
 
+## 2026-11-03 — Customer published-service filter + fresh public Listing detail
+
+Customer's **“Only categories with published services”** filter now uses the existing backend `availableOnly=1` for real Hindi/English Category browse and Search, including pagination. This is NOT Worker presence, availability for Agora calls or a verified badge. Selecting a Category still opens the existing paged public Listings; **tapping a Listing** now does one anonymous `GET /api/v1/listings/:id`, so the server rechecks publication, moderation, account and Category **at the moment of detail navigation**. If the old listing is no longer public, a 404 message is displayed and no private Worker fields are revealed. The only detail shown is the existing `id`/Category, pending approved public profile disclosure rules.
+
+The clearly labeled **OFFLINE SAMPLE** in the debug APK supports this too: enable it explicitly, toggle published-only, observe six `demo_service_26…31` sample Categories disappear, open `demo_plumbing`, load the next page of 27 sample Listing IDs, tap one to view the currently synthetic public detail and use Back. With sample OFF, no live backend remains available by default. The Worker tab stays on real OAuth/backend only. [Feature acceptance](../../../docs/CUSTOMER_PUBLISHED_SERVICE_DISCOVERY_2026-11-03.md). Phone smoke-test still required; Android/Foundation CI passing is not on-device acceptance.
+
 ## 2026-11-03 — usable OFFLINE Customer discovery preview in debug APK
 
 **This is executable app UI, not another backend test-only call experiment.** When the default debug APK has no configured HTTPS origin, Customer now offers **Explore offline sample services**. It is **off by default**, requires an explicit tap, and prominently says the data is synthetic—not real worker accounts or approved live Categories. The example adapter `DebugCustomerPreviewSender.kt` implements the existing **read-only** Kotlin `RequestSender`, feeding actual `RemoteCatalogRepository`, route validation, pagination validation and strict JSON DTO decoding. It never opens a socket and cannot be used to log in, post a listing, make a call or pay.

@@ -38,6 +38,14 @@ interface PublicListingPageRepository {
                      after: String? = null): ApiOutcome<PublicListingPage>
 }
 
+/** One fresh public Listing GET for explicit user navigation. The same
+ * category as the tapped row must be returned or the client rejects it.
+ * This is visibility, NEVER consent to contact a Worker.
+ */
+interface PublicListingDetailRepository {
+    fun listingDetail(listingId: String, expectedCategoryId: String): ApiOutcome<PublicListing>
+}
+
 /** Optional private owner pagination, distinct from legacy WorkerRepository
  * so existing fake clients and implementations do not change.
  * Server alone authenticates the bearer and validates same-owner cursor.
@@ -75,7 +83,8 @@ internal fun browseCursorAdvances(after: String?, next: String): Boolean {
 }
 
 class RemoteCatalogRepository(private val sender: RequestSender) :
-    CatalogRepository, PublicListingPageRepository, CatalogSearchCursorRepository {
+    CatalogRepository, PublicListingPageRepository, CatalogSearchCursorRepository,
+    PublicListingDetailRepository {
     override fun browse(language: Language, availableOnly: Boolean,
                         limit: Int, after: String?): ApiOutcome<CatalogBrowse> {
         val call = JodloRoutes.browse(language, availableOnly, limit, after)
@@ -119,6 +128,16 @@ class RemoteCatalogRepository(private val sender: RequestSender) :
                         (dto.categories.size == limit && dto.categories.isNotEmpty() &&
                             dto.categories.last().id == dto.nextCursor.substringAfter(':') &&
                             browseCursorAdvances(after, dto.nextCursor)))
+            }
+    }
+
+    override fun listingDetail(
+        listingId: String, expectedCategoryId: String,
+    ): ApiOutcome<PublicListing> {
+        val call = JodloRoutes.publicListingDetail(listingId)
+        return performOnce(call, sender::send, JodloReplyDecoder::publicListingDetail)
+            .validated { dto ->
+                dto.id == listingId && dto.categoryId == expectedCategoryId
             }
     }
 

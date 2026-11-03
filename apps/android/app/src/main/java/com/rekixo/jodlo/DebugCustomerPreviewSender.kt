@@ -55,11 +55,33 @@ internal class DebugCustomerPreviewSender : RequestSender {
             call.bodyUtf8() != null
         ) return unavailable()
         val uri = Uri.parse(call.resource)
-        return when (uri.path) {
-            "/api/v1/catalog" -> browse(uri)
-            "/api/v1/catalog/search" -> search(uri)
-            "/api/v1/listings" -> listings(uri)
+        return when {
+            uri.path == "/api/v1/catalog" -> browse(uri)
+            uri.path == "/api/v1/catalog/search" -> search(uri)
+            uri.path == "/api/v1/listings" ->
+                if (uri.getQueryParameter("id") != null) listingDetail(uri)
+                else listings(uri)
             else -> unavailable()
+        }
+    }
+
+    /** Synthetic availability means sample listings exist, NOT real presence,
+     * busy slots or call consent. Public API uses the same category-only facet.
+     */
+    private fun eligible(uri: Uri): List<Category> =
+        if (uri.getQueryParameter("availableOnly") == "1") {
+            categories.filter { demoListingIds(it.id).isNotEmpty() }
+        } else categories
+
+    private fun demoListingIds(categoryId: String): List<String> {
+        val number = categoryId.removePrefix("demo_service_").toIntOrNull()
+        val count = when {
+            categoryId == "demo_plumbing" -> 27
+            number != null && number >= 26 -> 0
+            else -> 2
+        }
+        return (1..count).map { index ->
+            "demo_listing_${categoryId}_${index.toString().padStart(2, '0')}"
         }
     }
 
@@ -67,11 +89,12 @@ internal class DebugCustomerPreviewSender : RequestSender {
         val language = uri.getQueryParameter("lang")
         if (language !in listOf("hi", "en")) return invalid()
         val limit = pageSize(uri) ?: return invalid()
-        val start = cursorStart(uri.getQueryParameter("after"), categories)
+        val visible = eligible(uri)
+        val start = cursorStart(uri.getQueryParameter("after"), visible)
             ?: return invalid()
-        val selected = categories.drop(start).take(limit)
-        val next = if (start + selected.size < categories.size) {
-            categoryCursor(start + selected.lastIndex)
+        val selected = visible.drop(start).take(limit)
+        val next = if (start + selected.size < visible.size) {
+            categoryCursor(categories.indexOf(selected.last()))
         } else null
         return success(JSONObject()
             .put("language", language)
@@ -92,7 +115,7 @@ internal class DebugCustomerPreviewSender : RequestSender {
         ) return invalid()
         val limit = pageSize(uri) ?: return invalid()
         val needle = query.lowercase(Locale.ROOT)
-        val matches = categories.filter {
+        val matches = eligible(uri).filter {
             val label = if (language == "hi") it.hi else it.en
             label.lowercase(Locale.ROOT).contains(needle) ||
                 it.slug.lowercase(Locale.ROOT).contains(needle)
@@ -132,10 +155,7 @@ internal class DebugCustomerPreviewSender : RequestSender {
         val categoryId = uri.getQueryParameter("categoryId")
         if (categoryId == null || categories.none { it.id == categoryId }) return invalid()
         val limit = pageSize(uri) ?: return invalid()
-        val count = if (categoryId == "demo_plumbing") 27 else 2
-        val all = (1..count).map { number ->
-            "demo_listing_${categoryId}_${number.toString().padStart(2, '0')}"
-        }
+        val all = demoListingIds(categoryId)
         val after = uri.getQueryParameter("after")
         val start = if (after == null) 0 else {
             val index = all.indexOf(after)
@@ -151,6 +171,19 @@ internal class DebugCustomerPreviewSender : RequestSender {
                 }
             })
             .put("nextCursor", next ?: JSONObject.NULL))
+    }
+
+    /** A fresh local sample lookup uses the production two-field DTO. It
+     * does not imply a worker exists or that the synthetic listing is live.
+     */
+    private fun listingDetail(uri: Uri): TransportReply {
+        if (uri.queryParameterNames != setOf("id") ||
+            uri.getQueryParameters("id").size != 1) return invalid()
+        val id = uri.getQueryParameter("id") ?: return invalid()
+        val category = categories.firstOrNull { id in demoListingIds(it.id) }
+            ?: return notFound()
+        return success(JSONObject().put("listing",
+            JSONObject().put("id", id).put("categoryId", category.id)))
     }
 
     private fun pageSize(uri: Uri): Int? =
@@ -179,6 +212,11 @@ internal class DebugCustomerPreviewSender : RequestSender {
         TransportReply(400, JSONObject().put("ok", false)
             .put("error", JSONObject().put("code", "INVALID_QUERY")
                 .put("message", "Invalid local preview query")).toString())
+
+    private fun notFound(): TransportReply =
+        TransportReply(404, JSONObject().put("ok", false)
+            .put("error", JSONObject().put("code", "NOT_FOUND")
+                .put("message", "Synthetic listing not found")).toString())
 
     private fun unavailable(): TransportReply =
         TransportReply(503, JSONObject().put("ok", false)

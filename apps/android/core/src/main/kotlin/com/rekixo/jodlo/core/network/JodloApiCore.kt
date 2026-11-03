@@ -113,6 +113,14 @@ object JodloRoutes {
         return ApiCall.get("/api/v1/catalog/search?${p.joinToString("&")}")
     }
 
+    /** Detail is an anonymous fresh public D1 read. No client-supplied owner
+     * account, worker bearer, location or calling permission is accepted.
+     */
+    fun publicListingDetail(listingId: String): ApiCall {
+        requireListingId(listingId)
+        return ApiCall.get("/api/v1/listings?id=${enc(listingId)}")
+    }
+
     fun publicListings(categoryId: String): ApiCall {
         requireCategoryId(categoryId)
         return ApiCall.get("/api/v1/listings?categoryId=${enc(categoryId)}")
