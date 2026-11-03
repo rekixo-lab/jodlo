@@ -2,6 +2,16 @@
 
 **Founder directive (2026-10-27): Whenever a manual action becomes genuinely necessary, the AI must tell the founder clearly and promptly during the active JODLO chat.** Persist it here so each future engineer/chat knows what is pending, why, and how to continue. The assistant handles automatable engineering itself; only the founder makes decisions, approvals and external account actions.
 
+## 2026-11-03 founder permission — private Agora safety D1 engineering (DONE for local implementation; NOT live-policy approval)
+
+**FOUNDER ENGINEERING PERMISSION DONE:** The founder said **"pemission aproovd do it"** after the next priority was identified as *"real availability, mutual-block and abuse-control data के लिए D1 schema तथा privacy/retention design की तैयारी"*. This explicitly authorizes continuing the **local-first backend implementation and privacy/schema design**, including a constrained private worker availability switch, bilateral block relationship model and aggregate-only abuse-counter schema, with tests. Do **not** reinterpret unspecified numeric windows, thresholds, appeal/retention or production release as approved.
+
+**M-003 STILL UPCOMING (specific choices):** Decide how long account-linked block relationships and bounded abuse aggregates are retained (including backups and deletion/export), whether users receive block disclosure/appeal details, whether any real call metadata is saved, and any eventual location consent. The draft deliberately stores no call IDs, phone numbers, GPS, raw tokens, device/IP, message or block reason. Deletion FK cascade is tested but not a complete privacy-rights workflow.
+
+**M-005 STILL PARTIAL (live operations):** Worker separate call opt-in remains DONE/default OFF (ADR-0014); *availability intent is not online/push presence*. Need explicit operational semantics, anti-spam numeric limit and window, report/block dispute flow, busy/concurrency policy, expiry and cross-store admission. Without these, the internal safety reader returns **workerPresence=unknown** and **rateGate=unknown**—never an automatic invite grant. No real availability, blocks or abuse API/RTC dispatch is activated.
+
+**M-006/M-007/M-008:** Agora provider/token, remote production-only deployment and live Google OAuth remain separately gated. No remote database migration, Android changes, legacy Finworkar writes, or founder credential request. [Privacy/data contract](AGORA_PRIVATE_SAFETY_D1_PRIVACY_2026-11-03.md), [migration 0008](../infra/migrations/0008_agora_private_safety_state.sql). Merge gate: green PR-head and independent merged-main GitHub CI.
+
 ## Owner-action communication protocol
 
 1. **Check at the start of every JODLO session:** read `AGENTS.md`, this register and `STATUS.md`; verify the latest main commit, open PRs and actual Actions status. Do not assume previous chat Memory can substitute for repository instructions.
