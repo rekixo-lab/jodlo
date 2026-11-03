@@ -118,7 +118,7 @@ object JodloRoutes {
      */
     fun publicListingDetail(listingId: String): ApiCall {
         requireListingId(listingId)
-        return ApiCall.get("/api/v1/listings/${enc(listingId)}")
+        return ApiCall.get("/api/v1/listings?id=${enc(listingId)}")
     }
 
     fun publicListings(categoryId: String): ApiCall {
