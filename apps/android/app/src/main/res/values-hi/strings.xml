@@ -42,6 +42,12 @@
     <string name="worker_listing_selected">चुनी हुई सेवा सूची</string>
     <string name="worker_load_more">अगला पृष्ठ देखें</string>
     <string name="worker_unpublish_selected">चुनी हुई सेवा सूची हटाएँ</string>
+    <string name="worker_customer_preview_heading">ग्राहक को दिखने वाली सेवा जाँचें</string>
+    <string name="worker_customer_preview_explainer">ग्राहक की तरह इस सेवा की नई सार्वजनिक जानकारी देखें। इससे वर्कर के ऑनलाइन होने या कॉल उठाने की पुष्टि नहीं होती।</string>
+    <string name="worker_customer_preview_check">अभी सार्वजनिक सेवा जाँचें</string>
+    <string name="worker_customer_preview_visible">यह सेवा अभी सार्वजनिक एपीआई में मिल रही है। इससे पहचान सत्यापित या कॉल की अनुमति नहीं मिलती।</string>
+    <string name="worker_customer_preview_not_public">यह सेवा अभी सार्वजनिक नहीं है। अप्रकाशित, छिपी या अनुपलब्ध हो सकती है; कारण यहाँ नहीं बताया जाता।</string>
+    <string name="worker_customer_preview_failed">सार्वजनिक स्थिति की पुष्टि नहीं हुई। दिखाई देना या न दिखना मानकर न चलें; दोबारा जाँचें।</string>
     <string name="worker_publish_category">सेवा श्रेणी प्रकाशित करें</string>
     <string name="worker_publish_explainer">स्वीकृत सक्रिय श्रेणी चुनें। प्रकाशन से पहचान सत्यापित नहीं होती।</string>
     <string name="worker_category_search_hint">स्वीकृत सक्रिय श्रेणियों में हिन्दी या English से खोजें। किसी श्रेणी में अभी सेवा प्रकाशित न हो तब भी उसे चुन सकते हैं।</string>
@@ -52,7 +58,7 @@
     <string name="worker_publish_selected">चुनी हुई श्रेणी प्रकाशित करें</string>
     <string name="worker_read_failed">वर्तमान जानकारी की पुष्टि नहीं हुई; कोई बदलाव नहीं किया गया।</string>
     <string name="worker_operation_failed">कार्रवाई की पुष्टि नहीं हुई। दोबारा करने से पहले वर्तमान स्थिति जाँचें।</string>
-    <string name="worker_write_confirmed">सर्वर ने बदलाव की पुष्टि की। वर्तमान स्थिति देखने के लिए सूची ताज़ा करें।</string>
+    <string name="worker_write_confirmed">सर्वर ने बदलाव की पुष्टि की। मेरी सेवा सूचियाँ देखें और ग्राहक को दिखने वाली स्थिति जाँचें; सूची न मिले तो फिर से ताज़ा करें।</string>
     <string name="worker_uncertain_write">नेटवर्क परिणाम अनिश्चित है: बदलाव हो भी सकता है। अपने आप फिर से न करें।</string>
     <string name="worker_recheck_read_only">केवल अपनी सूची का एक पृष्ठ पढ़ें</string>
     <string name="worker_recheck_not_proof">वर्तमान दृश्यता पिछले बदलाव की पुष्टि नहीं है।</string>

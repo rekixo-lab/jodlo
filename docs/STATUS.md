@@ -1,5 +1,11 @@
 # JODLO — current state, 2026-11-03
 
+## 2026-11-03 — Worker ↔ Customer publishing visibility journey (ENGINEERING PR; CI PENDING)
+
+- **User-visible Worker improvement:** Confirmed Worker publication/unpublication now attempts one private **read-only owner-page refresh**; an uncertain write still does not auto-retry or auto-reconcile.  select an owned Listing and check whether a **fresh anonymous Customer detail GET** currently returns it. Explicit `visible`, `not public (404)` and `unknown/unverified` states; no bearer/Worker identity in the Customer request. Old verification clears on changing selected Listing, owner refresh, logout or write; no public identity verification or Agora presence is inferred.
+- **Actual cross-role local API journey:** new migrated SQLite + real HTTP router integration test connects opt-in → publish → Guest available-only Hindi/English Browse/Search + Listing detail → owner Unpublish → Guest 404/empty → explicit re-publish, with other-account isolation and moderator/account/Category revocation. Only the external auth verifier is a test fixture. [Acceptance](WORKER_TO_CUSTOMER_PUBLIC_VISIBILITY_2026-11-03.md). Real Google OAuth and production Cloudflare are NOT connected.
+- **Gate:** exact PR-head Foundation and Android-native JDK17/21 CI, mergeability/expected SHA and independent merged-main verification; physical phone acceptance remains separate. No staging/deployment, Finworkar changes, provider credentials or 889-Category activation.
+
 ## 2026-11-03 — Worker selectable Category Search + safe publish UI (ENGINEERING PR; CI PENDING)
 
 - **Product journey rather than a test-only PR:** real Android Worker Dashboard now offers Hindi/English search over the server-approved active Category set, exact submitted-query keyset continuation, Browse-all fallback, reset-on-language/query, selected-Category-only publish, honest empty/error/retry states, and localized copy. Reuses *existing* server Search, Kotlin Core repository/decoder and owner-authenticated Worker publish scope. Does not duplicate endpoints, data storage or client networking. [Acceptance](WORKER_CATEGORY_SEARCH_PUBLISH_2026-11-03.md).

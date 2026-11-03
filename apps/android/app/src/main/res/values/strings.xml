@@ -42,6 +42,12 @@
     <string name="worker_listing_selected">Selected listing</string>
     <string name="worker_load_more">Load next page</string>
     <string name="worker_unpublish_selected">Unpublish selected listing</string>
+    <string name="worker_customer_preview_heading">Customer view check</string>
+    <string name="worker_customer_preview_explainer">Read this service exactly as a Customer would, using a fresh public request. This does not test whether the worker is online or can receive calls.</string>
+    <string name="worker_customer_preview_check">Check current public listing</string>
+    <string name="worker_customer_preview_visible">Currently returned by the public service API. This is not identity verification or permission to call.</string>
+    <string name="worker_customer_preview_not_public">This service is not currently public. It may be unpublished, hidden or unavailable. No reason is disclosed here.</string>
+    <string name="worker_customer_preview_failed">Could not confirm public visibility. Do not assume it is public or hidden; try again.</string>
     <string name="worker_publish_category">Publish a service Category</string>
     <string name="worker_publish_explainer">Choose an approved active Category. Publishing is not identity verification.</string>
     <string name="worker_category_search_hint">Search in Hindi or English across approved active Categories. A Category can be selected even if nobody has published it yet.</string>
@@ -52,7 +58,7 @@
     <string name="worker_publish_selected">Publish selected Category</string>
     <string name="worker_read_failed">Could not verify current data; nothing has been changed.</string>
     <string name="worker_operation_failed">Operation not confirmed. Review current status before trying again.</string>
-    <string name="worker_write_confirmed">Server confirmed the change. Refresh listings to inspect current visibility.</string>
+    <string name="worker_write_confirmed">Server confirmed the change. Review My listings and check the current Customer view; refresh again if the list is missing.</string>
     <string name="worker_uncertain_write">Network result uncertain: the change MAY have happened. Do not retry it automatically.</string>
     <string name="worker_recheck_read_only">Read one owner page (no write)</string>
     <string name="worker_recheck_not_proof">Current visibility is not proof that the prior write committed.</string>

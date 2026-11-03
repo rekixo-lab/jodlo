@@ -1,5 +1,11 @@
 # JODLO native Android app — Customer and Worker flows
 
+## 2026-11-03 — fresh Customer-visible verification after Worker publication
+
+After a genuine Worker session has published a Category, the app performs one owner read-only listing refresh **only if that write was confirmed** (never on an uncertain result). refresh **My listings**, tap an owned Listing and choose **Check current public listing**. This performs the **same anonymous, strict two-field Listing detail GET** as a Customer, with no owner bearer or private worker fields. It displays fresh **visible**, **not public (404)** or **unable to verify** states, never inferring verified identity, Agora availability or permission to call. Selecting another row, logging out or starting a write clears the previous check. Existing owner-only Unpublish remains explicit and uncertain writes are not automatically retried.
+
+A new migrated-D1/HTTP test validates the whole local journey: Worker opt-in → publish → Customer available-only bilingual Browse/Search/listings/detail → owner Unpublish → Customer 404/empty → explicit republish. This is **locally exercised source behavior**, not an operational Google login or production cloud deployment. [Detailed acceptance](../../../docs/WORKER_TO_CUSTOMER_PUBLIC_VISIBILITY_2026-11-03.md).
+
 ## 2026-11-03 — Worker Category Search and explicit publication
 
 The native **Worker Dashboard** now supports Hindi/English Category Search through the existing bounded `/api/v1/catalog/search?cursor=1` API and 20-item continuation, as well as the existing all-active-Category browse. This makes the full reviewed 889-Category direction navigable without pretending all 889 Categories are activated. Changing language or launching a new query clears old selection and cursor; typing after a submitted search does not change its continuation. Invalid queries, empty matches, failed pages and explicit retry have bilingual screen states.
