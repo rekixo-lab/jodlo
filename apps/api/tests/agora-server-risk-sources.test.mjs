@@ -298,3 +298,31 @@ test("private availability OFF or OFF-ON during source awaits denies stale candi
     assert.equal((await f.prepare(sources)).kind,"prepared");
   }finally{f.close();}
 });
+
+test("a block inserted just before final D1 safety recheck denies",async()=>{
+  const f=await fixture();
+  try{
+    assert.equal((await f.opt(true,0)).kind,"updated");
+    assert.equal((await f.availability(true,0)).kind,"updated");
+    let safetyReads=0;
+    const adapter={
+      prepare(sql){
+        if(sql===READ_CALLER_AGORA_PRIVATE_SAFETY_QUERY){
+          safetyReads++;
+          if(safetyReads===2){
+            f.db.prepare(
+              "INSERT INTO agora_account_blocks(blocker_account_id,blocked_account_id) VALUES(?,?)"
+            ).run(WORKER,CALLER);
+          }
+        }
+        return f.adapter.prepare(sql);
+      },
+    };
+    assert.deepEqual(await f.prepare(sourcePorts(),()=>NOW,f.caller,adapter),
+      DENIED,"scripted unblocked evidence cannot override a late D1 block");
+    assert.equal(safetyReads,2);
+    assert.deepEqual(await f.prepare(),DENIED);
+    assert.deepEqual(await f.block(f.worker,CALLER,false),{kind:"updated"});
+    assert.equal((await f.prepare()).kind,"prepared");
+  }finally{f.close();}
+});
