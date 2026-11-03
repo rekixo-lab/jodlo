@@ -22,6 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.rekixo.jodlo.core.network.ApiOutcome
 import com.rekixo.jodlo.core.network.HeadlessWorkerWriteScope
 import com.rekixo.jodlo.core.network.InMemorySessionCoordinator
 import com.rekixo.jodlo.core.network.Language
@@ -34,12 +35,17 @@ import com.rekixo.jodlo.core.network.WorkerState
 import com.rekixo.jodlo.core.network.WorkerWriteCompletion
 import com.rekixo.jodlo.core.network.WorkerWriteState
 import com.rekixo.jodlo.ui.theme.JodloButton
+import com.rekixo.jodlo.ui.theme.JodloChip
+import com.rekixo.jodlo.ui.theme.JodloSearchField
 import com.rekixo.jodlo.ui.theme.JodloTextAction
 import com.rekixo.jodlo.ui.theme.JodloCard
 import com.rekixo.jodlo.ui.theme.JodloSizes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+private enum class WorkerCatalogMode { BROWSE, SEARCH }
+private data class WorkerCategoryPage(val rows: List<PublicCategory>, val next: String?)
 
 /**
  * Private worker screen uses the same account and existing headless session/write
@@ -65,6 +71,13 @@ internal fun WorkerDashboard(
     var ownerCursor by remember(session) { mutableStateOf<String?>(null) }
     var categoryRows by remember(session) { mutableStateOf<List<PublicCategory>>(emptyList()) }
     var categoryCursor by remember(session) { mutableStateOf<String?>(null) }
+    var categoryLanguage by remember(session) { mutableStateOf(Language.HI) }
+    var categoryInput by remember(session) { mutableStateOf("") }
+    var categoryMode by remember(session) { mutableStateOf(WorkerCatalogMode.BROWSE) }
+    var submittedCategoryQuery by remember(session) { mutableStateOf<String?>(null) }
+    var categoryLoaded by remember(session) { mutableStateOf(false) }
+    var categoryFailed by remember(session) { mutableStateOf(false) }
+    var invalidCategoryQuery by remember(session) { mutableStateOf(false) }
     var selectedCategory by remember(session) { mutableStateOf<String?>(null) }
     var selectedListing by remember(session) { mutableStateOf<String?>(null) }
     var writeState by remember(session) {
@@ -75,6 +88,17 @@ internal fun WorkerDashboard(
     val uncertain = writeState is WorkerWriteState.NeedsReview
     val canWrite = signedIn?.worker == WorkerState.DRAFT && !busy && !uncertain
 
+    fun clearCategoryResults() {
+        categoryRows = emptyList()
+        categoryCursor = null
+        selectedCategory = null
+        categoryLoaded = false
+        categoryFailed = false
+        invalidCategoryQuery = false
+        submittedCategoryQuery = null
+        categoryMode = WorkerCatalogMode.BROWSE
+    }
+
     fun updateSession() {
         login = session?.snapshot() ?: LoginState.SignedOut
         writeState = writes?.snapshot()?.state ?: WorkerWriteState.Idle
@@ -82,7 +106,7 @@ internal fun WorkerDashboard(
             ownListings = emptyList()
             ownerCursor = null
             selectedListing = null
-            selectedCategory = null
+            clearCategoryResults()
         }
     }
 
@@ -125,22 +149,65 @@ internal fun WorkerDashboard(
         }
     }
 
-    fun loadCategories(after: String? = null) {
-        if (catalog == null || busy || uncertain) return
+    /** Worker selects from ALL approved active Categories, not just Categories
+     * with an existing published Listing. Search cursor is never used across
+     * changed query/language/mode and only explicit selection enables Publish.
+     */
+    fun loadCategories(after: String? = null, searchQuery: String? = null) {
+        if (catalog == null || busy || uncertain ||
+            (session?.snapshot() as? LoginState.SignedIn)?.worker != WorkerState.DRAFT) return
+        if (after != null && (!categoryLoaded || after != categoryCursor)) return
+        val mode = if (after == null) {
+            if (searchQuery == null) WorkerCatalogMode.BROWSE else WorkerCatalogMode.SEARCH
+        } else categoryMode
+        val query = if (after == null) searchQuery else submittedCategoryQuery
+        if (mode == WorkerCatalogMode.SEARCH && (query == null ||
+                query.codePointCount(0, query.length) !in 2..64 ||
+                query.any { Character.isISOControl(it) })) {
+            invalidCategoryQuery = true
+            return
+        }
+        val language = categoryLanguage
+        invalidCategoryQuery = false
         busy = true
         message = 0
+        if (after == null) {
+            categoryRows = emptyList()
+            categoryCursor = null
+            selectedCategory = null
+            categoryLoaded = false
+            categoryFailed = false
+            categoryMode = mode
+            submittedCategoryQuery = query
+        }
         scope.launch {
-            val reply = try {
-                withContext(Dispatchers.IO) { catalog.browse(Language.HI, limit = 20, after = after) }
+            val page: WorkerCategoryPage? = try {
+                withContext(Dispatchers.IO) {
+                    if (mode == WorkerCatalogMode.BROWSE) {
+                        when (val reply = catalog.browse(language, limit = 20, after = after)) {
+                            is ApiOutcome.Ok -> WorkerCategoryPage(
+                                reply.value.categories, reply.value.nextCursor)
+                            else -> null
+                        }
+                    } else {
+                        when (val reply = catalog.searchCursor(
+                            query!!, language, limit = 20, after = after)) {
+                            is ApiOutcome.Ok -> WorkerCategoryPage(
+                                reply.value.categories, reply.value.nextCursor)
+                            else -> null
+                        }
+                    }
+                }
             } catch (_: Exception) { null }
             busy = false
-            when (reply) {
-                is com.rekixo.jodlo.core.network.ApiOutcome.Ok -> {
-                    categoryRows = if (after == null) reply.value.categories
-                        else (categoryRows + reply.value.categories).distinctBy { it.id }
-                    categoryCursor = reply.value.nextCursor
-                }
-                else -> message = R.string.worker_read_failed
+            categoryLoaded = true
+            if (page == null) {
+                categoryFailed = true
+            } else {
+                categoryFailed = false
+                categoryRows = if (after == null) page.rows
+                    else (categoryRows + page.rows).distinctBy { it.id }
+                categoryCursor = page.next
             }
         }
     }
@@ -307,8 +374,67 @@ internal fun WorkerDashboard(
                             Text(stringResource(R.string.worker_publish_category),
                                 style = MaterialTheme.typography.titleMedium)
                             Text(stringResource(R.string.worker_publish_explainer))
+                            Text(stringResource(R.string.worker_category_search_hint))
+                            Row(horizontalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
+                                JodloChip(
+                                    selected = categoryLanguage == Language.HI,
+                                    onClick = {
+                                        if (categoryLanguage != Language.HI) {
+                                            categoryLanguage = Language.HI
+                                            clearCategoryResults()
+                                        }
+                                    },
+                                    enabled = !busy,
+                                    label = { Text(stringResource(R.string.language_hindi)) },
+                                )
+                                JodloChip(
+                                    selected = categoryLanguage == Language.EN,
+                                    onClick = {
+                                        if (categoryLanguage != Language.EN) {
+                                            categoryLanguage = Language.EN
+                                            clearCategoryResults()
+                                        }
+                                    },
+                                    enabled = !busy,
+                                    label = { Text(stringResource(R.string.language_english)) },
+                                )
+                            }
+                            JodloSearchField(
+                                value = categoryInput,
+                                onValueChange = { categoryInput = it; invalidCategoryQuery = false },
+                                label = { Text(stringResource(R.string.search_label)) },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            if (invalidCategoryQuery) {
+                                Text(stringResource(R.string.search_validation),
+                                    color = MaterialTheme.colorScheme.error)
+                            }
+                            JodloButton(
+                                onClick = { loadCategories(searchQuery = categoryInput.trim()) },
+                                enabled = !busy,
+                            ) { Text(stringResource(R.string.search_action)) }
                             JodloTextAction(onClick = { loadCategories() }, enabled = !busy) {
                                 Text(stringResource(R.string.worker_choose_category))
+                            }
+                            if (categoryMode == WorkerCatalogMode.SEARCH && categoryLoaded) {
+                                Text(stringResource(R.string.search_query_caption,
+                                    submittedCategoryQuery.orEmpty()))
+                            }
+                        }
+                        if (categoryLoaded && categoryRows.isEmpty() && !categoryFailed) item {
+                            Text(stringResource(R.string.worker_category_empty))
+                        }
+                        if (categoryFailed) item {
+                            Text(stringResource(R.string.worker_category_page_failed),
+                                color = MaterialTheme.colorScheme.error)
+                            JodloTextAction(onClick = {
+                                loadCategories(
+                                    after = categoryCursor,
+                                    searchQuery = if (categoryMode == WorkerCatalogMode.SEARCH)
+                                        submittedCategoryQuery else null,
+                                )
+                            }, enabled = !busy) {
+                                Text(stringResource(R.string.retry_action))
                             }
                         }
                         items(categoryRows, key = { "cat-" + it.id }) { category ->

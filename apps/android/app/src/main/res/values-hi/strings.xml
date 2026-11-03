@@ -44,6 +44,9 @@
     <string name="worker_unpublish_selected">चुनी हुई सेवा सूची हटाएँ</string>
     <string name="worker_publish_category">सेवा श्रेणी प्रकाशित करें</string>
     <string name="worker_publish_explainer">स्वीकृत सक्रिय श्रेणी चुनें। प्रकाशन से पहचान सत्यापित नहीं होती।</string>
+    <string name="worker_category_search_hint">स्वीकृत सक्रिय श्रेणियों में हिन्दी या English से खोजें। किसी श्रेणी में अभी सेवा प्रकाशित न हो तब भी उसे चुन सकते हैं।</string>
+    <string name="worker_category_empty">इस खोज में कोई स्वीकृत श्रेणी नहीं मिली। दूसरे शब्द से खोजें या सभी श्रेणियाँ देखें।</string>
+    <string name="worker_category_page_failed">इस श्रेणी पृष्ठ की पुष्टि नहीं हुई। पहले के परिणाम दिख रहे हैं; फिर प्रयास करें या नई खोज करें।</string>
     <string name="worker_choose_category">स्वीकृत श्रेणियाँ देखें</string>
     <string name="worker_category_selected">चुनी हुई श्रेणी</string>
     <string name="worker_publish_selected">चुनी हुई श्रेणी प्रकाशित करें</string>

@@ -1,5 +1,9 @@
 # JODLO — Complete AI handoff and source-of-truth index
 
+## 2026-11-03 — next Worker product milestone: searchable service selection
+
+Working branch implements **Worker Hindi/English approved-Category Search** with keyset pagination, error/empty states, a Browse fallback and preserved explicit owner-authorized Publish; it reuses current `RemoteCatalogRepository.searchCursor` and `HeadlessWorkerWriteScope`, without a new API or a fake debug Worker backend. Source/acceptance: [Worker category search](WORKER_CATEGORY_SEARCH_PUBLISH_2026-11-03.md). Verify the actual PR-head Foundation and Android-native JDK 17/21 workflows and independently check merged-main SHA before marking complete. No live OAuth, cloud backend, 889-category import or physical device verification.
+
 ## 2026-11-03 — next genuine Customer discovery milestone, API + Kotlin + Compose
 
 [PR #199](https://github.com/rekixo-lab/jodlo/pull/199) merged as `b7a33449c17a38184e21b86717a80f34ad55bae0`; [PR Foundation #41585336194](https://github.com/rekixo-lab/jodlo/actions/runs/41585336194), [PR Android-native #41585336077](https://github.com/rekixo-lab/jodlo/actions/runs/41585336077), independent [merged-main Foundation #41585853305](https://github.com/rekixo-lab/jodlo/actions/runs/41585853305) and [merged-main Android-native #41585853283](https://github.com/rekixo-lab/jodlo/actions/runs/41585853283) all SUCCESS. A debug-only, deliberately opted-in offline Customer app preview exists with temporary APK, but **no live backend or reviewed Category seed**; phone UX acceptance pending.

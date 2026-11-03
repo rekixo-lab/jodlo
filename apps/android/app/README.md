@@ -1,5 +1,11 @@
 # JODLO native Android app — Customer and Worker flows
 
+## 2026-11-03 — Worker Category Search and explicit publication
+
+The native **Worker Dashboard** now supports Hindi/English Category Search through the existing bounded `/api/v1/catalog/search?cursor=1` API and 20-item continuation, as well as the existing all-active-Category browse. This makes the full reviewed 889-Category direction navigable without pretending all 889 Categories are activated. Changing language or launching a new query clears old selection and cursor; typing after a submitted search does not change its continuation. Invalid queries, empty matches, failed pages and explicit retry have bilingual screen states.
+
+Tap an approved Category to select it, then tap the **existing** authenticated Publish action to create/unhide your own Listing. Searching never publishes. Debug-only Customer sample data cannot authenticate a Worker or create real listings. This flow still requires an approved HTTPS backend, genuine OAuth and active reviewed Categories; no live credentials, real on-device worker acceptance or production release are claimed. [Detailed acceptance](../../../docs/WORKER_CATEGORY_SEARCH_PUBLISH_2026-11-03.md).
+
 ## 2026-11-03 — Customer published-service filter + fresh public Listing detail
 
 Customer's **“Only categories with published services”** filter now uses the existing backend `availableOnly=1` for real Hindi/English Category browse and Search, including pagination. This is NOT Worker presence, availability for Agora calls or a verified badge. Selecting a Category still opens the existing paged public Listings; **tapping a Listing** now does one anonymous `GET /api/v1/listings/:id`, so the server rechecks publication, moderation, account and Category **at the moment of detail navigation**. If the old listing is no longer public, a 404 message is displayed and no private Worker fields are revealed. The only detail shown is the existing `id`/Category, pending approved public profile disclosure rules.
