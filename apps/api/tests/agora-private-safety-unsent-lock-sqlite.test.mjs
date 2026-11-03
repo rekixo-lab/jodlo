@@ -1351,3 +1351,59 @@ test("UNKNOWN test-only outcome stays quarantined across a simulated second-work
     f.close();
   }
 });
+
+
+test("failure after fake recovery child INSERT aborts the entire one-statement parent enqueue", async () => {
+  const f = await trial();
+  try {
+    await enable(f);
+    installFakeAtomicEnqueue(f);
+    f.a.exec(
+      "CREATE TRIGGER test_only_after_child_failure " +
+      "AFTER INSERT ON fake_private_recovery_leases BEGIN " +
+      "SELECT RAISE(ABORT,'synthetic crash after recovery child insert'); END",
+    );
+    assert.deepEqual(await stageOneStatementFakeUnsent(f), DENIED);
+    assert.deepEqual(f.rows(), []);
+    assert.deepEqual(fakeRecoveryRows(f.b), [],
+      "even an AFTER-child failure must roll back both linked rows");
+    f.a.exec("DROP TRIGGER test_only_after_child_failure");
+    assert.deepEqual(await stageOneStatementFakeUnsent(f, { db: f.b }),
+      { kind: "unsent_staged_test_only" });
+    assert.deepEqual(auditFakeAtomicEnqueue(f),
+      { kind: "consistent_test_only" });
+  } finally {
+    f.close();
+  }
+});
+
+test("corrupt orphan recovery is withheld, never silently reattached or replayed", async () => {
+  const f = await trial();
+  try {
+    await enable(f);
+    installFakeAtomicEnqueue(f);
+    assert.equal((await stageOneStatementFakeUnsent(f)).kind,
+      "unsent_staged_test_only");
+    // Deliberate disposable DB corruption simulates a broken external repair
+    // or restore process. Not a production cleanup/deletion recipe.
+    f.b.exec("PRAGMA foreign_keys=OFF");
+    try {
+      assert.equal(f.b.prepare(
+        "DELETE FROM fake_private_unsent_intents WHERE call_id=?",
+      ).run(CALL).changes, 1);
+    } finally {
+      f.b.exec("PRAGMA foreign_keys=ON");
+    }
+    assert.deepEqual(f.rows(), []);
+    assert.equal(fakeRecoveryRows(f.a).length, 1);
+    assert.deepEqual(auditFakeAtomicEnqueue(f), DENIED);
+    assert.deepEqual(await claimFakePrivateRecovery(f), DENIED);
+    assert.deepEqual(await stageOneStatementFakeUnsent(f), DENIED,
+      "a stale dangling child must not be overwritten by a fresh parent");
+    assert.deepEqual(f.rows(), []);
+    assert.equal(fakeRecoveryRows(f.b).length, 1,
+      "no automatic repair or unsafe retry after inconsistent restore");
+  } finally {
+    f.close();
+  }
+});
