@@ -70,7 +70,8 @@
     "production:config:check": "node scripts/prepare-production-wrangler.mjs --check",
     "production:config:harden": "node scripts/prepare-production-wrangler.mjs --harden",
     "production:domain:write": "node scripts/prepare-api-custom-domain.mjs --write",
-    "production:domain:check": "node scripts/prepare-api-custom-domain.mjs --check"
+    "production:domain:check": "node scripts/prepare-api-custom-domain.mjs --check",
+    "catalog:review-dossier": "node scripts/catalog-review-dossier.mjs"
   },
   "devDependencies": {
     "typescript": "~5.8.3",
