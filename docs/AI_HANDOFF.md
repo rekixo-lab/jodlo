@@ -1,5 +1,9 @@
 # JODLO — Complete AI handoff and source-of-truth index
 
+## Latest founder approval: private Agora safety backend engineering (2026-11-03)
+The founder explicitly approved **working on** Worker availability, mutual blocks, abuse-control D1 schema and privacy/retention design by saying "pemission aproovd do it". This is **DONE for local engineering/schema**, not implicit approval for unchosen durations/thresholds, online presence, user disclosure, live calls or Cloudflare deployment. Migration 0008 creates only empty, private minimum-field tables: owner-scoped availability intent, directional blocker/blocked account pairs and expiry-indexed, aggregate-only abuse counter *schema*. Internal owner-session availability CAS and private directional block operations plus caller-session-scoped read have no public API. The caller read always returns `workerPresence=unknown` and `rateGate=unknown` until M-003/M-005 policy and true server-owned sources are approved. See [privacy design](AGORA_PRIVATE_SAFETY_D1_PRIVACY_2026-11-03.md), [founder manual register](MANUAL_ACTIONS.md) and [migration README](../infra/migrations/README.md). Android and remote deployment remain untouched; do not port Finworkar. PR-head and separate merged-main CI must be verified before claiming merge completion.
+
+
 > **READ FIRST — superseding founder decision (2026-10-27): code-first, no staging Worker, no deployment until JODLO fully ready.** Keep all integration work local/mock-based + CI, ask for no Cloudflare credentials now, then request a controlled production-only release. Old staging deployment instructions below are obsolete. [ADR-0004](decisions/0004-local-first-no-staging-until-production.md) · [Release Readiness](RELEASE_READINESS.md).
 
 
