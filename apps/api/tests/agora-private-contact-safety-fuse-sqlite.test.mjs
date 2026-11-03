@@ -8,6 +8,7 @@ import { localD1Adapter } from "./helpers/local-db.mjs";
 import { ensureAccount } from "../src/modules/identity/accounts.ts";
 import { issueSession, sessionHash } from "../src/modules/identity/sessions.ts";
 import { optInAsWorker } from "../src/modules/workers/profile.ts";
+import { validOpaqueId } from "../src/modules/shared/identifiers.ts";
 import { publishListing } from "../src/modules/workers/listings.ts";
 import { setOwnWorkerAgoraCallPreference } from
   "../src/modules/workers/agora-call-preference.ts";
@@ -455,7 +456,7 @@ async function markUnknownBeforeHypotheticalHandoff(f, {
   nowMs = SYNTHETIC_PREHANDOFF_NOW_MS,
   simulateLostWriteResponse = false,
 } = {}) {
-  if (typeof id !== "string" || id.length < 8 ||
+  if (!validOpaqueId(id) || typeof simulateLostWriteResponse !== "boolean" ||
       !Number.isSafeInteger(generation) || generation < 1 ||
       generation > 2_147_483_647 ||
       !Number.isSafeInteger(nowMs) || nowMs < 0) return WITHHELD;
@@ -661,5 +662,32 @@ test("negative control: untracked block->unblock ABA is STILL invisible at hando
       { kind: "quarantined_pre_handoff_test_only" },
       "WARNING: without a consistently recorded real generation, ABA defeats this marker");
     assert.equal(rows(f.b)[0].phase, "outcome_unknown_test_only");
+  } finally { f.close(); }
+});
+
+
+test("negative handoff ordering: a committed UNKNOWN marker cannot recall later in-flight send", async () => {
+  const f = await fixture();
+  try {
+    await enableWorker(f);
+    assert.equal((await stage(f)).kind, "staged_test_only");
+    assert.equal((await claim(f)).kind, "pre_send_lease_test_only");
+    assert.deepEqual(await markUnknownBeforeHypotheticalHandoff(f), {
+      kind: "quarantined_pre_handoff_test_only",
+    });
+    assert.deepEqual(trustedHaltAdmission(f, f.b),
+      { kind: "halted_test_only" });
+    assert.equal(rows(f.a)[0].phase, "outcome_unknown_test_only");
+    assert.deepEqual(await markUnknownBeforeHypotheticalHandoff(f, {
+      db: f.b,
+    }), WITHHELD);
+    // THIS IS AN UNRESOLVED DISTRIBUTED RACE:
+    // the marker was committed before the halt. A real outbound request
+    // could already be outside D1 and cannot be canceled by this test gate.
+    // We intentionally create NO provider request or delivery receipt.
+    assert.equal(mode(f.a), "halted_test_only");
+    assert.equal(f.a.prepare(
+      "SELECT COUNT(*) AS n FROM sqlite_master WHERE name LIKE 'agora_call_%'",
+    ).get().n, 0);
   } finally { f.close(); }
 });
