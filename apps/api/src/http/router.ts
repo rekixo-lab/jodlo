@@ -8,7 +8,7 @@ import { resolveGoogleAccount } from "../modules/identity/google-accounts.ts";
 import { issueSession, makeSessionVerifier, revokeAllSessions, revokeSession, SESSION_TTL_SECONDS } from "../modules/identity/sessions.ts";
 import { hasEmptyBody, readGoogleLoginBody, readServiceListingBody } from "./body.ts";
 import { validCategoryId } from "../modules/shared/identifiers.ts";
-import { publishListing, myListings, pageMyListings, parseOwnListingsPage, publicListings, pagePublicListings, unpublishListing } from "../modules/workers/listings.ts";
+import { publishListing, myListings, pageMyListings, parseOwnListingsPage, publicListings, pagePublicListings, publicListingDetail, unpublishListing } from "../modules/workers/listings.ts";
 import {
   allowGoogleAccountLogin, allowLoginBurst,
   LOGIN_BURST_RETRY_SECONDS, ACCOUNT_LOGIN_RETRY_SECONDS,
@@ -189,6 +189,25 @@ export async function handleRequest(
     } catch {
       // Fail closed; never reflect SQL errors or credential/provider details.
       return json({ ok: false, error: { code: "SERVICE_UNAVAILABLE", message: "Identity unavailable" } }, 503);
+    }
+  }
+  // Read-only listing detail: recheck CURRENT published/moderated eligibility.
+  // This deliberately discloses only the existing two-field public DTO:
+  // no worker ID, location, identity, phone, trust badge or call permission.
+  if (url.pathname.startsWith("/api/v1/listings/")) {
+    const methodError=getOnly(request);
+    if(methodError)return methodError;
+    const id=url.pathname.slice("/api/v1/listings/".length);
+    if(url.search||!validOpaqueId(id)||!(await hasEmptyBody(request))) {
+      return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid listing detail request"}},400);
+    }
+    if(!env.DB)return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Listings unavailable"}},503);
+    try {
+      const listing=await publicListingDetail(env.DB,id);
+      if(!listing)return json({ok:false,error:{code:"NOT_FOUND",message:"Listing not found"}},404);
+      return json({ok:true,data:{listing}});
+    }catch{
+      return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Listings unavailable"}},503);
     }
   }
   if (url.pathname === "/api/v1/listings") {
