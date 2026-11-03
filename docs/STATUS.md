@@ -8,8 +8,6 @@
 
 ## 2026-11-03 — Private D1 safety checked under disposable UNSENT SQLite write lock (MERGED, VERIFIED)
 
-## 2026-11-03 — Private D1 safety checked under disposable UNSENT SQLite write lock (MERGED, VERIFIED)
-
 - **Concurrency gap rehearsed:** the merged synthetic Agora invite preview reads private D1 availability and blocks independently, which cannot atomically protect a later real writer. A separate, **test-owned fake UNSENT** SQLite transaction now rechecks the actual caller session, listing/Category, original Worker consent, independent Worker availability revision and combined private block veto under `BEGIN IMMEDIATE` before storing only a local fictitious intent.
 - **Two-connection regressions:** default OFF, revoked/foreign bearer, Customer and Worker block independently, unrelated caller, late block or availability OFF after an earlier read, second writer SQLITE_BUSY while first holds the lock, post-commit block suppressing use of a historical UNSENT record, OFF→ON consent and availability old-epoch rejection, conflicting/same-ID replay, and rollback on injected precommit crash. The old table 0008 and owner-only privacy logic are reused; no remote or production migration.
 - **Limits:** `unsent_test_only` is NOT a real call admission, online/presence proof, rate or slot reservation, callback, provider send, RTC token or cloud transaction guarantee. With no block-generation schema, historical block→unblock ABA across independent reads remains unresolved. M-003/M-005 operational/personal-data choices, M-006 provider, M-007 release, M-004 UI and M-008 live OAuth are separate gates.
