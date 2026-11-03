@@ -1,5 +1,39 @@
 # JODLO — current state, 2026-11-03
 
+## 2026-11-03 — LIVE phone/API verified; Production Catalog truly EMPTY; review dossier engineering
+
+**Supersedes the older date-stamped "no Worker/Google deployment" snapshots below.**
+Founder-operated Wrangler deployed the real JODLO-only `jodlo-api` to
+`https://api.jodlo.rekixo.com`; most recent observed version
+`ff45ee8d-bf01-402b-bddd-5adf940a4189`, with real `jodlo-production`
+D1 and both rate limiter bindings. The owner installed Android debug APK on a
+Samsung SM-A715F, selected the authorized Google Account, successfully signed
+in, and observed the backend-confirmed private worker draft. The Google Android
+authorized-party hardening is merged on `main`. **This is a controlled live
+integration success, NOT public marketplace release acceptance.**
+
+**Exact fresh remote D1 query supplied by founder:** `total_categories=0`,
+`active_categories=0`, `published_listings=0`. Consequently both Worker
+Browse and Guest Search are empty for genuine data reasons; the old 889
+Finworkar Categories and 7,267 Services are still historical reference only.
+The reviewer planner reports 45 packets, 2,667 self-reported tasks `NOT_STARTED`,
+zero verified specialist/qualified/founder approvals and zero authorized
+activation. Never silently seed or auto-approve them.
+
+**Android accuracy improvement:** [PR #213](https://github.com/rekixo-lab/jodlo/pull/213)
+merged to main as `586330a2197f777b0c50b996b58ac887ad85c994`; independently
+verified main Foundation + Android checks were green. The configured app now
+uses honest live-auth/configured-API labels and an explicit empty approved-Catalog
+message; the founder must still pull/rebuild before observing these UI changes.
+
+**Next engineering slice:** [full bilingual Category and Service review dossier](CATALOG_FULL_SERVICE_REVIEW_DOSSIER_2026-11-03.md)
+joins global review priorities to complete source-backed Service names (first 5
+Categories = 48 historic Services) for actual human work. **Source-only,
+unapproved, offline**; no remote writes, contacts, payment, calls, new staging,
+automatic activation or change to Finworkar. PR CI/merge and main CI must be
+verified separately before treating the new code as stable.
+
+
 ## 2026-11-03 — CF-05/CF-06 local production Custom Domain dry-run VERIFIED; Cloudflare deploy PENDING
 
 **Founder-operated actual Ubuntu CLI (2026-11-03):** `git pull` reached merged PR #210; `npm run production:config:harden` successfully upgraded the existing local real-ID no-route configuration; `production:config:check`, `production:domain:write` and `production:domain:check` all **SUCCEEDED**; `npx wrangler deploy --dry-run --config apps/api/wrangler.production.domain.generated.jsonc` compiled the real `jodlo-api` Worker (**92.37 KiB / 21.67 KiB gzip**) and listed `DB=jodlo-production`, `LOGIN_BURST_LIMITER` (100/10s) and `ACCOUNT_LOGIN_LIMITER` (20/60s). The CLI explicitly ended `--dry-run: exiting now`. This is positive evidence of **local production config + exact Custom Domain dry-run**, **NOT** a Cloudflare Worker upload, activated DNS, issued TLS certificate, live API, real Google OAuth or public launch.
