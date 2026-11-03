@@ -1,5 +1,10 @@
 # JODLO — current state, 2026-11-03
 
+## 2026-11-03 — Live Cloudflare preflight: real ID-only configuration generator (ENGINEERING PR; CI PENDING)
+
+Added an operator-only `npm run production:config:write` and `production:config:check` workflow, plus negative tests; it creates a **gitignored production Wrangler config** only after actual account/D1 IDs and independent Cloudflare login rate-limit namespaces are supplied. Production config has no public route or Worker dev domain, reuses existing safe `DB` and login bindings, never reads/prints provider secrets, and neither command does any remote work. [Owner steps](REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md) and [Manual Actions](MANUAL_ACTIONS.md). **CF-01 owner login/real D1 still pending; no Cloudflare calls, migration, deploy or credentials have occurred.** Historical CI and policy entries remain unchanged.
+
+
 ## 2026-11-03 — CURRENT production-first connection directive (AUTHORIZATION DONE; PROVIDERS NOT YET CONNECTED)
 
 Founder approved **real dedicated Cloudflare Worker/D1 + Google OAuth setup and protected production deployment work NOW**; previous local-only ADR-0004 prohibition is superseded by [ADR-0015](decisions/0015-real-provider-integration-and-controlled-production.md). [Operator runbook](REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md) and [manual actions](MANUAL_ACTIONS.md) list CF-01 and GOOGLE-01 as **NEEDS_DECISION_NOW**, DNS-01/PHONE-01 as upcoming. **No actual cloud account link, D1 ID, OAuth credentials, production migration, DNS or live rollout is verified yet**; do not invent status. Code milestones #201 and #202 are merged, but Android connected-provider acceptance remains pending. Keep privacy/CI/default-OFF consent and Finworkar read-only isolation.
