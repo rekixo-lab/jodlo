@@ -267,3 +267,34 @@ test("real D1 directional blocks veto all-pass synthetic reader evidence",async(
     assert.equal((await f.prepare(sources)).kind,"prepared");
   }finally{f.close();}
 });
+
+test("private availability OFF or OFF-ON during source awaits denies stale candidate",async()=>{
+  const f=await fixture();
+  try{
+    assert.equal((await f.opt(true,0)).kind,"updated");
+    let reads=0;
+    const sources=sourcePorts({},()=>reads++);
+    assert.deepEqual(await f.prepare(sources),DENIED);
+    assert.equal(reads,0,"no default availability intent");
+    assert.equal((await f.availability(true,0)).kind,"updated");
+    assert.equal((await f.prepare(sources)).kind,"prepared");
+    const off=sourcePorts();
+    off.abuse=async scope=>{
+      assert.equal((await f.availability(false,1)).kind,"updated");
+      return sourcePorts().abuse(scope);
+    };
+    assert.deepEqual(await f.prepare(off),DENIED);
+    assert.deepEqual(await f.prepare(sources),DENIED);
+    assert.equal((await f.availability(true,2)).kind,"updated");
+    assert.equal((await f.prepare(sources)).kind,"prepared");
+    const offOn=sourcePorts();
+    offOn.abuse=async scope=>{
+      assert.equal((await f.availability(false,3)).kind,"updated");
+      assert.equal((await f.availability(true,4)).kind,"updated");
+      return sourcePorts().abuse(scope);
+    };
+    assert.deepEqual(await f.prepare(offOn),DENIED,
+      "availability epoch change cannot reuse an earlier candidate");
+    assert.equal((await f.prepare(sources)).kind,"prepared");
+  }finally{f.close();}
+});
