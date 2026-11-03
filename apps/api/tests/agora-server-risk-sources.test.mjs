@@ -9,6 +9,7 @@ import { setOwnWorkerAgoraCallPreference } from
   "../src/modules/workers/agora-call-preference.ts";
 import {
   setOwnWorkerAvailability, setOwnAgoraAccountBlock,
+  READ_CALLER_AGORA_PRIVATE_SAFETY_QUERY,
 } from "../src/modules/interactions/agora-private-safety-state.ts";
 import { prepareSyntheticServerRiskReadAgoraInvite } from
   "../src/modules/interactions/agora-server-risk-sources.ts";
