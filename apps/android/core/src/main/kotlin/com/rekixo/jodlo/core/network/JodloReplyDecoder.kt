@@ -284,6 +284,15 @@ object JodloReplyDecoder {
         CatalogSearch(language(data.required("language")), q, selected, next,
             confirmation, choices)
     }
+    /** The detail cannot return private Worker/account identity, status,
+     * contact, location, badges or media: reuse exact public listing allowlist.
+     */
+    fun publicListingDetail(reply: TransportReply): ApiOutcome<PublicListing> =
+        decode(reply) { data ->
+            data.keysOnly(setOf("listing"))
+            listing(data.required("listing"))
+        }
+
     fun publicListings(reply: TransportReply): ApiOutcome<List<PublicListing>> = decode(reply) { data ->
         data.keysOnly(setOf("listings"))
         listings(data.required("listings"), 25)
