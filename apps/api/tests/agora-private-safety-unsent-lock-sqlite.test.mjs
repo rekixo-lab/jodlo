@@ -68,6 +68,16 @@ async function trial() {
       "consent_revision INTEGER NOT NULL,availability_revision INTEGER NOT NULL," +
       "state TEXT NOT NULL CHECK(state='unsent_test_only'))",
     );
+    // Test-owned mutation epoch: a deliberate model for detecting ABA. This
+    // table is NEVER a D1 migration and stores no reason, timestamp or log.
+    a.exec(
+      "CREATE TABLE fake_block_pair_epochs (" +
+      "lower_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE," +
+      "upper_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE," +
+      "revision INTEGER NOT NULL CHECK(revision BETWEEN 1 AND 2147483647)," +
+      "CHECK(lower_id < upper_id)," +
+      "PRIMARY KEY(lower_id,upper_id))",
+    );
     const adapter = localD1Adapter(a);
     for (const id of [CALLER, WORKER, OTHER]) {
       await ensureAccount(adapter, id);
@@ -161,7 +171,13 @@ async function stageUnsent(f, {
       tx = false;
       return same ? Object.freeze({ kind: "duplicate_suppressed_test_only" }) : DENIED;
     }
-    await onLocked();
+    // Optional TEST-ONLY expected mutation-fence check runs inside the same
+    // local writer lock, never after the fake record is committed.
+    if (await onLocked() === false) {
+      db.exec("ROLLBACK");
+      tx = false;
+      return DENIED;
+    }
     db.prepare(
       "INSERT INTO fake_private_unsent_intents VALUES(?,?,?,?,?,?,?)",
     ).run(callId, original.target.requesterAccountId,
@@ -343,6 +359,184 @@ test("same call ID replay, foreign actor and crash rollback never insert a secon
     assert.deepEqual(await recheckUnsent(f), DENIED);
     assert.deepEqual(await stageUnsent(f), DENIED);
     assert.equal(f.rows()[0].state, "unsent_test_only");
+  } finally {
+    f.close();
+  }
+});
+
+
+/**
+ * Hypothetical pair-generation model; deliberately NOT a production table or
+ * proposed retention rule. Its identity is an unordered pair of test-owned
+ * opaque account IDs. The public/private safety D1 projection STILL exposes
+ * only contactBlocked, never the blocker direction or this test-only epoch.
+ */
+function fakePairRevision(db, first, second) {
+  const [lower, upper] = [first, second].sort();
+  return db.prepare(
+    "SELECT revision FROM fake_block_pair_epochs WHERE lower_id=? AND upper_id=?",
+  ).get(lower, upper)?.revision ?? 0;
+}
+
+/**
+ * A fixture-only transaction emulates a future actor-authenticated mutation
+ * and pair-generation update in one SQLite writer lock. It calls the EXISTING
+ * real session-owned D1 block writer; the added epoch is fake local state.
+ * Deliberately not an API, Durable Object, D1 schema or Cloudflare proof.
+ */
+async function mutateTestPairWithEpoch(f, {
+  db = f.b, bearer, target, blocked, crashAfterEpoch = false,
+}) {
+  const actor = bearer === f.caller ? CALLER :
+    bearer === f.worker ? WORKER :
+    bearer === f.other ? OTHER : null;
+  if (!actor || actor === target || typeof blocked !== "boolean") return DENIED;
+  const [lower, upper] = [actor, target].sort();
+  let tx = false;
+  try {
+    db.exec("BEGIN IMMEDIATE");
+    tx = true;
+    const mutation = await setOwnAgoraAccountBlock(
+      localD1Adapter(db), bearer, target, blocked,
+    );
+    if (mutation.kind !== "updated") {
+      db.exec("ROLLBACK");
+      tx = false;
+      return DENIED;
+    }
+    const { changes } = db.prepare(
+      "INSERT INTO fake_block_pair_epochs(lower_id,upper_id,revision)" +
+      " VALUES(?,?,1) ON CONFLICT(lower_id,upper_id)" +
+      " DO UPDATE SET revision=revision+1 WHERE revision<2147483647",
+    ).run(lower, upper);
+    if (changes !== 1) {
+      db.exec("ROLLBACK");
+      tx = false;
+      return DENIED;
+    }
+    if (crashAfterEpoch) throw Error("synthetic block+epoch crash");
+    db.exec("COMMIT");
+    tx = false;
+    return Object.freeze({ kind: "mutated_test_only" });
+  } catch (error) {
+    if (tx) db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+test("real D1 block -> unblock ABA is invisible to booleans, but a fake pair epoch fences stale UNSENT", async () => {
+  const f = await trial();
+  try {
+    await enable(f);
+    const first = await readLocalCallerAgoraSafetyFacts(
+      localD1Adapter(f.a), f.caller, f.listing.id,
+    );
+    assert.equal(first.contactBlocked, false);
+    assert.equal(fakePairRevision(f.a, CALLER, WORKER), 0);
+
+    assert.deepEqual(await mutateTestPairWithEpoch(f, {
+      bearer: f.worker, target: CALLER, blocked: true,
+    }), { kind: "mutated_test_only" });
+    const during = await readLocalCallerAgoraSafetyFacts(
+      localD1Adapter(f.a), f.caller, f.listing.id,
+    );
+    assert.equal(during.contactBlocked, true);
+    assert.deepEqual(await mutateTestPairWithEpoch(f, {
+      bearer: f.worker, target: CALLER, blocked: false,
+    }), { kind: "mutated_test_only" });
+    const after = await readLocalCallerAgoraSafetyFacts(
+      localD1Adapter(f.a), f.caller, f.listing.id,
+    );
+    assert.deepEqual(after, first,
+      "existing current-state D1 reader alone CANNOT detect a historic block ABA");
+    assert.equal(fakePairRevision(f.a, CALLER, WORKER), 2);
+    assert.deepEqual(await stageUnsent(f, {
+      onLocked: async () => fakePairRevision(f.a, CALLER, WORKER) === 0,
+    }), DENIED, "stale historic preview must not create a fake UNSENT claim");
+    assert.deepEqual(f.rows(), []);
+    assert.deepEqual(await stageUnsent(f, {
+      onLocked: async () => fakePairRevision(f.a, CALLER, WORKER) === 2,
+    }), { kind: "unsent_staged_test_only" },
+    "only a new TEST snapshot can continue under this hypothetical fence");
+    assert.deepEqual(f.rows().map(x => x.state), ["unsent_test_only"]);
+  } finally {
+    f.close();
+  }
+});
+
+test("pair generation is direction-independent and does not contaminate unrelated customers", async () => {
+  const f = await trial();
+  try {
+    await enable(f);
+    assert.equal(fakePairRevision(f.a, CALLER, WORKER), 0);
+    assert.deepEqual(await mutateTestPairWithEpoch(f, {
+      bearer: f.other, target: WORKER, blocked: true,
+    }), { kind: "mutated_test_only" });
+    assert.deepEqual(await mutateTestPairWithEpoch(f, {
+      bearer: f.other, target: WORKER, blocked: false,
+    }), { kind: "mutated_test_only" });
+    assert.equal(fakePairRevision(f.a, OTHER, WORKER), 2);
+    assert.equal(fakePairRevision(f.a, CALLER, WORKER), 0);
+    assert.deepEqual(await mutateTestPairWithEpoch(f, {
+      bearer: f.caller, target: WORKER, blocked: true,
+    }), { kind: "mutated_test_only" });
+    assert.deepEqual(await mutateTestPairWithEpoch(f, {
+      bearer: f.caller, target: WORKER, blocked: false,
+    }), { kind: "mutated_test_only" });
+    assert.equal(fakePairRevision(f.a, CALLER, WORKER), 2);
+    assert.deepEqual(await mutateTestPairWithEpoch(f, {
+      bearer: f.worker, target: CALLER, blocked: true,
+    }), { kind: "mutated_test_only" });
+    assert.deepEqual(await mutateTestPairWithEpoch(f, {
+      bearer: f.worker, target: CALLER, blocked: false,
+    }), { kind: "mutated_test_only" });
+    assert.equal(fakePairRevision(f.a, WORKER, CALLER), 4);
+    assert.equal(fakePairRevision(f.a, OTHER, WORKER), 2);
+    assert.deepEqual(await stageUnsent(f, {
+      bearer: f.other,
+      callId: OTHER_CALL,
+      onLocked: async () => fakePairRevision(f.a, OTHER, WORKER) === 2,
+    }), { kind: "unsent_staged_test_only" });
+    assert.equal(f.rows().length, 1);
+  } finally {
+    f.close();
+  }
+});
+
+test("fixture block+epoch crash rollback, no-op and competing writer preserve the old pair fence", async () => {
+  const f = await trial();
+  try {
+    await enable(f);
+    await assert.rejects(mutateTestPairWithEpoch(f, {
+      bearer: f.caller, target: WORKER, blocked: true, crashAfterEpoch: true,
+    }), /synthetic block\+epoch crash/);
+    assert.equal(fakePairRevision(f.a, CALLER, WORKER), 0);
+    assert.equal((await readLocalCallerAgoraSafetyFacts(
+      localD1Adapter(f.a), f.caller, f.listing.id,
+    ))?.contactBlocked, false, "block and fake revision rollback together");
+    assert.deepEqual(await mutateTestPairWithEpoch(f, {
+      bearer: "invalid", target: WORKER, blocked: true,
+    }), DENIED);
+    assert.equal(fakePairRevision(f.a, CALLER, WORKER), 0);
+
+    f.a.exec("BEGIN IMMEDIATE");
+    try {
+      await assert.rejects(mutateTestPairWithEpoch(f, {
+        bearer: f.caller, target: WORKER, blocked: true,
+      }), /SQLITE_BUSY|database is locked/i);
+    } finally {
+      f.a.exec("ROLLBACK");
+    }
+    assert.equal(fakePairRevision(f.a, CALLER, WORKER), 0);
+    assert.deepEqual(await mutateTestPairWithEpoch(f, {
+      bearer: f.caller, target: WORKER, blocked: true,
+    }), { kind: "mutated_test_only" });
+    assert.deepEqual(await mutateTestPairWithEpoch(f, {
+      bearer: f.caller, target: WORKER, blocked: true,
+    }), DENIED, "duplicate real block does not invent a new mutation epoch");
+    assert.equal(fakePairRevision(f.a, CALLER, WORKER), 1);
+    assert.deepEqual(await stageUnsent(f), DENIED);
+    assert.deepEqual(f.rows(), []);
   } finally {
     f.close();
   }

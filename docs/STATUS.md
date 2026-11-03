@@ -1,11 +1,17 @@
 # JODLO — current state, 2026-11-03
 
-## 2026-11-03 — Private D1 safety checked under disposable UNSENT SQLite write lock (ENGINEERING PR, CI PENDING)
+## 2026-11-03 — founder-wide execution permission and offline block ABA experiment (ENGINEERING PR, CI PENDING)
+
+- **Founder permission DONE (2026-11-03):** founder authorized continuing all JODLO tasks without repeated generic permission requests. Recorded in [MANUAL_ACTIONS](MANUAL_ACTIONS.md). This authorizes routine code, test, PR, review and documentation work; **no concrete unchosen retention, abuse limit, presence, capacity or production-readiness values were supplied**. No real customer data, external provider activation, staging or deploy.
+- **Next gap:** after a D1 block→unblock between two independent caller-safety reads, `contactBlocked:false` before and after can look identical; the current migration 0008 cannot detect that historic ABA. Additional **disposable two-connection SQLite tests** use the *real authenticated block writer* and a test-owned per-pair revision, updated in one local write transaction. They show stale snapshot denial, either actor direction, unrelated pair isolation, duplicate/no-op, busy writer and rollback behavior.
+- **Important limitation:** The extra per-pair table and comparison exist **only in the temporary test database**; this is NOT a production migration, retention selection, accepted privacy policy, D1/DO cross-store transaction proof or real Agora call admission. [ABA design/test notes](AGORA_BLOCK_ABA_PAIR_EPOCH_TRIAL_2026-11-03.md). Exact PR-head and merged-main CI required.
+
+## 2026-11-03 — Private D1 safety checked under disposable UNSENT SQLite write lock (MERGED, VERIFIED)
 
 - **Concurrency gap rehearsed:** the merged synthetic Agora invite preview reads private D1 availability and blocks independently, which cannot atomically protect a later real writer. A separate, **test-owned fake UNSENT** SQLite transaction now rechecks the actual caller session, listing/Category, original Worker consent, independent Worker availability revision and combined private block veto under `BEGIN IMMEDIATE` before storing only a local fictitious intent.
 - **Two-connection regressions:** default OFF, revoked/foreign bearer, Customer and Worker block independently, unrelated caller, late block or availability OFF after an earlier read, second writer SQLITE_BUSY while first holds the lock, post-commit block suppressing use of a historical UNSENT record, OFF→ON consent and availability old-epoch rejection, conflicting/same-ID replay, and rollback on injected precommit crash. The old table 0008 and owner-only privacy logic are reused; no remote or production migration.
 - **Limits:** `unsent_test_only` is NOT a real call admission, online/presence proof, rate or slot reservation, callback, provider send, RTC token or cloud transaction guarantee. With no block-generation schema, historical block→unblock ABA across independent reads remains unresolved. M-003/M-005 operational/personal-data choices, M-006 provider, M-007 release, M-004 UI and M-008 live OAuth are separate gates.
-- **Evidence:** [test-only lock trial contract](AGORA_PRIVATE_UNSENT_LOCK_TRIAL_2026-11-03.md). Exact PR-head Foundation CI and independently green merged-main CI required; no deployment.
+- **Verified:** [PR #190](https://github.com/rekixo-lab/jodlo/pull/190) merged as `f6d9bda1410127d677cd6d606571e382682b8938`; [PR-head Foundation CI #41560374502](https://github.com/rekixo-lab/jodlo/actions/runs/41560374502) SUCCESS and [independent merged-main CI #41560912915](https://github.com/rekixo-lab/jodlo/actions/runs/41560912915) SUCCESS. [Test-only UNSENT lock contract](AGORA_PRIVATE_UNSENT_LOCK_TRIAL_2026-11-03.md). No deploy.
 
 ## 2026-11-03 — Non-disclosing bilateral block verdict for private Agora safety read (MERGED, VERIFIED)
 
