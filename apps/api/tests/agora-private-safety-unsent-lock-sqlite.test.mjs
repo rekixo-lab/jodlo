@@ -6,7 +6,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { localD1Adapter } from "./helpers/local-db.mjs";
 import { ensureAccount } from "../src/modules/identity/accounts.ts";
-import { issueSession, revokeSession } from "../src/modules/identity/sessions.ts";
+import {
+  issueSession, revokeSession, sessionHash, validSessionToken,
+} from "../src/modules/identity/sessions.ts";
 import { optInAsWorker } from "../src/modules/workers/profile.ts";
 import { publishListing } from "../src/modules/workers/listings.ts";
 import { setOwnWorkerAgoraCallPreference } from
@@ -537,6 +539,253 @@ test("fixture block+epoch crash rollback, no-op and competing writer preserve th
     assert.equal(fakePairRevision(f.a, CALLER, WORKER), 1);
     assert.deepEqual(await stageUnsent(f), DENIED);
     assert.deepEqual(f.rows(), []);
+  } finally {
+    f.close();
+  }
+});
+
+
+/**
+ * D1-PORTABLE SQL SHAPE TRIAL: ONE conditional INSERT ... SELECT statement,
+ * not a multi-await SQLite BEGIN IMMEDIATE sequence. Only the local fixture
+ * table is inserted; actual production has no intent/outbox table or writer.
+ *
+ * This statement observes current caller-owned session, listing, worker
+ * consent, separate availability, BOTH block directions and the TEST-ONLY
+ * unordered pair generation in the SAME database statement as the fake write.
+ * The pair epoch is NOT part of migration 0008; every real mutation would
+ * have to advance a durable, privacy-approved epoch for that check to mean
+ * anything. No arbitrary worker ID or worker bearer is supplied.
+ */
+const ATOMIC_FAKE_UNSENT_INSERT_QUERY =
+  "INSERT INTO fake_private_unsent_intents " +
+  "(call_id,caller_id,worker_id,listing_id," +
+  "consent_revision,availability_revision,state) " +
+  "SELECT ?,caller.id,worker.id,wl.id,pref.revision,avail.revision," +
+  "'unsent_test_only' " +
+  "FROM auth_sessions AS session " +
+  "JOIN accounts AS caller ON caller.id=session.account_id " +
+  "JOIN worker_listings AS wl ON wl.id=? " +
+  "JOIN accounts AS worker ON worker.id=wl.worker_account_id " +
+  "JOIN worker_profiles AS profile ON profile.account_id=worker.id " +
+  "JOIN categories AS category ON category.id=wl.category_id " +
+  "JOIN worker_agora_call_preferences AS pref " +
+  "ON pref.account_id=worker.id AND pref.calls_enabled=1 " +
+  "JOIN worker_agora_availability_preferences AS avail " +
+  "ON avail.account_id=worker.id AND avail.accepting_calls=1 " +
+  "WHERE session.token_hash=? AND session.expires_at>? " +
+  "AND caller.status='active' AND worker.status='active' " +
+  "AND caller.id<>worker.id AND profile.status='draft' " +
+  "AND category.is_active=1 AND wl.status='published' " +
+  "AND wl.moderation_status='allowed' " +
+  "AND pref.revision=? AND avail.revision=? " +
+  "AND NOT EXISTS(SELECT 1 FROM agora_account_blocks AS block " +
+  "WHERE (block.blocker_account_id=caller.id " +
+  "AND block.blocked_account_id=worker.id) OR " +
+  "(block.blocker_account_id=worker.id " +
+  "AND block.blocked_account_id=caller.id)) " +
+  "AND COALESCE((SELECT epoch.revision FROM fake_block_pair_epochs AS epoch " +
+  "WHERE epoch.lower_id=MIN(caller.id,worker.id) " +
+  "AND epoch.upper_id=MAX(caller.id,worker.id)),0)=? " +
+  "ON CONFLICT(call_id) DO NOTHING";
+
+async function stageOneStatementFakeUnsent(f, {
+  db = f.a, bearer = f.caller, callId = CALL,
+  expectedConsentRevision = 1, expectedAvailabilityRevision = 1,
+  expectedPairRevision = 0,
+} = {}) {
+  if (!validOpaqueId(callId) || !validSessionToken(bearer) ||
+      !Number.isSafeInteger(expectedConsentRevision) ||
+      expectedConsentRevision < 1 || expectedConsentRevision > 2_147_483_647 ||
+      !Number.isSafeInteger(expectedAvailabilityRevision) ||
+      expectedAvailabilityRevision < 1 ||
+      expectedAvailabilityRevision > 2_147_483_647 ||
+      !Number.isSafeInteger(expectedPairRevision) ||
+      expectedPairRevision < 0 || expectedPairRevision > 2_147_483_647) {
+    return DENIED;
+  }
+  try {
+    // A single D1-shaped bound .run() commits only if ALL WHERE predicates
+    // hold. No separately awaited consent, block or availability read here.
+    const { meta } = await localD1Adapter(db).prepare(
+      ATOMIC_FAKE_UNSENT_INSERT_QUERY,
+    ).bind(callId, f.listing.id, await sessionHash(bearer),
+      Math.floor(Date.now() / 1000),
+      expectedConsentRevision, expectedAvailabilityRevision,
+      expectedPairRevision).run();
+    return meta?.changes === 1
+      ? Object.freeze({ kind: "unsent_staged_test_only" })
+      : DENIED;
+  } catch {
+    // SQLITE_BUSY, malformed inputs, DB error and unique conflict all fail
+    // closed. This is not an actionable live retry or delivery decision.
+    return DENIED;
+  }
+}
+
+test("one-statement fake D1-shaped writer remains OFF without consent+availability and refuses forged actors", async () => {
+  const f = await trial();
+  try {
+    assert.equal(ATOMIC_FAKE_UNSENT_INSERT_QUERY.includes("BEGIN"), false);
+    assert.equal(ATOMIC_FAKE_UNSENT_INSERT_QUERY.includes("COMMIT"), false);
+    assert.deepEqual(await stageOneStatementFakeUnsent(f), DENIED);
+    assert.equal((await f.consent(true, 0)).kind, "updated");
+    assert.deepEqual(await stageOneStatementFakeUnsent(f), DENIED);
+    assert.equal((await f.available(true, 0)).kind, "updated");
+    for (const bearer of [f.worker, "fake", "Bearer " + f.caller]) {
+      assert.deepEqual(await stageOneStatementFakeUnsent(f, {
+        bearer,
+      }), DENIED);
+    }
+    for (const bad of [0, -1, 2.5, Number.MAX_SAFE_INTEGER, NaN]) {
+      assert.deepEqual(await stageOneStatementFakeUnsent(f, {
+        expectedConsentRevision: bad,
+      }), DENIED);
+      assert.deepEqual(await stageOneStatementFakeUnsent(f, {
+        expectedAvailabilityRevision: bad,
+      }), DENIED);
+    }
+    assert.deepEqual(await stageOneStatementFakeUnsent(f, {
+      expectedPairRevision: -1,
+    }), DENIED);
+    assert.deepEqual(f.rows(), []);
+    assert.deepEqual(await stageOneStatementFakeUnsent(f),
+      { kind: "unsent_staged_test_only" });
+    assert.deepEqual(await stageOneStatementFakeUnsent(f), DENIED,
+      "single-statement unique conflict must not enqueue a second fake intent");
+    assert.deepEqual(f.rows().map(x => Object.keys(x).sort()), [[
+      "availability_revision","call_id","caller_id","consent_revision",
+      "listing_id","state","worker_id",
+    ]]);
+    assert.equal(f.rows()[0].state, "unsent_test_only");
+    assert.deepEqual(await recheckUnsent(f),
+      { kind: "still_unsent_current_test_only" });
+  } finally {
+    f.close();
+  }
+});
+
+test("one-statement D1-shaped writer rejects late block, consent/availability epochs and moderation", async () => {
+  const f = await trial();
+  try {
+    await enable(f);
+    assert.deepEqual(await f.block(f.worker, CALLER), { kind: "updated" });
+    assert.deepEqual(await stageOneStatementFakeUnsent(f), DENIED);
+    assert.deepEqual(await f.block(f.worker, CALLER, false), { kind: "updated" });
+    assert.deepEqual(await f.block(f.caller, WORKER), { kind: "updated" });
+    assert.deepEqual(await stageOneStatementFakeUnsent(f), DENIED);
+    assert.deepEqual(await f.block(f.caller, WORKER, false), { kind: "updated" });
+
+    assert.equal((await f.available(false, 1)).kind, "updated");
+    assert.deepEqual(await stageOneStatementFakeUnsent(f), DENIED);
+    assert.equal((await f.available(true, 2)).kind, "updated");
+    assert.deepEqual(await stageOneStatementFakeUnsent(f), DENIED,
+      "OFF->ON availability must not resurrect stale expected revision 1");
+    assert.equal((await f.consent(false, 1)).kind, "updated");
+    assert.equal((await f.consent(true, 2)).kind, "updated");
+    assert.deepEqual(await stageOneStatementFakeUnsent(f, {
+      expectedAvailabilityRevision: 3,
+    }), DENIED, "OFF->ON worker call consent invalidates original revision 1");
+
+    f.a.prepare(
+      "UPDATE worker_listings SET moderation_status='hidden' WHERE id=?",
+    ).run(f.listing.id);
+    assert.deepEqual(await stageOneStatementFakeUnsent(f, {
+      expectedConsentRevision: 3, expectedAvailabilityRevision: 3,
+    }), DENIED);
+    f.a.prepare(
+      "UPDATE worker_listings SET moderation_status='allowed' WHERE id=?",
+    ).run(f.listing.id);
+    assert.deepEqual(await stageOneStatementFakeUnsent(f, {
+      expectedConsentRevision: 3, expectedAvailabilityRevision: 3,
+    }), { kind: "unsent_staged_test_only" });
+    assert.deepEqual(f.rows().map(x => x.state), ["unsent_test_only"]);
+    assert.equal(f.rows()[0].consent_revision, 3);
+    assert.equal(f.rows()[0].availability_revision, 3);
+  } finally {
+    f.close();
+  }
+});
+
+test("single SQL test writer rejects real block ABA when FAKE pair revision advanced in same mutation", async () => {
+  const f = await trial();
+  try {
+    await enable(f);
+    const initial = await readLocalCallerAgoraSafetyFacts(
+      localD1Adapter(f.a), f.caller, f.listing.id,
+    );
+    assert.equal(initial.contactBlocked, false);
+    assert.equal(fakePairRevision(f.a, CALLER, WORKER), 0);
+    assert.deepEqual(await mutateTestPairWithEpoch(f, {
+      bearer: f.worker, target: CALLER, blocked: true,
+    }), { kind: "mutated_test_only" });
+    assert.deepEqual(await mutateTestPairWithEpoch(f, {
+      bearer: f.worker, target: CALLER, blocked: false,
+    }), { kind: "mutated_test_only" });
+    assert.deepEqual(await readLocalCallerAgoraSafetyFacts(
+      localD1Adapter(f.a), f.caller, f.listing.id,
+    ), initial, "real current D1 read alone misses historical block ABA");
+    assert.equal(fakePairRevision(f.a, WORKER, CALLER), 2);
+    assert.deepEqual(await stageOneStatementFakeUnsent(f), DENIED,
+      "historical pair mutation must reject original revision 0");
+    assert.deepEqual(f.rows(), []);
+    assert.deepEqual(await stageOneStatementFakeUnsent(f, {
+      expectedPairRevision: 2,
+    }), { kind: "unsent_staged_test_only" },
+    "only a newly trusted TEST snapshot may use the updated pair epoch");
+    assert.equal(f.rows()[0].state, "unsent_test_only");
+  } finally {
+    f.close();
+  }
+});
+
+test("pair epoch in single-statement writer is NOT safe unless every block mutation tracks it", async () => {
+  const f = await trial();
+  try {
+    await enable(f);
+    // Real D1 writer intentionally does not populate this FAKE pair ledger.
+    assert.deepEqual(await f.block(f.worker, CALLER), { kind: "updated" });
+    assert.deepEqual(await f.block(f.worker, CALLER, false), { kind: "updated" });
+    assert.equal(fakePairRevision(f.a, CALLER, WORKER), 0);
+    assert.equal((await readLocalCallerAgoraSafetyFacts(
+      localD1Adapter(f.a), f.caller, f.listing.id,
+    )).contactBlocked, false);
+    assert.deepEqual(await stageOneStatementFakeUnsent(f),
+      { kind: "unsent_staged_test_only" },
+      "intentional negative-control: an untracked mutation bypasses fake ABA fence");
+    assert.equal(f.rows()[0].state, "unsent_test_only");
+  } finally {
+    f.close();
+  }
+});
+
+test("two SQLite connections serialize one SQL writer against a competing block and unrelated caller", async () => {
+  const f = await trial();
+  try {
+    await enable(f);
+    f.a.exec("BEGIN IMMEDIATE");
+    try {
+      assert.deepEqual(await stageOneStatementFakeUnsent(f, {
+        db: f.b,
+      }), DENIED, "a competing writer may be SQLITE_BUSY, not silently allowed");
+    } finally {
+      f.a.exec("ROLLBACK");
+    }
+    assert.deepEqual(await f.block(f.worker, CALLER), { kind: "updated" });
+    assert.deepEqual(await stageOneStatementFakeUnsent(f), DENIED);
+    assert.deepEqual(await stageOneStatementFakeUnsent(f, {
+      bearer: f.other, callId: OTHER_CALL,
+    }), { kind: "unsent_staged_test_only" },
+    "other caller relationship is independent");
+    assert.equal(f.rows().length, 1);
+    assert.equal(f.rows()[0].caller_id, OTHER);
+    assert.equal(f.rows()[0].worker_id, WORKER);
+    assert.equal(f.rows()[0].state, "unsent_test_only");
+    assert.equal((await revokeSession(localD1Adapter(f.b), f.other)), true);
+    assert.deepEqual(await stageOneStatementFakeUnsent(f, {
+      bearer: f.other, callId: CALL,
+    }), DENIED);
+    assert.deepEqual(await recheckUnsent(f, f.other, OTHER_CALL), DENIED);
   } finally {
     f.close();
   }
