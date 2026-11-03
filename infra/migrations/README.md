@@ -41,3 +41,12 @@ All five migrations are applied through the existing **local-only** Wrangler CI 
 ## Migration 0006 — Machine-only notification dead-letter persistence (2026-10-31)
 
 `0006_notification_dead_letters.sql` creates `notification_delivery_dead_letters(event_id, reason, recorded_at_ms)` with a constrained reason enum and timestamp. A bound atomic INSERT does nothing on duplicate event IDs, preserving the first audit reason across retries/restarts. Tests use only disposable SQLite/D1 fixtures and independent-file backup/restore; founder guard rejects added recipient/phone/token/payload fields or relocation of this table. Real Queue/FCM, event/consent authorization, operational retention and Cloudflare deployment remain unapproved.
+
+
+## Migration 0008 — Private Agora safety schema, local only (2026-11-03)
+
+Following founder permission for **backend engineering preparation** on 2026-11-03, `0008_agora_private_safety_state.sql` adds three initially empty, constrained tables: worker-owner `worker_agora_availability_preferences` (distinct from DEFAULT-OFF actual call consent), directional `agora_account_blocks` (no reason, GPS, phone, history or personal text), and `agora_abuse_window_counters` (aggregate-only, with explicitly required window start/end but **no actual counter writer or chosen limits**). There is no operational presence or automatic permission to place/receive Agora calls.
+
+The local-only `agora-private-safety-state.ts` exposes authenticated Worker availability CAS, authenticated directional block/unblock and a caller-session-bound private eligibility read. It explicitly returns `workerPresence: unknown` and `rateGate: unknown`; availability intent and absent abuse records never imply a real caller is allowed. See [privacy/retention proposal](../../docs/AGORA_PRIVATE_SAFETY_D1_PRIVACY_2026-11-03.md) and [M-003/M-005 register](../../docs/MANUAL_ACTIONS.md).
+
+`npm run db:migrate:local` and the isolated CI apply 0008 ONLY to local/throwaway D1. No remote migration, account data insertion, live endpoint, real call, Agora token, Android, staging/production deploy or legacy Finworkar change is part of this migration. M-003 retention, M-005 authoritative presence and numeric abuse thresholds, provider M-006 and release M-007 are **not** supplied by the general engineering approval. Before actual counter writes, approve time windows, reset/purge, backups and privacy/deletion behavior.
