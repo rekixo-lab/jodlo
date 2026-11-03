@@ -152,7 +152,7 @@ export async function auditFounderGates(root = rootDefault) {
       // ENGINEERING PREPARATION may appear. No private event log or PII.
       for(const [table,allowedFields] of Object.entries(AGORA_SAFETY_SCHEMA)) {
         const pattern=new RegExp(
-          "CREATE\\\\s+TABLE\\\\s+"+table+"\\\\s*\\\\(([\\\\s\\\\S]*?)\\\\)\\\\s*;","i",
+          String.raw`CREATE\\s+TABLE\\s+${table}\\s*\\(([\\s\\S]*?)\\)\\s*;`, "i",
         );
         const match=content.match(pattern);
         const fields=match===null?[]:[...match[1].matchAll(
