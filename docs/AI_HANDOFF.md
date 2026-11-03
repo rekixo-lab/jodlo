@@ -1,5 +1,10 @@
 # JODLO — Complete AI handoff and source-of-truth index
 
+## 2026-11-03 — real Cloudflare production config milestone (PR CI pending)
+
+Binding policy remains ADR-0015: real providers/deployment authorized, but no external account access is yet evidenced. New `scripts/prepare-production-wrangler.mjs` validates real operator-provided JODLO Cloudflare account ID, real dedicated D1 UUID and unique login rate namespaces; it emits **only** untracked `apps/api/wrangler.production.generated.jsonc`, with no route, no secrets and no remote calls. Run `npm run production:config:write`, `npm run production:config:check`, then operator-only `wrangler deploy --dry-run --config apps/api/wrangler.production.generated.jsonc` after CF-01. Exact [owner instructions](REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md); never generate dummy production resources or automatically run remote migration/deploy in CI. Verify PR and independent merged-main CI before marking engineering milestone complete.
+
+
 ## CURRENT BINDING POLICY — 2026-11-03 real production integrations are now authorized
 
 **Founder decision ADR-0015** [real external connection and deployment](decisions/0015-real-provider-integration-and-controlled-production.md) replaces the old *develop everything locally; no Cloudflare/Google until final product* rule. Start actual JODLO Cloudflare account/Worker/D1, real OAuth, protected deployment, cross-device acceptance, then Agora/FCM/payments when safe. **No external account, real deploy or provider sign-in has yet been verified.** Immediately tell founder [CF-01 and GOOGLE-01 manual actions](MANUAL_ACTIONS.md) with [exact runbook](REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md) and phone commands. Keep security/privacy/domain/budget checks, no fake as live, no unreviewed category activation or automatic deploy-on-push, Finworkar read-only. Everything below is dated implementation history; old "M-007 deferred/no staging or deploy" future instructions are superseded by this paragraph.
