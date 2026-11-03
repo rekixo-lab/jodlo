@@ -61,4 +61,7 @@
     <string name="customer_page_failed">अगले पृष्ठ की पुष्टि नहीं हुई। पहले की सूची दिख रही है; जानकारी बदली हो तो फिर से ताज़ा करें।</string>
     <string name="customer_retry_page">इसी पृष्ठ को फिर से देखें</string>
     <string name="search_query_caption">खोज के परिणाम: %1$s</string>
+    <string name="demo_enable">बिना इंटरनेट नमूना सेवाएँ देखें (केवल परीक्षण)</string>
+    <string name="demo_disable">नमूना बंद करें</string>
+    <string name="demo_readonly_notice">केवल नमूना डेटा • ये वास्तविक वर्कर या स्वीकृत लाइव श्रेणियाँ नहीं हैं। यहाँ नेटवर्क अनुरोध, कॉल, प्रवेश या प्रकाशन नहीं होते।</string>
 </resources>
