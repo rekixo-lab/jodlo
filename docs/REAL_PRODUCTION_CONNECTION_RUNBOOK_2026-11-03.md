@@ -1,5 +1,40 @@
 # JODLO — real-provider connection and controlled deployment runbook
 
+## CF-04 — apply only `jodlo-production` schema with interactive confirmation
+
+**Status: NOT EXECUTED.** CF-03 owner's real `d1 info` showed 0 tables on the exact JODLO UUID, and `migrations list --remote` showed eight pending files. The command below is a **real, irreversible-until-restored** change of *that production D1*; it is authorized by ADR-0015 but not a claim that the remote schema exists yet. No call/notification/provider/payment features become live merely because tables exist.
+
+Before proceeding, confirm no other engineer is concurrently modifying this D1, verify Cloudflare account **`8f31060fbcfee2b3e9309138cad7f12f`** and dedicated D1 **`723080b5-f165-4b31-839f-3063175824c7`**; inspect this database rather than the other production DBs in the shared account. The D1 Time Travel bookmark from the current read-only command should be kept **privately** with the local operator; it is not a substitute for a recovery procedure. On an empty fresh database, risk to pre-existing users is low, but the migration is a real change. Cloudflare states `d1 migrations apply` applies all currently unapplied files in order, takes a backup, and rolls back a failing migration; earlier successful migrations may remain applied. Time Travel restore overwrites live state and must never be executed as routine testing. Sources: [Cloudflare D1 migration CLI](https://developers.cloudflare.com/workers/wrangler/commands/d1/), [Time Travel](https://developers.cloudflare.com/d1/reference/time-travel/).
+
+```bash
+cd ~/jodlo
+git switch main
+git pull --ff-only origin main
+npx wrangler whoami
+npm run production:config:check
+npx wrangler d1 info jodlo-production
+npx wrangler d1 time-travel info jodlo-production --config apps/api/wrangler.production.generated.jsonc
+npx wrangler d1 migrations list jodlo-production --remote --config apps/api/wrangler.production.generated.jsonc
+
+# STOP if account, database, UUID, or migration set differs from reviewed evidence.
+# The next command WRITES REAL TABLES to JODLO production D1. It asks confirmation.
+npx wrangler d1 migrations apply jodlo-production --remote --config apps/api/wrangler.production.generated.jsonc
+```
+
+**After manual confirmation and command completion**, verify the exact same D1 is active using these **read-only** commands:
+
+```bash
+npx wrangler d1 migrations list jodlo-production --remote --config apps/api/wrangler.production.generated.jsonc
+npx wrangler d1 info jodlo-production
+npx wrangler d1 execute jodlo-production --remote --config apps/api/wrangler.production.generated.jsonc --command "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;"
+npx wrangler d1 execute jodlo-production --remote --config apps/api/wrangler.production.generated.jsonc --command "PRAGMA integrity_check;"
+```
+
+Expected outcome: all eight migrations applied, no remaining pending migrations, new JODLO tables present and integrity check `ok`. **Do not invent the outcome; use actual operator output.** If a migration fails, stop—do not delete/recreate the D1 or rerun blindly. Report exact error and remaining pending files; review Cloudflare's rollback/recovery guidance before any second write. Preserve secrets and bookmarks outside public git.
+
+**Following milestone:** only when CF-04 is independently verified, review production Worker target name, Cloudflare DNS and privacy controls; then prepare protected live `wrangler deploy` with actual Google OAuth configuration and controlled traffic. A successful D1 migration by itself does not create a public API URL, does not activate the 889-category review inventory and does not allow unauthenticated Worker writes.
+
+
 ## CF-02 verified (2026-11-03); next: CF-03 read-only remote D1 inspection
 
 **Founder-provided real terminal evidence, 2026-11-03:** On the authenticated Cloudflare account `8f31060fbcfee2b3e9309138cad7f12f`, the owner ran `npm run production:config:write`, `npm run production:config:check` and `npx wrangler deploy --dry-run --config apps/api/wrangler.production.generated.jsonc`. Output confirmed a locally generated gitignored production configuration, successful shape validation, a compiled **92.37 KiB** Worker bundle (**21.67 KiB gzip**) with `env.DB (jodlo-production)`, `env.LOGIN_BURST_LIMITER (100 requests/10s)` and `env.ACCOUNT_LOGIN_LIMITER (20 requests/60s)`. Real dedicated D1 is `723080b5-f165-4b31-839f-3063175824c7`; the owner supplied two namespace IDs `45130001` and `45130002`. These numbers passed local validation; uniqueness against other Workers in the shared account has **not** been independently checked. **No remote schema, Worker deploy, route, OAuth secret or device login was changed by this dry-run.**

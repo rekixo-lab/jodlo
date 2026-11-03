@@ -1,5 +1,8 @@
 # JODLO
 
+> **CLOUDFLARE CF-03 COMPLETE (2026-11-03):** owner verified remote `jodlo-production` is empty, current Time Travel recovery bookmark exists and **all eight** repo migrations are pending. No remote writes or live Worker deployment yet. The **next real task** is explicit, confirmed, JODLO-only production schema application and post-migration read-back. [Exact CF-04 commands](docs/REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md#cf-04--apply-only-jodlo-production-schema-with-interactive-confirmation). Do not automatically migrate or enable account/Agora/push/payment features.
+
+
 > **REAL CLOUDFLARE CF-02 COMPLETE (2026-11-03):** Owner's actual Wrangler output confirms `production:config:write`, `production:config:check` and the `jodlo-api` **dry-run** (92.37 KiB) with real JODLO D1 and both auth rate-limit bindings. This is **NOT an actual Worker deployment or D1 migration**. Next action: real-account `d1 time-travel info` + `d1 migrations list --remote` inspection before any live write. [Commands](docs/REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md) · [ADR-0015](docs/decisions/0015-real-provider-integration-and-controlled-production.md).
 
 
