@@ -52,7 +52,7 @@ The safety shutdown and private recheck are still **only one SQLite store**. An 
 
 - **M-003 UPCOMING:** explicit purpose, lifetime, exports, deletion, backup/restore and disclosure for any real call intent, pair history or recovery metadata; no new collection here.
 - **M-005 UPCOMING:** real presence/push, Worker busy capacity, rate-budget/window, report/dispute and ring expiry policy. The test deadline is not a product default.
-- **M-006 BLOCKED_EXTER​NAL until provider stage:** provider-side idempotency, opaque correlation, query/ACK reconciliation, accepted outcome semantics and token/security plan. Do not request secrets in chat.
+- **M-006 DEFERRED pending provider stage:** provider-side idempotency, opaque correlation, query/ACK reconciliation, accepted outcome semantics and token/security plan. Do not request secrets in chat.
 - **M-007 DEFERRED:** controlled direct production release without staging; M-004 UI and M-008 actual OAuth separately gated.
 
 The existing owner-authenticated block writer is **unchanged**; synthetic global shutdown is not a deployed operator endpoint. Finworkar remains read-only.
