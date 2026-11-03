@@ -163,6 +163,9 @@ private suspend fun <T> publicRead(action: () -> ApiOutcome<T>): ApiOutcome<T> =
 private fun GuestDiscovery(repository: RemoteCatalogRepository?) {
     val scope = rememberCoroutineScope()
     var language by remember { mutableStateOf(Language.HI) }
+    // Published listing existence is NOT online presence, busy status or
+    // permission to initiate an Agora call.
+    var publishedOnly by rememberSaveable { mutableStateOf(false) }
     var searchText by rememberSaveable { mutableStateOf("") }
     var submittedQuery by remember { mutableStateOf("") }
     var feedMode by remember { mutableStateOf(FeedMode.BROWSE) }
@@ -171,6 +174,9 @@ private fun GuestDiscovery(repository: RemoteCatalogRepository?) {
     var listings by remember { mutableStateOf<List<PublicListing>>(emptyList()) }
     var listingCursor by remember { mutableStateOf<String?>(null) }
     var selected by remember { mutableStateOf<PublicCategory?>(null) }
+    var detailRequested by remember { mutableStateOf<PublicListing?>(null) }
+    var detailResolved by remember { mutableStateOf<PublicListing?>(null) }
+    var detailFailure by remember { mutableStateOf<FailureKind?>(null) }
     var showChoiceHint by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
     var failure by remember { mutableStateOf<FailureKind?>(null) }
@@ -178,9 +184,20 @@ private fun GuestDiscovery(repository: RemoteCatalogRepository?) {
     var invalidQuery by remember { mutableStateOf(false) }
     var requestRevision by remember { mutableIntStateOf(0) }
 
+    fun backToListings() {
+        requestRevision++
+        detailRequested = null
+        detailResolved = null
+        detailFailure = null
+        loading = false
+    }
+
     fun backToCategories() {
         requestRevision++ // Late Listing responses are never allowed to repaint Browse.
         selected = null
+        detailRequested = null
+        detailResolved = null
+        detailFailure = null
         listings = emptyList()
         listingCursor = null
         loading = false
@@ -207,7 +224,8 @@ private fun GuestDiscovery(repository: RemoteCatalogRepository?) {
         invalidQuery = false
         scope.launch {
             val outcome = publicRead {
-                client.browse(requestedLanguage, limit = PUBLIC_PAGE_SIZE)
+                client.browse(requestedLanguage, availableOnly = publishedOnly,
+                    limit = PUBLIC_PAGE_SIZE)
             }
             if (requestRevision != revision) return@launch
             loading = false
@@ -248,7 +266,8 @@ private fun GuestDiscovery(repository: RemoteCatalogRepository?) {
         scope.launch {
             // Preserve the server's first-page ambiguity/choice contract.
             val probe = publicRead {
-                client.search(query, requestedLanguage, includeChoices = true, limit = PUBLIC_PAGE_SIZE)
+                client.search(query, requestedLanguage, availableOnly = publishedOnly,
+                    includeChoices = true, limit = PUBLIC_PAGE_SIZE)
             }
             if (requestRevision != revision) return@launch
             when (probe) {
@@ -272,7 +291,8 @@ private fun GuestDiscovery(repository: RemoteCatalogRepository?) {
                         // explicitly to the existing exhaustive cursor mode,
                         // restarting from page one without mixing the two DTOs.
                         val cursorPage = publicRead {
-                            client.searchCursor(query, requestedLanguage, limit = PUBLIC_PAGE_SIZE)
+                            client.searchCursor(query, requestedLanguage, availableOnly = publishedOnly,
+                                limit = PUBLIC_PAGE_SIZE)
                         }
                         if (requestRevision != revision) return@launch
                         loading = false
@@ -304,7 +324,8 @@ private fun GuestDiscovery(repository: RemoteCatalogRepository?) {
                 when (mode) {
                     FeedMode.BROWSE -> when (
                         val page = client.browse(
-                            requestedLanguage, limit = PUBLIC_PAGE_SIZE, after = after
+                            requestedLanguage, availableOnly = publishedOnly,
+                            limit = PUBLIC_PAGE_SIZE, after = after
                         )
                     ) {
                         is ApiOutcome.Ok -> ApiOutcome.Ok(
@@ -314,7 +335,7 @@ private fun GuestDiscovery(repository: RemoteCatalogRepository?) {
                     }
                     FeedMode.SEARCH -> when (
                         val page = client.searchCursor(
-                            requestedQuery, requestedLanguage,
+                            requestedQuery, requestedLanguage, availableOnly = publishedOnly,
                             limit = PUBLIC_PAGE_SIZE, after = after
                         )
                     ) {
@@ -358,6 +379,9 @@ private fun GuestDiscovery(repository: RemoteCatalogRepository?) {
         val revision = ++requestRevision
         if (after == null) {
             selected = category // Explicit tap only: Search cannot publish/contact.
+            detailRequested = null
+            detailResolved = null
+            detailFailure = null
             listings = emptyList()
             listingCursor = null
             failure = null
@@ -395,12 +419,39 @@ private fun GuestDiscovery(repository: RemoteCatalogRepository?) {
         }
     }
 
+    /** A page card is not a permanent disclosure or contact grant.
+     * Recheck its currently public eligibility on navigation using one GET.
+     */
+    fun showListingDetail(listing: PublicListing) {
+        val client = repository ?: return
+        if (loading || selected?.id != listing.categoryId) return
+        val revision = ++requestRevision
+        detailRequested = listing
+        detailResolved = null
+        detailFailure = null
+        loading = true
+        scope.launch {
+            val outcome = publicRead {
+                client.listingDetail(listing.id, listing.categoryId)
+            }
+            if (requestRevision != revision) return@launch
+            loading = false
+            when (outcome) {
+                is ApiOutcome.Failed -> detailFailure = outcome.kind
+                is ApiOutcome.Ok -> detailResolved = outcome.value
+            }
+        }
+    }
+
     // Language and injected API-origin changes invalidate all existing public
     // data. A stale asynchronous response can never cross that boundary.
-    LaunchedEffect(language, repository) {
+    LaunchedEffect(language, repository, publishedOnly) {
         requestRevision++
         loading = false
         selected = null
+        detailRequested = null
+        detailResolved = null
+        detailFailure = null
         categories = emptyList()
         categoryCursor = null
         listings = emptyList()
@@ -409,7 +460,9 @@ private fun GuestDiscovery(repository: RemoteCatalogRepository?) {
         pageFailure = false
         if (repository != null) refreshBrowse()
     }
-    BackHandler(enabled = selected != null) { backToCategories() }
+    BackHandler(enabled = selected != null) {
+        if (detailRequested != null) backToListings() else backToCategories()
+    }
 
     Scaffold { insets ->
         LazyColumn(
@@ -440,6 +493,15 @@ private fun GuestDiscovery(repository: RemoteCatalogRepository?) {
                         selected = language == Language.EN,
                         onClick = { language = Language.EN },
                         label = { Text(stringResource(R.string.language_english)) },
+                    )
+                }
+            }
+            if (repository != null && selected == null) {
+                item {
+                    JodloChip(
+                        selected = publishedOnly,
+                        onClick = { publishedOnly = !publishedOnly },
+                        label = { Text(stringResource(R.string.filter_published_services)) },
                     )
                 }
             }
@@ -487,8 +549,12 @@ private fun GuestDiscovery(repository: RemoteCatalogRepository?) {
                     }
                 } else {
                     item {
-                        JodloTextAction(onClick = { backToCategories() }) {
-                            Text(stringResource(R.string.back_action))
+                        JodloTextAction(onClick = {
+                            if (detailRequested != null) backToListings()
+                            else backToCategories()
+                        }) {
+                            Text(stringResource(if (detailRequested != null)
+                                R.string.back_to_listings else R.string.back_action))
                         }
                     }
                     item {
@@ -533,12 +599,55 @@ private fun GuestDiscovery(repository: RemoteCatalogRepository?) {
                             Text(stringResource(R.string.customer_more_categories))
                         }
                     }
+                } else if (detailRequested != null) {
+                    item {
+                        Text(
+                            stringResource(R.string.listing_detail_heading),
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                    }
+                    val detail = detailResolved
+                    if (detail != null) {
+                        item {
+                            JodloCard(modifier = Modifier.fillMaxWidth()) {
+                                Column(Modifier.padding(JodloSizes.CardPadding)) {
+                                    Text(stringResource(R.string.public_listing))
+                                    Text(
+                                        stringResource(R.string.listing_reference, detail.id),
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
+                                    Text(stringResource(R.string.listing_detail_private_notice))
+                                }
+                            }
+                        }
+                    }
+                    if (detailFailure != null) {
+                        item {
+                            Text(
+                                stringResource(if (detailFailure == FailureKind.NOT_FOUND)
+                                    R.string.listing_no_longer_public
+                                else R.string.request_failed),
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                        item {
+                            JodloTextAction(
+                                onClick = { detailRequested?.let(::showListingDetail) },
+                                enabled = !loading,
+                            ) {
+                                Text(stringResource(R.string.retry_action))
+                            }
+                        }
+                    }
                 } else {
                     if (listings.isEmpty() && !loading) item {
                         Text(stringResource(R.string.empty_listings))
                     }
                     items(listings, key = { "public-" + it.id }) { listing ->
-                        JodloCard(modifier = Modifier.fillMaxWidth()) {
+                        JodloCard(
+                            onClick = { showListingDetail(listing) },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
                             Column(Modifier.padding(JodloSizes.CardPadding)) {
                                 Text(stringResource(R.string.public_listing))
                                 Text(
