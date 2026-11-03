@@ -78,6 +78,52 @@ test("OIDC authorized-party must match JODLO's sole configured client", async ()
   assert.equal(await verifyGoogleIdToken(await token(),client,resolver),sub);
 });
 
+test("Google Android authorized-party requires exact approved Android ID and web audience", async () => {
+  const { resolver, token } = await signer();
+  const android = "12345678901-jodloandroid.apps.googleusercontent.com";
+  const unrelated = "12345678901-unapproved.apps.googleusercontent.com";
+  const proof = await token({ azp: android });
+  assert.equal(await verifyGoogleIdToken(proof, client, resolver), null,
+    "Android azp must be denied without an explicit operator binding");
+  assert.equal(await verifyGoogleIdToken(proof, client, resolver, unrelated), null);
+  assert.equal(await verifyGoogleIdToken(proof, client, resolver, "malformed"), null);
+  assert.equal(await verifyGoogleIdToken(proof, client, resolver, android), sub);
+  assert.equal(await verifyGoogleIdToken(await token({ azp: client }), client, resolver, android), sub);
+  assert.equal(await verifyGoogleIdToken(await token(), client, resolver, android), sub);
+  assert.equal(await verifyGoogleIdToken(await token({ azp: unrelated }), client, resolver, android), null);
+  assert.equal(await verifyGoogleIdToken(await token({ aud: unrelated, azp: android }),
+    client, resolver, android), null);
+  assert.equal(await verifyGoogleIdToken(await token({ aud: [client, unrelated], azp: android }),
+    client, resolver, android), null);
+});
+
+test("HTTP Google login with approved Android azp creates a session; without binding fails closed", async () => {
+  const { resolver, token } = await signer();
+  const android = "12345678901-jodloandroid.apps.googleusercontent.com";
+  const proof = await token({ azp: android });
+  const { db, adapter } = openLocalDatabase();
+  const allow = { async limit() { return { success: true }; } };
+  const env = {
+    DB: adapter, GOOGLE_CLIENT_ID: client,
+    LOGIN_BURST_LIMITER: allow, ACCOUNT_LOGIN_LIMITER: allow,
+  };
+  const verifier = (jwt, aud, _keys, approvedAndroid) =>
+    verifyGoogleIdToken(jwt, aud, resolver, approvedAndroid);
+  const login = (config) => handleRequest(new Request("https://api.jodlo.rekixo.com/api/v1/auth/google", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ idToken: proof }),
+  }), config, verifier);
+  try {
+    assert.equal((await login(env)).status, 401);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM accounts").get().n, 0);
+    const ok = await login({ ...env, GOOGLE_ANDROID_CLIENT_ID: android });
+    assert.equal(ok.status, 200);
+    assert.equal((await ok.json()).ok, true);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM accounts").get().n, 1);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM auth_sessions").get().n, 1);
+  } finally { db.close(); }
+});
+
 test("Google OIDC multi-audience and unapproved client recipients never create a trusted subject", async () => {
   const {resolver,token}=await signer();
   const other="12345678901-unapproved.apps.googleusercontent.com";

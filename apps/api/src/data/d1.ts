@@ -28,6 +28,8 @@ export interface Env {
   ACCOUNT_LOGIN_LIMITER?: RateLimitBinding;
   /** Public OAuth web/server client ID. Set only after owner-controlled Google configuration. */
   GOOGLE_CLIENT_ID?: string;
+  /** JODLO Android OAuth client ID, allowed only as signed Google token `azp`. */
+  GOOGLE_ANDROID_CLIENT_ID?: string;
   /** Existing fake test port; production Worker uses the D1-backed session verifier. */
   AUTH?: IdentityVerifier;
 }
