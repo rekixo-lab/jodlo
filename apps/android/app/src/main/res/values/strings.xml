@@ -153,4 +153,15 @@
     <string name="saved_not_public">The saved service is no longer public under its saved Category. It may have been unpublished, hidden or edited. You may remove the bookmark.</string>
     <string name="saved_unavailable">Current status could not be confirmed. The saved reference is not proof the service is available.</string>
     <string name="saved_no_live_api">A configured live HTTPS JODLO API is needed to verify a saved service. Bookmarks can still be removed locally.</string>
+
+    <string name="customer_live_hints_switch">Suggest categories as I type</string>
+    <string name="customer_live_hints_network_notice">Optional: after a short pause, your typed work text is sent to the JODLO API for public Category suggestions. No account or location is sent. Switch this off anytime.</string>
+    <string name="customer_live_hints_demo_notice">Debug sample suggestions only. Typed text stays offline in this preview.</string>
+    <string name="customer_live_hints_loading">Checking approved work categories…</string>
+    <string name="customer_live_hints_heading">Suggested approved categories</string>
+    <string name="customer_live_hints_ambiguous">Several possible work categories. Choose the right one.</string>
+    <string name="customer_live_hints_choose">Open this Category. No automatic listing, posting or call.</string>
+    <string name="customer_live_hints_more">See full search results</string>
+    <string name="customer_live_hints_empty">No live Category suggestion yet. Try a different work description or use Search.</string>
+    <string name="customer_live_hints_error">Live suggestions could not be checked. You can still use the Search button.</string>
 </resources>

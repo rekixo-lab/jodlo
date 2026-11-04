@@ -153,4 +153,15 @@
     <string name="saved_not_public">यह सेवा अपनी सहेजी श्रेणी में अब सार्वजनिक नहीं है। अप्रकाशित, छिपी या बदली हो सकती है। आप संदर्भ हटा सकते हैं।</string>
     <string name="saved_unavailable">अभी की स्थिति की पुष्टि नहीं हुई। केवल सहेजा संदर्भ उपलब्धता का प्रमाण नहीं है।</string>
     <string name="saved_no_live_api">सहेजी सेवा की जाँच के लिए वास्तविक सुरक्षित HTTPS JODLO API आवश्यक है। संदर्भ यहाँ से हटाए जा सकते हैं।</string>
+
+    <string name="customer_live_hints_switch">लिखते समय काम के सुझाव दिखाएँ</string>
+    <string name="customer_live_hints_network_notice">वैकल्पिक: थोड़ी देर रुकने पर आपका लिखा काम JODLO API को भेजा जाएगा ताकि स्वीकृत श्रेणियाँ सुझाई जा सकें। खाता या स्थान नहीं भेजा जाता। जब चाहें बंद करें।</string>
+    <string name="customer_live_hints_demo_notice">सिर्फ़ परीक्षण के नमूना सुझाव। इस पूर्वावलोकन में आपका लिखा पाठ इंटरनेट पर नहीं भेजा जाएगा।</string>
+    <string name="customer_live_hints_loading">स्वीकृत काम की श्रेणियाँ देख रहे हैं…</string>
+    <string name="customer_live_hints_heading">स्वीकृत काम के सुझाव</string>
+    <string name="customer_live_hints_ambiguous">कई काम मिल सकते हैं। सही श्रेणी खुद चुनें।</string>
+    <string name="customer_live_hints_choose">यह श्रेणी खोलें। कोई सेवा प्रकाशित या कॉल अपने-आप नहीं होगा।</string>
+    <string name="customer_live_hints_more">खोज के सभी परिणाम देखें</string>
+    <string name="customer_live_hints_empty">अभी कोई सुझाव नहीं मिला। काम दूसरे शब्दों में लिखें या खोजें।</string>
+    <string name="customer_live_hints_error">अभी सुझाव नहीं जाँच सके। खोजें बटन इस्तेमाल कर सकते हैं।</string>
 </resources>

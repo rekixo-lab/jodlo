@@ -256,7 +256,74 @@ private fun closedAndInconsistentSnapshotsFailClosed() {
     check(catalog.listingGET.get()==1)
 }
 
+/** Inline hints are a separate OPT-IN read path. No UI render or
+ * projection performs GET/POST; only a deliberate caller would search.
+ * Late, forged, overlong and cross-language replies fail closed.
+ */
+private fun optInLiveSuggestionsShowOnlyExplicitReviewedCategories() {
+    val catalog=DisplayCatalog()
+    val worker=DenyDisplayWorker()
+    val initial=CustomerSuggestionView(CustomerSuggestionPhase.OFF)
+    check(initial.categories.isEmpty())
+    check(catalog.searchGET.get()==0)
+    check(CustomerLiveSuggestions.DEBOUNCE_MILLIS>=400L)
+    check(CustomerLiveSuggestions.MAX_RESULTS==8)
+    for(bad in listOf(""," ","x","\u0000xy","a".repeat(65),"  a  ")) {
+        check(CustomerLiveSuggestions.normalizedQuery(bad)==null)
+    }
+    check(CustomerLiveSuggestions.normalizedQuery("  प्लंबर  ")=="प्लंबर")
+    check(CustomerLiveSuggestions.normalizedQuery("  e\u0301lectric  ")=="électric")
+    check(CustomerLiveSuggestions.normalizedQuery("  electrical repair  ")=="electrical repair")
+    // Opted-in hint fetches approved Categories only, no Listing or Worker call.
+    catalog.searchResult={ query, lang ->
+        ApiOutcome.Ok(CatalogSearch(lang,query,
+            listOf(DISPLAY_PLUMBER,DISPLAY_CARPENTER),null,false,emptyList()))
+    }
+    val query=checkNotNull(CustomerLiveSuggestions.normalizedQuery("  कारपेंटर  "))
+    check(catalog.searchGET.get()==0)
+    val page=catalog.search(query,Language.HI,false,true,8)
+    check(catalog.searchGET.get()==1)
+    val hints=CustomerLiveSuggestions.project(query,Language.HI,page)
+    check(hints.phase==CustomerSuggestionPhase.MATCHES)
+    check(hints.categories==listOf(DISPLAY_PLUMBER,DISPLAY_CARPENTER))
+    check(!hints.moreMayExist)
+    check(catalog.listingGET.get()==0 && worker is WorkerRepository)
+    val choices=CustomerLiveSuggestions.project("प्लंबर",Language.HI,
+        ApiOutcome.Ok(CatalogSearch(Language.HI,"प्लंबर",
+            emptyList(),null,true,listOf(DISPLAY_PLUMBER))))
+    check(choices.phase==CustomerSuggestionPhase.CHOICES)
+    check(choices.categories==listOf(DISPLAY_PLUMBER))
+    check(!choices.moreMayExist)
+    val empty=CustomerLiveSuggestions.project("cleaning",Language.EN,
+        ApiOutcome.Ok(CatalogSearch(Language.EN,"cleaning",
+            emptyList(),null,false,emptyList())))
+    check(empty.phase==CustomerSuggestionPhase.EMPTY)
+    val next=CustomerLiveSuggestions.project("service",Language.EN,
+        ApiOutcome.Ok(CatalogSearch(Language.EN,"service",
+            listOf(DISPLAY_CARPENTER),8,false,emptyList())))
+    check(next.phase==CustomerSuggestionPhase.MATCHES && next.moreMayExist)
+    val unavailable=CustomerSuggestionView(CustomerSuggestionPhase.UNAVAILABLE)
+    check(CustomerLiveSuggestions.project("plumber",Language.HI,
+        ApiOutcome.Ok(CatalogSearch(Language.EN,"plumber",
+            listOf(DISPLAY_PLUMBER),null,false,emptyList())))==unavailable)
+    check(CustomerLiveSuggestions.project("carpenter",Language.EN,
+        ApiOutcome.Ok(CatalogSearch(Language.EN,"plumber",
+            listOf(DISPLAY_CARPENTER),null,false,emptyList())))==unavailable)
+    check(CustomerLiveSuggestions.project("plumber",Language.EN,
+        ApiOutcome.Ok(CatalogSearch(Language.EN,"plumber",
+            List(9){PublicCategory("id_$it","slug_$it","Service")},null,false,emptyList())))==
+        unavailable)
+    check(CustomerLiveSuggestions.project("plumber",Language.EN,
+        ApiOutcome.Ok(CatalogSearch(Language.EN,"plumber",
+            listOf(DISPLAY_PLUMBER,DISPLAY_PLUMBER),null,false,emptyList())))==
+        unavailable)
+    check(CustomerLiveSuggestions.project("plumber",Language.EN,
+        ApiOutcome.Failed(FailureKind.OFFLINE_OR_TIMEOUT,false))==unavailable)
+    // Pure state can never confirm a Listing, contact, location or publishing.
+    check(catalog.searchGET.get()==1 && catalog.listingGET.get()==0)
+}
 fun main() {
+    optInLiveSuggestionsShowOnlyExplicitReviewedCategories()
     initialAndEmptySearchHaveNoHiddenRequests()
     typedErrorShowsOnlyExplicitRetryAndNoOldRows()
     ambiguityIsChoiceNotAnAutomaticListing()
