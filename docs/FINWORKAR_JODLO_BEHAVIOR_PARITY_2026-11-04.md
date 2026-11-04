@@ -1,3 +1,9 @@
+## Progress checkpoint — guided Worker Category review (4 November)
+
+The native guided flow can now **select a real approved active Category, review its exact data scope, explicitly publish and manage/unpublish an owned Listing through confirmation** using existing authenticated JODLO backend routes. Account session generation and page-membership guards reject stale confirmation, new query/language and switched accounts. Owner uncertain writes still require manual rechecks; public visibility remains an independent anonymous server read. Details: [guided native review acceptance](GUIDED_WORKER_SERVICE_REVIEW_2026-11-04.md).
+
+This is **not** the legacy four-stage post or a complete JODLO Worker listing; experience, rates, service area, description, media/moderation and profile disclosure remain pending reviewed schema and consent rules. No old Firebase/Finworkar source, live credentials or unapproved production Catalog was modified.
+
 ## Progress checkpoint — native account portability (4 November)
 
 Account self-service is a **cross-cutting subsystem**, not a substitute for complete Marketplace delivery. The preceding PR #225 merged real owner-bound D1 overview/export and native account summary/Logout-all. The next feature branch adds direct Account Google sign-in and user-chosen native JSON document saving with a strict Kotlin decoder and session replacement guard. Its export scope is **only existing JODLO D1 records** and fails closed for oversized data; it is not comprehensive personal-data deletion, a cross-provider archive, moderation, contact or full Finworkar parity. Android phone validation and exact CI/main evidence remain separate.
