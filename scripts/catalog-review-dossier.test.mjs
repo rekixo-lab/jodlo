@@ -87,8 +87,8 @@ test("Markdown worksheet includes every historic Service and independent unverif
   assert.throws(()=>renderCategoryReviewDossierMarkdown(forgedService));
   const escaped=structuredClone(dossier);
   escaped.page.categories[0].services[0].historicalNameEn="Pipe | <untrusted>";
-  assert.match(renderCategoryReviewDossierMarkdown(escaped),
-    /Pipe \\| &lt;untrusted&gt;/u);
+  assert.ok(renderCategoryReviewDossierMarkdown(escaped)
+    .includes("Pipe \\| &lt;untrusted&gt;"));
 });
 
 test("CLI emits read-only bilingual source dossier and rejects malformed command flags",()=>{
