@@ -5,7 +5,7 @@ import {resolve} from "node:path";
 import {loadPinnedHumanReviewActionQueue,emptyHumanReviewActionPacketSet} from "./catalog-human-review-progress.mjs";
 import {selectNextHumanReviewActions} from "./catalog-review-next-actions.mjs";
 import {loadPinnedFullCategoryServiceEvidence} from "./catalog-service-evidence-packets.mjs";
-import {buildCategoryReviewDossier} from "./catalog-review-dossier.mjs";
+import {buildCategoryReviewDossier,renderCategoryReviewDossierMarkdown} from "./catalog-review-dossier.mjs";
 
 const queue=loadPinnedHumanReviewActionQueue();
 const evidence=loadPinnedFullCategoryServiceEvidence();
@@ -64,6 +64,33 @@ test("tampering with historical services, source, approval, tasks or duplicates 
   assert.throws(()=>buildCategoryReviewDossier(p,duplicate));
 });
 
+
+test("Markdown worksheet includes every historic Service and independent unverified gates",()=>{
+  const dossier=buildCategoryReviewDossier(page({limit:5}),evidence);
+  const markdown=renderCategoryReviewDossierMarkdown(dossier);
+  assert.match(markdown,/UNAPPROVED \/ REVIEW ONLY/u);
+  assert.match(markdown,/Qualified signoffs: 0; founder approvals: 0/u);
+  assert.match(markdown,/Next cursor .*laptop-repair/u);
+  assert.equal((markdown.match(/\| Source Service ID \|/gu)||[]).length,5);
+  for(const category of dossier.page.categories){
+    assert.ok(markdown.includes(category.historicalNameHi));
+    for(const service of category.services){
+      assert.ok(markdown.includes("| "+service.sourceServiceId+" |"),
+        service.sourceServiceId);
+    }
+  }
+  const forged=structuredClone(dossier);
+  forged.summary.founderApprovalsVerified=1;
+  assert.throws(()=>renderCategoryReviewDossierMarkdown(forged));
+  const forgedService=structuredClone(dossier);
+  forgedService.page.categories[0].services[0].reviewState="APPROVED";
+  assert.throws(()=>renderCategoryReviewDossierMarkdown(forgedService));
+  const escaped=structuredClone(dossier);
+  escaped.page.categories[0].services[0].historicalNameEn="Pipe | <untrusted>";
+  assert.match(renderCategoryReviewDossierMarkdown(escaped),
+    /Pipe \\| &lt;untrusted&gt;/u);
+});
+
 test("CLI emits read-only bilingual source dossier and rejects malformed command flags",()=>{
   const run=(...args)=>execFileSync(process.execPath,
     ["scripts/catalog-review-dossier.mjs",...args],{
@@ -73,11 +100,13 @@ test("CLI emits read-only bilingual source dossier and rejects malformed command
   assert.match(run("--check"),/no approvals, no SQL/);
   const summary=JSON.parse(run("--summary"));
   assert.equal(summary.selectedHistoricalServices,48);
+  const markdown=run("--markdown","--limit=5");
+  assert.match(markdown,/All 10 original Services/u);
   const first=JSON.parse(run("--next","--limit=1"));
   assert.equal(first.page.categories[0].services.length,10);
   assert.ok(first.page.categories[0].services[0].historicalNameHi);
   for(const args of [["--limit=11"],["--after=not-an-id"],["--next","--summary"],
-    ["--summary","--limit=5"],["--unknown"]]) {
+    ["--summary","--limit=5"],["--markdown","--summary"],["--unknown"]]) {
     const bad=spawnSync(process.execPath,
       ["scripts/catalog-review-dossier.mjs",...args],{
         cwd:resolve(import.meta.dirname,".."),encoding:"utf8",timeout:90_000,
