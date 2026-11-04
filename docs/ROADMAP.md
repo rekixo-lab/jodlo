@@ -1,3 +1,9 @@
+## 2026-11-04 — Current Worker service editing, no new sensitive data
+
+- [ ] Build and exact-head green-merge `PUT /api/v1/me/listings` for changing an existing owner service's approved Category without a new row or data model; Android supports fresh owned selection → Category search → review → save and manual conflict recovery. [Acceptance](WORKER_SERVICE_CATEGORY_EDIT_2026-11-04.md).
+- [ ] Beyond Category-only service: founder-reviewed public profile/service details, service-type experience and optional rates, consented approximate area and image moderation, edit revisions/idempotency and robust mobile saved drafts. Do **not** invent consent, default public PII, verification, price rules or call readiness.
+- [ ] Keep finishing the whole product: approved live Catalog, useful Customer search/service cards, direct in-app Agora with live signaling/FCM and worker opt-in, reports/moderation, privacy/erasure, supported billing, admin, recovery and phone launch checks.
+
 ## 2026-11-04 — guided Worker creation/removal reviews (in progress)
 
 - [x] Account login, private summary/data export and all-devices logout code landed via PR #225/#226; final device/legal rollout remains separate.
