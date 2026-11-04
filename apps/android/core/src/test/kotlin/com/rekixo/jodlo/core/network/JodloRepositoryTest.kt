@@ -98,6 +98,50 @@ fun main() {
     check(offlineLabels.approvedNames(listOf("plumber"),Language.HI)==
         bad(FailureKind.OFFLINE_OR_TIMEOUT))
 
+    // Anonymous across-all-Categories feed is deliberately different from
+    // the Category-scoped route; pagination is one current public listing ID.
+    val allRoute=JodloRoutes.publicAllListingPage(limit=1, after=LISTING_ID)
+    check(allRoute.method==HttpMethod.GET)
+    check(allRoute.resource=="/api/v1/listings?feed=all&limit=1&after=$LISTING_ID")
+    check(allRoute.headers()["Authorization"]==null && allRoute.bodyUtf8()==null)
+    check(JodloRoutes.publicAllListingPage().resource==
+        "/api/v1/listings?feed=all&limit=20")
+    for(limit in listOf(0,-1,26,999)){
+        requireRejected("public all feed page size $limit"){
+            JodloRoutes.publicAllListingPage(limit=limit)
+        }
+    }
+    for(cursor in listOf("","tiny","../secret","bad%0A","bad:sort")){
+        requireRejected("public feed cursor"){
+            JodloRoutes.publicAllListingPage(after=cursor)
+        }
+    }
+    val feedRows=RemoteCatalogRepository(RequestSender { call ->
+        check(call.method==HttpMethod.GET)
+        check(call.resource=="/api/v1/listings?feed=all&limit=20")
+        check(call.headers()["Authorization"]==null && call.bodyUtf8()==null)
+        ok("""{"listings":[{"id":"$LISTING_ID","categoryId":"carpenter"}],"nextCursor":null}""")
+    })
+    check(feedRows.allPublicListings()==
+        ApiOutcome.Ok(PublicListingPage(listOf(PublicListing(LISTING_ID,"carpenter")),null)))
+    val fakeContinuation=RemoteCatalogRepository(RequestSender {
+        ok("""{"listings":[{"id":"$LISTING_ID","categoryId":"carpenter"}],"nextCursor":"$LISTING_ID"}""")
+    })
+    check(fakeContinuation.allPublicListings(limit=3)==bad())
+    check(fakeContinuation.allPublicListings(limit=1,after=LISTING_ID)==bad())
+    for(extra in listOf(
+        """{"listings":[{"id":"$LISTING_ID","categoryId":"carpenter","workerId":"private"}],"nextCursor":null}""",
+        """{"listings":[{"id":"$LISTING_ID","categoryId":"carpenter"}],"nextCursor":null,"owner":"secret"}""",
+        """{"listings":[{"id":"$LISTING_ID","categoryId":"carpenter"},{"id":"$LISTING_ID","categoryId":"plumber"}],"nextCursor":null}""",
+    )){
+        val corrupt=RemoteCatalogRepository(RequestSender { ok(extra) })
+        check(corrupt.allPublicListings()==bad())
+    }
+    val disconnectedFeed=RemoteCatalogRepository(RequestSender {
+        throw IOException("No network")
+    })
+    check(disconnectedFeed.allPublicListings()==bad(FailureKind.OFFLINE_OR_TIMEOUT))
+
     val catalog: CatalogRepository = RemoteCatalogRepository(sender)
     val worker: WorkerRepository = RemoteWorkerRepository(sender)
     val browse = catalog.browse(Language.HI,limit=2)
