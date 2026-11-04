@@ -1,3 +1,7 @@
+## 0009 — cross-Category anonymous read index (2026-11-04; local CI only)
+
+`0009_public_cross_category_feed_index.sql` adds a single **partial covering read index** for currently `published` and `allowed` existing worker listings ordered by `(created_at,id)`. This makes an opt-in, bounded cross-Category Customer feed efficient while retaining all existing status, owner, Category and moderation checks. The migration creates **no new table or row**, does not approve Categories, and does not grant access to private Worker fields. Local Node/SQLite and Wrangler test migrations apply it automatically. It has **NOT been approved/applied to live `jodlo-production`** in this engineering task; a later verified operator-only release requires backup, rollback/plan and actual Cloudflare/phone acceptance. [Public feed contract](../../docs/CUSTOMER_ALL_PUBLIC_SERVICES_FEED_2026-11-04.md).
+
 # JODLO D1 migrations — local-first
 
 > **CURRENT PRODUCTION D1 POLICY (2026-11-03):** [ADR-0015](../../docs/decisions/0015-real-provider-integration-and-controlled-production.md) authorizes **preparing and explicitly applying reviewed migrations to a separate real JODLO D1** after CF-01 owner account binding, backups, safety and budget checks. Old "no remote migration until final product readiness" wording below is historical. CI remains local-only; never treat local D1 ID as production, never run remote writes on unverified account, and record actual migration evidence. [Runbook](../../docs/REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md).
