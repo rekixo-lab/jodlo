@@ -1,5 +1,15 @@
 # JODLO native Android app — Customer and Worker flows
 
+## 2026-11-04 — Account: direct Google sign-in and user-selected D1 privacy export
+
+In a developer build configured with the actual dedicated JODLO HTTPS origin and **public Google Web OAuth client ID**, open **Account** without first visiting Worker. Select **Sign in with Google**, then **Refresh account information**. The summary is private to this live session and shows current JODLO-owned listing/session counts, not verified status or live voice-call readiness.
+
+Select **Save a copy of my account data**. The app fetches `GET /api/v1/me/data-export` once with its current bearer, validates the exact version-one response and opens Android's standard **Create document** picker. Only after the user chooses a destination does the app write the JSON document, using **no storage permission, clipboard, share intent, app-owned temporary file or SavedState**. A cloud-backed storage choice may upload the file; this is controlled by the chosen document provider. Canceling the picker does not write a file. If the account has changed, expired or logged out, the old export is discarded. If a write fails, the user should delete any partial file at the selected location. The v1 API intentionally refuses exports over 60 KB rather than sending incomplete data. It does not export Google, Cloudflare backups, Agora, FCM, payment-provider data or third-party records; account erasure remains a separate unimplemented/privacy-gated workflow.
+
+**Required real-phone acceptance (not established by CI):** with a configured own-device build, check Account Google login; refresh and switch to Worker (same account); save to a local Documents destination; verify valid JSON and that it contains no bearer/session hashes; cancel the chooser; test rotated/large-font UI; start export then sign out/relogin before finishing the chooser and confirm stale data is not written; finally use **Sign out on all devices** and confirm private Account reads are unauthorized until another Google login. Do not post the JSON or Google token in issue comments, screenshots or chat. The unconfigured CI APK intentionally cannot sign in or retrieve personal data.
+
+
+
 > **PRODUCTION CLOUD API ORIGIN CONFIRMED 2026-11-03:** For real Android builds use `jodloApiOrigin=https://api.jodlo.rekixo.com` (no `/api/v1` here; the client adds it). Do not use old website host `jodlo.rekixo.com` as API origin. Domain is founder-confirmed but no live DNS/Worker has been deployed yet; use actual Google Web Client ID only after OAuth setup. [ADR-0016](../../../docs/decisions/0016-jodlo-dedicated-custom-api-domain.md).
 
 
