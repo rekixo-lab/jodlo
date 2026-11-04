@@ -444,6 +444,8 @@ private fun GuestDiscovery(
         if (after != null && (selected?.id != category.id || after != listingCursor)) return
         val revision = ++requestRevision
         if (after == null) {
+            hintsDismissed = true
+            hints = CustomerSuggestionView(CustomerSuggestionPhase.OFF)
             selected = category // Explicit tap only: Search cannot publish/contact.
             detailRequested = null
             detailResolved = null
@@ -616,6 +618,7 @@ private fun GuestDiscovery(
                             onValueChange = {
                                 searchText = it
                                 invalidQuery = false
+                                hints = CustomerSuggestionView(CustomerSuggestionPhase.OFF)
                                 hintsDismissed = false
                             },
                             label = { Text(stringResource(R.string.search_label)) },
@@ -633,6 +636,7 @@ private fun GuestDiscovery(
                             selected = hintsEnabled,
                             onClick = {
                                 hintsEnabled = !hintsEnabled
+                                hints = CustomerSuggestionView(CustomerSuggestionPhase.OFF)
                                 hintsDismissed = false
                             },
                             label = { Text(stringResource(R.string.customer_live_hints_switch)) },
