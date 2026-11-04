@@ -304,6 +304,22 @@ class InMemorySessionCoordinator(
         }
     )
 
+    /** Current session and private read epoch guard an account overview.
+     * A response overtaken by logout, account replacement or a Worker write
+     * cannot be accepted in the UI.
+     */
+    fun accountOverview(
+        cancellation: CancellationSignal? = null,
+    ): SessionResult<OwnAccountOverview> = withSession(
+        call = { token ->
+            performOnce(JodloRoutes.accountOverview(token), authSender::send,
+                JodloReplyDecoder::accountOverview)
+        },
+        consistentRead = true,
+        cancellation = cancellation,
+        update = { reply, _ -> outcome(reply) },
+    )
+
     fun myListings(cancellation: CancellationSignal? = null): SessionResult<List<OwnListing>> = withSession(
         call = { workers.myListings(it) },
         cancellation = cancellation,
