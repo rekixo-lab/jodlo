@@ -275,6 +275,33 @@ export async function pageAllPublicListings(
   };
 }
 
+/** An owner may reactivate ONLY an already-unpublished Service with the
+ * exact same Listing ID and Category. This is NOT an upsert or a new Listing:
+ * a stale, still-published, hidden/moderated, inactive-Category, disabled-owner,
+ * non-worker, or foreign ID cannot be revived. All current guards are checked
+ * inside one D1 UPDATE; no private status is projected back to the caller.
+ */
+export const RESUME_OWN_LISTING_QUERY =
+  "UPDATE worker_listings AS wl SET status='published' " +
+  "WHERE wl.id=? AND wl.worker_account_id=? AND wl.category_id=? " +
+  "AND wl.status='unpublished' AND wl.moderation_status='allowed' " +
+  "AND EXISTS(SELECT 1 FROM worker_profiles AS wp " +
+  "JOIN accounts AS a ON a.id=wp.account_id " +
+  "WHERE wp.account_id=wl.worker_account_id AND wp.status='draft' AND a.status='active') " +
+  "AND EXISTS(SELECT 1 FROM categories AS c " +
+  "WHERE c.id=wl.category_id AND c.is_active=1)";
+
+export async function resumeOwnListing(
+  db:D1Database,actor:string,id:string,expectedCategoryId:string,
+):Promise<PublicListing|null> {
+  if(!validOpaqueId(actor)||!validOpaqueId(id)||
+      !validCategoryId(expectedCategoryId))return null;
+  const {meta}=await db.prepare(RESUME_OWN_LISTING_QUERY)
+    .bind(id,actor,expectedCategoryId).run();
+  if(meta.changes!==1)return null;
+  return Object.freeze({id,categoryId:expectedCategoryId});
+}
+
 export async function unpublishListing(db:D1Database,actor:string,id:string):Promise<boolean> {
   if(!validOpaqueId(actor)||!validOpaqueId(id))return false;
   const {meta}=await db.prepare(UNPUBLISH_LISTING_QUERY).bind(id,actor).run();
