@@ -189,4 +189,11 @@
     <string name="home_open_category">Open current public listings for this category</string>
     <string name="home_refresh">Refresh approved categories</string>
     <string name="home_no_live_api">A configured JODLO HTTPS API is required for live categories. The Customer screen can offer a separate offline developer sample in a debug build.</string>
+    <string name="worker_resume_review_action">Review reactivating this service</string>
+    <string name="worker_resume_warning">This service is not currently public. That does not prove it was paused: moderation or inactive Category may also hide it. Reactivation is allowed only for an earlier unpublished service, not a hidden or unapproved one.</string>
+    <string name="worker_resume_category">Existing service Category: %1$s</string>
+    <string name="worker_resume_final_review">Review reactivation requirements</string>
+    <string name="worker_resume_final_warning">If the server confirms this exact existing service is unpublished, still approved and allowed, it will become public immediately with the SAME Listing reference. No new service or verified Worker profile will be created. An unavailable or changed service will be rejected.</string>
+    <string name="worker_resume_confirm">Confirm: reactivate this service</string>
+    <string name="worker_resume_cancel">Cancel reactivation review</string>
 </resources>

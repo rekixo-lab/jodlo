@@ -18,10 +18,14 @@ private fun reached(latch: CountDownLatch) {
     check(latch.await(5, TimeUnit.SECONDS)) { "Fake network call not started" }
 }
 
-private class ReviewFakeWorkerRepository : WorkerRepository, OwnListingPageRepository, OwnListingCategoryEditRepository {
+private class ReviewFakeWorkerRepository : WorkerRepository, OwnListingPageRepository, OwnListingCategoryEditRepository, OwnListingResumeRepository {
     var published: ApiOutcome<PublicListing> = ApiOutcome.Ok(PublicListing(LISTING_ID,"plumber"))
     var unpublished: ApiOutcome<Boolean> = ApiOutcome.Ok(true)
     var edited: ApiOutcome<PublicListing> = ApiOutcome.Ok(PublicListing(LISTING_ID,"carpenter"))
+    var resumeCalls = 0
+    var resumed: ApiOutcome<PublicListing> = ApiOutcome.Ok(
+        PublicListing(LISTING_ID,"plumber"))
+    var beforeResume: (() -> Unit)? = null
     var editCalls = 0
     var beforeEdit: (() -> Unit)? = null
     var rows: ApiOutcome<List<OwnListing>> = ApiOutcome.Ok(emptyList())
@@ -62,6 +66,14 @@ private class ReviewFakeWorkerRepository : WorkerRepository, OwnListingPageRepos
         editCalls++
         beforeEdit?.invoke()
         return edited
+    }
+    override fun resume(session: String, listingId: String,
+                        expectedCategoryId: String): ApiOutcome<PublicListing> {
+        check(session == TOKEN_A || session == TOKEN_B)
+        check(listingId == LISTING_ID && expectedCategoryId == "plumber")
+        resumeCalls++
+        beforeResume?.invoke()
+        return resumed
     }
     override fun unpublish(session: String, listingId: String): ApiOutcome<Boolean> {
         check(listingId == LISTING_ID)
@@ -496,7 +508,84 @@ private fun categoryEditSlowNetworkReplacedAccountDiscardsOldResult() {
     check(completed(pending)==WorkerWriteCompletion.DISCARDED)
     check(fake.editCalls==1)
 }
+
+private fun scopedResumeNeverRetriesAmbiguousOwnerWrite() {
+    val fake=ReviewFakeWorkerRepository()
+    val session=signedInDraft(fake)
+    val scope=HeadlessWorkerWriteScope(session)
+    check(scope.resumeOwnListing(LISTING_ID,"plumber")==WorkerWriteCompletion.APPLIED)
+    check(scope.snapshot().state==WorkerWriteState.Confirmed(
+        WorkerWriteAction.Resume(LISTING_ID,"plumber")))
+    check(fake.resumeCalls==1)
+    fake.resumed=ApiOutcome.Failed(FailureKind.CONFLICT,false)
+    check(scope.resumeOwnListing(LISTING_ID,"plumber")==WorkerWriteCompletion.APPLIED)
+    check((scope.snapshot().state as WorkerWriteState.Rejected).networkKind==
+        FailureKind.CONFLICT)
+    check(fake.resumeCalls==2)
+    fake.resumed=ApiOutcome.Failed(FailureKind.OFFLINE_OR_TIMEOUT,false)
+    check(scope.resumeOwnListing(LISTING_ID,"plumber")==WorkerWriteCompletion.APPLIED)
+    val unresolved=scope.snapshot().state as WorkerWriteState.NeedsReview
+    check(unresolved.action==WorkerWriteAction.Resume(LISTING_ID,"plumber"))
+    check(fake.resumeCalls==3)
+    check(scope.resumeOwnListing(LISTING_ID,"plumber")==WorkerWriteCompletion.BLOCKED)
+    check(scope.publishExplicitCategory("plumber")==WorkerWriteCompletion.BLOCKED)
+    // A private page cannot prove whether this precise resume committed.
+    fake.rows=ApiOutcome.Ok(listOf(OwnListing(LISTING_ID,"plumber",true)))
+    check(scope.recheckOwnListings()==WorkerWriteCompletion.APPLIED)
+    check((scope.snapshot().state as WorkerWriteState.NeedsReview).observation==
+        WorkerVisibility.VISIBLE)
+    check(fake.resumeCalls==3)
+    check(scope.acknowledgeUncertainty())
+    check(scope.snapshot().state==WorkerWriteState.Idle)
+    check(runCatching { scope.resumeOwnListing("../foreign","plumber") }.isFailure)
+    check(runCatching { scope.resumeOwnListing(LISTING_ID,"bad category") }.isFailure)
+}
+
+private fun resumeSlowResponseCannotCrossAccountReplacement() {
+    val fake=ReviewFakeWorkerRepository()
+    val session=signedInDraft(fake)
+    val scope=HeadlessWorkerWriteScope(session)
+    val start=CountDownLatch(1)
+    val release=CountDownLatch(1)
+    fake.beforeResume={start.countDown();check(release.await(5,TimeUnit.SECONDS))}
+    val pending=background{scope.resumeOwnListing(LISTING_ID,"plumber")}
+    try {
+        reached(start)
+        check(scope.snapshot().state is WorkerWriteState.Sending)
+        check(scope.resumeOwnListing(LISTING_ID,"plumber")==WorkerWriteCompletion.BLOCKED)
+        check(session.acceptIssuedSession(issued(TOKEN_B)) is ApiOutcome.Ok)
+        check(scope.snapshot().state==WorkerWriteState.Idle)
+    } finally {release.countDown()}
+    check(completed(pending)==WorkerWriteCompletion.DISCARDED)
+    check(fake.resumeCalls==1)
+}
+
+private fun guidedResumeOnlyFromCurrentNonvisibleOwnerRow() {
+    val original=OwnListing(LISTING_ID,"plumber",false)
+    val visible=original.copy(visible=true)
+    val other=OwnListing("22222222-2222-4222-8222-222222222222","carpenter",false)
+    val blank=GuidedWorkerServiceActions()
+    check(blank.beginResume(original,listOf(other),31L).pendingResume==null)
+    check(blank.beginResume(visible,listOf(visible),31L).pendingResume==null)
+    val chosen=blank.beginResume(original,listOf(original),31L)
+    check(chosen.pendingResume==original)
+    check(chosen.resumeConfirmed(31L,listOf(original))==null)
+    val review=chosen.reviewResume(31L)
+    check(review.resumeConfirmed(31L,listOf(original))==
+        ResumeOwnListingCommand(LISTING_ID,"plumber"))
+    check(review.resumeConfirmed(32L,listOf(original))==null)
+    check(review.resumeConfirmed(31L,listOf(visible))==null)
+    check(review.resumeConfirmed(31L,listOf(other))==null)
+    check(review.resumeConfirmed(31L,listOf(original.copy(categoryId="carpenter")))==null)
+    check(review.cancelResume().resumeConfirmed(31L,listOf(original))==null)
+    check(review.reset().pendingResume==null)
+    check(chosen.reviewResume(32L).resumeConfirmed(32L,listOf(original))==null)
+}
+
 fun main() {
+    guidedResumeOnlyFromCurrentNonvisibleOwnerRow()
+    scopedResumeNeverRetriesAmbiguousOwnerWrite()
+    resumeSlowResponseCannotCrossAccountReplacement()
     categoryEditSingleFlightConflictAndUncertainRecheck()
     categoryEditSlowNetworkReplacedAccountDiscardsOldResult()
     testExplicitPublishUncertainThenReadOnlyVisibility()

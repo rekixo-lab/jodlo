@@ -64,6 +64,15 @@ interface OwnListingPageRepository {
                        after: String? = null): ApiOutcome<OwnListingPage>
 }
 
+/** Private owner-only resume of one EXISTING, previously-unpublished Listing.
+ * Unlike generic publish, this cannot insert or resurrect a hidden Listing.
+ * It does not read private moderation reasons or create a public profile.
+ */
+interface OwnListingResumeRepository {
+    fun resume(session: String, listingId: String,
+               expectedCategoryId: String): ApiOutcome<PublicListing>
+}
+
 /** Opt-in existing-service Category edit. No separate Worker identity, owner
  * ID in query, profile data, phone, GPS, price or media changes.
  */
@@ -223,7 +232,8 @@ class RemoteCatalogRepository(private val sender: RequestSender) :
 }
 
 class RemoteWorkerRepository(private val sender: RequestSender) :
-    WorkerRepository, OwnListingPageRepository, OwnListingCategoryEditRepository {
+    WorkerRepository, OwnListingPageRepository, OwnListingCategoryEditRepository,
+    OwnListingResumeRepository {
     override fun myDraft(session: String): ApiOutcome<WorkerDraft> =
         performOnce(JodloRoutes.workerDraft(session), sender::send, JodloReplyDecoder::workerDraft)
 
@@ -259,6 +269,13 @@ class RemoteWorkerRepository(private val sender: RequestSender) :
         val call = JodloRoutes.publishListing(session, confirmedCategoryId)
         return performOnce(call, sender::send, JodloReplyDecoder::published)
             .validated { listing -> listing.categoryId == confirmedCategoryId }
+    }
+
+    override fun resume(session: String, listingId: String,
+                        expectedCategoryId: String): ApiOutcome<PublicListing> {
+        val call = JodloRoutes.resumeOwnListing(session, listingId, expectedCategoryId)
+        return performOnce(call, sender::send, JodloReplyDecoder::published)
+            .validated { it.id == listingId && it.categoryId == expectedCategoryId }
     }
 
     override fun editCategory(

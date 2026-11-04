@@ -4,6 +4,7 @@ package com.rekixo.jodlo.core.network
 sealed class WorkerWriteAction {
     data class Publish(val confirmedCategoryId: String) : WorkerWriteAction()
     data class Unpublish(val listingId: String) : WorkerWriteAction()
+    data class Resume(val listingId: String, val expectedCategoryId: String) : WorkerWriteAction()
     data class EditCategory(
         val listingId: String, val expectedCategoryId: String, val nextCategoryId: String,
     ) : WorkerWriteAction()
@@ -169,6 +170,20 @@ class HeadlessWorkerWriteScope(private val session: InMemorySessionCoordinator) 
         }
     }
 
+    /** Explicit two-step owner resume review enters through the SAME
+     * single-flight/uncertainty fence as every other Worker mutation. This
+     * command is not generic Publish: the server can only UPDATE the exact
+     * paused Listing, never create one or bypass moderation.
+     */
+    fun resumeOwnListing(listingId: String,
+                         expectedCategoryId: String): WorkerWriteCompletion {
+        JodloRoutes.requireListingId(listingId)
+        JodloRoutes.requireCategoryId(expectedCategoryId)
+        return write(WorkerWriteAction.Resume(listingId, expectedCategoryId)) {
+            session.resumeOwnListing(listingId, expectedCategoryId, it)
+        }
+    }
+
     fun unpublish(listingId: String): WorkerWriteCompletion {
         JodloRoutes.requireListingId(listingId)
         return write(WorkerWriteAction.Unpublish(listingId)) {
@@ -244,6 +259,11 @@ class HeadlessWorkerWriteScope(private val session: InMemorySessionCoordinator) 
                                 reply.value.listings.firstOrNull { it.id == action.listingId }
                             is WorkerWriteAction.EditCategory ->
                                 reply.value.listings.firstOrNull { it.id == action.listingId }
+                            is WorkerWriteAction.Resume ->
+                                reply.value.listings.firstOrNull {
+                                    it.id == action.listingId &&
+                                        it.categoryId == action.expectedCategoryId
+                                }
                         }
                         if (paged && prior.pagedNextCursor != null &&
                             reply.value.listings.isEmpty()) {

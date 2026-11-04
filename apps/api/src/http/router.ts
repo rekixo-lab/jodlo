@@ -7,9 +7,9 @@ import { ownAccountOverview, exportOwnAccountData } from "../modules/identity/ac
 import { validGoogleClientId, verifyGoogleIdToken } from "../modules/identity/google.ts";
 import { resolveGoogleAccount } from "../modules/identity/google-accounts.ts";
 import { issueSession, makeSessionVerifier, revokeAllSessions, revokeSession, SESSION_TTL_SECONDS } from "../modules/identity/sessions.ts";
-import { hasEmptyBody, readGoogleLoginBody, readServiceListingBody, readCategoryEditBody } from "./body.ts";
+import { hasEmptyBody, readGoogleLoginBody, readServiceListingBody, readCategoryEditBody, readResumeOwnListingBody } from "./body.ts";
 import { validCategoryId } from "../modules/shared/identifiers.ts";
-import { publishListing, myListings, pageMyListings, parseOwnListingsPage, publicListings, pagePublicListings, publicListingDetail, pageAllPublicListings, unpublishListing, editOwnListingCategory } from "../modules/workers/listings.ts";
+import { publishListing, myListings, pageMyListings, parseOwnListingsPage, publicListings, pagePublicListings, publicListingDetail, pageAllPublicListings, unpublishListing, editOwnListingCategory, resumeOwnListing } from "../modules/workers/listings.ts";
 import {
   allowGoogleAccountLogin, allowLoginBurst,
   LOGIN_BURST_RETRY_SECONDS, ACCOUNT_LOGIN_RETRY_SECONDS,
@@ -344,7 +344,26 @@ export async function handleRequest(
         return json({ok:true,data});
       }
       if(request.method==="POST") {
-        if(url.search)return json({ok:false,error:{code:"INVALID_QUERY",message:"Unexpected query"}},400);
+        // Opt-in reactivation ONLY of a specific previously unpublished own
+        // Listing. Unlike regular Publish, never INSERT/UPSERT or create a
+        // second row; existing moderation and current approval still apply.
+        if(url.search) {
+          if(url.searchParams.size!==1||
+              url.searchParams.getAll("resume").length!==1||
+              url.searchParams.get("resume")!=="1")
+            return json({ok:false,error:{
+              code:"INVALID_QUERY",message:"Unexpected query"}},400);
+          const input=await readResumeOwnListingBody(request);
+          if(!input||!validOpaqueId(input.listingId)||
+              !validCategoryId(input.expectedCategoryId))
+            return json({ok:false,error:{
+              code:"INVALID_QUERY",message:"Invalid resume input"}},400);
+          const listing=await resumeOwnListing(env.DB,actor.accountId,
+            input.listingId,input.expectedCategoryId);
+          if(!listing)return json({ok:false,error:{
+            code:"CONFLICT",message:"Listing changed or unavailable"}},409);
+          return json({ok:true,data:{listing}});
+        }
         const categoryId=await readServiceListingBody(request);
         if(!validCategoryId(categoryId))
           return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid listing input"}},400);

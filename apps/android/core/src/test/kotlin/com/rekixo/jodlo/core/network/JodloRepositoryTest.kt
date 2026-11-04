@@ -603,5 +603,57 @@ fun main() {
         bad(FailureKind.OFFLINE_OR_TIMEOUT))
     check(editAttempts==1)
 
+    // Reactivation is opt-in and bound to the same original ID/Category.
+    // It never falls back to generic Publish and never accepts private fields.
+    val resumeCall=JodloRoutes.resumeOwnListing(TOKEN,LISTING_ID,"plumber")
+    check(resumeCall.resource=="/api/v1/me/listings?resume=1")
+    check(resumeCall.method==HttpMethod.POST)
+    check(resumeCall.headers()["Authorization"]=="Bearer $TOKEN")
+    check(String(resumeCall.bodyUtf8()!!,Charsets.UTF_8)==
+        """{"listingId":"$LISTING_ID","expectedCategoryId":"plumber"}""")
+    check(!resumeCall.toString().contains(LISTING_ID))
+    check(!resumeCall.toString().contains(TOKEN))
+    requireRejected("resume invalid ID") {
+        JodloRoutes.resumeOwnListing(TOKEN,"../private","plumber")
+    }
+    requireRejected("resume invalid category") {
+        JodloRoutes.resumeOwnListing(TOKEN,LISTING_ID,"private category")
+    }
+    requireRejected("resume invalid bearer") {
+        JodloRoutes.resumeOwnListing("bad",LISTING_ID,"plumber")
+    }
+    var resumeSends=0
+    val resumeRepo:OwnListingResumeRepository=RemoteWorkerRepository(RequestSender { call ->
+        resumeSends++
+        check(call.resource==resumeCall.resource && call.method==HttpMethod.POST)
+        check(call.headers()["Authorization"]=="Bearer $TOKEN")
+        ok("""{"listing":{"id":"$LISTING_ID","categoryId":"plumber"}}""")
+    })
+    check(resumeRepo.resume(TOKEN,LISTING_ID,"plumber")==
+        ApiOutcome.Ok(PublicListing(LISTING_ID,"plumber")))
+    check(resumeSends==1)
+    for(payload in listOf(
+        """{"listing":{"id":"$LISTING_ID","categoryId":"carpenter"}}""",
+        """{"listing":{"id":"22222222-2222-4222-8222-222222222222","categoryId":"plumber"}}""",
+        """{"listing":{"id":"$LISTING_ID","categoryId":"plumber","ownerId":"private"}}""",
+        """{"listing":{"id":"$LISTING_ID","categoryId":"plumber","status":"published"}}""",
+    )){
+        val fake:OwnListingResumeRepository=RemoteWorkerRepository(RequestSender { ok(payload) })
+        check(fake.resume(TOKEN,LISTING_ID,"plumber")==bad())
+    }
+    val refused:OwnListingResumeRepository=RemoteWorkerRepository(RequestSender {
+        TransportReply(409,
+            """{"ok":false,"error":{"code":"CONFLICT","message":"unavailable"}}""")
+    })
+    check(refused.resume(TOKEN,LISTING_ID,"plumber")==bad(FailureKind.CONFLICT))
+    var offlineCalls=0
+    val resumeOffline:OwnListingResumeRepository=RemoteWorkerRepository(RequestSender {
+        offlineCalls++
+        throw IOException("secret owner network failure")
+    })
+    check(resumeOffline.resume(TOKEN,LISTING_ID,"plumber")==
+        bad(FailureKind.OFFLINE_OR_TIMEOUT))
+    check(offlineCalls==1)
+
     println("JODLO repositories: typed browse/search, explicit worker publishing, mismatched response rejection and no auto-retry and public Listing pagination OK")
 }
