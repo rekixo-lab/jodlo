@@ -80,6 +80,16 @@ object JodloRoutes {
         return ApiCall.get("/api/v1/catalog?${p.joinToString("&")}")
     }
 
+    /** Exact already-approved category name lookup; never carries a bearer,
+     * Worker identifier, Saved Listing ID, or availability status.
+     */
+    fun approvedCategoryNames(ids: List<String>, lang: Language): ApiCall {
+        require(ids.isNotEmpty() && ids.size <= 20 &&
+            ids.toSet().size == ids.size) { "Invalid Category ID batch" }
+        ids.forEach(::requireCategoryId)
+        return ApiCall.get("/api/v1/catalog?lang=${lang.code}&ids=${enc(ids.joinToString(","))}")
+    }
+
     fun search(raw: String, lang: Language, availableOnly: Boolean = false,
                includeChoices: Boolean = false, limit: Int = 20, offset: Int = 0): ApiCall {
         val q = Normalizer.normalize(raw.trim(), Normalizer.Form.NFC)
