@@ -168,7 +168,7 @@ internal fun SavedServicesDashboard(
             }
         } else {
             item {
-                JodloTextAction(onClick={back}) {
+                JodloTextAction(onClick={ back() }) {
                     Text(stringResource(R.string.saved_back))
                 }
             }
