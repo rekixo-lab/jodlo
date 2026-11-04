@@ -268,11 +268,11 @@ private fun optInLiveSuggestionsShowOnlyExplicitReviewedCategories() {
     check(catalog.searchGET.get()==0)
     check(CustomerLiveSuggestions.DEBOUNCE_MILLIS>=400L)
     check(CustomerLiveSuggestions.MAX_RESULTS==8)
-    for(bad in listOf(""," ","x","\\u0000xy","a".repeat(65),"  a  ")) {
+    for(bad in listOf(""," ","x","\u0000xy","a".repeat(65),"  a  ")) {
         check(CustomerLiveSuggestions.normalizedQuery(bad)==null)
     }
     check(CustomerLiveSuggestions.normalizedQuery("  प्लंबर  ")=="प्लंबर")
-    check(CustomerLiveSuggestions.normalizedQuery("  e\\u0301lectric  ")=="électric")
+    check(CustomerLiveSuggestions.normalizedQuery("  e\u0301lectric  ")=="électric")
     check(CustomerLiveSuggestions.normalizedQuery("  electrical repair  ")=="electrical repair")
     // Opted-in hint fetches approved Categories only, no Listing or Worker call.
     catalog.searchResult={ query, lang ->
