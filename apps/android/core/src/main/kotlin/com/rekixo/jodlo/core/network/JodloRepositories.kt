@@ -65,6 +65,14 @@ interface OwnListingCategoryEditRepository {
     ): ApiOutcome<PublicListing>
 }
 
+/** Opt-in public-only Category display names for exact bounded current ID
+ * batches. Absent/inactive IDs are intentionally excluded; no server-side
+ * Worker, Saved Listing, phone or verification data is exposed.
+ */
+interface ApprovedCategoryNamesRepository {
+    fun approvedNames(ids: List<String>, language: Language): ApiOutcome<List<PublicCategory>>
+}
+
 /** A separate privileged surface: caller must possess a valid session and
  * explicitly supply a Category ID to publish; Search NEVER triggers posting.
  */
@@ -94,7 +102,22 @@ internal fun browseCursorAdvances(after: String?, next: String): Boolean {
 
 class RemoteCatalogRepository(private val sender: RequestSender) :
     CatalogRepository, PublicListingPageRepository, CatalogSearchCursorRepository,
-    PublicListingDetailRepository {
+    PublicListingDetailRepository, ApprovedCategoryNamesRepository {
+    override fun approvedNames(
+        ids: List<String>, language: Language,
+    ): ApiOutcome<List<PublicCategory>> {
+        val call = JodloRoutes.approvedCategoryNames(ids,language)
+        return when(val reply=performOnce(call, sender::send, JodloReplyDecoder::browse)
+            .validated { dto ->
+                dto.language == language && dto.nextCursor == null &&
+                    dto.categories.size <= ids.size &&
+                    dto.categories.all { it.id in ids }
+            }) {
+            is ApiOutcome.Ok -> ApiOutcome.Ok(reply.value.categories)
+            is ApiOutcome.Failed -> reply
+        }
+    }
+
     override fun browse(language: Language, availableOnly: Boolean,
                         limit: Int, after: String?): ApiOutcome<CatalogBrowse> {
         val call = JodloRoutes.browse(language, availableOnly, limit, after)
