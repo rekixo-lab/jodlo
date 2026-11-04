@@ -81,4 +81,23 @@
     <string name="listing_detail_heading">वर्तमान सार्वजनिक सेवा सूची</string>
     <string name="listing_no_longer_public">यह सेवा सूची अब सार्वजनिक नहीं है। श्रेणी पर लौटकर सूची ताज़ा करें।</string>
     <string name="listing_detail_private_notice">यहाँ केवल सेवा श्रेणी और संदर्भ सार्वजनिक हैं। वर्कर की संपर्क जानकारी, सत्यापित पहचान या कॉल उपलब्धता की पुष्टि नहीं है।</string>
+
+    <string name="tab_account">खाता</string>
+    <string name="account_heading">मेरा खाता</string>
+    <string name="account_sign_in_hint">अपना खाता देखने के लिए वर्कर टैब पर Google से प्रवेश करें। ग्राहक और वैकल्पिक वर्कर मोड के लिए एक ही खाता है।</string>
+    <string name="account_private_notice">यह जानकारी केवल आपके लिए है। संख्या वर्तमान JODLO रिकॉर्ड दिखाती है, पहचान सत्यापन या कॉल उपलब्धता नहीं।</string>
+    <string name="account_refresh">खाते की नई जानकारी देखें</string>
+    <string name="account_read_failed">खाते की नई जानकारी की पुष्टि नहीं हुई। कोई बदलाव नहीं हुआ।</string>
+    <string name="account_since">सदस्य बने: %1$s</string>
+    <string name="account_worker_enabled">वर्कर मोड: चालू</string>
+    <string name="account_worker_disabled">वर्कर मोड: बंद</string>
+    <string name="account_total_services">मेरी सेवा सूचियाँ: %1$d</string>
+    <string name="account_published_services">प्रकाशित सेवा सूचियाँ: %1$d</string>
+    <string name="account_visible_services">अभी पात्र सेवा सूचियाँ: %1$d</string>
+    <string name="account_active_sessions">सक्रिय लॉगिन सत्र: %1$d</string>
+    <string name="account_voice_opted_in">कॉल प्राप्त करने की सहमति चालू है। वास्तविक Agora कॉल अभी उपलब्ध नहीं है।</string>
+    <string name="account_voice_opted_out">कॉल प्राप्त करने की सहमति डिफ़ॉल्ट रूप से बंद है। वास्तविक Agora कॉल अभी उपलब्ध नहीं है।</string>
+    <string name="account_logout_all">सभी फ़ोन पर सत्र समाप्त करें</string>
+    <string name="account_logged_out_all">सर्वर ने सभी सक्रिय सत्र समाप्त करने की पुष्टि की।</string>
+    <string name="account_logged_out_uncertain">इस फ़ोन से बाहर निकल गए। दूसरे फ़ोन पर सत्र समाप्त होने की पुष्टि नहीं हुई।</string>
 </resources>

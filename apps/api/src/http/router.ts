@@ -3,6 +3,7 @@ import { validOpaqueId } from "../modules/shared/identifiers.ts";
 import { browsePublicCategories, parseCatalogBrowse, parseCatalogSearch, searchPublicCategories } from "../modules/catalog/catalog.ts";
 import { healthData } from "../modules/system/health.ts";
 import { optInAsWorker, ownWorkerDraft } from "../modules/workers/profile.ts";
+import { ownAccountOverview, exportOwnAccountData } from "../modules/identity/account-self-service.ts";
 import { validGoogleClientId, verifyGoogleIdToken } from "../modules/identity/google.ts";
 import { resolveGoogleAccount } from "../modules/identity/google-accounts.ts";
 import { issueSession, makeSessionVerifier, revokeAllSessions, revokeSession, SESSION_TTL_SECONDS } from "../modules/identity/sessions.ts";
@@ -156,6 +157,40 @@ export async function handleRequest(
       return json({ ok: true, data: { revoked: true, ...(allDevices ? { allDevices: true } : {}) } });
     } catch {
       return json({ ok: false, error: { code: "SERVICE_UNAVAILABLE", message: "Identity unavailable" } }, 503);
+    }
+  }
+
+  // The Finworkar account/dashboard behavior is reconstructed with JODLO's
+  // own active-account D1 records. Both routes are private, read-only and
+  // require a current server-issued session; neither accepts a client owner ID.
+  if (url.pathname === "/api/v1/me/overview" ||
+      url.pathname === "/api/v1/me/data-export") {
+    const methodError = getOnly(request);
+    if (methodError) return methodError;
+    if (url.search || !(await hasEmptyBody(request))) {
+      return json({ ok: false, error: { code: "INVALID_QUERY", message: "Unexpected input" } }, 400);
+    }
+    if (!env.DB) {
+      return json({ ok: false, error: { code: "SERVICE_UNAVAILABLE", message: "Account unavailable" } }, 503);
+    }
+    const token = bearerToken(request);
+    if (!token) {
+      return json({ ok: false, error: { code: "UNAUTHORIZED", message: "Authentication required" } }, 401);
+    }
+    try {
+      const actor = await (env.AUTH ?? makeSessionVerifier(env.DB)).verify(token);
+      if (!actor || !validOpaqueId(actor.accountId)) {
+        return json({ ok: false, error: { code: "UNAUTHORIZED", message: "Authentication required" } }, 401);
+      }
+      const data = url.pathname.endsWith("/overview")
+        ? await ownAccountOverview(env.DB, actor.accountId)
+        : await exportOwnAccountData(env.DB, actor.accountId);
+      if (!data) {
+        return json({ ok: false, error: { code: "UNAUTHORIZED", message: "Authentication required" } }, 401);
+      }
+      return json({ ok: true, data });
+    } catch {
+      return json({ ok: false, error: { code: "SERVICE_UNAVAILABLE", message: "Account unavailable" } }, 503);
     }
   }
   if (url.pathname === "/api/v1/me/worker-profile") {

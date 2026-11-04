@@ -30,6 +30,18 @@ data class CatalogSearchCursorPage(
 /** The backend never returns a verified role from worker opt-in. */
 data class WorkerDraft(val status: String)
 
+/** Own-only account overview. No account ID, Google subject, bearer or PII. */
+data class OwnAccountOverview(
+    val createdAt: String,
+    val workerEnabled: Boolean,
+    val workerSince: String?,
+    val totalServices: Int,
+    val publishedServices: Int,
+    val visibleServices: Int,
+    val activeSessions: Int,
+    val receivesCalls: Boolean,
+)
+
 /** A verified BACKEND-issued session response, not a verified Google identity
  * from client input. Its token must not enter loggers, UI state or disk.
  * Kotlin Strings cannot be securely zeroized; this is memory-only.
@@ -342,6 +354,35 @@ object JodloReplyDecoder {
         if (next != null && !opaqueId.matches(next)) bad()
         OwnListingPage(rows, next)
     }
+    /** Only the exact private overview projection is accepted. Refuse any
+     * unexpected identity, contact, location, verification or token fields.
+     */
+    fun accountOverview(reply: TransportReply): ApiOutcome<OwnAccountOverview> =
+        decode(reply) { data ->
+            data.keysOnly(setOf(
+                "createdAt", "workerEnabled", "workerSince", "totalServices",
+                "publishedServices", "visibleServices", "activeSessions", "receivesCalls",
+            ))
+            val created = data.required("createdAt").str()
+            val worker = data.required("workerEnabled").bool()
+            val workerSince = data.optionalString("workerSince")
+            val total = data.required("totalServices").number()
+            val published = data.required("publishedServices").number()
+            val visible = data.required("visibleServices").number()
+            val sessions = data.required("activeSessions").number()
+            if (created.length !in 10..40 || created.any { Character.isISOControl(it) } ||
+                (workerSince != null &&
+                    (workerSince.length !in 10..40 ||
+                        workerSince.any { Character.isISOControl(it) })) ||
+                worker != (workerSince != null) ||
+                total !in 0..100000 || published !in 0..total ||
+                visible !in 0..published || sessions !in 0..6) bad()
+            OwnAccountOverview(
+                created, worker, workerSince, total, published, visible, sessions,
+                data.required("receivesCalls").bool(),
+            )
+        }
+
     /** Exact /auth/google success body, only for a trusted HTTPS exchange. */
     fun issuedSession(reply: TransportReply): ApiOutcome<IssuedSession> = decode(reply) { data ->
         data.keysOnly(setOf("accessToken", "tokenType", "expiresInSeconds"))

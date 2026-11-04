@@ -149,6 +149,10 @@ object JodloRoutes {
     }
     private val GOOGLE_PROOF = Regex("""[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+""")
 
+    /** Private, current-account overview; no owner ID in path, query or body. */
+    fun accountOverview(token: String): ApiCall =
+        ApiCall.getOwned("/api/v1/me/overview", token)
+
     fun myListings(token: String): ApiCall = ApiCall.getOwned("/api/v1/me/listings", token)
     /** Owner-only, opt-in keyset continuation: limit 1..25, opaque listing ID.
      * Never place a bearer or personal identifiers in URL/query.

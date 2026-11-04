@@ -1,3 +1,16 @@
+## 2026-11-04 — complete Finworkar-behavior rebuild, founder priority
+
+Read [the full feature map and feature-group acceptance gates](FINWORKAR_JODLO_BEHAVIOR_PARITY_2026-11-04.md). **Do not restart a series of one-service-preview or test-only pseudo-milestones.** Build complete user journeys and verified provider-backed functionality, keeping old Finworkar strictly read-only and JODLO's own product decisions.
+
+- [x] Static read-only source study of legacy guided posting, Home/Search, account, call and safety paths, now consolidated into the full parity map.
+- [ ] Category/Service source review and qualified approval; then independently safe activation in dedicated JODLO D1 (889/7,267 are only source references today).
+- [ ] Whole Customer discovery: hierarchy, search/suggestions, selected safe area, useful moderated worker-service detail, filters and real-device behaviors.
+- [ ] Whole Worker journey: consent, guided category/service, experience/optional price policy, draft/review, edit, safe media, status, idempotent publish/unpublish.
+- [ ] Account/security: PR #225 implements the initial private summary, export API, native Account tab and logout-all; finalize tests/review, data export UI, erasure/retention/backup rules and device acceptance.
+- [ ] Full customer→worker direct Agora audio: block/report/moderation policy, presence/rate rules, durable signaling, per-party RTC tokens, FCM ring/ACK, lifecycle and history.
+- [ ] Notifications, cloud media, privacy/admin/support, eligible payments/refunds, operational monitoring/recovery, separate JODLO web and staged controlled release acceptance.
+- [ ] Independent PR/native/main GREEN checks, live device evidence and complete provider privacy/security review; no claim of completion before full user-journey acceptance.
+
 ## 2026-11-03 — Exact JODLO API Custom Domain preflight passed
 
 - [x] **Local real-ID config:** owner successfully ran `production:config:harden/check` and `production:domain:write/check`, plus a 92.37 KiB Cloudflare Custom Domain `--dry-run` with actual D1 and both auth limiters

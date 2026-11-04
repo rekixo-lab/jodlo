@@ -112,6 +112,11 @@ private fun JodloApp(activity: ComponentActivity) {
                 onClick = { section = "worker" },
                 label = { Text(stringResource(R.string.tab_worker)) },
             )
+            JodloChip(
+                selected = section == "account",
+                onClick = { section = "account" },
+                label = { Text(stringResource(R.string.tab_account)) },
+            )
         }
         if (BuildConfig.DEBUG && sender == null && section == "customer") {
             JodloTextAction(
@@ -134,8 +139,11 @@ private fun JodloApp(activity: ComponentActivity) {
             }
         }
         Box(Modifier.weight(1f)) {
-            if (section == "customer") GuestDiscovery(customerCatalog, liveApiConfigured = sender != null)
-            else WorkerDashboard(activity, session, writes, catalog)
+            when (section) {
+                "customer" -> GuestDiscovery(customerCatalog, liveApiConfigured = sender != null)
+                "worker" -> WorkerDashboard(activity, session, writes, catalog)
+                else -> AccountDashboard(session)
+            }
         }
     }
 }

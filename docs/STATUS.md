@@ -1,3 +1,11 @@
+## 2026-11-04 — founder requests complete Finworkar behavior parity in new JODLO
+
+**Working instruction:** Stop treating a single visible Worker service as a product milestone. [Full clean-room Finworkar → JODLO behavior map](FINWORKAR_JODLO_BEHAVIOR_PARITY_2026-11-04.md) covers onboarding, Home/Group/Category Search, guided Worker posting, service detail, profile/privacy, approximate area, safe direct Agora voice, reporting/moderation, notifications, media, billing, admin/support and operations. Legacy Finworkar repositories and actual data remain **read only**. Preserve founder-approved Google Sign-In, one account with optional Worker, Hindi Devanagari/English only, separate JODLO domains, approved dark/green visual system and no invented trust badges.
+
+**PR #225 (CURRENT WORK, NOT YET COMPLETE/ACCEPTED):** owner-only `GET /api/v1/me/overview` and bounded `GET /api/v1/me/data-export`; real-session D1 API tests; shared Kotlin route/strict decoder, session-gated read; Account tab with read-only overview and all-device logout, localized en/hi. Exact route-only founder gate exception, not open permission for new personal-location, contact, administration or data-erasure endpoints. No schema addition, live Cloudflare deployment, Catalog approval, Agora/FCM/payment activation or changes to Finworkar. **Need exact PR-head Foundation + native Android CI green before any merge; then independent main green verification.** Native screen must be tested on a physical device separately.
+
+**Still open:** actual full approved Catalog remains `0 active categories` in the last observed production read; 2,667 human-review tasks unstarted. Useful full Worker profile/editable service, consensual area, moderation, live calling and notification delivery, admin/backup/privacy erasure, billing and public launch are **not implemented** by PR #225. Real phone proof exists only for the previously tested Google Login/private draft, not for new Account UI.
+
 # JODLO — current state, 2026-11-03
 
 ## 2026-11-03 — LIVE phone/API verified; Production Catalog truly EMPTY; review dossier engineering

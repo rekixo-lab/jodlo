@@ -8,6 +8,7 @@ const routes=[
   "/api/v1/health", "/api/v1/catalog", "/api/v1/catalog/search",
   "/api/v1/auth/google", "/api/v1/auth/logout", "/api/v1/auth/logout-all",
   "/api/v1/me/worker-profile", "/api/v1/me/listings", "/api/v1/listings",
+  "/api/v1/me/overview", "/api/v1/me/data-export",
 ];
 function baseline() {
   return {
@@ -68,7 +69,7 @@ async function fixture(mutate,action=auditFounderGates) {
 test("approved routes, tables, draft state and languages pass",async()=>{
   const result=await fixture();
   assert.deepEqual(result.errors,[]);
-  assert.equal(result.routes.length,9);
+  assert.equal(result.routes.length,11);
   assert.equal(result.tables.length,12);
 });
 test("unapproved workers, requests, area and listing routes fail",async()=>{
