@@ -4,6 +4,7 @@ package com.rekixo.jodlo.core.network
 sealed class WorkerWriteAction {
     data class Publish(val confirmedCategoryId: String) : WorkerWriteAction()
     data class Unpublish(val listingId: String) : WorkerWriteAction()
+    data class Resume(val listingId: String, val expectedCategoryId: String) : WorkerWriteAction()
     data class EditCategory(
         val listingId: String, val expectedCategoryId: String, val nextCategoryId: String,
     ) : WorkerWriteAction()
@@ -166,6 +167,20 @@ class HeadlessWorkerWriteScope(private val session: InMemorySessionCoordinator) 
         return write(WorkerWriteAction.EditCategory(
             listingId,expectedCategoryId,nextCategoryId)) {
             session.editListingCategory(listingId,expectedCategoryId,nextCategoryId,it)
+        }
+    }
+
+    /** Explicit two-step owner resume review enters through the SAME
+     * single-flight/uncertainty fence as every other Worker mutation. This
+     * command is not generic Publish: the server can only UPDATE the exact
+     * paused Listing, never create one or bypass moderation.
+     */
+    fun resumeOwnListing(listingId: String,
+                         expectedCategoryId: String): WorkerWriteCompletion {
+        JodloRoutes.requireListingId(listingId)
+        JodloRoutes.requireCategoryId(expectedCategoryId)
+        return write(WorkerWriteAction.Resume(listingId, expectedCategoryId)) {
+            session.resumeOwnListing(listingId, expectedCategoryId, it)
         }
     }
 
