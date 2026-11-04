@@ -210,7 +210,8 @@ test("session is required; method/query validation and DB outages fail closed",a
     f.opt(a);
     assert.equal((await f.call(own,"POST",undefined,{categoryId:"cat1"})).status,401);
     assert.equal((await f.call(own,"POST","forged",{categoryId:"cat1"})).status,401);
-    assert.equal((await f.call(own,"PUT","signed-owner")).status,405);
+    // PUT is now an explicit edit route, but empty/legacy writes are invalid.
+    assert.equal((await f.call(own,"PUT","signed-owner")).status,400);
     assert.equal((await f.call(publicPath,"POST","signed-owner",{categoryId:"cat1"})).status,405);
     assert.equal((await f.call(own+"?status=verified","POST","signed-owner",{categoryId:"cat1"})).status,400);
     const noDb=await worker.fetch(new Request(origin+own,{
