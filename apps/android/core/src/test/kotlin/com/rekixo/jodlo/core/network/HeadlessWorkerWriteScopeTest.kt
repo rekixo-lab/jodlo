@@ -18,9 +18,12 @@ private fun reached(latch: CountDownLatch) {
     check(latch.await(5, TimeUnit.SECONDS)) { "Fake network call not started" }
 }
 
-private class ReviewFakeWorkerRepository : WorkerRepository, OwnListingPageRepository {
+private class ReviewFakeWorkerRepository : WorkerRepository, OwnListingPageRepository, OwnListingCategoryEditRepository {
     var published: ApiOutcome<PublicListing> = ApiOutcome.Ok(PublicListing(LISTING_ID,"plumber"))
     var unpublished: ApiOutcome<Boolean> = ApiOutcome.Ok(true)
+    var edited: ApiOutcome<PublicListing> = ApiOutcome.Ok(PublicListing(LISTING_ID,"carpenter"))
+    var editCalls = 0
+    var beforeEdit: (() -> Unit)? = null
     var rows: ApiOutcome<List<OwnListing>> = ApiOutcome.Ok(emptyList())
     var beforePublish: (() -> Unit)? = null
     var beforeOwnRead: (() -> Unit)? = null
@@ -51,6 +54,14 @@ private class ReviewFakeWorkerRepository : WorkerRepository, OwnListingPageRepos
         publishCalls++
         beforePublish?.invoke()
         return published
+    }
+    override fun editCategory(session: String, listingId: String,
+        expectedCategoryId: String, nextCategoryId: String): ApiOutcome<PublicListing> {
+        check(session.length == 43 && listingId == LISTING_ID &&
+            expectedCategoryId == "plumber" && nextCategoryId == "carpenter")
+        editCalls++
+        beforeEdit?.invoke()
+        return edited
     }
     override fun unpublish(session: String, listingId: String): ApiOutcome<Boolean> {
         check(listingId == LISTING_ID)
@@ -427,7 +438,67 @@ private fun testLegacyDiagnosticResetsPartialPagedProgress() {
     check(fake.readCalls==1 && fake.pageCalls==1 && fake.publishCalls==1)
 }
 
+private fun categoryEditSingleFlightConflictAndUncertainRecheck() {
+    val fake=ReviewFakeWorkerRepository()
+    val session=signedInDraft(fake)
+    val scope=HeadlessWorkerWriteScope(session)
+    check(scope.editCategory(LISTING_ID,"plumber","carpenter")==WorkerWriteCompletion.APPLIED)
+    check(scope.snapshot().state==WorkerWriteState.Confirmed(
+        WorkerWriteAction.EditCategory(LISTING_ID,"plumber","carpenter")))
+    check(fake.editCalls==1)
+    fake.edited=ApiOutcome.Failed(FailureKind.CONFLICT,false)
+    check(scope.editCategory(LISTING_ID,"plumber","carpenter")==WorkerWriteCompletion.APPLIED)
+    val rejected=scope.snapshot().state as WorkerWriteState.Rejected
+    check(rejected.networkKind==FailureKind.CONFLICT)
+    check(rejected.action==WorkerWriteAction.EditCategory(
+        LISTING_ID,"plumber","carpenter"))
+    check(fake.editCalls==2)
+    fake.edited=ApiOutcome.Failed(FailureKind.OFFLINE_OR_TIMEOUT,false)
+    check(scope.editCategory(LISTING_ID,"plumber","carpenter")==WorkerWriteCompletion.APPLIED)
+    val unresolved=review(scope.snapshot().state)
+    check(unresolved.action==WorkerWriteAction.EditCategory(
+        LISTING_ID,"plumber","carpenter"))
+    check(scope.editCategory(LISTING_ID,"plumber","carpenter")==WorkerWriteCompletion.BLOCKED)
+    check(scope.unpublish(LISTING_ID)==WorkerWriteCompletion.BLOCKED)
+    check(fake.editCalls==3)
+    fake.rows=ApiOutcome.Ok(listOf(OwnListing(LISTING_ID,"carpenter",true)))
+    check(scope.recheckOwnListings()==WorkerWriteCompletion.APPLIED)
+    check(review(scope.snapshot().state).observation==WorkerVisibility.VISIBLE)
+    check(scope.snapshot().state is WorkerWriteState.NeedsReview)
+    check(fake.editCalls==3)
+    check(scope.acknowledgeUncertainty())
+    check(scope.snapshot().state==WorkerWriteState.Idle)
+    check(session.acceptIssuedSession(issued(TOKEN_B)) is ApiOutcome.Ok)
+    check(scope.snapshot().state==WorkerWriteState.Idle)
+    check(scope.editCategory(LISTING_ID,"plumber","carpenter")==WorkerWriteCompletion.APPLIED)
+    check(fake.editCalls==3) // New login has not verified Worker draft.
+    check(scope.snapshot().state is WorkerWriteState.Rejected)
+    // No malformed Category/Listing can reach the backend.
+    check(runCatching{scope.editCategory("../private","plumber","carpenter")}.isFailure)
+    check(runCatching{scope.editCategory(LISTING_ID,"plumber","plumber")}.isFailure)
+}
+
+private fun categoryEditSlowNetworkReplacedAccountDiscardsOldResult() {
+    val fake=ReviewFakeWorkerRepository()
+    val session=signedInDraft(fake)
+    val scope=HeadlessWorkerWriteScope(session)
+    val start=CountDownLatch(1)
+    val release=CountDownLatch(1)
+    fake.beforeEdit={start.countDown();check(release.await(5,TimeUnit.SECONDS))}
+    val pending=background{scope.editCategory(LISTING_ID,"plumber","carpenter")}
+    try{
+        reached(start)
+        check(scope.snapshot().state is WorkerWriteState.Sending)
+        check(scope.editCategory(LISTING_ID,"plumber","carpenter")==WorkerWriteCompletion.BLOCKED)
+        check(session.acceptIssuedSession(issued(TOKEN_B)) is ApiOutcome.Ok)
+        check(scope.snapshot().state==WorkerWriteState.Idle)
+    }finally{release.countDown()}
+    check(completed(pending)==WorkerWriteCompletion.DISCARDED)
+    check(fake.editCalls==1)
+}
 fun main() {
+    categoryEditSingleFlightConflictAndUncertainRecheck()
+    categoryEditSlowNetworkReplacedAccountDiscardsOldResult()
     testExplicitPublishUncertainThenReadOnlyVisibility()
     testUnpublishAmbiguityCannotBeCertifiedByInvisibleRecord()
     testRejectedAndInvalidActionsNeverReplay()
