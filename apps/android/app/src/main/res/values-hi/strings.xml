@@ -130,4 +130,27 @@
     <string name="worker_edit_confirm">सेवा की नई श्रेणी सहेजें</string>
     <string name="worker_edit_cancel">संपादन रद्द करें</string>
     <string name="worker_edit_conflict">सेवा बदल गई है, नई श्रेणी उपलब्ध नहीं है या उस काम की आपकी सेवा पहले से है। मेरी सेवाएँ ताज़ा करें और दोबारा संपादन शुरू करें। वही बदलाव अपने-आप नहीं भेजा गया।</string>
+
+    <string name="tab_saved">सहेजे</string>
+    <string name="saved_heading">इस फ़ोन पर सहेजी सेवाएँ</string>
+    <string name="saved_device_notice">यह इस फ़ोन पर सार्वजनिक सेवा के निजी संदर्भों की सूची है। Google प्रवेश, लोकेशन, सिंक या साझा करना आवश्यक नहीं। सहेजने से वर्कर की पहचान, मौजूदा उपलब्धता या कॉल उठाने की पुष्टि नहीं होती। हर सेवा खोलते समय नई सार्वजनिक स्थिति जाँचें।</string>
+    <string name="saved_empty">अभी कोई सेवा नहीं सहेजी है। ग्राहक में कोई सार्वजनिक सेवा खोलकर सहेजें।</string>
+    <string name="saved_category_reference">श्रेणी पहचान: %1$s</string>
+    <string name="saved_unchecked_warning">सहेजा संदर्भ — अभी की सार्वजनिक स्थिति जाँची नहीं गई है।</string>
+    <string name="saved_check_now">अभी की सार्वजनिक स्थिति जाँचें</string>
+    <string name="saved_add">इस फ़ोन पर सेवा सहेजें</string>
+    <string name="saved_remove">सहेजी सूची से हटाएँ</string>
+    <string name="saved_removed">इस फ़ोन से हटा दिया गया।</string>
+    <string name="saved_storage_failed">इस फ़ोन की सहेजी सूची नहीं बदल सकी। बदलाव की पुष्टि नहीं हुई।</string>
+    <string name="saved_storage_failed_or_limit">सेवा नहीं सहेज सके। फ़ोन की स्टोरेज उपलब्ध नहीं हो सकती या 50 सेवाओं की सीमा पूरी हो चुकी है।</string>
+    <string name="saved_clear_start">सभी सहेजी सेवाएँ हटाएँ</string>
+    <string name="saved_clear_warning">इस फ़ोन से सभी सहेजे सेवा संदर्भ हटाएँ? आपकी सार्वजनिक सेवाएँ और JODLO खाता नहीं बदलेंगे।</string>
+    <string name="saved_cancel">रद्द करें</string>
+    <string name="saved_clear_confirm">सहेजी सेवाएँ साफ़ करें</string>
+    <string name="saved_cleared">इस फ़ोन की सहेजी सेवाएँ साफ़ कर दी गई हैं।</string>
+    <string name="saved_back">सहेजी सेवाओं पर लौटें</string>
+    <string name="saved_currently_public">यही सेवा अभी JODLO के सार्वजनिक API में मिल रही है। यह संपर्क या कॉल की अनुमति नहीं है।</string>
+    <string name="saved_not_public">यह सेवा अपनी सहेजी श्रेणी में अब सार्वजनिक नहीं है। अप्रकाशित, छिपी या बदली हो सकती है। आप संदर्भ हटा सकते हैं।</string>
+    <string name="saved_unavailable">अभी की स्थिति की पुष्टि नहीं हुई। केवल सहेजा संदर्भ उपलब्धता का प्रमाण नहीं है।</string>
+    <string name="saved_no_live_api">सहेजी सेवा की जाँच के लिए वास्तविक सुरक्षित HTTPS JODLO API आवश्यक है। संदर्भ यहाँ से हटाए जा सकते हैं।</string>
 </resources>
