@@ -81,4 +81,23 @@
     <string name="listing_detail_heading">Current public listing</string>
     <string name="listing_no_longer_public">This listing is no longer public. Return to the category and refresh.</string>
     <string name="listing_detail_private_notice">Only the service Category and reference are public. No worker contact, identity verification or call availability is confirmed here.</string>
+
+    <string name="tab_account">Account</string>
+    <string name="account_heading">My account</string>
+    <string name="account_sign_in_hint">Sign in with Google on the Worker tab to view your account. One account works for Customer and optional Worker mode.</string>
+    <string name="account_private_notice">Only you can view this account summary. Counts reflect current JODLO records, not identity verification or availability to take calls.</string>
+    <string name="account_refresh">Refresh account information</string>
+    <string name="account_read_failed">Current account data could not be confirmed. No change was made.</string>
+    <string name="account_since">Member since: %1$s</string>
+    <string name="account_worker_enabled">Worker mode: enabled</string>
+    <string name="account_worker_disabled">Worker mode: not enabled</string>
+    <string name="account_total_services">My service listings: %1$d</string>
+    <string name="account_published_services">Published service listings: %1$d</string>
+    <string name="account_visible_services">Currently eligible service listings: %1$d</string>
+    <string name="account_active_sessions">Active sign-in sessions: %1$d</string>
+    <string name="account_voice_opted_in">Receiving calls preference is ON. Actual Agora calls are not available yet.</string>
+    <string name="account_voice_opted_out">Receiving calls preference is OFF by default. Actual Agora calls are not available yet.</string>
+    <string name="account_logout_all">Sign out on all devices</string>
+    <string name="account_logged_out_all">All active sessions were revoked by the server.</string>
+    <string name="account_logged_out_uncertain">Signed out on this phone. Server-wide revocation could not be confirmed.</string>
 </resources>
