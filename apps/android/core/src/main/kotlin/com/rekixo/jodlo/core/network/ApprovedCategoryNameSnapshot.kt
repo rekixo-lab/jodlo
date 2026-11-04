@@ -26,7 +26,7 @@ data class ApprovedCategoryNameSnapshot private constructor(
                 rows.map { it.id }.toSet().size != rows.size ||
                 rows.any { it.id !in requestedIds || it.name.isBlank() ||
                     it.name.codePointCount(0,it.name.length) > 160 ||
-                    it.name.any(Character::isISOControl) }) return null
+                    it.name.any { c -> Character.isISOControl(c) } }) return null
             if (requestedIds.any { !runCatching {
                 JodloRoutes.requireCategoryId(it)
             }.isSuccess }) return null
