@@ -177,4 +177,16 @@
     <string name="feed_category_id">श्रेणी पहचान: %1$s</string>
     <string name="feed_select_to_recheck">वर्तमान सार्वजनिक स्थिति जाँचने के लिए खोलें। कोई कॉल या संपर्क शुरू नहीं होता।</string>
     <string name="feed_back">सभी सार्वजनिक सेवाओं पर लौटें</string>
+    <string name="tab_home">होम</string>
+    <string name="home_heading">सेवा खोजें</string>
+    <string name="home_intro">स्वीकृत काम की श्रेणियाँ देखें या सभी सार्वजनिक सेवाएँ खोलें। सेवाएँ खोजने के लिए प्रवेश या स्थान देना आवश्यक नहीं है।</string>
+    <string name="home_browse_action">श्रेणियाँ देखें और खोजें</string>
+    <string name="home_services_action">अभी सार्वजनिक सेवाएँ देखें</string>
+    <string name="home_saved_action">मेरी सहेजी सेवाएँ</string>
+    <string name="home_worker_action">वर्कर के रूप में सेवा दें</string>
+    <string name="home_category_heading">स्वीकृत काम की श्रेणियाँ</string>
+    <string name="home_category_notice">केवल स्वीकृत सक्रिय श्रेणियाँ दिखती हैं। किसी श्रेणी का दिखना वर्कर के ऑनलाइन, सत्यापित या कॉल के लिए तैयार होने का प्रमाण नहीं है।</string>
+    <string name="home_open_category">इस श्रेणी की वर्तमान सार्वजनिक सूचियाँ खोलें</string>
+    <string name="home_refresh">स्वीकृत श्रेणियाँ ताज़ा करें</string>
+    <string name="home_no_live_api">वास्तविक श्रेणियों के लिए कॉन्फ़िगर किया गया JODLO HTTPS API चाहिए। Debug बिल्ड में Customer स्क्रीन पर अलग ऑफ़लाइन नमूना मिल सकता है।</string>
 </resources>
