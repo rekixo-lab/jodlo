@@ -58,7 +58,7 @@ internal fun CustomerHome(
     val scope = rememberCoroutineScope()
     var language by remember { mutableStateOf(Language.HI) }
     var publishedOnly by remember { mutableStateOf(false) }
-    var page by remember { mutableStateOf(HomeCategorySnapshot.empty(language)) }
+    var page by remember { mutableStateOf(HomeCategorySnapshot.empty(language, publishedOnly)) }
     var busy by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(false) }
     var nextFailed by remember { mutableStateOf(false) }
@@ -72,7 +72,7 @@ internal fun CustomerHome(
         val chosenFilter = publishedOnly
         busy = true
         if (after == null) {
-            page = HomeCategorySnapshot.empty(chosenLanguage)
+            page = HomeCategorySnapshot.empty(chosenLanguage, chosenFilter)
             failed = false
         }
         nextFailed = false
@@ -95,13 +95,13 @@ internal fun CustomerHome(
                 }
                 is ApiOutcome.Ok -> {
                     val next = page.withVerifiedPage(
-                        chosenLanguage, after, reply.value.categories,
+                        chosenLanguage, chosenFilter, after, reply.value.categories,
                         reply.value.nextCursor, HOME_PAGE_SIZE,
                     )
                     if (next == null) {
                         // A stale/overlapping server cursor is not a usable
                         // Category snapshot. Do not keep mislabelled tiles.
-                        page = HomeCategorySnapshot.empty(chosenLanguage)
+                        page = HomeCategorySnapshot.empty(chosenLanguage, chosenFilter)
                         failed = true
                     } else {
                         page = next
@@ -116,7 +116,7 @@ internal fun CustomerHome(
     LaunchedEffect(repository, language, publishedOnly) {
         revision++
         busy = false
-        page = HomeCategorySnapshot.empty(language)
+        page = HomeCategorySnapshot.empty(language, publishedOnly)
         failed = false
         nextFailed = false
         if (repository != null) fetchPage()
@@ -187,7 +187,7 @@ internal fun CustomerHome(
             items(page.categories, key = { "home-category-" + it.id }) { category ->
                 JodloCard(
                     onClick = {
-                        val selected = page.select(language, category)
+                        val selected = page.select(language, publishedOnly, category)
                         if (!busy && selected != null) openCategory(selected, language)
                     },
                     modifier = Modifier.fillMaxWidth(),
