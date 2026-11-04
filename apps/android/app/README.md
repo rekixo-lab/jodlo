@@ -1,3 +1,9 @@
+## 2026-11-04 — native Guided Work review before publishing/removing
+
+Worker service management now asks for an **explicit review step** after selecting an approved Category from real Hindi/English Browse/Search and before making the category-only public Listing. The reviewer sees the category name, exactly what public data exists, and clear warnings that photos, area, rates, identity validation and calling have **not** been implemented. Changing language/search/category/account invalidates review; a rejected/stale review cannot call the POST. A selected **owned** Listing requires a separate review to Unpublish and can cancel safely; uncertainty still uses the existing read-only reconciliation and never automatic retry.
+
+[Design, safety, tests and remaining complete Finworkar four-step parity work](../../../docs/GUIDED_WORKER_SERVICE_REVIEW_2026-11-04.md). A successful Android-native build is not physical device acceptance, and last real production review still had zero active Categories. The default offline Customer demo never enables Worker writes. No new server route/D1 table/production deploy is used in this milestone.
+
 # JODLO native Android app — Customer and Worker flows
 
 ## 2026-11-04 — Account: direct Google sign-in and user-selected D1 privacy export
