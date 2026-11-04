@@ -139,6 +139,13 @@ private fun JodloApp(activity: ComponentActivity) {
                 onClick = { section = "customer" },
                 label = { Text(stringResource(R.string.tab_customer)) },
             )
+            if (catalog != null) {
+                JodloChip(
+                    selected = section == "feed",
+                    onClick = { section = "feed" },
+                    label = { Text(stringResource(R.string.tab_feed)) },
+                )
+            }
             JodloChip(
                 selected = section == "worker",
                 onClick = { section = "worker" },
@@ -183,6 +190,9 @@ private fun JodloApp(activity: ComponentActivity) {
                 )
                 "saved" -> SavedServicesDashboard(
                     catalog, savedServices, ::removeSaved, ::clearSaved,
+                )
+                "feed" -> if (catalog != null) PublicServicesFeed(
+                    catalog, savedServices, ::toggleSaved,
                 )
                 "worker" -> WorkerDashboard(activity, session, writes, catalog)
                 else -> AccountDashboard(activity, session)
