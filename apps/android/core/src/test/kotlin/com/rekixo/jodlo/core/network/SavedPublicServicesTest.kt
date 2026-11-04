@@ -36,7 +36,7 @@ fun main() {
     // never manufacture verified/public contacts or arbitrary metadata.
     for (bad in listOf(
         "bad",
-        "not-a-valid-id|plumber",
+        "bad!id|plumber",
         "${plumber.id}|",
         "|${plumber.categoryId}",
         "${plumber.id}|plumber|workerId",
