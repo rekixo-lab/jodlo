@@ -68,6 +68,32 @@ fun main() {
         JodloRoutes.browse(Language.EN, limit = 10, after = "1000001:plumber")
     }
 
+    val changed=JodloRoutes.editListingCategory(TOKEN,
+        "11111111-1111-4111-8111-111111111111","plumber","carpenter")
+    check(changed.method==HttpMethod.PUT)
+    check(changed.resource=="/api/v1/me/listings")
+    check(changed.headers()["Authorization"]=="Bearer $TOKEN")
+    check(String(changed.bodyUtf8()!!,StandardCharsets.UTF_8)==
+        """{"listingId":"11111111-1111-4111-8111-111111111111","expectedCategoryId":"plumber","nextCategoryId":"carpenter"}""")
+    check(!changed.toString().contains(TOKEN))
+    check(!changed.toString().contains("11111111"))
+    rejects("same category edit") {
+        JodloRoutes.editListingCategory(TOKEN,
+            "11111111-1111-4111-8111-111111111111","plumber","plumber")
+    }
+    rejects("new ID injection") {
+        JodloRoutes.editListingCategory(TOKEN,
+            "11111111-1111-4111-8111-111111111111","plumber",
+            "carpenter\\\"junk")
+    }
+    rejects("bad edit listing ID") {
+        JodloRoutes.editListingCategory(TOKEN,"../foreign","plumber","carpenter")
+    }
+    rejects("bad edit bearer") {
+        JodloRoutes.editListingCategory("fake",
+            "11111111-1111-4111-8111-111111111111","plumber","carpenter")
+    }
+
     val publish = JodloRoutes.publishListing(TOKEN, "plumber")
     check(publish.method == HttpMethod.POST && publish.resource == "/api/v1/me/listings")
     check(String(publish.bodyUtf8()!!, StandardCharsets.UTF_8) ==
