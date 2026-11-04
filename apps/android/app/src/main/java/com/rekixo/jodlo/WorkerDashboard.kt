@@ -176,7 +176,7 @@ internal fun WorkerDashboard(
         categoryRows = emptyList()
         categoryCursor = null
         categoryPageGeneration += 1
-        guided = guided.clearPublication()
+        guided = guided.clearPublication().cancelResume()
         categoryEdit = categoryEdit.invalidateCategory()
         categoryLoaded = false
         categoryFailed = false
@@ -273,7 +273,7 @@ internal fun WorkerDashboard(
         if (after == null) {
             categoryRows = emptyList()
             categoryCursor = null
-            guided = guided.clearPublication()
+            guided = guided.clearPublication().cancelResume()
             categoryEdit = categoryEdit.invalidateCategory()
             categoryLoaded = false
             categoryFailed = false
@@ -577,7 +577,7 @@ internal fun WorkerDashboard(
                                                 row, ownListings,
                                                 session?.accountExportSessionMarker(),
                                             )
-                                            guided = guided.clearPublication()
+                                            guided = guided.clearPublication().cancelResume()
                                         },
                                         enabled = canWrite,
                                     ) { Text(stringResource(R.string.worker_edit_category)) }
@@ -760,7 +760,7 @@ internal fun WorkerDashboard(
                                             category, categoryRows,
                                             session?.accountExportSessionMarker())
                                     } else {
-                                        guided = guided.chooseCategory(
+                                        guided = guided.cancelResume().chooseCategory(
                                             category, categoryRows,
                                             session?.accountExportSessionMarker())
                                     }
