@@ -449,14 +449,14 @@ fun main() {
         ok("""{"listing":{"id":"$LISTING_ID","categoryId":"carpenter","phone":"secret"}}""")
     })
     check(leaky.editCategory(TOKEN,LISTING_ID,"plumber","carpenter")==bad())
-    var attempts=0
+    var editAttempts=0
     val offline:OwnListingCategoryEditRepository=RemoteWorkerRepository(RequestSender {
-        attempts++
+        editAttempts++
         throw IOException("never log credential")
     })
     check(offline.editCategory(TOKEN,LISTING_ID,"plumber","carpenter")==
         bad(FailureKind.OFFLINE_OR_TIMEOUT))
-    check(attempts==1)
+    check(editAttempts==1)
 
     println("JODLO repositories: typed browse/search, explicit worker publishing, mismatched response rejection and no auto-retry and public Listing pagination OK")
 }
