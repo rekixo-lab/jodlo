@@ -9,7 +9,7 @@ import { resolveGoogleAccount } from "../modules/identity/google-accounts.ts";
 import { issueSession, makeSessionVerifier, revokeAllSessions, revokeSession, SESSION_TTL_SECONDS } from "../modules/identity/sessions.ts";
 import { hasEmptyBody, readGoogleLoginBody, readServiceListingBody, readCategoryEditBody } from "./body.ts";
 import { validCategoryId } from "../modules/shared/identifiers.ts";
-import { publishListing, myListings, pageMyListings, parseOwnListingsPage, publicListings, pagePublicListings, publicListingDetail, unpublishListing, editOwnListingCategory } from "../modules/workers/listings.ts";
+import { publishListing, myListings, pageMyListings, parseOwnListingsPage, publicListings, pagePublicListings, publicListingDetail, pageAllPublicListings, unpublishListing, editOwnListingCategory } from "../modules/workers/listings.ts";
 import {
   allowGoogleAccountLogin, allowLoginBurst,
   LOGIN_BURST_RETRY_SECONDS, ACCOUNT_LOGIN_RETRY_SECONDS,
@@ -265,6 +265,30 @@ export async function handleRequest(
         return json({ok:true,data:{listing}});
       }catch{
         return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Listings unavailable"}},503);
+      }
+    }
+    // Explicit anonymous cross-category feed. NO change to the legacy
+    // required-Category endpoint, and no private worker/profile projections.
+    // Only one exact mode/limit and one optional CURRENT public cursor.
+    if(params.has("feed")) {
+      const limit=params.get("limit"),after=params.get("after");
+      const allowed=new Set(["feed","limit","after"]);
+      let invalid=params.get("feed")!=="all" ||
+        params.getAll("feed").length!==1 || params.getAll("limit").length!==1 ||
+        limit===null || !/^(?:[1-9]|1[0-9]|2[0-5])$/.test(limit) ||
+        (after!==null&&!validOpaqueId(after));
+      params.forEach((_v,key)=>{
+        if(!allowed.has(key)||params.getAll(key).length!==1)invalid=true;
+      });
+      if(invalid || !(await hasEmptyBody(request)))
+        return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid public feed query"}},400);
+      if(!env.DB)return json({ok:false,error:{
+        code:"SERVICE_UNAVAILABLE",message:"Listings unavailable"}},503);
+      try {
+        return json({ok:true,data:await pageAllPublicListings(env.DB,Number(limit),after)});
+      } catch {
+        return json({ok:false,error:{
+          code:"SERVICE_UNAVAILABLE",message:"Listings unavailable"}},503);
       }
     }
     const categoryId=params.get("categoryId");
