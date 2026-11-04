@@ -224,5 +224,39 @@ fun main() {
         eq(invalid, ApiOutcome.Failed(FailureKind.BAD_RESPONSE, false))
         eq(replyAttempts, 1)
     }
+    // Owner-only export contains personal fields. Only an explicit versioned,
+    // tightly typed envelope can be turned into a memory-only JSON document.
+    val ownExportData = """{"schemaVersion":1,
+        "account":{"accountId":"account-identity-a111","createdAt":"2026-11-04T00:00:00.000Z",
+        "workerEnabled":false,"workerSince":null,"totalServices":0,
+        "publishedServices":0,"visibleServices":0,"activeSessions":1,"receivesCalls":false},
+        "identity":[{"googleSub":"private-google-sub-123"}],
+        "services":[],"callPreferences":[],"availabilityPreferences":[],
+        "blocksMade":[{"blockedAccountId":"blocked-account-b222"}],
+        "abuseCounters":[],
+        "sessions":[{"createdAt":1783200000,"expiresAt":1783203600}],
+        "limitations":["JODLO-owned D1 rows only"]}""".trimIndent()
+    val exported = JodloReplyDecoder.accountDataExport(
+        TransportReply(200, envelope(ownExportData)))
+    check(exported is ApiOutcome.Ok)
+    check(exported.value.json.contains("private-google-sub-123"))
+    check(!exported.value.json.contains("\\"ok\\""))
+    check(!exported.toString().contains("private-google-sub-123"))
+    check(!exported.value.toString().contains("private-google-sub-123"))
+    for (badExport in listOf(
+        ownExportData.replace("\\"schemaVersion\\":1", "\\"schemaVersion\\":2"),
+        ownExportData.replace("\\"googleSub\\":", "\\"email\\":\\"private@example.com\\",\\"googleSub\\":"),
+        ownExportData.replace("\\"createdAt\\":1783200000",
+            "\\"tokenHash\\":\\"secret\\",\\"createdAt\\":1783200000"),
+        ownExportData.replace("\\"blockedAccountId\\":",
+            "\\"blockedAccountId\\":\\"bad\\",\\"other\\":"),
+        ownExportData.replace("\\"schemaVersion\\":1",
+            "\\"schemaVersion\\":1,\\"schemaVersion\\":1"),
+        ownExportData.replace("\\"expiresAt\\":1783203600",
+            "\\"expiresAt\\":1783200000"),
+        ownExportData.replace("\\"limitations\\":[",
+            "\\"inboundBlockerIds\\":[],\\"limitations\\":["),
+    )) rejects(envelope(badExport),parse=JodloReplyDecoder::accountDataExport)
+
     println("JODLO Kotlin reply decoder: typed pages, explicit choices, listing privacy and one-shot network safety OK")
 }
