@@ -109,11 +109,97 @@ export function buildCategoryReviewDossier(priority,evidence) {
   };
 }
 
+
+/** Human-readable handoff of the exact already-validated review window.
+ * Never an approval, policy decision, SQL generator or production import.
+ */
+export function renderCategoryReviewDossierMarkdown(dossier) {
+  if(dossier?.kind!==KIND||
+    dossier.state!=="ZERO_QUALIFIED_APPROVAL_NO_SQL_NO_ACTIVATION"||
+    dossier.sourceJsonSha256!==SOURCE||
+    JSON.stringify(dossier.languages)!=='["en","hi"]'||
+    dossier.summary?.historicalCategories!==889||
+    dossier.summary?.historicalServices!==7267||
+    dossier.summary?.categoriesAuthorizedForActivation!==0||
+    dossier.summary?.qualifiedHumanSignoffsVerified!==0||
+    dossier.summary?.founderApprovalsVerified!==0||
+    dossier.summary?.sqlStatementsGenerated!==0||
+    !Array.isArray(dossier.page?.categories)||
+    dossier.page.categories.length>MAX_PAGE||
+    dossier.summary.selectedCategories!==dossier.page.categories.length||
+    dossier.summary.selectedHistoricalServices!==dossier.page.categories.reduce(
+      (n,c)=>n+(Array.isArray(c.services)?c.services.length:0),0))
+    throw Error("Refusing unverified or authorizing reviewer worksheet");
+
+  // Treat historical source strings as DATA, not trusted Markdown syntax.
+  const cell=value=>{
+    if(value===null||value===undefined||value==="")return "—";
+    const raw=typeof value==="string"?value:JSON.stringify(value);
+    return raw.replace(/[\r\n]+/gu," ").replace(/\\/gu,"\\\\")
+      .replace(/\|/gu,"\\|").replace(/</gu,"&lt;")
+      .replace(/>/gu,"&gt;").replace(/\u0060/gu,"\\\u0060");
+  };
+  const items=value=>Array.isArray(value)?
+    (value.length?value.map(cell).join(", "):"—"):cell(value);
+  const out=[
+    "# JODLO — original Category and full Service human-review worksheet",
+    "",
+    "> **UNAPPROVED / REVIEW ONLY.** Historical names and safety labels are evidence, not permitted work, final JODLO labels, qualified signoff, founder activation, or production data.",
+    "",
+    "- Languages: original English + Hindi (Devanagari); neither is approved copy.",
+    "- Source SHA-256: "+SOURCE,
+    "- Historical coverage: 889 Categories / 7,267 Services / 2,667 human-review tasks.",
+    "- This page: "+dossier.summary.selectedCategories+" Categories / "+dossier.summary.selectedHistoricalServices+" complete original Services.",
+    "- Next cursor (original Category ID; null means no more): "+cell(dossier.page.nextCursor),
+    "- Qualified signoffs: 0; founder approvals: 0; production activations: 0; SQL generated: 0.",
+    "",
+    "A qualified bilingual editor, an occupational/legal scope reviewer, and an original-to-JODLO Category mapping reviewer must each provide independent evidence through the existing controlled review flow. Founder activation is a further separate gate. This worksheet itself cannot record or verify those approvals.",
+  ];
+  const seen=new Set();
+  for(const [index,c] of dossier.page.categories.entries()) {
+    if(!c||seen.has(c.sourceCategoryId)||
+      c.qualifiedHumanReviewVerified!==false||
+      c.founderActivationApproved!==false||
+      !Array.isArray(c.services)||c.serviceCount!==c.services.length||
+      !Array.isArray(c.outstandingHumanReviewTasks)||
+      c.outstandingHumanReviewTasks.length!==3||
+      c.outstandingHumanReviewTasks.some(t=>t.qualifiedSignoffVerified!==false)||
+      c.services.some(s=>s.reviewState!==PENDING))
+      throw Error("Reviewer worksheet source/card approval mismatch");
+    seen.add(c.sourceCategoryId);
+    out.push("","## "+(index+1)+". "+cell(c.sourceCategoryId)+" — "+
+      cell(c.historicalNameEn)+" / "+cell(c.historicalNameHi),"",
+      "- Historical Group / Family: "+cell(c.sourceGroupId)+" / "+cell(c.sourceFamilyId),
+      "- Historical safety tier (review cue, NOT authorization): "+cell(c.historicalSafetyTierForReviewOnly),
+      "- Attention lane / reasons: "+cell(c.attentionLane)+" / "+items(c.attentionReasonCodes),
+      "- Category source flags: "+items(c.sourceReviewFlags),
+      "- Original mapping candidate (syntax only): "+cell(c.originalCategoryMapping?.categoryIdSyntaxCandidate),
+      "- Original mapping syntax issues: "+items(c.originalCategoryMapping?.syntaxIssues),
+      "",
+      "### Outstanding independent human review tasks (never auto-approved)",
+      "",
+      "| Task | Local self-reported status | Evidence link (UNVERIFIED) |",
+      "| --- | --- | --- |");
+    for(const task of c.outstandingHumanReviewTasks)
+      out.push("| "+cell(task.taskType)+" | "+cell(task.status)+" | "+
+        cell(task.evidenceUrl)+" |");
+    out.push("","### All "+c.serviceCount+" original Services (not approved)","",
+      "| Source Service ID | Original English | Original हिन्दी | Source flags | Original section | Alternative original parents |",
+      "| --- | --- | --- | --- | --- | --- |");
+    for(const s of c.services)
+      out.push("| "+cell(s.sourceServiceId)+" | "+cell(s.historicalNameEn)+
+        " | "+cell(s.historicalNameHi)+" | "+items(s.sourceFlags)+" | "+
+        cell(s.originalSectionId)+" | "+
+        items(s.alternativeOriginalParentsForReview)+" |");
+  }
+  return out.join("\n")+"\n";
+}
+
 function parseArgs(args) {
   let mode="--next",limit=5,after=null,progressRoot=null;
   const seen=new Set();
   for(const arg of args) {
-    if(["--next","--summary","--check"].includes(arg)) {
+    if(["--next","--summary","--check","--markdown"].includes(arg)) {
       if(seen.has("mode"))throw Error("Duplicate mode");
       seen.add("mode");mode=arg;continue;
     }
@@ -121,7 +207,7 @@ function parseArgs(args) {
     const key=arg.slice(0,pos),value=arg.slice(pos+1);
     if(pos<1||!["--limit","--after","--progress-root"].includes(key)||
       seen.has(key)||!value)
-      throw Error("Use --next|--summary|--check [--limit=1..10] [--after=SOURCE_ID] [--progress-root=PATH]");
+      throw Error("Use --next|--markdown|--summary|--check [--limit=1..10] [--after=SOURCE_ID] [--progress-root=PATH]");
     seen.add(key);
     if(key==="--limit") {
       if(!/^(?:[1-9]|10)$/.test(value))throw Error("Limit must be 1..10");
@@ -129,7 +215,7 @@ function parseArgs(args) {
     } else if(key==="--after")after=value;
     else progressRoot=value;
   }
-  if(mode!=="--next"&&(seen.has("--limit")||seen.has("--after")))
+  if(!["--next","--markdown"].includes(mode)&&(seen.has("--limit")||seen.has("--after")))
     throw Error("Pagination requires --next");
   return {mode,limit,after,progressRoot};
 }
@@ -142,5 +228,6 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
   const dossier=buildCategoryReviewDossier(page,loadPinnedFullCategoryServiceEvidence());
   if(mode==="--check")console.log("889 Categories / 7267 original Services checked; no approvals, no SQL.");
   else if(mode==="--summary")process.stdout.write(JSON.stringify(dossier.summary,null,2)+"\n");
+  else if(mode==="--markdown")process.stdout.write(renderCategoryReviewDossierMarkdown(dossier));
   else process.stdout.write(JSON.stringify(dossier,null,2)+"\n");
 }
