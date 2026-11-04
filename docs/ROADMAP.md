@@ -1,3 +1,11 @@
+## 2026-11-04 — VERIFIED GREEN-MERGED HANDOFF (overrides historical unchecked PR TODOs)
+
+- [x] Source PRs #225–#231 all **merged into main**; independent main Foundation and native Android compile workflows **SUCCESS** for `bf3746bc55848be2e6d8f1c022e03a3e4883b118`. Historical unchecked merge items for these PRs below are old snapshots, not seven still-open pull requests.
+- [x] Existing `jodlo-api` live integration and real Android Google login/private Worker draft **owner-verified on 2026-11-03**; do not infer a new deployment from merged source or repeat old first-deploy instructions. Owner must still verify the current deployed version, latest-code acceptance and correct domain before subsequent controlled releases.
+- [ ] **True Catalog gate:** staff independently qualified human reviewers and work through all Services for first five Categories ([coordination #221](https://github.com/rekixo-lab/jodlo/issues/221), [review #216–#220](https://github.com/rekixo-lab/jodlo/issues/216)); preserve all 889 for later review. Last owner-read production D1: **0 total/active Categories, 0 published Listings**. No human signoffs, activation or legacy data seed are authorized.
+- [ ] After verified human mapping/occupational/editorial approval and separate founder activation decision, create **approved-only, reversible, owner-controlled** Catalog import/activation with transaction/rollback checks and real Worker→Customer phone testing. Do not treat evidence links, CI or source flags as authority.
+- [ ] Continue coherent full-product implementation: safely disclosed useful Worker profile/service details and approximate consent-based area, real Agora+FCM calling, reports/moderation, privacy deletion, supported payments, low-end-device validation and public release acceptance. Do not silently assume missing policy values.
+
 ## 2026-11-04 — Bilingual service names in Customer Saved and private Worker mode
 
 - [ ] Merge only after exact-head and independent merged-main GREEN: strict public active Category names lookup `GET /api/v1/catalog?lang=hi|en&ids=...` (max 20); native Saved and Worker manual name refresh bounded to 50 IDs, strict locale/account/current-page invalidation, unchanged listing visibility and publish/edit/owner permissions. [Safety and device checklist](APPROVED_CATEGORY_LABELS_OWNER_SAVED_2026-11-04.md).
