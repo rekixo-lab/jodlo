@@ -205,6 +205,20 @@ object JodloRoutes {
         return ApiCall.post("/api/v1/me/listings", token,
             "{\"categoryId\":\"$categoryId\"}")
     }
+    /** Exact owner Listing resume, never a new upsert. The current server
+     * checks paused status, owner, moderation, active account and Category in
+     * one atomic UPDATE before returning the same public two-field DTO.
+     * Never retry a lost acknowledgement automatically.
+     */
+    fun resumeOwnListing(
+        token: String, listingId: String, expectedCategoryId: String,
+    ): ApiCall {
+        requireListingId(listingId)
+        requireCategoryId(expectedCategoryId)
+        return ApiCall.post("/api/v1/me/listings?resume=1", token,
+            """{"listingId":"$listingId","expectedCategoryId":"$expectedCategoryId"}""")
+    }
+
     /** Existing Listing ID is preserved; old Category compare-and-swap.
      * No owner field, token in URL, GPS, price or public metadata change.
      * An ambiguous PUT response must never be automatically retried.
