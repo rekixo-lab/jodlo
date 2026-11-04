@@ -44,6 +44,55 @@ export async function listPublicCategories(
   return results.map(({ id, slug, name }) => ({ id, slug, name }));
 }
 
+/** Public, bounded exact-ID resolution used by device-only Saved and
+ * authenticated owner dashboard UI. Every returned row is an ACTIVE, already
+ * approved Category. Never exposes an unpublished name, source evidence,
+ * owner, worker status, account, phone or location.
+ *
+ * This is an opt-in read-only mode of EXISTING GET /api/v1/catalog, not a
+ * new route, table, alias, Category activation or availability claim.
+ */
+export type PublicCategoryLabelRequest = Readonly<{
+  language: CatalogLanguage; ids: readonly string[];
+}>;
+
+export function parsePublicCategoryLabels(
+  params: URLSearchParams,
+): PublicCategoryLabelRequest | null {
+  if(params.getAll("ids").length!==1 || params.size!==2 ||
+      params.getAll("lang").length!==1) return null;
+  const lang=params.get("lang");
+  if(lang!=="hi" && lang!=="en")return null;
+  const raw=params.get("ids")??"";
+  // At most 20 exact IDs; no empty, duplicate, query wildcard or whitespace.
+  // Validate without any SQL (including when D1 is not configured).
+  if(raw.length<1 || raw.length>1_299)return null;
+  const ids=raw.split(",");
+  if(ids.length<1 || ids.length>20 || new Set(ids).size!==ids.length ||
+      ids.some(id=>!validCategoryId(id)))return null;
+  return {language:lang,ids};
+}
+
+export async function resolveApprovedCategoryLabels(
+  db:D1Database, request:PublicCategoryLabelRequest,
+):Promise<PublicCategory[]> {
+  if(request.ids.length<1 || request.ids.length>20 ||
+      new Set(request.ids).size!==request.ids.length ||
+      request.ids.some(id=>!validCategoryId(id)))throw Error("Invalid public IDs");
+  const sql=PUBLIC_CATEGORY_FIELDS+
+    "FROM categories WHERE is_active = 1 AND id IN ("+
+    request.ids.map(()=>"?").join(",")+
+    ") ORDER BY sort_order ASC, id ASC LIMIT 20";
+  const {results}=await db.prepare(sql).bind(request.language,...request.ids)
+    .all<PublicCategory>();
+  const allowed=new Set(request.ids);
+  // Defensive source validation: a faulty D1 adapter cannot manufacture
+  // extra category IDs outside the user's explicit request.
+  return results
+    .filter(({id})=>allowed.has(id))
+    .map(({id,slug,name})=>({id,slug,name}));
+}
+
 /** A bounded keyset page lets a manual category picker eventually traverse
  * hundreds of approved entries without loading a giant UI grid at once.
  * The original unpaginated /catalog response remains unchanged (100 cap).
