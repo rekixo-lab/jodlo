@@ -109,4 +109,13 @@
     <string name="account_export_failed">Your data file could not be saved. If a partial file was created, delete it from the selected location.</string>
     <string name="account_export_cancelled">No file was saved.</string>
     <string name="account_export_stale">Your account session changed; the old export was discarded. Sign in and try again.</string>
+
+    <string name="guided_post_step">Create a service · Step 2: Review</string>
+    <string name="guided_post_before_review">Step 1 complete: you selected an approved service category. Check it before making your listing public.</string>
+    <string name="guided_post_review">Review selected service</string>
+    <string name="guided_post_review_notice">Confirm that this is the work you offer. Publishing uses your shared Worker account and only the approved Category. No location, price, experience or photos are collected in this version.</string>
+    <string name="guided_post_public_data">Customers currently see the Category and a Listing reference only. Publication is not identity verification or permission to start calls.</string>
+    <string name="guided_post_back">Go back</string>
+    <string name="guided_unpublish_review">Review service removal</string>
+    <string name="guided_unpublish_warning">Unpublishing removes this service from public discovery. Confirm only if you want to stop showing this listing. This does not delete your account.</string>
 </resources>
