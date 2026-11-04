@@ -391,6 +391,25 @@ class InMemorySessionCoordinator(
             mutation = true,
         )
 
+    /** Explicit, CAS-protected reactivation of a previously unpublished OWN
+     * listing. Session/lifecycle write fencing and worker opt-in are identical
+     * to Publish; never place a user account ID in the wire request.
+     */
+    fun resumeOwnListing(
+        listingId: String, expectedCategoryId: String,
+        cancellation: CancellationSignal? = null,
+    ): SessionResult<PublicListing> {
+        val resumes = workers as? OwnListingResumeRepository ?: return SessionResult.Failed(
+            SessionFailure.REMOTE_FAILURE, FailureKind.SERVICE_UNAVAILABLE,
+        )
+        return withSession(
+            call = { resumes.resume(it, listingId, expectedCategoryId) },
+            cancellation = cancellation,
+            update = { reply, _ -> outcome(reply) },
+            needsWorker = true, mutation = true,
+        )
+    }
+
     /** Explicit owner Category edit inherits the same epoch, mutation lock,
      * public-read invalidation and single-shot no-replay semantics as publish.
      */
