@@ -1,3 +1,9 @@
+## 2026-11-04 — complete existing Worker pause/reactivate lifecycle (software PR)
+
+Add safe **same-Listing** reactivation to the existing guided owner create/edit/unpublish pathway. A new explicitly confirmed Kotlin/Compose Worker action is tied to the original own Listing/Category and live session, while one D1 CAS refuses foreign, published, moderated, inactive, changed or disabled rows. No generic republish upsert, private fields, Catalog activation or new migration. [Scope, behavior and automated acceptance](WORKER_SAFE_REACTIVATION_2026-11-04.md).
+
+Remaining work still includes fully disclosed/moderated useful Worker profile/service detail, service-area policy, real Agora/FCM, block/report, erasure, media, payments, full website/operations and human-reviewed Catalog [#235](https://github.com/rekixo-lab/jodlo/issues/235). **Do not ask founder for physical-phone testing** until final complete-app integration QA.
+
 ## 2026-11-04 — phone QA deferred; finish software journeys first
 
 **Owner instruction:** Stop treating each new APK/feature as a request for founder physical-phone testing. Do code+API+Android integration and automated CI for each cohesive milestone, then offer **one final full-app device acceptance matrix only when necessary complete features/provider gates exist**. [Single engineering backlog, ordered prerequisites and exit criteria: #235](https://github.com/rekixo-lab/jodlo/issues/235).
