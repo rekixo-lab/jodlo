@@ -38,6 +38,15 @@ interface PublicListingPageRepository {
                      after: String? = null): ApiOutcome<PublicListingPage>
 }
 
+/** Anonymous, bounded cross-Category public feed; opt-in and independent
+ * of the original Category-only Listing paginator. Does not imply live
+ * availability, verified Worker identity or permission to contact.
+ */
+interface AllPublicListingFeedRepository {
+    fun allPublicListings(limit: Int = 20,
+                          after: String? = null): ApiOutcome<PublicListingPage>
+}
+
 /** One fresh public Listing GET for explicit user navigation. The same
  * category as the tapped row must be returned or the client rejects it.
  * This is visibility, NEVER consent to contact a Worker.
@@ -102,7 +111,8 @@ internal fun browseCursorAdvances(after: String?, next: String): Boolean {
 
 class RemoteCatalogRepository(private val sender: RequestSender) :
     CatalogRepository, PublicListingPageRepository, CatalogSearchCursorRepository,
-    PublicListingDetailRepository, ApprovedCategoryNamesRepository {
+    PublicListingDetailRepository, ApprovedCategoryNamesRepository,
+    AllPublicListingFeedRepository {
     override fun approvedNames(
         ids: List<String>, language: Language,
     ): ApiOutcome<List<PublicCategory>> {
@@ -161,6 +171,22 @@ class RemoteCatalogRepository(private val sender: RequestSender) :
                         (dto.categories.size == limit && dto.categories.isNotEmpty() &&
                             dto.categories.last().id == dto.nextCursor.substringAfter(':') &&
                             browseCursorAdvances(after, dto.nextCursor)))
+            }
+    }
+
+    /** Reuse the exact two-field public Listing decoder. The only order
+     * token is the last public Listing ID from the requested feed page.
+     */
+    override fun allPublicListings(limit: Int, after: String?): ApiOutcome<PublicListingPage> {
+        val call = JodloRoutes.publicAllListingPage(limit, after)
+        return performOnce(call, sender::send, JodloReplyDecoder::publicListingPage)
+            .validated { page ->
+                page.listings.size <= limit &&
+                    (after == null || page.listings.none { it.id == after }) &&
+                    (page.nextCursor == null ||
+                        (page.listings.size == limit &&
+                            page.listings.last().id == page.nextCursor &&
+                            page.nextCursor != after))
             }
     }
 
