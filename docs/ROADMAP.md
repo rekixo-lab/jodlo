@@ -1,3 +1,9 @@
+## 2026-11-04 — Current connected Customer Saved journey
+
+- [ ] Complete and GREEN-merge explicit native Customer public-detail → device-only Saved (max 50 ID/category) → separate Saved tab → per-entry fresh anonymous API eligibility check → safe 404/Category-change/uncertain recovery → remove/confirm clear. New Kotlin bounded-store/strict transport tests; no backend table/route or automatic notification. [Acceptance](CUSTOMER_SAVED_SERVICES_2026-11-04.md).
+- [ ] Continue **whole Finworkar behavior** reconstruction, not sample data: moderated and disclosed useful public Worker cards/service details; type/area choices without forced GPS; guided experience/rate/media storage after explicit policy approval; first-contact Agora with real FCM; blocks/reports/admin, payments, legal deletion/backup and real phone/API launch gates.
+- [ ] Do not call bookmarks or approved active Category-only Listings **available workers**, live contacts, verified profiles, auto-synced user data or shipped app. Production approved Category count was zero at last actual query; human review and real deployment remain distinct.
+
 ## 2026-11-04 — Current Worker service editing, no new sensitive data
 
 - [ ] Build and exact-head green-merge `PUT /api/v1/me/listings` for changing an existing owner service's approved Category without a new row or data model; Android supports fresh owned selection → Category search → review → save and manual conflict recovery. [Acceptance](WORKER_SERVICE_CATEGORY_EDIT_2026-11-04.md).
