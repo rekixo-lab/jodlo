@@ -1,3 +1,9 @@
+## 2026-11-04 — manual tasks after Customer interactive Search (approval/deployment/device still required)
+
+**Code alone does not make Search live.** Human review must explicitly approve category names/work scope in both Hindi and English (M-005); last owner check of remote `jodlo-production` had **0 active Categories and 0 published Listings**. Do NOT import/approve historical Finworkar categories or invent real workers in bulk. The Cloudflare account operator must independently verify exact `api.jodlo.rekixo.com` routing and service ownership, live D1 migrations, DNS/TLS, and make a controlled, separately authorized production release (CF-05/CF-06); CI only checks source. The owner must test a configured Android APK on their physical phone with actual approved service records. The optional new Search suggestion setting is **OFF until the Customer opts in to sending typed text to JODLO**. Exact [test and manual checklist](CUSTOMER_LIVE_SUGGESTIONS_2026-11-04.md).
+
+Future **full Worker public profile, service description, experience, rates, approximate area, images and real Agora/FCM calling** still need field disclosure/moderation/privacy and provider/abuse decisions under M-003/M-005/M-006; generic engineering permission did not supply those policy values. Do not ask for tokens or write secrets to GitHub.
+
 # JODLO — founder manual actions, owner gates and notification register
 
 ## 2026-11-03 — CF-05 local preparation DONE; first real Worker release NEEDS_OWNER_ACTION
