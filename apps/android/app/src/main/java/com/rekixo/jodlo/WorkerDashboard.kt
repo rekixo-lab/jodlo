@@ -13,6 +13,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -23,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.rekixo.jodlo.core.network.ApiOutcome
+import com.rekixo.jodlo.core.network.ApprovedCategoryNameSnapshot
 import com.rekixo.jodlo.core.network.FailureKind
 import com.rekixo.jodlo.core.network.GuidedWorkerServiceActions
 import com.rekixo.jodlo.core.network.GuidedWorkerCategoryEdit
@@ -86,6 +88,25 @@ internal fun WorkerDashboard(
     var guided by remember(session) { mutableStateOf(GuidedWorkerServiceActions()) }
     var categoryEdit by remember(session) { mutableStateOf(GuidedWorkerCategoryEdit()) }
     var selectedListing by remember(session) { mutableStateOf<String?>(null) }
+    // Public approved Category names are fetched only on an explicit user tap.
+    // Keep the private owner/account generation separate from public names.
+    var approvedNames by remember(session) {
+        mutableStateOf<ApprovedCategoryNameSnapshot?>(null)
+    }
+    var approvedNamesMarker by remember(session) { mutableStateOf<Long?>(null) }
+    var namesBusy by remember(session) { mutableStateOf(false) }
+    var namesFailed by remember(session) { mutableStateOf(false) }
+    var namesRevision by remember(session) { mutableIntStateOf(0) }
+    val ownerCategoryIds = ownListings.map { it.categoryId }.distinct()
+        .take(ApprovedCategoryNameSnapshot.MAX_IDS)
+
+    LaunchedEffect(ownListings, categoryLanguage, session) {
+        namesRevision++
+        approvedNames = null
+        approvedNamesMarker = null
+        namesBusy = false
+        namesFailed = false
+    }
     var publicPreview by remember(session) { mutableStateOf(PublicPreview.UNCHECKED) }
     var writeState by remember(session) {
         mutableStateOf(writes?.snapshot()?.state ?: WorkerWriteState.Idle)
@@ -94,6 +115,62 @@ internal fun WorkerDashboard(
     val signedIn = login as? LoginState.SignedIn
     val uncertain = writeState is WorkerWriteState.NeedsReview
     val canWrite = signedIn?.worker == WorkerState.DRAFT && !busy && !uncertain
+
+    fun clearApprovedNames() {
+        namesRevision++
+        approvedNames = null
+        approvedNamesMarker = null
+        namesBusy = false
+        namesFailed = false
+    }
+
+    fun loadApprovedNames() {
+        val reader=catalog ?: return
+        val accountMarker=session?.accountExportSessionMarker() ?: return
+        val ids=ownerCategoryIds
+        if(ids.isEmpty() || namesBusy || busy || uncertain) return
+        val lang=categoryLanguage
+        val generation=++namesRevision
+        namesBusy=true
+        namesFailed=false
+        approvedNames=null
+        approvedNamesMarker=null
+        scope.launch {
+            val result: ApiOutcome<List<PublicCategory>> = withContext(Dispatchers.IO) {
+                try {
+                    val gathered=mutableListOf<PublicCategory>()
+                    var problem: ApiOutcome.Failed?=null
+                    for(batch in ids.chunked(20)) {
+                        when(val reply=reader.approvedNames(batch,lang)) {
+                            is ApiOutcome.Ok -> gathered.addAll(reply.value)
+                            is ApiOutcome.Failed -> {problem=reply;break}
+                        }
+                    }
+                    problem ?: ApiOutcome.Ok(gathered)
+                } catch (cancelled: kotlin.coroutines.cancellation.CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    ApiOutcome.Failed(FailureKind.BAD_RESPONSE,false)
+                }
+            }
+            if(namesRevision!=generation ||
+                session?.accountExportSessionMarker()!=accountMarker) return@launch
+            namesBusy=false
+            when(result) {
+                is ApiOutcome.Failed -> namesFailed=true
+                is ApiOutcome.Ok -> {
+                    approvedNames=ApprovedCategoryNameSnapshot.fromApprovedRows(ids,lang,result.value)
+                    approvedNamesMarker=accountMarker
+                    namesFailed=approvedNames==null
+                }
+            }
+        }
+    }
+
+    fun nameForOwnCategory(categoryId:String): String? =
+        if(approvedNamesMarker==session?.accountExportSessionMarker())
+            approvedNames?.approvedName(categoryId,categoryLanguage,ownerCategoryIds)
+        else null
 
     fun clearCategoryResults() {
         categoryRows = emptyList()
@@ -114,6 +191,7 @@ internal fun WorkerDashboard(
         if (login is LoginState.SignedOut) {
             ownListings = emptyList()
             ownerCursor = null
+            clearApprovedNames()
             selectedListing = null
             publicPreview = PublicPreview.UNCHECKED
             guided = guided.reset()
@@ -145,6 +223,7 @@ internal fun WorkerDashboard(
         busy = true
         message = 0
         publicPreview = PublicPreview.UNCHECKED // Owner status is NOT a public read.
+        clearApprovedNames()
         guided = guided.cancelUnpublish()
         categoryEdit = categoryEdit.reset()
         val accountMarker = session.accountExportSessionMarker()
@@ -249,6 +328,7 @@ internal fun WorkerDashboard(
             updateSession()
             ownListings = emptyList()
             ownerCursor = null
+            clearApprovedNames()
             selectedListing = null
             guided = guided.reset()
             categoryEdit = categoryEdit.reset()
@@ -416,6 +496,23 @@ internal fun WorkerDashboard(
                             JodloTextAction(onClick = { loadOwnPage() }, enabled = !busy) {
                                 Text(stringResource(R.string.worker_refresh_listings))
                             }
+                            if (ownListings.isNotEmpty()) {
+                                JodloTextAction(onClick = { loadApprovedNames() },
+                                    enabled = !busy && !namesBusy) {
+                                    Text(stringResource(R.string.category_label_lookup_action))
+                                }
+                                Text(stringResource(R.string.category_label_lookup_privacy),
+                                    style = MaterialTheme.typography.bodySmall)
+                                if (ownerCategoryIds.size <
+                                    ownListings.map { it.categoryId }.distinct().size) {
+                                    Text(stringResource(R.string.category_label_lookup_limited),
+                                        style = MaterialTheme.typography.bodySmall)
+                                }
+                                if (namesBusy) CircularProgressIndicator()
+                                if (namesFailed) Text(
+                                    stringResource(R.string.category_label_lookup_failed),
+                                    color=MaterialTheme.colorScheme.error)
+                            }
                         }
                         items(ownListings, key = { "own-" + it.id }) { listing ->
                             JodloCard(
@@ -431,6 +528,9 @@ internal fun WorkerDashboard(
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
                                 Column(Modifier.padding(JodloSizes.CardPadding)) {
+                                    val approvedName=nameForOwnCategory(listing.categoryId)
+                                    if(approvedName!=null) Text(approvedName,
+                                        style=MaterialTheme.typography.titleMedium)
                                     Text(stringResource(R.string.listing_reference, listing.id))
                                     Text(stringResource(R.string.worker_listing_category, listing.categoryId))
                                     Text(stringResource(if (listing.visible)
@@ -633,7 +733,8 @@ internal fun WorkerDashboard(
                                     Text(stringResource(R.string.worker_edit_heading),
                                         style = MaterialTheme.typography.titleMedium)
                                     Text(stringResource(R.string.worker_edit_existing_category,
-                                        categoryEdit.source!!.categoryId))
+                                        nameForOwnCategory(categoryEdit.source!!.categoryId)
+                                            ?: categoryEdit.source!!.categoryId))
                                     Text(stringResource(R.string.worker_edit_description))
                                     val next = categoryEdit.destination
                                     if (next == null) {
