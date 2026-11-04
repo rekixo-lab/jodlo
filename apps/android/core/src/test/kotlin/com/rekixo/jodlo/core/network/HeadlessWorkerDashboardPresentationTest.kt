@@ -745,7 +745,83 @@ private fun pagedReviewMapperKeepsRawCursorPrivateAndNeverClaimsSuccess() {
         pagedReviewAvailable=true)==WorkerDashboardState(WorkerProfilePhase.CLOSED))
 }
 
+/** A real session must exist throughout the two-step review. Selecting a
+ * different Category, fetching a new page, switching accounts or cancelling
+ * invalidates the prior confirmed Category. Review itself performs no write.
+ */
+private fun guidedWorkerReviewRequiresSameAccountAndCurrentCatalog() {
+    val h=DashboardHarness()
+    val plumber=PublicCategory("plumber","plumber","प्लंबर")
+    val carpenter=PublicCategory("carpenter","carpenter","Carpenter")
+    val liveRows=listOf(plumber,carpenter)
+    val initial=GuidedWorkerServiceActions()
+    check(initial.selectedCategory==null && !initial.publishReviewOpen)
+    check(initial.categoryConfirmedForPublish(null,liveRows)==null)
+    check(initial.chooseCategory(plumber,liveRows,null).selectedCategory==null)
+    h.signIn()
+    h.optIn()
+    val marker=h.session.accountExportSessionMarker()
+    check(marker!=null)
+    val chosen=initial.chooseCategory(plumber,liveRows,marker)
+    check(chosen.selectedCategory==plumber && !chosen.publishReviewOpen)
+    check(chosen.categoryConfirmedForPublish(marker,liveRows)==null)
+    check(h.worker.publishCalls.get()==0)
+    val approved=chosen.reviewPublication(marker)
+    check(approved.publishReviewOpen)
+    check(approved.categoryConfirmedForPublish(marker,liveRows)=="plumber")
+    check(approved.categoryConfirmedForPublish(marker,listOf(carpenter))==null)
+    check(approved.categoryConfirmedForPublish(null,liveRows)==null)
+    check(approved.reviewPublication(marker+1).categoryConfirmedForPublish(marker+1,liveRows)==null)
+    check(approved.cancelPublicationReview().categoryConfirmedForPublish(marker,liveRows)==null)
+    check(approved.chooseCategory(carpenter,liveRows,marker)
+        .categoryConfirmedForPublish(marker,liveRows)==null)
+    check(approved.clearPublication().categoryConfirmedForPublish(marker,liveRows)==null)
+    // A category never returned in the current approved response is not eligible
+    // for review even if it has the right-looking string ID.
+    check(initial.chooseCategory(plumber,listOf(carpenter),marker).selectedCategory==null)
+    // The only side effect happens AFTER the reviewed ID is explicitly handed
+    // to the existing owner-authenticated write scope.
+    val selectedId=checkNotNull(approved.categoryConfirmedForPublish(marker,liveRows))
+    check(selectedId=="plumber")
+    check(h.writes.publishExplicitCategory(selectedId)==WorkerWriteCompletion.APPLIED)
+    check(h.worker.publishCalls.get()==1)
+    // Session marker changes even if the worker signs in with another account
+    // and happens to select the same Category.
+    check(h.session.acceptIssuedSession(dashIssued(DASH_TOKEN_B)) is ApiOutcome.Ok)
+    check(approved.categoryConfirmedForPublish(h.session.accountExportSessionMarker(),liveRows)==null)
+}
+
+private fun guidedUnpublishRequiresExplicitCurrentOwnedRowAndConfirmation() {
+    val h=DashboardHarness()
+    val own=DASH_OWN_ROW
+    val other=OwnListing("22222222-2222-4222-8222-222222222222","carpenter",true)
+    val rows=listOf(own,other)
+    val initial=GuidedWorkerServiceActions()
+    check(initial.reviewUnpublish(own,rows,null).pendingUnpublishId==null)
+    h.signIn()
+    h.optIn()
+    val marker=h.session.accountExportSessionMarker()
+    check(marker!=null)
+    check(initial.reviewUnpublish(own,listOf(other),marker).pendingUnpublishId==null)
+    val review=initial.reviewUnpublish(own,rows,marker)
+    check(review.pendingUnpublishId==DASH_OWN_ID)
+    check(review.unpublishConfirmed(marker,rows)==DASH_OWN_ID)
+    check(review.unpublishConfirmed(marker,listOf(other))==null)
+    check(review.unpublishConfirmed(null,rows)==null)
+    check(review.cancelUnpublish().unpublishConfirmed(marker,rows)==null)
+    check(review.reset().unpublishConfirmed(marker,rows)==null)
+    check(h.worker.unpublishCalls.get()==0)
+    val id=checkNotNull(review.unpublishConfirmed(marker,rows))
+    check(id==DASH_OWN_ID)
+    check(h.writes.unpublish(id)==WorkerWriteCompletion.APPLIED)
+    check(h.worker.unpublishCalls.get()==1)
+    check(h.session.logout() is SessionResult.Failed)
+    check(review.unpublishConfirmed(h.session.accountExportSessionMarker(),rows)==null)
+}
+
 fun main() {
+    guidedWorkerReviewRequiresSameAccountAndCurrentCatalog()
+    guidedUnpublishRequiresExplicitCurrentOwnedRowAndConfirmation()
     signedOutAndUnknownNeverPublish()
     optedInWorkerShowsOnlyAuthenticatedOwnedRowsAndReadHints()
     readErrorAndEmptyAreDistinctAndNeverAutoRetry()

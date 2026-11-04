@@ -109,4 +109,13 @@
     <string name="account_export_failed">डेटा फ़ाइल नहीं सहेज सके। यदि अधूरी फ़ाइल बनी हो, तो चुने हुए स्थान से उसे हटाएँ।</string>
     <string name="account_export_cancelled">कोई फ़ाइल सहेजी नहीं गई।</string>
     <string name="account_export_stale">खाते का सत्र बदल गया। पुराना डेटा निर्यात रद्द कर दिया गया। फिर प्रवेश करके प्रयास करें।</string>
+
+    <string name="guided_post_step">सेवा बनाएँ · चरण 2: समीक्षा</string>
+    <string name="guided_post_before_review">चरण 1 पूरा: आपने स्वीकृत सेवा श्रेणी चुनी है। सार्वजनिक करने से पहले जाँचें।</string>
+    <string name="guided_post_review">चुनी हुई सेवा की समीक्षा करें</string>
+    <string name="guided_post_review_notice">पुष्टि करें कि आप यही काम करते हैं। प्रकाशन आपके उसी वर्कर खाते से होगा और केवल स्वीकृत श्रेणी भेजेगा। इस संस्करण में क्षेत्र, रेट, अनुभव या तस्वीर नहीं ली जाती।</string>
+    <string name="guided_post_public_data">ग्राहक को अभी केवल सेवा श्रेणी और सूची का संदर्भ दिखता है। प्रकाशन पहचान सत्यापन या कॉल की अनुमति नहीं है।</string>
+    <string name="guided_post_back">वापस जाएँ</string>
+    <string name="guided_unpublish_review">सेवा हटाने से पहले जाँचें</string>
+    <string name="guided_unpublish_warning">अप्रकाशित करने पर यह सेवा ग्राहक की सार्वजनिक खोज से हट जाएगी। यदि यही चाहते हैं तभी पुष्टि करें। इससे आपका खाता नहीं मिटेगा।</string>
 </resources>

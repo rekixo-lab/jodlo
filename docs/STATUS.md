@@ -1,3 +1,11 @@
+## 2026-11-04 — guided Worker Category Review + owner unpublish confirmation (PR pending)
+
+**Implementation branch:** guided/native service create review over **existing approved Category-only backend**: select Category from current real en/hi Catalog, review exact customer-disclosed scope, explicit publish through existing session-backed WorkerWriteScope, confirmed-only owner refresh, explicit owner unpublish review/cancel/confirm and uncertainty handling. Immutable `GuidedWorkerServiceActions` uses a nonsecret live-session generation and current-page membership for every final action. Late Category/owner GET results cannot cross a changed language/query/login epoch.
+
+**Limits:** This is the next **usable part of the full Finworkar guided journey**, not the complete legacy four-step form: no experience, area, price, photo/media, public Worker profile, call, moderation UI or payment persistence. These need reviewed schemas and safe public-disclosure policy. The last production Catalog check showed 0 active Categories, so actual production use remains dependent on human review/approval—not test fake records.
+
+**Acceptance:** [full guided review contract](GUIDED_WORKER_SERVICE_REVIEW_2026-11-04.md). Exact PR-head Android/Foundation and independent merged-main green required; configured real device and D1 live acceptance still separate. No production deploy or historical data migration in this branch.
+
 ## 2026-11-04 — next full Account journey: native Google Sign-In → privacy export → logout-all (PR/CI pending)
 
 **Work under new complete Finworkar-behavior directive:** the previous account overview/export API and native Account screen were merged on main at `7d099b22d97a4e5977d2f6d9b50fa3e82d17bb61`, with independent main Foundation and Android JDK17/21 CI green. This milestone finishes the user-initiated private account portion, **not** the marketplace.
