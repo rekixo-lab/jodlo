@@ -519,7 +519,7 @@ internal fun WorkerDashboard(
                                 onClick = {
                                     if (!busy) {
                                         selectedListing = listing.id
-                                        guided = guided.cancelUnpublish()
+                                        guided = guided.cancelUnpublish().cancelResume()
                                         categoryEdit = categoryEdit.reset()
                                         publicPreview = PublicPreview.UNCHECKED
                                     }
