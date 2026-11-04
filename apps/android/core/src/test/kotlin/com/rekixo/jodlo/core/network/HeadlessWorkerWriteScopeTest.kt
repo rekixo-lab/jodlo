@@ -561,12 +561,18 @@ private fun resumeSlowResponseCannotCrossAccountReplacement() {
 }
 
 private fun guidedResumeOnlyFromCurrentNonvisibleOwnerRow() {
-    val original=OwnListing(LISTING_ID,"plumber",false)
-    val visible=original.copy(visible=true)
-    val other=OwnListing("22222222-2222-4222-8222-222222222222","carpenter",false)
+    val original=OwnListing(LISTING_ID,"plumber",false,
+        OwnPublicationStatus.UNPUBLISHED)
+    val visible=original.copy(visible=true,publicationStatus=OwnPublicationStatus.PUBLISHED)
+    val hiddenPublished=original.copy(publicationStatus=OwnPublicationStatus.PUBLISHED)
+    val legacyUnknown=original.copy(publicationStatus=null)
+    val other=OwnListing("22222222-2222-4222-8222-222222222222","carpenter",false,
+        OwnPublicationStatus.UNPUBLISHED)
     val blank=GuidedWorkerServiceActions()
     check(blank.beginResume(original,listOf(other),31L).pendingResume==null)
     check(blank.beginResume(visible,listOf(visible),31L).pendingResume==null)
+    check(blank.beginResume(hiddenPublished,listOf(hiddenPublished),31L).pendingResume==null)
+    check(blank.beginResume(legacyUnknown,listOf(legacyUnknown),31L).pendingResume==null)
     val chosen=blank.beginResume(original,listOf(original),31L)
     check(chosen.pendingResume==original)
     check(chosen.resumeConfirmed(31L,listOf(original))==null)
@@ -575,6 +581,8 @@ private fun guidedResumeOnlyFromCurrentNonvisibleOwnerRow() {
         ResumeOwnListingCommand(LISTING_ID,"plumber"))
     check(review.resumeConfirmed(32L,listOf(original))==null)
     check(review.resumeConfirmed(31L,listOf(visible))==null)
+    check(review.resumeConfirmed(31L,listOf(hiddenPublished))==null)
+    check(review.resumeConfirmed(31L,listOf(legacyUnknown))==null)
     check(review.resumeConfirmed(31L,listOf(other))==null)
     check(review.resumeConfirmed(31L,listOf(original.copy(categoryId="carpenter")))==null)
     check(review.cancelResume().resumeConfirmed(31L,listOf(original))==null)
