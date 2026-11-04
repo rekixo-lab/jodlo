@@ -781,7 +781,7 @@ private fun guidedWorkerReviewRequiresSameAccountAndCurrentCatalog() {
     check(initial.chooseCategory(plumber,listOf(carpenter),marker).selectedCategory==null)
     // The only side effect happens AFTER the reviewed ID is explicitly handed
     // to the existing owner-authenticated write scope.
-    val selectedId=approved.categoryConfirmedForPublish(marker,liveRows)
+    val selectedId=checkNotNull(approved.categoryConfirmedForPublish(marker,liveRows))
     check(selectedId=="plumber")
     check(h.writes.publishExplicitCategory(selectedId)==WorkerWriteCompletion.APPLIED)
     check(h.worker.publishCalls.get()==1)
@@ -811,7 +811,7 @@ private fun guidedUnpublishRequiresExplicitCurrentOwnedRowAndConfirmation() {
     check(review.cancelUnpublish().unpublishConfirmed(marker,rows)==null)
     check(review.reset().unpublishConfirmed(marker,rows)==null)
     check(h.worker.unpublishCalls.get()==0)
-    val id=review.unpublishConfirmed(marker,rows)
+    val id=checkNotNull(review.unpublishConfirmed(marker,rows))
     check(id==DASH_OWN_ID)
     check(h.writes.unpublish(id)==WorkerWriteCompletion.APPLIED)
     check(h.worker.unpublishCalls.get()==1)
