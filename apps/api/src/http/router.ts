@@ -1,6 +1,6 @@
 import type { Env } from "../data/d1.ts";
 import { validOpaqueId } from "../modules/shared/identifiers.ts";
-import { browsePublicCategories, parseCatalogBrowse, parseCatalogSearch, searchPublicCategories } from "../modules/catalog/catalog.ts";
+import { browsePublicCategories, parseCatalogBrowse, parseCatalogSearch, searchPublicCategories, parsePublicCategoryLabels, resolveApprovedCategoryLabels } from "../modules/catalog/catalog.ts";
 import { healthData } from "../modules/system/health.ts";
 import { optInAsWorker, ownWorkerDraft } from "../modules/workers/profile.ts";
 import { ownAccountOverview, exportOwnAccountData } from "../modules/identity/account-self-service.ts";
@@ -78,6 +78,23 @@ export async function handleRequest(
   if (url.pathname === "/api/v1/catalog") {
     const methodError = getOnly(request);
     if (methodError) return methodError;
+    if (url.searchParams.has("ids")) {
+      // Exact, anonymous, explicit label lookup. Unapproved or disabled
+      // Category IDs are omitted: no hidden name or worker data is leaked.
+      const labels=parsePublicCategoryLabels(url.searchParams);
+      if(!labels) return json({ok:false,error:{
+        code:"INVALID_QUERY",message:"Invalid catalog label lookup"}},400);
+      if(!env.DB) return json({ok:false,error:{
+        code:"SERVICE_UNAVAILABLE",message:"Catalog unavailable"}},503);
+      try {
+        const categories=await resolveApprovedCategoryLabels(env.DB,labels);
+        return json({ok:true,data:{
+          language:labels.language,categories,nextCursor:null}});
+      } catch {
+        return json({ok:false,error:{
+          code:"SERVICE_UNAVAILABLE",message:"Catalog unavailable"}},503);
+      }
+    }
     const options = parseCatalogBrowse(url.searchParams);
     if (!options) {
       return json({ ok: false, error: { code: "INVALID_QUERY", message: "Invalid catalog query" } }, 400);
