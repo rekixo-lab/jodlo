@@ -14,6 +14,9 @@ data class GuidedWorkerServiceActions(
     val publishReviewOpen: Boolean = false,
     val pendingUnpublishId: String? = null,
     private val unpublishAccountGeneration: Long? = null,
+    val pendingResume: OwnListing? = null,
+    private val resumeAccountGeneration: Long? = null,
+    val resumeReviewOpen: Boolean = false,
 ) {
     /** Only allow explicitly tapped returned Categories, never free text IDs.
      * Choosing another row invalidates any previous publication review.
@@ -73,5 +76,47 @@ data class GuidedWorkerServiceActions(
     fun cancelUnpublish(): GuidedWorkerServiceActions =
         copy(pendingUnpublishId = null, unpublishAccountGeneration = null)
 
+    /** A nonvisible owner row might be paused, moderated or in an inactive
+     * Category. This only lets the Worker REVIEW a reactivation attempt:
+     * the atomic server mutation accepts ONLY unpublished, currently allowed,
+     * Category-active rows. Never assume visible=false means paused.
+     */
+    fun beginResume(
+        chosen: OwnListing, currentRows: List<OwnListing>,
+        accountGeneration: Long?,
+    ): GuidedWorkerServiceActions =
+        if (accountGeneration != null && !chosen.visible &&
+            chosen in currentRows) copy(
+                pendingResume = chosen,
+                resumeAccountGeneration = accountGeneration,
+                resumeReviewOpen = false,
+            ) else cancelResume()
+
+    fun reviewResume(accountGeneration: Long?): GuidedWorkerServiceActions =
+        copy(resumeReviewOpen = pendingResume != null &&
+            accountGeneration != null && accountGeneration == resumeAccountGeneration)
+
+    fun resumeConfirmed(
+        accountGeneration: Long?, currentRows: List<OwnListing>,
+    ): ResumeOwnListingCommand? {
+        val selected = pendingResume ?: return null
+        if (!resumeReviewOpen || accountGeneration == null ||
+            accountGeneration != resumeAccountGeneration ||
+            selected.visible || selected !in currentRows) return null
+        return ResumeOwnListingCommand(selected.id, selected.categoryId)
+    }
+
+    fun cancelResume(): GuidedWorkerServiceActions = copy(
+        pendingResume = null, resumeAccountGeneration = null,
+        resumeReviewOpen = false,
+    )
+
     fun reset(): GuidedWorkerServiceActions = GuidedWorkerServiceActions()
 }
+
+/** Exact owner Listing identity and CURRENT expected Category only;
+ * never a profile, owner account ID or visibility status claim.
+ */
+data class ResumeOwnListingCommand(
+    val listingId: String, val expectedCategoryId: String,
+)
