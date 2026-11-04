@@ -164,4 +164,9 @@
     <string name="customer_live_hints_more">See full search results</string>
     <string name="customer_live_hints_empty">No live Category suggestion yet. Try a different work description or use Search.</string>
     <string name="customer_live_hints_error">Live suggestions could not be checked. You can still use the Search button.</string>
+
+    <string name="category_label_lookup_action">Show current approved Category names</string>
+    <string name="category_label_lookup_privacy">Optional: asks JODLO only for these public Category IDs and their approved names in the selected language. No saved service ID, Worker account, login or location is sent. A Category name does not confirm a service is public or available.</string>
+    <string name="category_label_lookup_failed">Category names could not be verified. Technical IDs are still shown; no service visibility has been assumed.</string>
+    <string name="category_label_lookup_limited">For safety, this lookup resolves up to 50 different Categories at a time. Other IDs remain visible.</string>
 </resources>

@@ -13,6 +13,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -22,11 +23,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.rekixo.jodlo.core.network.ApiOutcome
+import com.rekixo.jodlo.core.network.ApprovedCategoryNameSnapshot
+import com.rekixo.jodlo.core.network.Language
+import com.rekixo.jodlo.core.network.PublicCategory
 import com.rekixo.jodlo.core.network.FailureKind
 import com.rekixo.jodlo.core.network.PublicListing
 import com.rekixo.jodlo.core.network.RemoteCatalogRepository
 import com.rekixo.jodlo.core.network.SavedPublicServices
 import com.rekixo.jodlo.ui.theme.JodloButton
+import com.rekixo.jodlo.ui.theme.JodloChip
 import com.rekixo.jodlo.ui.theme.JodloCard
 import com.rekixo.jodlo.ui.theme.JodloSizes
 import com.rekixo.jodlo.ui.theme.JodloTextAction
@@ -54,6 +59,62 @@ internal fun SavedServicesDashboard(
     var revision by remember { mutableIntStateOf(0) }
     var confirmClear by remember { mutableStateOf(false) }
     var notice by remember { mutableIntStateOf(0) }
+    // A Saved reference is private to this phone. Explicitly fetching only
+    // its distinct *Category IDs* reveals neither a Listing ID nor account.
+    var categoryLanguage by remember { mutableStateOf(Language.HI) }
+    var categoryNames by remember { mutableStateOf<ApprovedCategoryNameSnapshot?>(null) }
+    var categoryNamesBusy by remember { mutableStateOf(false) }
+    var categoryNamesFailed by remember { mutableStateOf(false) }
+    var categoryNamesRevision by remember { mutableIntStateOf(0) }
+    val currentCategoryIds = saved.entries.map { it.categoryId }.distinct()
+
+    LaunchedEffect(categoryLanguage, saved.entries, repository) {
+        categoryNamesRevision++
+        categoryNames = null
+        categoryNamesBusy = false
+        categoryNamesFailed = false
+    }
+
+    fun loadApprovedNames() {
+        val client = repository ?: return
+        val ids = currentCategoryIds
+        if (ids.isEmpty() || ids.size > ApprovedCategoryNameSnapshot.MAX_IDS ||
+            categoryNamesBusy) return
+        val language = categoryLanguage
+        val generation = ++categoryNamesRevision
+        categoryNamesBusy = true
+        categoryNames = null
+        categoryNamesFailed = false
+        scope.launch {
+            val result: ApiOutcome<List<PublicCategory>> = withContext(Dispatchers.IO) {
+                try {
+                    val gathered = mutableListOf<PublicCategory>()
+                    var problem: ApiOutcome.Failed? = null
+                    for (batch in ids.chunked(20)) {
+                        when (val reply = client.approvedNames(batch,language)) {
+                            is ApiOutcome.Ok -> gathered.addAll(reply.value)
+                            is ApiOutcome.Failed -> { problem=reply;break }
+                        }
+                    }
+                    problem ?: ApiOutcome.Ok(gathered)
+                } catch (cancelled: kotlin.coroutines.cancellation.CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    ApiOutcome.Failed(FailureKind.BAD_RESPONSE,false)
+                }
+            }
+            if (categoryNamesRevision != generation) return@launch
+            categoryNamesBusy = false
+            when (result) {
+                is ApiOutcome.Failed -> categoryNamesFailed = true
+                is ApiOutcome.Ok -> {
+                    categoryNames = ApprovedCategoryNameSnapshot.fromApprovedRows(
+                        ids,language,result.value)
+                    categoryNamesFailed = categoryNames == null
+                }
+            }
+        }
+    }
 
     fun back() {
         revision++
@@ -110,6 +171,29 @@ internal fun SavedServicesDashboard(
                 style=MaterialTheme.typography.bodySmall)
         }
         if (selected==null) {
+            if (saved.entries.isNotEmpty()) {
+                item {
+                    Row(horizontalArrangement=Arrangement.spacedBy(JodloSizes.SmallGap)) {
+                        JodloChip(selected=categoryLanguage==Language.HI,
+                            onClick={categoryLanguage=Language.HI},
+                            label={Text(stringResource(R.string.language_hindi))})
+                        JodloChip(selected=categoryLanguage==Language.EN,
+                            onClick={categoryLanguage=Language.EN},
+                            label={Text(stringResource(R.string.language_english))})
+                    }
+                    JodloTextAction(onClick={loadApprovedNames()},
+                        enabled=repository!=null && !categoryNamesBusy) {
+                        Text(stringResource(R.string.category_label_lookup_action))
+                    }
+                    Text(stringResource(R.string.category_label_lookup_privacy),
+                        style=MaterialTheme.typography.bodySmall)
+                }
+                if (categoryNamesBusy) item { CircularProgressIndicator() }
+                if (categoryNamesFailed) item {
+                    Text(stringResource(R.string.category_label_lookup_failed),
+                        color=MaterialTheme.colorScheme.error)
+                }
+            }
             if (saved.entries.isEmpty()) item {
                 Text(stringResource(R.string.saved_empty))
             }
@@ -121,6 +205,10 @@ internal fun SavedServicesDashboard(
                     Column(Modifier.padding(JodloSizes.CardPadding),
                         verticalArrangement=Arrangement.spacedBy(JodloSizes.SmallGap)) {
                         Text(stringResource(R.string.public_listing),
+                            style=MaterialTheme.typography.titleMedium)
+                        val approvedName=categoryNames?.approvedName(
+                            row.categoryId,categoryLanguage,currentCategoryIds)
+                        if (approvedName!=null) Text(approvedName,
                             style=MaterialTheme.typography.titleMedium)
                         Text(stringResource(R.string.saved_category_reference,row.categoryId))
                         Text(stringResource(R.string.listing_reference,row.id),
@@ -173,6 +261,10 @@ internal fun SavedServicesDashboard(
                 }
             }
             item {
+                val approvedName=categoryNames?.approvedName(
+                    selected!!.categoryId,categoryLanguage,currentCategoryIds)
+                if (approvedName!=null) Text(approvedName,
+                    style=MaterialTheme.typography.titleMedium)
                 Text(stringResource(R.string.saved_category_reference,selected!!.categoryId))
                 Text(stringResource(R.string.listing_reference,selected!!.id),
                     style=MaterialTheme.typography.bodySmall)
