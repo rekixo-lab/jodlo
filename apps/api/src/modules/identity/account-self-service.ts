@@ -101,11 +101,6 @@ export async function exportOwnAccountData(
       "WHERE blocker_account_id=? ORDER BY blocked_account_id",
     accountId,
   );
-  const blocksReceived = await completeRows<{ blockerAccountId: string }>(
-    db, "SELECT blocker_account_id AS blockerAccountId FROM agora_account_blocks " +
-      "WHERE blocked_account_id=? ORDER BY blocker_account_id",
-    accountId,
-  );
   const abuseCounters = await completeRows<{
     scope: string; windowStartMs: number; expiresAtMs: number;
     attemptCount: number; revision: number;
@@ -128,13 +123,13 @@ export async function exportOwnAccountData(
     callPreferences,
     availabilityPreferences,
     blocksMade,
-    blocksReceived,
     abuseCounters,
     sessions,
     limitations: [
       "JODLO-owned D1 rows only",
       "No Google, Cloudflare backup, third-party provider, notification or device data included",
       "No server-side token hashes or bearer credentials exported",
+      "Accounts that blocked this user are never disclosed",
     ],
   };
 }
