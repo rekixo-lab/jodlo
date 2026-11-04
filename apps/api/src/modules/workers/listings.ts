@@ -232,6 +232,49 @@ export async function pagePublicListings(
   return {listings,nextCursor:results.length>limit ? listings.at(-1)?.id??null : null};
 }
 
+/** Anonymous all-category feed, STILL the same two-field current-public
+ * listing projection. Unlike single-Category paging, this keyset spans trades
+ * and never uses a client-provided category, owner or timestamp.
+ *
+ * A cursor is valid only while the exact anchor Listing remains eligible
+ * under current status, moderation, owner and active-category joins.
+ * A listing changed between pages can only disappear, never leak private
+ * owner data; no persistent feed snapshots or automatic notifications.
+ */
+const ALL_PUBLIC_LISTINGS_SELECT =
+  "SELECT wl.id,wl.category_id AS categoryId,wl.worker_account_id AS workerId " +
+  "FROM worker_listings AS wl JOIN accounts AS a ON a.id=wl.worker_account_id " +
+  "JOIN worker_profiles AS wp ON wp.account_id=a.id " +
+  "JOIN categories AS c ON c.id=wl.category_id " +
+  "WHERE " + PUBLIC_LISTING_ELIGIBILITY;
+
+export const PAGED_ALL_PUBLIC_LISTINGS_QUERY =
+  ALL_PUBLIC_LISTINGS_SELECT + " ORDER BY wl.created_at,wl.id LIMIT ?";
+
+export const CONTINUED_ALL_PUBLIC_LISTINGS_QUERY =
+  ALL_PUBLIC_LISTINGS_SELECT +
+  " AND (wl.created_at,wl.id) > (SELECT wl.created_at,wl.id " +
+  "FROM worker_listings AS wl JOIN accounts AS a ON a.id=wl.worker_account_id " +
+  "JOIN worker_profiles AS wp ON wp.account_id=a.id " +
+  "JOIN categories AS c ON c.id=wl.category_id " +
+  "WHERE wl.id=? AND " + PUBLIC_LISTING_ELIGIBILITY + ")" +
+  " ORDER BY wl.created_at,wl.id LIMIT ?";
+
+export async function pageAllPublicListings(
+  db:D1Database,limit:number,after:string|null,
+):Promise<PublicListingPage> {
+  if(!Number.isSafeInteger(limit)||limit<1||limit>25||
+    (after!==null&&!validOpaqueId(after)))throw new Error("Invalid all-public feed");
+  const sql=after===null?PAGED_ALL_PUBLIC_LISTINGS_QUERY:CONTINUED_ALL_PUBLIC_LISTINGS_QUERY;
+  const {results}=await db.prepare(sql).bind(...(after===null?[limit+1]:[after,limit+1]))
+    .all<PublicListingDbRow>();
+  const rows=publicListingProjections(results.slice(0,limit));
+  return {
+    listings:rows,
+    nextCursor:results.length>limit?rows.at(-1)?.id??null:null,
+  };
+}
+
 export async function unpublishListing(db:D1Database,actor:string,id:string):Promise<boolean> {
   if(!validOpaqueId(actor)||!validOpaqueId(id))return false;
   const {meta}=await db.prepare(UNPUBLISH_LISTING_QUERY).bind(id,actor).run();

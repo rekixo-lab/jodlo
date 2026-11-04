@@ -1,3 +1,9 @@
+## 2026-11-04 — all-Category public Services feed build (PR/CI pending)
+
+- [ ] Enable a real Customer journey across **all currently approved public Categories** using one opt-in, nonpersonal, paginated all-Category Listing feed and live-only native Services tab. Preserve old Category browse and fresh server-owned Listing eligibility. [Acceptance and safety](CUSTOMER_ALL_PUBLIC_SERVICES_FEED_2026-11-04.md).
+- [ ] CI exact PR head Foundation + Android JDK 17/21 Green, merge only then independently verify merged-main Green; actual phone testing and controlled operator production migration 0009/deploy are separate, unverified milestones.
+- [ ] Human review/approval of historical 889 Category/7,267 Service backlog, useful Worker profile/area/media, real Agora+FCM, safety/reporting/privacy deletion, payment and store release remain outstanding. Never activate unreviewed D1 Catalog data or assert that green CI is public launch.
+
 ## 2026-11-04 — VERIFIED GREEN-MERGED HANDOFF (overrides historical unchecked PR TODOs)
 
 - [x] Source PRs #225–#231 all **merged into main**; independent main Foundation and native Android compile workflows **SUCCESS** for `bf3746bc55848be2e6d8f1c022e03a3e4883b118`. Historical unchecked merge items for these PRs below are old snapshots, not seven still-open pull requests.

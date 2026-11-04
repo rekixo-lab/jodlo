@@ -169,4 +169,12 @@
     <string name="category_label_lookup_privacy">Optional: asks JODLO only for these public Category IDs and their approved names in the selected language. No saved service ID, Worker account, login or location is sent. A Category name does not confirm a service is public or available.</string>
     <string name="category_label_lookup_failed">Category names could not be verified. Technical IDs are still shown; no service visibility has been assumed.</string>
     <string name="category_label_lookup_limited">For safety, this lookup resolves up to 50 different Categories at a time. Other IDs remain visible.</string>
+    <string name="tab_feed">Services</string>
+    <string name="feed_heading">Public services across categories</string>
+    <string name="feed_privacy_notice">Only currently published, eligible public service references are shown. No location, account, phone number, verified identity or calling availability is requested. Open one service to check its current public status before saving.</string>
+    <string name="feed_refresh">Refresh public services</string>
+    <string name="feed_empty">No public services are available yet. Categories must first be approved and Workers must publish eligible services.</string>
+    <string name="feed_category_id">Category ID: %1$s</string>
+    <string name="feed_select_to_recheck">Open to verify the current public listing. No call or contact is initiated.</string>
+    <string name="feed_back">Back to all public services</string>
 </resources>

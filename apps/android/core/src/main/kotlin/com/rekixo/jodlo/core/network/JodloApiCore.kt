@@ -150,6 +150,18 @@ object JodloRoutes {
         if (after != null) params += "after=${enc(after)}"
         return ApiCall.get("/api/v1/listings?${params.joinToString("&")}")
     }
+    /** Explicit anonymous all-Category feed. No owner, language, location,
+     * Worker identity or personal filters; the backend rechecks every row.
+     * Cursor is one still-public opaque Listing ID from this exact feed.
+     */
+    fun publicAllListingPage(limit: Int = 20, after: String? = null): ApiCall {
+        require(limit in 1..25) { "Invalid public feed page size" }
+        if (after != null) requireListingId(after)
+        val path = "/api/v1/listings?feed=all&limit=$limit" +
+            (if (after != null) "&after=${enc(after)}" else "")
+        return ApiCall.get(path)
+    }
+
     /** A Google ID token is client proof, NOT a JODLO session. The backend
      * verifies the Google signature, issuer, audience, lifetime and subject.
      * Match the server's exact one-field JSON contract; never log this proof.
