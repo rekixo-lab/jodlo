@@ -1,3 +1,9 @@
+## 2026-11-04 — Opt-in native suggestions in the full Customer journey
+
+- [ ] GREEN-merge Customer Search opt-in/explicit network disclosure → 450ms read-only hint probe → current approved Category choices → deliberate Category tap → existing public Listing flow. No automatic Worker write/call or unapproved data. [Manual/device acceptance](CUSTOMER_LIVE_SUGGESTIONS_2026-11-04.md).
+- [ ] Owner/qualified reviewers approve real bilingual Category/Service scope, enable D1 Catalog under control, configure actual API/Google/phone and verify Saved + Search with real listings. Last observed remote D1 was 0 active Categories and 0 public Listings; code cannot replace those human actions.
+- [ ] Build the **complete JODLO Worker public disclosure and service editor** (experience, optional rates, private/approximate area, media) only after field-level safety/moderation/retention approval; live Agora + FCM and abuse controls, manual/automated account deletion, payments, admin/support and production runbooks remain independent gating milestones.
+
 ## 2026-11-04 — Current connected Customer Saved journey
 
 - [ ] Complete and GREEN-merge explicit native Customer public-detail → device-only Saved (max 50 ID/category) → separate Saved tab → per-entry fresh anonymous API eligibility check → safe 404/Category-change/uncertain recovery → remove/confirm clear. New Kotlin bounded-store/strict transport tests; no backend table/route or automatic notification. [Acceptance](CUSTOMER_SAVED_SERVICES_2026-11-04.md).
