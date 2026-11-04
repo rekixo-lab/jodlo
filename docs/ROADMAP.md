@@ -1,3 +1,9 @@
+## 2026-11-04 — Bilingual service names in Customer Saved and private Worker mode
+
+- [ ] Merge only after exact-head and independent merged-main GREEN: strict public active Category names lookup `GET /api/v1/catalog?lang=hi|en&ids=...` (max 20); native Saved and Worker manual name refresh bounded to 50 IDs, strict locale/account/current-page invalidation, unchanged listing visibility and publish/edit/owner permissions. [Safety and device checklist](APPROVED_CATEGORY_LABELS_OWNER_SAVED_2026-11-04.md).
+- [ ] **Owner:** human-review bilingual Categories and scope before actual activation; verify real Cloudflare API Worker, exact custom-domain/DNS/TLS and production config/deployment; test configured APK on a real phone with current public Listings. Never activate historical 889 categories or falsely claim published Workers solely from names.
+- [ ] Larger Finworkar parity: consent-reviewed useful public Worker profile, structured experience/optional rates/approximate service area, media, real Agora+FCM first contact, block/report/moderation, payments, admin and privacy erasure. Do not silently add default public personal data.
+
 ## 2026-11-04 — Opt-in native suggestions in the full Customer journey
 
 - [ ] GREEN-merge Customer Search opt-in/explicit network disclosure → 450ms read-only hint probe → current approved Category choices → deliberate Category tap → existing public Listing flow. No automatic Worker write/call or unapproved data. [Manual/device acceptance](CUSTOMER_LIVE_SUGGESTIONS_2026-11-04.md).
