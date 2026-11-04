@@ -126,6 +126,8 @@ export function parseOwnListingsPage(params:URLSearchParams):OwnListingsPageOpti
 const MANAGED_OWN_LISTINGS_SELECT =
   "SELECT wl.id,wl.category_id AS categoryId,wl.status AS publicationStatus, " +
   "CASE WHEN wl.status='published' AND wl.moderation_status='allowed' AND c.is_active=1 " +
+  "AND EXISTS(SELECT 1 FROM worker_profiles AS wp " +
+  "WHERE wp.account_id=wl.worker_account_id AND wp.status='draft') " +
   "THEN 1 ELSE 0 END AS visible FROM worker_listings AS wl " +
   "JOIN accounts AS a ON a.id=wl.worker_account_id JOIN categories AS c ON c.id=wl.category_id " +
   "WHERE wl.worker_account_id=? AND a.status='active'";
