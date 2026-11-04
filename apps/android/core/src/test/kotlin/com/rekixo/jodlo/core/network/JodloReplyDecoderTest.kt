@@ -240,22 +240,22 @@ fun main() {
         TransportReply(200, envelope(ownExportData)))
     check(exported is ApiOutcome.Ok)
     check(exported.value.json.contains("private-google-sub-123"))
-    check(!exported.value.json.contains("\\"ok\\""))
+    check(!exported.value.json.contains("\"ok\""))
     check(!exported.toString().contains("private-google-sub-123"))
     check(!exported.value.toString().contains("private-google-sub-123"))
     for (badExport in listOf(
-        ownExportData.replace("\\"schemaVersion\\":1", "\\"schemaVersion\\":2"),
-        ownExportData.replace("\\"googleSub\\":", "\\"email\\":\\"private@example.com\\",\\"googleSub\\":"),
-        ownExportData.replace("\\"createdAt\\":1783200000",
-            "\\"tokenHash\\":\\"secret\\",\\"createdAt\\":1783200000"),
-        ownExportData.replace("\\"blockedAccountId\\":",
-            "\\"blockedAccountId\\":\\"bad\\",\\"other\\":"),
-        ownExportData.replace("\\"schemaVersion\\":1",
-            "\\"schemaVersion\\":1,\\"schemaVersion\\":1"),
-        ownExportData.replace("\\"expiresAt\\":1783203600",
-            "\\"expiresAt\\":1783200000"),
-        ownExportData.replace("\\"limitations\\":[",
-            "\\"inboundBlockerIds\\":[],\\"limitations\\":["),
+        ownExportData.replace("\"schemaVersion\":1", "\"schemaVersion\":2"),
+        ownExportData.replace("\"googleSub\":", "\"email\":\"private@example.com\",\"googleSub\":"),
+        ownExportData.replace("\"createdAt\":1783200000",
+            "\"tokenHash\":\"secret\",\"createdAt\":1783200000"),
+        ownExportData.replace("\"blockedAccountId\":",
+            "\"blockedAccountId\":\"bad\",\"other\":"),
+        ownExportData.replace("\"schemaVersion\":1",
+            "\"schemaVersion\":1,\"schemaVersion\":1"),
+        ownExportData.replace("\"expiresAt\":1783203600",
+            "\"expiresAt\":1783200000"),
+        ownExportData.replace("\"limitations\":[",
+            "\"inboundBlockerIds\":[],\"limitations\":["),
     )) rejects(envelope(badExport),parse=JodloReplyDecoder::accountDataExport)
 
     println("JODLO Kotlin reply decoder: typed pages, explicit choices, listing privacy and one-shot network safety OK")
