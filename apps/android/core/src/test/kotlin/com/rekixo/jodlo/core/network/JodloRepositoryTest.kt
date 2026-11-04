@@ -42,6 +42,62 @@ fun main() {
             else -> error("An unexpected URL was requested by repository")
         }
     }
+    // Approved name batches use an existing public route, with NO session
+    // credential, owner ID, saved Listing ID or unreviewed Category names.
+    val labelCall = JodloRoutes.approvedCategoryNames(listOf("plumber","carpenter"),Language.HI)
+    check(labelCall.resource ==
+        "/api/v1/catalog?lang=hi&ids=plumber%2Ccarpenter")
+    check(labelCall.method == HttpMethod.GET)
+    check(labelCall.headers()["Authorization"] == null && labelCall.bodyUtf8() == null)
+    for(ids in listOf(emptyList(),"plumber".let { listOf(it,it) },
+        List(21) { "cat_$it" },listOf("plum/ber"),listOf("a|b"))) {
+        check(runCatching { JodloRoutes.approvedCategoryNames(ids,Language.EN) }.isFailure)
+    }
+    val labels:ApprovedCategoryNamesRepository=RemoteCatalogRepository(sender)
+    check(labels.approvedNames(listOf("plumber","carpenter"),Language.HI) ==
+        ApiOutcome.Ok(listOf(PublicCategory("plumber","plumber","प्लंबर"),
+            PublicCategory("carpenter","carpenter","बढ़ई"))))
+    check(seen.last().resource==labelCall.resource)
+    val validSnapshot=ApprovedCategoryNameSnapshot.fromApprovedRows(
+        listOf("plumber","carpenter"),Language.HI,
+        listOf(PublicCategory("plumber","plumber","प्लंबर")))
+    check(validSnapshot!=null)
+    check(validSnapshot.approvedName("plumber",Language.HI,
+        listOf("plumber","carpenter"))=="प्लंबर")
+    check(validSnapshot.approvedName("carpenter",Language.HI,
+        listOf("plumber","carpenter"))==null)
+    check(validSnapshot.approvedName("plumber",Language.EN,
+        listOf("plumber","carpenter"))==null)
+    check(validSnapshot.approvedName("plumber",Language.HI,
+        listOf("plumber"))==null)
+    check(validSnapshot.approvedName("private",Language.HI,
+        listOf("plumber","carpenter"))==null)
+    check(ApprovedCategoryNameSnapshot.fromApprovedRows(
+        listOf("plumber"),Language.HI,
+        listOf(PublicCategory("foreign","slug","Private"))) == null)
+    check(ApprovedCategoryNameSnapshot.fromApprovedRows(
+        listOf("plumber"),Language.HI,
+        listOf(PublicCategory("plumber","slug","Plumber"),
+            PublicCategory("plumber","slug","Duplicate"))) == null)
+    val invalidLabelPayloads=listOf(
+        """{"language":"hi","categories":[$PLUMBER,$CARPENTER],"nextCursor":"1:carpenter"}""",
+        """{"language":"en","categories":[$PLUMBER],"nextCursor":null}""",
+        """{"language":"hi","categories":[$PLUMBER,{"id":"foreign","slug":"foreign","name":"Private"}],"nextCursor":null}""",
+        """{"language":"hi","categories":[{"id":"plumber","slug":"plumber","name":"Plumber","workerId":"secret"}],"nextCursor":null}""",
+        """{"language":"hi","categories":[$PLUMBER,$PLUMBER],"nextCursor":null}""",
+    )
+    for(payload in invalidLabelPayloads) {
+        val corrupt:ApprovedCategoryNamesRepository=RemoteCatalogRepository(RequestSender {
+            ok(payload)
+        })
+        check(corrupt.approvedNames(listOf("plumber","carpenter"),Language.HI)==bad())
+    }
+    val offlineLabels:ApprovedCategoryNamesRepository=RemoteCatalogRepository(RequestSender {
+        throw IOException("No credentials should be logged")
+    })
+    check(offlineLabels.approvedNames(listOf("plumber"),Language.HI)==
+        bad(FailureKind.OFFLINE_OR_TIMEOUT))
+
     val catalog: CatalogRepository = RemoteCatalogRepository(sender)
     val worker: WorkerRepository = RemoteWorkerRepository(sender)
     val browse = catalog.browse(Language.HI,limit=2)
