@@ -1,3 +1,10 @@
+## 2026-11-04 — guided Worker creation/removal reviews (in progress)
+
+- [x] Account login, private summary/data export and all-devices logout code landed via PR #225/#226; final device/legal rollout remains separate.
+- [ ] Finish and green-merge guided Worker Category → review → publish → confirmed owner list → review/cancel/confirm removal using existing D1 backend, with session-scoped current-Category validation and no automatic write retries. [Detailed acceptance](GUIDED_WORKER_SERVICE_REVIEW_2026-11-04.md).
+- [ ] **Required next scope:** genuinely editable and moderated public Worker profile/service details (experience, area, optional rate/description, images if approved), with private draft/review/consent and actual customer discovery. Do not silently add personal fields without review or fake a saved guided step.
+- [ ] Human approve active Catalog, then live selected Customer/Worker journeys; safe provider-backed Agora calling/FCM, reporting/blocks/moderation, privacy erasure, payments, production operations and phone testing. Full cross-feature behavior contract remains [Finworkar/JODLO parity map](FINWORKAR_JODLO_BEHAVIOR_PARITY_2026-11-04.md).
+
 ## 2026-11-04 — account privacy and cross-mode sign-in usable journey
 
 - [x] PR #225 merged: server-owned private Account overview and per-account D1 export, native Account dashboard, owner isolation and session revocation.
