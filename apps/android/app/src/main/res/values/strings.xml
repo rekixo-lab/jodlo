@@ -196,4 +196,8 @@
     <string name="worker_resume_final_warning">If the server confirms this exact existing service is unpublished, still approved and allowed, it will become public immediately with the SAME Listing reference. No new service or verified Worker profile will be created. An unavailable or changed service will be rejected.</string>
     <string name="worker_resume_confirm">Confirm: reactivate this service</string>
     <string name="worker_resume_cancel">Cancel reactivation review</string>
+    <string name="worker_management_private_notice">Private management status: Published means you have not paused the Service. Public visibility is checked separately and can be denied by the active Category or moderation. Only your own paused Services can be resumed.</string>
+    <string name="worker_management_paused">Your publication setting: Paused</string>
+    <string name="worker_management_published">Your publication setting: Published</string>
+    <string name="worker_management_not_public">Published, but not publicly visible. This does not indicate that you paused it. It may have a Category or moderation restriction. Reactivation is not applicable.</string>
 </resources>

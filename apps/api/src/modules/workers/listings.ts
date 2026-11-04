@@ -98,22 +98,47 @@ export const CONTINUED_MY_LISTINGS_QUERY =
   "FROM worker_listings AS prior WHERE prior.worker_account_id=? AND prior.id=? LIMIT 1)" +
   " ORDER BY wl.created_at,wl.id LIMIT ?";
 
-export type OwnListingsPageOptions = Readonly<{limit:number|null;after:string|null}>;
+export type OwnListingsPageOptions = Readonly<{limit:number|null;after:string|null;management?:true}>;
 
 /** Strict GET-only opt-in. When limit is absent, keep the exact old DTO. */
 export function parseOwnListingsPage(params:URLSearchParams):OwnListingsPageOptions|null {
   let invalid=false;
-  const allowed=new Set(["limit","after"]);
+  const allowed=new Set(["limit","after","view"]);
   params.forEach((_value,key)=>{
     if(!allowed.has(key)||params.getAll(key).length!==1)invalid=true;
   });
   if(invalid)return null;
-  const limitRaw=params.get("limit"),after=params.get("after");
+  const limitRaw=params.get("limit"),after=params.get("after"),view=params.get("view");
+  if(view!==null&&(view!=="management"||limitRaw===null))return null;
   if(after!==null&&limitRaw===null)return null;
   if(limitRaw!==null&&!/^(?:[1-9]|1[0-9]|2[0-5])$/.test(limitRaw))return null;
   if(after!==null&&!validOpaqueId(after))return null;
-  return {limit:limitRaw===null?null:Number(limitRaw),after};
+  return {limit:limitRaw===null?null:Number(limitRaw),after,
+    ...(view==="management"?{management:true as const}:{})};
 }
+
+/** Explicit, AUTHENTICATED owner management view: current publication
+ * intent is safe to show to the SAME owner, not a moderation verdict.
+ * Existing legacy/paged DTOs and ALL public reads stay byte-compatible.
+ * Public visibility may be false for an active 'published' row when Category
+ * or moderation changes, so never infer status from visible alone.
+ */
+const MANAGED_OWN_LISTINGS_SELECT =
+  "SELECT wl.id,wl.category_id AS categoryId,wl.status AS publicationStatus, " +
+  "CASE WHEN wl.status='published' AND wl.moderation_status='allowed' AND c.is_active=1 " +
+  "AND EXISTS(SELECT 1 FROM worker_profiles AS wp " +
+  "WHERE wp.account_id=wl.worker_account_id AND wp.status='draft') " +
+  "THEN 1 ELSE 0 END AS visible FROM worker_listings AS wl " +
+  "JOIN accounts AS a ON a.id=wl.worker_account_id JOIN categories AS c ON c.id=wl.category_id " +
+  "WHERE wl.worker_account_id=? AND a.status='active'";
+
+export const MANAGED_OWN_LISTINGS_QUERY =
+  MANAGED_OWN_LISTINGS_SELECT+" ORDER BY wl.created_at,wl.id LIMIT ?";
+export const CONTINUED_MANAGED_OWN_LISTINGS_QUERY =
+  MANAGED_OWN_LISTINGS_SELECT+
+  " AND (wl.created_at,wl.id) > (SELECT prior.created_at,prior.id " +
+  "FROM worker_listings AS prior WHERE prior.worker_account_id=? AND prior.id=? LIMIT 1)" +
+  " ORDER BY wl.created_at,wl.id LIMIT ?";
 
 export const UNPUBLISH_LISTING_QUERY =
   "UPDATE worker_listings SET status='unpublished' WHERE id=? AND worker_account_id=? " +
@@ -165,6 +190,32 @@ export async function pageMyListings(
   const selected=results.slice(0,limit);
   return {
     listings:ownListingProjections(selected),
+    nextCursor:results.length>limit?selected.at(-1)?.id??null:null,
+  };
+}
+
+/** One explicit, bounded owner-only management page; never mix with public
+ * or legacy owner DTOs. No raw moderation, owner account, phone or location.
+ */
+type ManagedOwnListingRow=OwnListingDbRow&{
+  publicationStatus:"published"|"unpublished";
+};
+export async function pageManagedOwnListings(
+  db:D1Database,actor:string,limit:number,after:string|null,
+):Promise<{listings:{id:string;categoryId:string;visible:boolean;
+                  publicationStatus:"published"|"unpublished"}[];nextCursor:string|null}> {
+  if(!validOpaqueId(actor)||!Number.isSafeInteger(limit)||limit<1||limit>25||
+      (after!==null&&!validOpaqueId(after)))throw new Error("Invalid management page");
+  const query=after===null?MANAGED_OWN_LISTINGS_QUERY:CONTINUED_MANAGED_OWN_LISTINGS_QUERY;
+  const args=after===null?[actor,limit+1]:[actor,actor,after,limit+1];
+  const {results}=await db.prepare(query).bind(...args).all<ManagedOwnListingRow>();
+  const selected=results.slice(0,limit);
+  // A corrupt status must fail closed, never be inferred as user-paused.
+  if(selected.some(row=>row.publicationStatus!=="published"&&
+      row.publicationStatus!=="unpublished"))throw new Error("Invalid publication state");
+  return {
+    listings:selected.map(({id,categoryId,visible,publicationStatus})=>
+      ({id,categoryId,visible:visible===1,publicationStatus})),
     nextCursor:results.length>limit?selected.at(-1)?.id??null:null,
   };
 }

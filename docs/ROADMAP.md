@@ -1,3 +1,9 @@
+## 2026-11-04 — truthful owner Service management read
+
+Add opt-in **authenticated publicationStatus** to a bounded OWNER management read (only `published|unpublished`, no moderation reason), preserving existing legacy and public APIs. Native Worker Service cards distinguish Paused, Published+public and Published+not public. Resume review only permits a row that the owner-management API identifies as unpublished; the server rechecks it atomically. Refresh/pagination and bilingual display stay user-directed; no new D1 columns or live Catalog changes. [Source contract/tests](WORKER_PRIVATE_PUBLICATION_MANAGEMENT_2026-11-04.md).
+
+Not complete: moderated public profile, location/media/rate policies, real Agora/FCM provider rollout, account erasure, block/report, payments, full customer hierarchy, deployment and human-reviewed Catalog. Follow [issue #235](https://github.com/rekixo-lab/jodlo/issues/235). Founder physical-phone QA **only after** integrated release candidate is truly ready; no incremental installs requested.
+
 ## 2026-11-04 — complete existing Worker pause/reactivate lifecycle (software PR)
 
 Add safe **same-Listing** reactivation to the existing guided owner create/edit/unpublish pathway. A new explicitly confirmed Kotlin/Compose Worker action is tied to the original own Listing/Category and live session, while one D1 CAS refuses foreign, published, moderated, inactive, changed or disabled rows. No generic republish upsert, private fields, Catalog activation or new migration. [Scope, behavior and automated acceptance](WORKER_SAFE_REACTIVATION_2026-11-04.md).

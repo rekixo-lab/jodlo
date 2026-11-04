@@ -18,7 +18,9 @@ private fun reached(latch: CountDownLatch) {
     check(latch.await(5, TimeUnit.SECONDS)) { "Fake network call not started" }
 }
 
-private class ReviewFakeWorkerRepository : WorkerRepository, OwnListingPageRepository, OwnListingCategoryEditRepository, OwnListingResumeRepository {
+private class ReviewFakeWorkerRepository : WorkerRepository, OwnListingPageRepository,
+    ManagedOwnListingPageRepository, OwnListingCategoryEditRepository,
+    OwnListingResumeRepository {
     var published: ApiOutcome<PublicListing> = ApiOutcome.Ok(PublicListing(LISTING_ID,"plumber"))
     var unpublished: ApiOutcome<Boolean> = ApiOutcome.Ok(true)
     var edited: ApiOutcome<PublicListing> = ApiOutcome.Ok(PublicListing(LISTING_ID,"carpenter"))
@@ -44,6 +46,20 @@ private class ReviewFakeWorkerRepository : WorkerRepository, OwnListingPageRepos
         beforePageRead?.invoke()
         return pageResponse?.invoke(limit, after)
             ?: ApiOutcome.Failed(FailureKind.SERVICE_UNAVAILABLE, false)
+    }
+    var managedCalls = 0
+    var beforeManaged: (() -> Unit)? = null
+    var managedRows:ApiOutcome<OwnListingPage> = ApiOutcome.Ok(OwnListingPage(
+        listOf(OwnListing(LISTING_ID,"plumber",false,
+            OwnPublicationStatus.UNPUBLISHED)),null))
+    override fun managedOwnListingPage(
+        session: String, limit: Int, after: String?,
+    ): ApiOutcome<OwnListingPage> {
+        check(session == TOKEN_A || session == TOKEN_B)
+        check(limit in 1..25 && after == null)
+        managedCalls++
+        beforeManaged?.invoke()
+        return managedRows
     }
     override fun myDraft(session: String) = ApiOutcome.Ok(WorkerDraft("draft"))
     override fun optIn(session: String) = ApiOutcome.Ok(WorkerDraft("draft"))
@@ -561,12 +577,18 @@ private fun resumeSlowResponseCannotCrossAccountReplacement() {
 }
 
 private fun guidedResumeOnlyFromCurrentNonvisibleOwnerRow() {
-    val original=OwnListing(LISTING_ID,"plumber",false)
-    val visible=original.copy(visible=true)
-    val other=OwnListing("22222222-2222-4222-8222-222222222222","carpenter",false)
+    val original=OwnListing(LISTING_ID,"plumber",false,
+        OwnPublicationStatus.UNPUBLISHED)
+    val visible=original.copy(visible=true,publicationStatus=OwnPublicationStatus.PUBLISHED)
+    val hiddenPublished=original.copy(publicationStatus=OwnPublicationStatus.PUBLISHED)
+    val legacyUnknown=original.copy(publicationStatus=null)
+    val other=OwnListing("22222222-2222-4222-8222-222222222222","carpenter",false,
+        OwnPublicationStatus.UNPUBLISHED)
     val blank=GuidedWorkerServiceActions()
     check(blank.beginResume(original,listOf(other),31L).pendingResume==null)
     check(blank.beginResume(visible,listOf(visible),31L).pendingResume==null)
+    check(blank.beginResume(hiddenPublished,listOf(hiddenPublished),31L).pendingResume==null)
+    check(blank.beginResume(legacyUnknown,listOf(legacyUnknown),31L).pendingResume==null)
     val chosen=blank.beginResume(original,listOf(original),31L)
     check(chosen.pendingResume==original)
     check(chosen.resumeConfirmed(31L,listOf(original))==null)
@@ -575,6 +597,8 @@ private fun guidedResumeOnlyFromCurrentNonvisibleOwnerRow() {
         ResumeOwnListingCommand(LISTING_ID,"plumber"))
     check(review.resumeConfirmed(32L,listOf(original))==null)
     check(review.resumeConfirmed(31L,listOf(visible))==null)
+    check(review.resumeConfirmed(31L,listOf(hiddenPublished))==null)
+    check(review.resumeConfirmed(31L,listOf(legacyUnknown))==null)
     check(review.resumeConfirmed(31L,listOf(other))==null)
     check(review.resumeConfirmed(31L,listOf(original.copy(categoryId="carpenter")))==null)
     check(review.cancelResume().resumeConfirmed(31L,listOf(original))==null)
@@ -582,7 +606,32 @@ private fun guidedResumeOnlyFromCurrentNonvisibleOwnerRow() {
     check(chosen.reviewResume(32L).resumeConfirmed(32L,listOf(original))==null)
 }
 
+private fun managedOwnerReadIsCurrentAccountOnly() {
+    val fake=ReviewFakeWorkerRepository()
+    val session=signedInDraft(fake)
+    val expected=OwnListing(LISTING_ID,"plumber",false,OwnPublicationStatus.UNPUBLISHED)
+    check(session.pageManagedOwnListings(20)==SessionResult.Success(
+        OwnListingPage(listOf(expected),null)))
+    check(fake.managedCalls==1)
+    val entered=CountDownLatch(1)
+    val release=CountDownLatch(1)
+    fake.beforeManaged={entered.countDown();check(release.await(5,TimeUnit.SECONDS))}
+    val inFlight=background { session.pageManagedOwnListings(20) }
+    try {
+        reached(entered)
+        check(session.acceptIssuedSession(issued(TOKEN_B)) is ApiOutcome.Ok)
+    } finally { release.countDown() }
+    check(completed(inFlight) !is SessionResult.Success)
+    check(fake.managedCalls==2)
+    check(runCatching{session.pageManagedOwnListings(26)}.isFailure)
+    check(runCatching{session.pageManagedOwnListings(20,"../private")}.isFailure)
+    // No session bearer, account data or status is returned after logout.
+    session.logout()
+    check(session.pageManagedOwnListings(20)==SessionResult.Failed(SessionFailure.SIGNED_OUT))
+}
+
 fun main() {
+    managedOwnerReadIsCurrentAccountOnly()
     guidedResumeOnlyFromCurrentNonvisibleOwnerRow()
     scopedResumeNeverRetriesAmbiguousOwnerWrite()
     resumeSlowResponseCannotCrossAccountReplacement()

@@ -9,7 +9,7 @@ import { resolveGoogleAccount } from "../modules/identity/google-accounts.ts";
 import { issueSession, makeSessionVerifier, revokeAllSessions, revokeSession, SESSION_TTL_SECONDS } from "../modules/identity/sessions.ts";
 import { hasEmptyBody, readGoogleLoginBody, readServiceListingBody, readCategoryEditBody, readResumeOwnListingBody } from "./body.ts";
 import { validCategoryId } from "../modules/shared/identifiers.ts";
-import { publishListing, myListings, pageMyListings, parseOwnListingsPage, publicListings, pagePublicListings, publicListingDetail, pageAllPublicListings, unpublishListing, editOwnListingCategory, resumeOwnListing } from "../modules/workers/listings.ts";
+import { publishListing, myListings, pageMyListings, pageManagedOwnListings, parseOwnListingsPage, publicListings, pagePublicListings, publicListingDetail, pageAllPublicListings, unpublishListing, editOwnListingCategory, resumeOwnListing } from "../modules/workers/listings.ts";
 import {
   allowGoogleAccountLogin, allowLoginBurst,
   LOGIN_BURST_RETRY_SECONDS, ACCOUNT_LOGIN_RETRY_SECONDS,
@@ -340,7 +340,9 @@ export async function handleRequest(
         // worker Categories; no implicit prefetch or personal-data projection.
         const data=page.limit===null
           ? {listings:await myListings(env.DB,actor.accountId)}
-          : await pageMyListings(env.DB,actor.accountId,page.limit,page.after);
+          : page.management
+            ? await pageManagedOwnListings(env.DB,actor.accountId,page.limit,page.after)
+            : await pageMyListings(env.DB,actor.accountId,page.limit,page.after);
         return json({ok:true,data});
       }
       if(request.method==="POST") {

@@ -64,6 +64,16 @@ interface OwnListingPageRepository {
                        after: String? = null): ApiOutcome<OwnListingPage>
 }
 
+/** Explicit, authenticated Owner management page. Unlike legacy owner
+ * pages, publication intent is present and can be checked by the Worker UI.
+ * Current public eligibility remains an independent server-only decision.
+ */
+interface ManagedOwnListingPageRepository {
+    fun managedOwnListingPage(
+        session: String, limit: Int = 20, after: String? = null,
+    ): ApiOutcome<OwnListingPage>
+}
+
 /** Private owner-only resume of one EXISTING, previously-unpublished Listing.
  * Unlike generic publish, this cannot insert or resurrect a hidden Listing.
  * It does not read private moderation reasons or create a public profile.
@@ -232,8 +242,8 @@ class RemoteCatalogRepository(private val sender: RequestSender) :
 }
 
 class RemoteWorkerRepository(private val sender: RequestSender) :
-    WorkerRepository, OwnListingPageRepository, OwnListingCategoryEditRepository,
-    OwnListingResumeRepository {
+    WorkerRepository, OwnListingPageRepository, ManagedOwnListingPageRepository,
+    OwnListingCategoryEditRepository, OwnListingResumeRepository {
     override fun myDraft(session: String): ApiOutcome<WorkerDraft> =
         performOnce(JodloRoutes.workerDraft(session), sender::send, JodloReplyDecoder::workerDraft)
 
@@ -253,6 +263,22 @@ class RemoteWorkerRepository(private val sender: RequestSender) :
         return performOnce(call, sender::send, JodloReplyDecoder::ownListingPage)
             .validated { page ->
                 page.listings.size <= limit &&
+                    (after == null || page.listings.none { it.id == after }) &&
+                    (page.nextCursor == null ||
+                        (page.listings.size == limit &&
+                            page.listings.last().id == page.nextCursor &&
+                            page.nextCursor != after))
+            }
+    }
+
+    override fun managedOwnListingPage(
+        session: String, limit: Int, after: String?,
+    ): ApiOutcome<OwnListingPage> {
+        val call = JodloRoutes.managedOwnListingPage(session, limit, after)
+        return performOnce(call, sender::send, JodloReplyDecoder::managedOwnListingPage)
+            .validated { page ->
+                page.listings.size <= limit &&
+                    page.listings.all { it.publicationStatus != null } &&
                     (after == null || page.listings.none { it.id == after }) &&
                     (page.nextCursor == null ||
                         (page.listings.size == limit &&

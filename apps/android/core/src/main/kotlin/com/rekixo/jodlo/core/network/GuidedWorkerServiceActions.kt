@@ -76,17 +76,18 @@ data class GuidedWorkerServiceActions(
     fun cancelUnpublish(): GuidedWorkerServiceActions =
         copy(pendingUnpublishId = null, unpublishAccountGeneration = null)
 
-    /** A nonvisible owner row might be paused, moderated or in an inactive
-     * Category. This only lets the Worker REVIEW a reactivation attempt:
-     * the atomic server mutation accepts ONLY unpublished, currently allowed,
-     * Category-active rows. Never assume visible=false means paused.
+    /** Only an explicit, authenticated Management row with publicationStatus
+     * UNPUBLISHED may begin the resume review. Public visibility alone is
+     * never a pause signal; the server still atomically rechecks moderation,
+     * current owner and Category on confirmation.
      */
     fun beginResume(
         chosen: OwnListing, currentRows: List<OwnListing>,
         accountGeneration: Long?,
     ): GuidedWorkerServiceActions =
-        if (accountGeneration != null && !chosen.visible &&
-            chosen in currentRows) copy(
+        if (accountGeneration != null &&
+            chosen.publicationStatus == OwnPublicationStatus.UNPUBLISHED &&
+            !chosen.visible && chosen in currentRows) copy(
                 pendingResume = chosen,
                 resumeAccountGeneration = accountGeneration,
                 resumeReviewOpen = false,
@@ -102,7 +103,9 @@ data class GuidedWorkerServiceActions(
         val selected = pendingResume ?: return null
         if (!resumeReviewOpen || accountGeneration == null ||
             accountGeneration != resumeAccountGeneration ||
-            selected.visible || selected !in currentRows) return null
+            selected.visible ||
+            selected.publicationStatus != OwnPublicationStatus.UNPUBLISHED ||
+            selected !in currentRows) return null
         return ResumeOwnListingCommand(selected.id, selected.categoryId)
     }
 

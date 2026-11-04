@@ -376,6 +376,28 @@ class InMemorySessionCoordinator(
         )
     }
 
+    /** PRIVATE management read, independently opted into the repository and
+     * protected by the same active session epoch/write fence as owner paging.
+     * Old fake WorkerRepository implementations remain compatible.
+     */
+    fun pageManagedOwnListings(
+        limit: Int = 20, after: String? = null,
+        cancellation: CancellationSignal? = null,
+    ): SessionResult<OwnListingPage> {
+        require(limit in 1..25) { "Invalid managed owner page size" }
+        if (after != null) JodloRoutes.requireListingId(after)
+        val pages = workers as? ManagedOwnListingPageRepository
+            ?: return SessionResult.Failed(
+                SessionFailure.REMOTE_FAILURE, FailureKind.SERVICE_UNAVAILABLE,
+            )
+        return withSession(
+            call = { pages.managedOwnListingPage(it, limit, after) },
+            update = { reply, _ -> outcome(reply) },
+            consistentRead = true,
+            cancellation = cancellation,
+        )
+    }
+
     /** The Category ID must have been explicitly confirmed outside this
      * layer. Server-side active-Category and worker checks remain authoritative.
      */

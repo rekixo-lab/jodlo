@@ -33,6 +33,7 @@ import com.rekixo.jodlo.core.network.InMemorySessionCoordinator
 import com.rekixo.jodlo.core.network.Language
 import com.rekixo.jodlo.core.network.LoginState
 import com.rekixo.jodlo.core.network.OwnListing
+import com.rekixo.jodlo.core.network.OwnPublicationStatus
 import com.rekixo.jodlo.core.network.PublicCategory
 import com.rekixo.jodlo.core.network.RemoteCatalogRepository
 import com.rekixo.jodlo.core.network.SessionResult
@@ -229,7 +230,7 @@ internal fun WorkerDashboard(
         val accountMarker = session.accountExportSessionMarker()
         scope.launch {
             val reply = try {
-                withContext(Dispatchers.IO) { session.pageMyListings(20, after) }
+                withContext(Dispatchers.IO) { session.pageManagedOwnListings(20, after) }
             } catch (_: Exception) { null }
             busy = false
             updateSession()
@@ -340,7 +341,7 @@ internal fun WorkerDashboard(
             if (writeState is WorkerWriteState.Confirmed &&
                 login is LoginState.SignedIn && session != null) {
                 val fresh = try {
-                    withContext(Dispatchers.IO) { session.pageMyListings(20) }
+                    withContext(Dispatchers.IO) { session.pageManagedOwnListings(20) }
                 } catch (_: Exception) { null }
                 if (fresh is SessionResult.Success) {
                     ownListings = fresh.value.listings
@@ -493,6 +494,8 @@ internal fun WorkerDashboard(
                     } else {
                         item {
                             Text(stringResource(R.string.worker_my_listings), style = MaterialTheme.typography.titleMedium)
+                            Text(stringResource(R.string.worker_management_private_notice),
+                                style = MaterialTheme.typography.bodySmall)
                             JodloTextAction(onClick = { loadOwnPage() }, enabled = !busy) {
                                 Text(stringResource(R.string.worker_refresh_listings))
                             }
@@ -533,8 +536,17 @@ internal fun WorkerDashboard(
                                         style=MaterialTheme.typography.titleMedium)
                                     Text(stringResource(R.string.listing_reference, listing.id))
                                     Text(stringResource(R.string.worker_listing_category, listing.categoryId))
+                                    Text(stringResource(if (listing.publicationStatus ==
+                                        OwnPublicationStatus.UNPUBLISHED)
+                                        R.string.worker_management_paused
+                                        else R.string.worker_management_published))
                                     Text(stringResource(if (listing.visible)
                                         R.string.worker_visible else R.string.worker_not_visible))
+                                    if (listing.publicationStatus == OwnPublicationStatus.PUBLISHED &&
+                                        !listing.visible) {
+                                        Text(stringResource(R.string.worker_management_not_public),
+                                            color = MaterialTheme.colorScheme.error)
+                                    }
                                     if (selectedListing == listing.id)
                                         Text(stringResource(R.string.worker_listing_selected))
                                 }
@@ -591,7 +603,7 @@ internal fun WorkerDashboard(
                                     val currentOwnRow = ownListings.firstOrNull {
                                         it.id == selectedListing
                                     }
-                                    if (currentOwnRow?.visible == true) {
+                                    if (currentOwnRow?.publicationStatus == OwnPublicationStatus.PUBLISHED) {
                                         if (guided.pendingUnpublishId != selectedListing) {
                                             JodloTextAction(
                                                 onClick = {
@@ -628,7 +640,7 @@ internal fun WorkerDashboard(
                                                 }
                                             }
                                         }
-                                    } else if (currentOwnRow != null) {
+                                    } else if (currentOwnRow?.publicationStatus == OwnPublicationStatus.UNPUBLISHED) {
                                         if (guided.pendingResume?.id != currentOwnRow.id) {
                                             JodloTextAction(onClick = {
                                                 guided = guided.cancelUnpublish().beginResume(

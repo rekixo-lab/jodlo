@@ -194,6 +194,20 @@ object JodloRoutes {
             (if (after != null) "&after=${enc(after)}" else "")
         return ApiCall.getOwned(path, token)
     }
+    /** Private, explicit management-only page. Legacy owner pages and all
+     * Customer GETs remain byte-for-byte unchanged. Never expose the bearer
+     * in URL params or infer paused status from 'visible=false'.
+     */
+    fun managedOwnListingPage(
+        token: String, limit: Int = 20, after: String? = null,
+    ): ApiCall {
+        require(limit in 1..25) { "Invalid managed owner page size" }
+        if (after != null) requireListingId(after)
+        val path = "/api/v1/me/listings?limit=$limit&view=management" +
+            (if (after != null) "&after=${enc(after)}" else "")
+        return ApiCall.getOwned(path, token)
+    }
+
     fun workerDraft(token: String): ApiCall =
         ApiCall.getOwned("/api/v1/me/worker-profile", token)
     fun optInWorker(token: String): ApiCall =
