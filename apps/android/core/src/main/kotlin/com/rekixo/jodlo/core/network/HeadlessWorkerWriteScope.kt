@@ -259,6 +259,11 @@ class HeadlessWorkerWriteScope(private val session: InMemorySessionCoordinator) 
                                 reply.value.listings.firstOrNull { it.id == action.listingId }
                             is WorkerWriteAction.EditCategory ->
                                 reply.value.listings.firstOrNull { it.id == action.listingId }
+                            is WorkerWriteAction.Resume ->
+                                reply.value.listings.firstOrNull {
+                                    it.id == action.listingId &&
+                                        it.categoryId == action.expectedCategoryId
+                                }
                         }
                         if (paged && prior.pagedNextCursor != null &&
                             reply.value.listings.isEmpty()) {
