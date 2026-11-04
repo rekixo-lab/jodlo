@@ -4,6 +4,9 @@ package com.rekixo.jodlo.core.network
 sealed class WorkerWriteAction {
     data class Publish(val confirmedCategoryId: String) : WorkerWriteAction()
     data class Unpublish(val listingId: String) : WorkerWriteAction()
+    data class EditCategory(
+        val listingId: String, val expectedCategoryId: String, val nextCategoryId: String,
+    ) : WorkerWriteAction()
 }
 
 enum class WorkerVisibility {
@@ -153,6 +156,19 @@ class HeadlessWorkerWriteScope(private val session: InMemorySessionCoordinator) 
         }
     }
 
+    fun editCategory(
+        listingId: String, expectedCategoryId: String, nextCategoryId: String,
+    ): WorkerWriteCompletion {
+        JodloRoutes.requireListingId(listingId)
+        JodloRoutes.requireCategoryId(expectedCategoryId)
+        JodloRoutes.requireCategoryId(nextCategoryId)
+        require(expectedCategoryId != nextCategoryId)
+        return write(WorkerWriteAction.EditCategory(
+            listingId,expectedCategoryId,nextCategoryId)) {
+            session.editListingCategory(listingId,expectedCategoryId,nextCategoryId,it)
+        }
+    }
+
     fun unpublish(listingId: String): WorkerWriteCompletion {
         JodloRoutes.requireListingId(listingId)
         return write(WorkerWriteAction.Unpublish(listingId)) {
@@ -225,6 +241,8 @@ class HeadlessWorkerWriteScope(private val session: InMemorySessionCoordinator) 
                                     it.categoryId == action.confirmedCategoryId
                                 }
                             is WorkerWriteAction.Unpublish ->
+                                reply.value.listings.firstOrNull { it.id == action.listingId }
+                            is WorkerWriteAction.EditCategory ->
                                 reply.value.listings.firstOrNull { it.id == action.listingId }
                         }
                         if (paged && prior.pagedNextCursor != null &&

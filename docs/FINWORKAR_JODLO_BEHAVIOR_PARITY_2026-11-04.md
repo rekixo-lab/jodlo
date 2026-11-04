@@ -1,3 +1,9 @@
+## Progress checkpoint — real Worker service Category editing (4 November)
+
+Following native review/publishing (#227), the current feature branch implements **editing an already-owned Listing to another real reviewed Category** through the existing D1 worker_listings table and **no new sensitive fields**. Android compares old Category and new selection, requires a second explicit review, keeps the same Listing ID, and honors current owner/account generation. One authenticated D1 conditional UPDATE prevents stale, foreign, duplicate, inactive or moderated edits. Public Category listing and detail use the existing current eligibility joins rather than an optimistic device view. See [Category edit contract](WORKER_SERVICE_CATEGORY_EDIT_2026-11-04.md).
+
+The complete Finworkar guided editor is **still incomplete**: public Worker identity/disclosure, experience, rate, private/public area, images, provider calls, moderation, listing revision sequencing, human Catalog approval, real devices and production release are pending. No Firebase user data migrated and no default-on new personal field is recorded.
+
 ## Progress checkpoint — guided Worker Category review (4 November)
 
 The native guided flow can now **select a real approved active Category, review its exact data scope, explicitly publish and manage/unpublish an owned Listing through confirmation** using existing authenticated JODLO backend routes. Account session generation and page-membership guards reject stale confirmation, new query/language and switched accounts. Owner uncertain writes still require manual rechecks; public visibility remains an independent anonymous server read. Details: [guided native review acceptance](GUIDED_WORKER_SERVICE_REVIEW_2026-11-04.md).

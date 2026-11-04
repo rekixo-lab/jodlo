@@ -64,6 +64,14 @@ export async function hasEmptyBody(request: Request): Promise<boolean> {
  * BEFORE JSON.parse. The small JSON-string grammar preserves valid escapes
  * (including escaped keys) while rejecting a second key or nested values.
  */
+/** Canonical client-written edit envelope: only three validated opaque IDs.
+ * Fixed key order and strict ASCII wire shape prevent duplicate/escaped-key
+ * confusion before JSON.parse, without weakening the older login/post parser.
+ * This is deliberately narrower than all valid JSON, not a general API.
+ */
+const EDIT_CATEGORY_JSON =
+  /^\s*\{\s*"listingId"\s*:\s*"[A-Za-z0-9_-]{8,128}"\s*,\s*"expectedCategoryId"\s*:\s*"[A-Za-z0-9_-]{1,64}"\s*,\s*"nextCategoryId"\s*:\s*"[A-Za-z0-9_-]{1,64}"\s*\}\s*$/;
+
 const ONE_STRING_FIELD_JSON =
   /^\s*\{\s*"(?:[^"\\\x00-\x1f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"\s*:\s*"(?:[^"\\\x00-\x1f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"\s*\}\s*$/;
 
@@ -71,7 +79,8 @@ const ONE_STRING_FIELD_JSON =
  * Rejects streaming overflow regardless of Content-Length. No logging payloads.
  * A malicious/unproductive source cannot accumulate unlimited empty chunks.
  */
-async function readBoundedObject(request: Request, maxBytes: number):
+async function readBoundedObject(request: Request, maxBytes: number,
+  format: "single" | "edit-category" = "single"):
   Promise<Record<string, unknown> | null> {
   const type = request.headers.get("Content-Type") ?? "";
   if (!/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(type)) return null;
@@ -106,7 +115,8 @@ async function readBoundedObject(request: Request, maxBytes: number):
     let pos = 0;
     for (const c of chunks) { joined.set(c, pos); pos += c.byteLength; }
     const source = new TextDecoder("utf-8", { fatal: true }).decode(joined);
-    if (!ONE_STRING_FIELD_JSON.test(source)) return null;
+    if (!(format === "single"
+      ? ONE_STRING_FIELD_JSON.test(source) : EDIT_CATEGORY_JSON.test(source))) return null;
     const parsed: unknown = JSON.parse(source);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
     return parsed as Record<string, unknown>;
@@ -129,4 +139,23 @@ export async function readServiceListingBody(request: Request): Promise<string |
   const obj = await readBoundedObject(request, 256);
   if (!obj || Object.keys(obj).length !== 1 || typeof obj.categoryId !== "string") return null;
   return obj.categoryId;
+}
+
+/** No public identity or personal data. All three IDs are required, no owner
+ * ID/body role, unapproved metadata, hidden duplicate or query-based edits.
+ */
+export type CategoryEditBody = Readonly<{
+  listingId: string; expectedCategoryId: string; nextCategoryId: string;
+}>;
+export async function readCategoryEditBody(request: Request): Promise<CategoryEditBody | null> {
+  const obj = await readBoundedObject(request, 512, "edit-category");
+  if (!obj || Object.keys(obj).length !== 3 ||
+      typeof obj.listingId !== "string" ||
+      typeof obj.expectedCategoryId !== "string" ||
+      typeof obj.nextCategoryId !== "string") return null;
+  return {
+    listingId: obj.listingId,
+    expectedCategoryId: obj.expectedCategoryId,
+    nextCategoryId: obj.nextCategoryId,
+  };
 }

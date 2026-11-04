@@ -10,7 +10,7 @@ enum class WorkerListingsPhase { HIDDEN, IDLE, LOADING, EMPTY, LISTINGS, ERROR, 
 enum class WorkerMutationPhase {
     IDLE, SENDING, CONFIRMED, REJECTED, NEEDS_REVIEW, RECHECKING,
 }
-enum class WorkerMutationKind { PUBLISH, UNPUBLISH }
+enum class WorkerMutationKind { PUBLISH, UNPUBLISH, EDIT_CATEGORY }
 enum class WorkerDashboardAction {
     CHECK_PROFILE, LOAD_OWN_LISTINGS,
     START_OWNER_PAGE, LOAD_NEXT_OWNER_PAGE, REFRESH_OWNER_PAGE,
@@ -161,6 +161,7 @@ object HeadlessWorkerDashboardMapper {
         val mutationKind = when (action) {
             is WorkerWriteAction.Publish -> WorkerMutationKind.PUBLISH
             is WorkerWriteAction.Unpublish -> WorkerMutationKind.UNPUBLISH
+            is WorkerWriteAction.EditCategory -> WorkerMutationKind.EDIT_CATEGORY
             null -> null
         }
         val review = when (state) {

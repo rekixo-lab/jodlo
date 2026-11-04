@@ -118,4 +118,16 @@
     <string name="guided_post_back">Go back</string>
     <string name="guided_unpublish_review">Review service removal</string>
     <string name="guided_unpublish_warning">Unpublishing removes this service from public discovery. Confirm only if you want to stop showing this listing. This does not delete your account.</string>
+
+    <string name="worker_edit_category">Edit my service category</string>
+    <string name="worker_edit_heading">Edit existing service · choose a new category</string>
+    <string name="worker_edit_existing_category">Current category: %1$s</string>
+    <string name="worker_edit_description">Select an active, approved replacement category from the search/browse list below. Your existing service reference stays the same. No phone, rate, experience, address or trust information is changed.</string>
+    <string name="worker_edit_choose_category">Choose another approved category below to continue.</string>
+    <string name="worker_edit_new_category">New category: %1$s</string>
+    <string name="worker_edit_review">Review category change</string>
+    <string name="worker_edit_public_warning">Saving will immediately change the category of your existing public service. If another device changed this service, the server will reject this edit. Recheck your own listings and select again.</string>
+    <string name="worker_edit_confirm">Save service category</string>
+    <string name="worker_edit_cancel">Cancel editing</string>
+    <string name="worker_edit_conflict">This service has changed, its replacement category is unavailable, or you already listed that work. Refresh My Services and start a new edit. No duplicate save was attempted.</string>
 </resources>

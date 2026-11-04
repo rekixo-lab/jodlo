@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import com.rekixo.jodlo.core.network.ApiOutcome
 import com.rekixo.jodlo.core.network.FailureKind
 import com.rekixo.jodlo.core.network.GuidedWorkerServiceActions
+import com.rekixo.jodlo.core.network.GuidedWorkerCategoryEdit
 import com.rekixo.jodlo.core.network.HeadlessWorkerWriteScope
 import com.rekixo.jodlo.core.network.InMemorySessionCoordinator
 import com.rekixo.jodlo.core.network.Language
@@ -83,6 +84,7 @@ internal fun WorkerDashboard(
     var categoryFailed by remember(session) { mutableStateOf(false) }
     var invalidCategoryQuery by remember(session) { mutableStateOf(false) }
     var guided by remember(session) { mutableStateOf(GuidedWorkerServiceActions()) }
+    var categoryEdit by remember(session) { mutableStateOf(GuidedWorkerCategoryEdit()) }
     var selectedListing by remember(session) { mutableStateOf<String?>(null) }
     var publicPreview by remember(session) { mutableStateOf(PublicPreview.UNCHECKED) }
     var writeState by remember(session) {
@@ -98,6 +100,7 @@ internal fun WorkerDashboard(
         categoryCursor = null
         categoryPageGeneration += 1
         guided = guided.clearPublication()
+        categoryEdit = categoryEdit.invalidateCategory()
         categoryLoaded = false
         categoryFailed = false
         invalidCategoryQuery = false
@@ -114,6 +117,7 @@ internal fun WorkerDashboard(
             selectedListing = null
             publicPreview = PublicPreview.UNCHECKED
             guided = guided.reset()
+            categoryEdit = categoryEdit.reset()
             clearCategoryResults()
         }
     }
@@ -142,6 +146,7 @@ internal fun WorkerDashboard(
         message = 0
         publicPreview = PublicPreview.UNCHECKED // Owner status is NOT a public read.
         guided = guided.cancelUnpublish()
+        categoryEdit = categoryEdit.reset()
         val accountMarker = session.accountExportSessionMarker()
         scope.launch {
             val reply = try {
@@ -190,6 +195,7 @@ internal fun WorkerDashboard(
             categoryRows = emptyList()
             categoryCursor = null
             guided = guided.clearPublication()
+            categoryEdit = categoryEdit.invalidateCategory()
             categoryLoaded = false
             categoryFailed = false
             categoryMode = mode
@@ -245,6 +251,7 @@ internal fun WorkerDashboard(
             ownerCursor = null
             selectedListing = null
             guided = guided.reset()
+            categoryEdit = categoryEdit.reset()
             publicPreview = PublicPreview.UNCHECKED
 
             // Only after a CONFIRMED owner write, refresh the current
@@ -264,6 +271,10 @@ internal fun WorkerDashboard(
             message = when (writeState) {
                 is WorkerWriteState.Confirmed -> R.string.worker_write_confirmed
                 is WorkerWriteState.NeedsReview -> R.string.worker_uncertain_write
+                is WorkerWriteState.Rejected -> if (
+                    (writeState as WorkerWriteState.Rejected).networkKind ==
+                    FailureKind.CONFLICT
+                ) R.string.worker_edit_conflict else R.string.worker_operation_failed
                 else -> R.string.worker_operation_failed
             }
         }
@@ -348,6 +359,7 @@ internal fun WorkerDashboard(
                             ownListings = emptyList()
                             ownerCursor = null
                             guided = guided.reset()
+                            categoryEdit = categoryEdit.reset()
                             selectedListing = null
                             publicPreview = PublicPreview.UNCHECKED
                             checkedAction({ session.logout() }, R.string.worker_logout_local)
@@ -411,6 +423,7 @@ internal fun WorkerDashboard(
                                     if (!busy) {
                                         selectedListing = listing.id
                                         guided = guided.cancelUnpublish()
+                                        categoryEdit = categoryEdit.reset()
                                         publicPreview = PublicPreview.UNCHECKED
                                     }
                                 },
@@ -455,6 +468,19 @@ internal fun WorkerDashboard(
                                             color = MaterialTheme.colorScheme.error)
                                         PublicPreview.UNCHECKED -> { /* Never claim visibility from owner state. */ }
                                     }
+                                    JodloTextAction(
+                                        onClick = {
+                                            val row = ownListings.firstOrNull {
+                                                it.id == selectedListing
+                                            } ?: return@JodloTextAction
+                                            categoryEdit = categoryEdit.begin(
+                                                row, ownListings,
+                                                session?.accountExportSessionMarker(),
+                                            )
+                                            guided = guided.clearPublication()
+                                        },
+                                        enabled = canWrite,
+                                    ) { Text(stringResource(R.string.worker_edit_category)) }
                                     if (guided.pendingUnpublishId != selectedListing) {
                                         JodloTextAction(
                                             onClick = {
@@ -571,15 +597,26 @@ internal fun WorkerDashboard(
                         items(categoryRows, key = { "cat-" + it.id }) { category ->
                             JodloCard(
                                 onClick = {
-                                    if (canWrite) guided = guided.chooseCategory(
-                                        category, categoryRows, session?.accountExportSessionMarker())
+                                    if (!canWrite) return@JodloCard
+                                    if (categoryEdit.source != null) {
+                                        categoryEdit = categoryEdit.chooseDestination(
+                                            category, categoryRows,
+                                            session?.accountExportSessionMarker())
+                                    } else {
+                                        guided = guided.chooseCategory(
+                                            category, categoryRows,
+                                            session?.accountExportSessionMarker())
+                                    }
                                 },
-                                selected = guided.selectedCategory?.id == category.id,
+                                selected = if (categoryEdit.source != null)
+                                    categoryEdit.destination?.id == category.id
+                                else guided.selectedCategory?.id == category.id,
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
                                 Column(Modifier.padding(JodloSizes.CardPadding)) {
                                     Text(category.name)
-                                    if (guided.selectedCategory?.id == category.id)
+                                    if (guided.selectedCategory?.id == category.id ||
+                                        categoryEdit.destination?.id == category.id)
                                         Text(stringResource(R.string.worker_category_selected))
                                 }
                             }
@@ -589,7 +626,65 @@ internal fun WorkerDashboard(
                                 Text(stringResource(R.string.worker_load_more))
                             }
                         }
-                        if (guided.selectedCategory != null) item {
+                        if (categoryEdit.source != null) item {
+                            JodloCard(modifier = Modifier.fillMaxWidth()) {
+                                Column(Modifier.padding(JodloSizes.CardPadding),
+                                    verticalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
+                                    Text(stringResource(R.string.worker_edit_heading),
+                                        style = MaterialTheme.typography.titleMedium)
+                                    Text(stringResource(R.string.worker_edit_existing_category,
+                                        categoryEdit.source!!.categoryId))
+                                    Text(stringResource(R.string.worker_edit_description))
+                                    val next = categoryEdit.destination
+                                    if (next == null) {
+                                        Text(stringResource(R.string.worker_edit_choose_category))
+                                    } else if (!categoryEdit.reviewOpen) {
+                                        Text(stringResource(R.string.worker_edit_new_category,
+                                            next.name))
+                                        JodloButton(onClick = {
+                                            categoryEdit = categoryEdit.review(
+                                                session?.accountExportSessionMarker())
+                                        }, enabled = canWrite) {
+                                            Text(stringResource(R.string.worker_edit_review))
+                                        }
+                                    } else {
+                                        Text(stringResource(R.string.worker_edit_new_category,
+                                            next.name))
+                                        Text(stringResource(R.string.worker_edit_public_warning),
+                                            color = MaterialTheme.colorScheme.error)
+                                        JodloTextAction(onClick = {
+                                            categoryEdit = categoryEdit.cancelReview()
+                                        }, enabled = canWrite) {
+                                            Text(stringResource(R.string.guided_post_back))
+                                        }
+                                        JodloButton(onClick = {
+                                            val command = categoryEdit.confirmed(
+                                                ownListings, categoryRows,
+                                                session?.accountExportSessionMarker(),
+                                            ) ?: return@JodloButton
+                                            mutate {
+                                                writes.editCategory(
+                                                    command.listingId,
+                                                    command.expectedCategoryId,
+                                                    command.nextCategoryId,
+                                                )
+                                            }
+                                        }, enabled = canWrite && categoryEdit.confirmed(
+                                            ownListings, categoryRows,
+                                            session?.accountExportSessionMarker(),
+                                        ) != null) {
+                                            Text(stringResource(R.string.worker_edit_confirm))
+                                        }
+                                    }
+                                    JodloTextAction(onClick = {
+                                        categoryEdit = categoryEdit.reset()
+                                    }, enabled = !busy) {
+                                        Text(stringResource(R.string.worker_edit_cancel))
+                                    }
+                                }
+                            }
+                        }
+                        if (categoryEdit.source == null && guided.selectedCategory != null) item {
                             JodloCard(modifier = Modifier.fillMaxWidth()) {
                                 Column(Modifier.padding(JodloSizes.CardPadding),
                                     verticalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {

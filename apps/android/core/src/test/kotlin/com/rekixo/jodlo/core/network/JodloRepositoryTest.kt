@@ -422,5 +422,41 @@ fun main() {
     })
     check(deniedOwner.pageMyListings(TOKEN)==bad(FailureKind.UNAUTHORIZED))
 
+    // This privileged route is only a single explicit PUT with the current
+    // session bearer and strict edited-ID/category reply; no silent retry.
+    var editsSent=0
+    val editRepo:OwnListingCategoryEditRepository=RemoteWorkerRepository(RequestSender { call ->
+        editsSent++
+        check(call.method==HttpMethod.PUT && call.resource=="/api/v1/me/listings")
+        check(call.headers()["Authorization"]=="Bearer $TOKEN")
+        check(!call.resource.contains(TOKEN))
+        ok("""{"listing":{"id":"$LISTING_ID","categoryId":"carpenter"}}""")
+    })
+    check(editRepo.editCategory(TOKEN,LISTING_ID,"plumber","carpenter")==
+        ApiOutcome.Ok(PublicListing(LISTING_ID,"carpenter")))
+    check(editsSent==1)
+    val conflictRepo:OwnListingCategoryEditRepository=RemoteWorkerRepository(RequestSender {
+        TransportReply(409,
+            """{"ok":false,"error":{"code":"CONFLICT","message":"private server detail"}}""")
+    })
+    check(conflictRepo.editCategory(TOKEN,LISTING_ID,"plumber","carpenter")==
+        bad(FailureKind.CONFLICT))
+    val forged:OwnListingCategoryEditRepository=RemoteWorkerRepository(RequestSender {
+        ok("""{"listing":{"id":"$LISTING_ID","categoryId":"plumber"}}""")
+    })
+    check(forged.editCategory(TOKEN,LISTING_ID,"plumber","carpenter")==bad())
+    val leaky:OwnListingCategoryEditRepository=RemoteWorkerRepository(RequestSender {
+        ok("""{"listing":{"id":"$LISTING_ID","categoryId":"carpenter","phone":"secret"}}""")
+    })
+    check(leaky.editCategory(TOKEN,LISTING_ID,"plumber","carpenter")==bad())
+    var editAttempts=0
+    val offline:OwnListingCategoryEditRepository=RemoteWorkerRepository(RequestSender {
+        editAttempts++
+        throw IOException("never log credential")
+    })
+    check(offline.editCategory(TOKEN,LISTING_ID,"plumber","carpenter")==
+        bad(FailureKind.OFFLINE_OR_TIMEOUT))
+    check(editAttempts==1)
+
     println("JODLO repositories: typed browse/search, explicit worker publishing, mismatched response rejection and no auto-retry and public Listing pagination OK")
 }

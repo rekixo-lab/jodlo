@@ -118,4 +118,16 @@
     <string name="guided_post_back">वापस जाएँ</string>
     <string name="guided_unpublish_review">सेवा हटाने से पहले जाँचें</string>
     <string name="guided_unpublish_warning">अप्रकाशित करने पर यह सेवा ग्राहक की सार्वजनिक खोज से हट जाएगी। यदि यही चाहते हैं तभी पुष्टि करें। इससे आपका खाता नहीं मिटेगा।</string>
+
+    <string name="worker_edit_category">मेरी सेवा की श्रेणी बदलें</string>
+    <string name="worker_edit_heading">मौजूदा सेवा बदलें · नई श्रेणी चुनें</string>
+    <string name="worker_edit_existing_category">अभी की श्रेणी: %1$s</string>
+    <string name="worker_edit_description">नीचे खोज या सूची से दूसरी स्वीकृत और सक्रिय श्रेणी चुनें। सेवा का पुराना संदर्भ वही रहेगा। फ़ोन, रेट, अनुभव, पता या भरोसे की जानकारी नहीं बदलेगी।</string>
+    <string name="worker_edit_choose_category">आगे बढ़ने के लिए नीचे दूसरी स्वीकृत श्रेणी चुनें।</string>
+    <string name="worker_edit_new_category">नई श्रेणी: %1$s</string>
+    <string name="worker_edit_review">बदलाव की समीक्षा करें</string>
+    <string name="worker_edit_public_warning">सहेजने पर आपकी मौजूदा सार्वजनिक सेवा की श्रेणी तुरंत बदल जाएगी। यदि दूसरे डिवाइस ने सेवा बदल दी है तो सर्वर इसे अस्वीकार करेगा। अपनी सेवाएँ फिर देख कर नया बदलाव चुनें।</string>
+    <string name="worker_edit_confirm">सेवा की नई श्रेणी सहेजें</string>
+    <string name="worker_edit_cancel">संपादन रद्द करें</string>
+    <string name="worker_edit_conflict">सेवा बदल गई है, नई श्रेणी उपलब्ध नहीं है या उस काम की आपकी सेवा पहले से है। मेरी सेवाएँ ताज़ा करें और दोबारा संपादन शुरू करें। वही बदलाव अपने-आप नहीं भेजा गया।</string>
 </resources>

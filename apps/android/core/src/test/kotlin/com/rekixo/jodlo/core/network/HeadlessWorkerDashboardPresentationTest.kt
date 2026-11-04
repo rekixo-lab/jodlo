@@ -819,7 +819,48 @@ private fun guidedUnpublishRequiresExplicitCurrentOwnedRowAndConfirmation() {
     check(review.unpublishConfirmed(h.session.accountExportSessionMarker(),rows)==null)
 }
 
+/** Real native edit-flow state: current owner row, reviewed Category and
+ * account epoch must all remain unchanged before the first server PUT.
+ */
+private fun guidedCategoryEditRequiresSameCurrentAccountAndApprovedRows() {
+    val h=DashboardHarness()
+    val first=OwnListing(DASH_OWN_ID,"plumber",true)
+    val other=OwnListing("22222222-2222-4222-8222-222222222222","carpenter",true)
+    val carpenter=PublicCategory("carpenter","carpenter","बढ़ई")
+    val electrician=PublicCategory("electrician","electrician","Electrician")
+    val source=GuidedWorkerCategoryEdit()
+    check(source.begin(first,listOf(first),null).source==null)
+    h.signIn();h.optIn()
+    val marker=checkNotNull(h.session.accountExportSessionMarker())
+    val editing=source.begin(first,listOf(first,other),marker)
+    check(editing.source==first && editing.destination==null)
+    check(editing.review(marker).reviewOpen==false)
+    val chosen=editing.chooseDestination(carpenter,listOf(carpenter,electrician),marker)
+    check(chosen.destination==carpenter && !chosen.reviewOpen)
+    check(chosen.confirmed(listOf(first),listOf(carpenter),marker)==null)
+    val reviewed=chosen.review(marker)
+    check(reviewed.confirmed(listOf(first),listOf(carpenter),marker)==
+        CategoryEditCommand(DASH_OWN_ID,"plumber","carpenter"))
+    check(reviewed.confirmed(listOf(other),listOf(carpenter),marker)==null)
+    check(reviewed.confirmed(listOf(first),listOf(electrician),marker)==null)
+    check(reviewed.confirmed(listOf(first.copy(categoryId="carpenter")),
+        listOf(carpenter),marker)==null)
+    check(reviewed.confirmed(listOf(first),listOf(carpenter),marker+1)==null)
+    check(reviewed.cancelReview().confirmed(listOf(first),listOf(carpenter),marker)==null)
+    check(reviewed.invalidateCategory().confirmed(listOf(first),listOf(carpenter),marker)==null)
+    check(reviewed.chooseDestination(electrician,listOf(electrician),marker)
+        .confirmed(listOf(first),listOf(electrician),marker)==null)
+    check(editing.chooseDestination(carpenter,listOf(electrician),marker).destination==null)
+    check(editing.chooseDestination(
+        PublicCategory("plumber","plumber","Plumber"),
+        listOf(PublicCategory("plumber","plumber","Plumber")),marker).destination==null)
+    check(h.session.acceptIssuedSession(dashIssued(DASH_TOKEN_B)) is ApiOutcome.Ok)
+    check(reviewed.confirmed(listOf(first),listOf(carpenter),
+        h.session.accountExportSessionMarker())==null)
+    check(reviewed.reset().source==null)
+}
 fun main() {
+    guidedCategoryEditRequiresSameCurrentAccountAndApprovedRows()
     guidedWorkerReviewRequiresSameAccountAndCurrentCatalog()
     guidedUnpublishRequiresExplicitCurrentOwnedRowAndConfirmation()
     signedOutAndUnknownNeverPublish()

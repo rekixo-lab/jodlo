@@ -391,6 +391,23 @@ class InMemorySessionCoordinator(
             mutation = true,
         )
 
+    /** Explicit owner Category edit inherits the same epoch, mutation lock,
+     * public-read invalidation and single-shot no-replay semantics as publish.
+     */
+    fun editListingCategory(
+        listingId: String, expectedCategoryId: String, nextCategoryId: String,
+        cancellation: CancellationSignal? = null,
+    ): SessionResult<PublicListing> {
+        val edits = workers as? OwnListingCategoryEditRepository ?: return SessionResult.Failed(
+            SessionFailure.REMOTE_FAILURE, FailureKind.SERVICE_UNAVAILABLE)
+        return withSession(
+            call = { edits.editCategory(it, listingId, expectedCategoryId, nextCategoryId) },
+            cancellation = cancellation,
+            update = { reply, _ -> outcome(reply) },
+            needsWorker = true, mutation = true,
+        )
+    }
+
     fun unpublish(listingId: String, cancellation: CancellationSignal? = null): SessionResult<Boolean> =
         withSession(
             call = { workers.unpublish(it, listingId) },

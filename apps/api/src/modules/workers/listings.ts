@@ -237,3 +237,37 @@ export async function unpublishListing(db:D1Database,actor:string,id:string):Pro
   const {meta}=await db.prepare(UNPUBLISH_LISTING_QUERY).bind(id,actor).run();
   return meta.changes===1;
 }
+
+/** Owner-scoped compare-and-swap of an existing Category-only service.
+ * Never changes owner, public status, moderation or createdAt. A worker cannot
+ * transfer a listing to another worker or use an inactive/nonreviewed Category.
+ * A stale expected Category, duplicate own Category, hidden moderation, or
+ * foreign ID all produce the SAME no-change result with no identity oracle.
+ *
+ * No new D1 columns (especially address, PII, price, experience or uploads).
+ * The existing UNIQUE(worker_account_id,category_id) remains authoritative
+ * during concurrent edits. A SQLite uniqueness race fails closed in the router.
+ */
+export const EDIT_OWN_CATEGORY_QUERY =
+  "UPDATE worker_listings AS wl SET category_id=? " +
+  "WHERE wl.id=? AND wl.worker_account_id=? AND wl.category_id=? " +
+  "AND wl.moderation_status='allowed' " +
+  "AND EXISTS(SELECT 1 FROM worker_profiles AS wp " +
+  "JOIN accounts AS a ON a.id=wp.account_id " +
+  "WHERE wp.account_id=wl.worker_account_id AND wp.status='draft' AND a.status='active') " +
+  "AND EXISTS(SELECT 1 FROM categories AS c WHERE c.id=? AND c.is_active=1) " +
+  "AND NOT EXISTS(SELECT 1 FROM worker_listings AS other " +
+  "WHERE other.worker_account_id=wl.worker_account_id AND other.category_id=?)";
+
+export async function editOwnListingCategory(
+  db: D1Database, actor: string, listingId: string,
+  expectedCategoryId: string, nextCategoryId: string,
+): Promise<PublicListing | null> {
+  if(!validOpaqueId(actor)||!validOpaqueId(listingId)||
+      !validCategoryId(expectedCategoryId)||!validCategoryId(nextCategoryId)||
+      expectedCategoryId===nextCategoryId) return null;
+  const {meta}=await db.prepare(EDIT_OWN_CATEGORY_QUERY)
+    .bind(nextCategoryId,listingId,actor,expectedCategoryId,nextCategoryId,nextCategoryId).run();
+  if(meta.changes!==1) return null;
+  return Object.freeze({id:listingId,categoryId:nextCategoryId});
+}

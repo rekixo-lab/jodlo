@@ -7,15 +7,15 @@ import { ownAccountOverview, exportOwnAccountData } from "../modules/identity/ac
 import { validGoogleClientId, verifyGoogleIdToken } from "../modules/identity/google.ts";
 import { resolveGoogleAccount } from "../modules/identity/google-accounts.ts";
 import { issueSession, makeSessionVerifier, revokeAllSessions, revokeSession, SESSION_TTL_SECONDS } from "../modules/identity/sessions.ts";
-import { hasEmptyBody, readGoogleLoginBody, readServiceListingBody } from "./body.ts";
+import { hasEmptyBody, readGoogleLoginBody, readServiceListingBody, readCategoryEditBody } from "./body.ts";
 import { validCategoryId } from "../modules/shared/identifiers.ts";
-import { publishListing, myListings, pageMyListings, parseOwnListingsPage, publicListings, pagePublicListings, publicListingDetail, unpublishListing } from "../modules/workers/listings.ts";
+import { publishListing, myListings, pageMyListings, parseOwnListingsPage, publicListings, pagePublicListings, publicListingDetail, unpublishListing, editOwnListingCategory } from "../modules/workers/listings.ts";
 import {
   allowGoogleAccountLogin, allowLoginBurst,
   LOGIN_BURST_RETRY_SECONDS, ACCOUNT_LOGIN_RETRY_SECONDS,
 } from "../modules/identity/admission.ts";
 
-type ApiErrorCode = "NOT_FOUND" | "METHOD_NOT_ALLOWED" | "INVALID_QUERY" | "SERVICE_UNAVAILABLE" | "UNAUTHORIZED" | "FORBIDDEN" | "RATE_LIMITED";
+type ApiErrorCode = "CONFLICT" | "NOT_FOUND" | "METHOD_NOT_ALLOWED" | "INVALID_QUERY" | "SERVICE_UNAVAILABLE" | "UNAUTHORIZED" | "FORBIDDEN" | "RATE_LIMITED";
 type ApiResponse = { ok: true; data: unknown } | { ok: false; error: { code: ApiErrorCode; message: string } };
 
 const HEADERS: Readonly<Record<string, string>> = Object.freeze({
@@ -278,9 +278,9 @@ export async function handleRequest(
     }
   }
   if (url.pathname === "/api/v1/me/listings") {
-    if(!["GET","POST","DELETE"].includes(request.method)) {
+    if(!["GET","POST","PUT","DELETE"].includes(request.method)) {
       return json({ok:false,error:{code:"METHOD_NOT_ALLOWED",message:"Method not allowed"}},405,
-        {Allow:"GET, POST, DELETE"});
+        {Allow:"GET, POST, PUT, DELETE"});
     }
     if(!env.DB)return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Listings unavailable"}},503);
     const token=bearerToken(request);
@@ -309,6 +309,28 @@ export async function handleRequest(
           return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid listing input"}},400);
         const listing=await publishListing(env.DB,actor.accountId,categoryId);
         if(!listing)return json({ok:false,error:{code:"FORBIDDEN",message:"Listing not eligible"}},403);
+        return json({ok:true,data:{listing}});
+      }
+      if(request.method==="PUT") {
+        // Category-only edit: no new private fields or client-supplied actor.
+        // Current worker+account, approved active destination, unique owner
+        // category, moderation and expected previous Category are checked in
+        // ONE atomic D1 UPDATE. A stale/foreign/duplicate row is one conflict.
+        if(url.search) return json({ok:false,error:{
+          code:"INVALID_QUERY",message:"Unexpected query"}},400);
+        const edit=await readCategoryEditBody(request);
+        if(!edit||!validOpaqueId(edit.listingId)||
+            !validCategoryId(edit.expectedCategoryId)||
+            !validCategoryId(edit.nextCategoryId)||
+            edit.expectedCategoryId===edit.nextCategoryId) {
+          return json({ok:false,error:{
+            code:"INVALID_QUERY",message:"Invalid listing edit"}},400);
+        }
+        const listing=await editOwnListingCategory(
+          env.DB,actor.accountId,edit.listingId,
+          edit.expectedCategoryId,edit.nextCategoryId);
+        if(!listing) return json({ok:false,error:{
+          code:"CONFLICT",message:"Listing changed or unavailable"}},409);
         return json({ok:true,data:{listing}});
       }
       if(!(await hasEmptyBody(request))||url.searchParams.size!==1||

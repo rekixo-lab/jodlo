@@ -73,7 +73,7 @@ data class CatalogSearch(
 
 /** Never retain the raw body, URL, bearer or server-supplied error message in failures. */
 enum class FailureKind {
-    UNAUTHORIZED, FORBIDDEN, BAD_INPUT, NOT_FOUND, RATE_LIMITED,
+    UNAUTHORIZED, FORBIDDEN, BAD_INPUT, NOT_FOUND, CONFLICT, RATE_LIMITED,
     SERVICE_UNAVAILABLE, OFFLINE_OR_TIMEOUT, BAD_RESPONSE,
 }
 sealed class ApiOutcome<out T> {
@@ -162,6 +162,7 @@ object JodloReplyDecoder {
         "FORBIDDEN" to FailureKind.FORBIDDEN,
         "INVALID_QUERY" to FailureKind.BAD_INPUT,
         "NOT_FOUND" to FailureKind.NOT_FOUND,
+        "CONFLICT" to FailureKind.CONFLICT,
         "METHOD_NOT_ALLOWED" to FailureKind.BAD_INPUT,
         "RATE_LIMITED" to FailureKind.RATE_LIMITED,
         "SERVICE_UNAVAILABLE" to FailureKind.SERVICE_UNAVAILABLE,
@@ -255,6 +256,7 @@ object JodloReplyDecoder {
                     FailureKind.FORBIDDEN -> reply.status == 403
                     FailureKind.BAD_INPUT -> reply.status == 400 || reply.status == 405
                     FailureKind.NOT_FOUND -> reply.status == 404
+                    FailureKind.CONFLICT -> reply.status == 409
                     FailureKind.RATE_LIMITED -> reply.status == 429
                     FailureKind.SERVICE_UNAVAILABLE -> reply.status == 503
                     else -> false
