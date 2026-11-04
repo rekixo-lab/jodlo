@@ -9,6 +9,8 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.longOrNull
+import java.nio.charset.StandardCharsets
 import kotlinx.serialization.json.jsonPrimitive
 
 /** Typed DTOs for the CURRENT public API. No worker trust, phone, location or permission fields. */
@@ -41,6 +43,15 @@ data class OwnAccountOverview(
     val activeSessions: Int,
     val receivesCalls: Boolean,
 )
+
+/** An explicitly requested owner-only export. Contents can include a Google
+ * subject, account references and block relationships. Never place them in
+ * logs, Compose text, SavedStateHandle, bundles or persistent app storage.
+ * The only intended destination is a user-selected Android document URI.
+ */
+class OwnAccountDataExport internal constructor(val json: String) {
+    override fun toString(): String = "OwnAccountDataExport(<private>)"
+}
 
 /** A verified BACKEND-issued session response, not a verified Google identity
  * from client input. Its token must not enter loggers, UI state or disk.
@@ -381,6 +392,99 @@ object JodloReplyDecoder {
                 created, worker, workerSince, total, published, visible, sessions,
                 data.required("receivesCalls").bool(),
             )
+        }
+
+    /** Strict versioned owner-export contract; unlike a public listing
+     * projection, this is allowed to contain the requesting owner's personal
+     * fields only after authenticated D1 lookup and explicit user action.
+     * Unknown fields, overlarge arrays and mismatched types fail closed.
+     */
+    fun accountDataExport(reply: TransportReply): ApiOutcome<OwnAccountDataExport> =
+        decode(reply) { data ->
+            data.keysOnly(setOf(
+                "schemaVersion", "account", "identity", "services",
+                "callPreferences", "availabilityPreferences", "blocksMade",
+                "abuseCounters", "sessions", "limitations",
+            ))
+            if (data.required("schemaVersion").number() != 1) bad()
+            val account = data.required("account").obj()
+            account.keysOnly(setOf(
+                "accountId", "createdAt", "workerEnabled", "workerSince",
+                "totalServices", "publishedServices", "visibleServices",
+                "activeSessions", "receivesCalls",
+            ))
+            val accountId = account.required("accountId").str()
+            if (!opaqueId.matches(accountId)) bad()
+            val ownOverview = JsonObject(account - "accountId")
+            val overviewReply = TransportReply(200,
+                """{"ok":true,"data":${ownOverview}}""")
+            if (accountOverview(overviewReply) !is ApiOutcome.Ok) bad()
+
+            fun rows(name: String, max: Int, check: (JsonObject) -> Unit) {
+                val list = data.required(name).arr()
+                if (list.size > max) bad()
+                list.forEach { check(it.obj()) }
+            }
+            fun safeText(element: JsonElement, min: Int = 1, max: Int = 255): String {
+                val value = element.str()
+                if (value.length !in min..max ||
+                    value.any { Character.isISOControl(it) }) bad()
+                return value
+            }
+            fun positiveRevision(element: JsonElement): Int =
+                element.number().also { if (it !in 1..2147483647) bad() }
+            fun JsonElement.longValue(): Long = (this as? JsonPrimitive)
+                ?.takeUnless { it.isString }?.longOrNull ?: bad()
+
+            rows("identity", 1) { row ->
+                row.keysOnly(setOf("googleSub"))
+                safeText(row.required("googleSub"))
+            }
+            rows("services", 1000) { row ->
+                row.keysOnly(setOf("id", "categoryId", "status", "moderationStatus", "createdAt"))
+                if (!opaqueId.matches(row.required("id").str()) ||
+                    !categoryId.matches(row.required("categoryId").str()) ||
+                    row.required("status").str() !in setOf("published", "unpublished") ||
+                    row.required("moderationStatus").str() !in setOf("allowed", "hidden")) bad()
+                safeText(row.required("createdAt"), 10, 48)
+            }
+            rows("callPreferences", 1) { row ->
+                row.keysOnly(setOf("callsEnabled", "revision"))
+                if (row.required("callsEnabled").number() !in 0..1) bad()
+                positiveRevision(row.required("revision"))
+            }
+            rows("availabilityPreferences", 1) { row ->
+                row.keysOnly(setOf("acceptingCalls", "revision"))
+                if (row.required("acceptingCalls").number() !in 0..1) bad()
+                positiveRevision(row.required("revision"))
+            }
+            rows("blocksMade", 1000) { row ->
+                row.keysOnly(setOf("blockedAccountId"))
+                if (!opaqueId.matches(row.required("blockedAccountId").str())) bad()
+            }
+            rows("abuseCounters", 1) { row ->
+                row.keysOnly(setOf(
+                    "scope", "windowStartMs", "expiresAtMs", "attemptCount", "revision",
+                ))
+                if (row.required("scope").str() != "invite") bad()
+                val start = row.required("windowStartMs").longValue()
+                val end = row.required("expiresAtMs").longValue()
+                if (start < 0L || end <= start ||
+                    row.required("attemptCount").number() !in 0..2147483647) bad()
+                positiveRevision(row.required("revision"))
+            }
+            rows("sessions", 1000) { row ->
+                row.keysOnly(setOf("createdAt", "expiresAt"))
+                val start = row.required("createdAt").longValue()
+                val expiry = row.required("expiresAt").longValue()
+                if (start < 0L || expiry <= start) bad()
+            }
+            val limitations = data.required("limitations").arr()
+            if (limitations.isEmpty() || limitations.size > 8) bad()
+            limitations.forEach { safeText(it, 1, 250) }
+            val serialized = data.toString() // JSON data only, not the API envelope.
+            if (serialized.toByteArray(StandardCharsets.UTF_8).size > 60_000) bad()
+            OwnAccountDataExport(serialized)
         }
 
     /** Exact /auth/google success body, only for a trusted HTTPS exchange. */
