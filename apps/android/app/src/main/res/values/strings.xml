@@ -149,7 +149,7 @@
     <string name="saved_clear_confirm">Clear saved services</string>
     <string name="saved_cleared">Saved services on this device were cleared.</string>
     <string name="saved_back">Back to Saved services</string>
-    <string name="saved_currently_public">This exact service is currently returned by JODLO's public API. This is not contact or call permission.</string>
+    <string name="saved_currently_public">This exact service is currently returned by the public JODLO API. This is not contact or call permission.</string>
     <string name="saved_not_public">The saved service is no longer public under its saved Category. It may have been unpublished, hidden or edited. You may remove the bookmark.</string>
     <string name="saved_unavailable">Current status could not be confirmed. The saved reference is not proof the service is available.</string>
     <string name="saved_no_live_api">A configured live HTTPS JODLO API is needed to verify a saved service. Bookmarks can still be removed locally.</string>
