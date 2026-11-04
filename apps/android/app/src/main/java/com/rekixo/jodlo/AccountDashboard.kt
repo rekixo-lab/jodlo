@@ -75,17 +75,23 @@ internal fun AccountDashboard(activity: ComponentActivity, session: InMemorySess
             scope.launch {
                 val saved = withContext(Dispatchers.IO) {
                     try {
-                        val bytes = data.json.toByteArray(StandardCharsets.UTF_8)
-                        activity.contentResolver.openOutputStream(uri, "wt")?.use { stream ->
-                            stream.write(bytes)
-                            stream.flush()
-                            true
-                        } ?: false
+                        // A user can sign out while the picker or provider is
+                        // open; check again immediately before touching its URI.
+                        if (session?.accountExportSessionMarker() != marker) {
+                            false
+                        } else {
+                            val bytes = data.json.toByteArray(StandardCharsets.UTF_8)
+                            activity.contentResolver.openOutputStream(uri, "wt")?.use { stream ->
+                                stream.write(bytes)
+                                stream.flush()
+                                true
+                            } ?: false
+                        }
                     } catch (_: Exception) {
                         false // Never display/log account data, URI or provider exception.
                     }
                 }
-                login = session.snapshot()
+                login = session?.snapshot() ?: LoginState.SignedOut
                 busy = false
                 notice = if (saved) R.string.account_export_saved
                     else R.string.account_export_failed
