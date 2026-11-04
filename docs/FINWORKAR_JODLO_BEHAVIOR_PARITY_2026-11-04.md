@@ -1,3 +1,9 @@
+## 2026-11-04 — human-readable service labels across current Customer and Worker journeys
+
+New read-only approved Category ID lookup on the preexisting Catalog route lets device-only Saved references and authenticated Worker owner listing rows display **current approved Hindi/English Category names**, rather than only opaque IDs. No new personally identifying data or approval authority is introduced, and public Saved Listing eligibility remains a separate fresh GET. Display is context/account/language-scoped and only after deliberate request. [Implementation/acceptance](APPROVED_CATEGORY_LABELS_OWNER_SAVED_2026-11-04.md).
+
+Still missing complete Finworkar Worker public profile/service description/rates/area/media, moderated verified identity and actual consent-safe Agora calling; this label-only improvement must not be confused with those deferred decisions.
+
 ## Progress checkpoint — native Customer Saved Services (4 November)
 
 A connected **Customer public Listing → deliberate Save → device-only Saved tab → fresh anonymous public eligibility GET → safe remove/clear** journey is being built. It uses only previously exposed public Listing/Category IDs, not account/identity data, location, contact, media or private synced interests; stored refs are never treated as still-public, verified, present or callable. It refuses synthetic debug preview persistence and never modifies the real service. [Complete acceptance and device/privacy scope](CUSTOMER_SAVED_SERVICES_2026-11-04.md).
