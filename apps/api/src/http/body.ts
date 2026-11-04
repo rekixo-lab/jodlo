@@ -69,6 +69,9 @@ export async function hasEmptyBody(request: Request): Promise<boolean> {
  * confusion before JSON.parse, without weakening the older login/post parser.
  * This is deliberately narrower than all valid JSON, not a general API.
  */
+const RESUME_OWN_LISTING_JSON =
+  /^\\s*\\{\\s*"listingId"\\s*:\\s*"[A-Za-z0-9_-]{8,128}"\\s*,\\s*"expectedCategoryId"\\s*:\\s*"[A-Za-z0-9_-]{1,64}"\\s*\\}\\s*$/;
+
 const EDIT_CATEGORY_JSON =
   /^\s*\{\s*"listingId"\s*:\s*"[A-Za-z0-9_-]{8,128}"\s*,\s*"expectedCategoryId"\s*:\s*"[A-Za-z0-9_-]{1,64}"\s*,\s*"nextCategoryId"\s*:\s*"[A-Za-z0-9_-]{1,64}"\s*\}\s*$/;
 
@@ -80,7 +83,7 @@ const ONE_STRING_FIELD_JSON =
  * A malicious/unproductive source cannot accumulate unlimited empty chunks.
  */
 async function readBoundedObject(request: Request, maxBytes: number,
-  format: "single" | "edit-category" = "single"):
+  format: "single" | "edit-category" | "resume-own" = "single"):
   Promise<Record<string, unknown> | null> {
   const type = request.headers.get("Content-Type") ?? "";
   if (!/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(type)) return null;
@@ -116,7 +119,10 @@ async function readBoundedObject(request: Request, maxBytes: number,
     for (const c of chunks) { joined.set(c, pos); pos += c.byteLength; }
     const source = new TextDecoder("utf-8", { fatal: true }).decode(joined);
     if (!(format === "single"
-      ? ONE_STRING_FIELD_JSON.test(source) : EDIT_CATEGORY_JSON.test(source))) return null;
+      ? ONE_STRING_FIELD_JSON.test(source)
+      : format === "edit-category"
+        ? EDIT_CATEGORY_JSON.test(source)
+        : RESUME_OWN_LISTING_JSON.test(source))) return null;
     const parsed: unknown = JSON.parse(source);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
     return parsed as Record<string, unknown>;
@@ -158,4 +164,21 @@ export async function readCategoryEditBody(request: Request): Promise<CategoryEd
     expectedCategoryId: obj.expectedCategoryId,
     nextCategoryId: obj.nextCategoryId,
   };
+}
+
+/** Canonical, two-identifier owner resume request. It cannot insert a new
+ * Service or change the Category/owner. Strict wire key order blocks duplicate
+ * keys, escaped aliases, arbitrary status, GPS, private profile and JSON text.
+ */
+export type ResumeOwnListingBody = Readonly<{
+  listingId:string; expectedCategoryId:string;
+}>;
+export async function readResumeOwnListingBody(
+  request:Request,
+):Promise<ResumeOwnListingBody|null> {
+  const obj=await readBoundedObject(request,384,"resume-own");
+  if(!obj||Object.keys(obj).length!==2||
+      typeof obj.listingId!=="string"||
+      typeof obj.expectedCategoryId!=="string")return null;
+  return {listingId:obj.listingId,expectedCategoryId:obj.expectedCategoryId};
 }
