@@ -118,3 +118,33 @@ test("self service: missing, expired and revoked tokens cannot read or export, i
     assert.equal((await f.send("/api/v1/me/overview", f.other)).status, 401);
   } finally { f.db.close(); }
 });
+
+test("oversized export fails closed rather than returning a partial file beyond the native read budget", async () => {
+  const f = await fixture();
+  try {
+    const cat = f.db.prepare(
+      "INSERT INTO categories(id,slug,name_en,name_hi,is_active) VALUES(?,?,?,?,1)"
+    );
+    const listing = f.db.prepare(
+      "INSERT INTO worker_listings(id,worker_account_id,category_id) VALUES(?,?,?)"
+    );
+    // Many unique synthetic categories are used ONLY inside disposable local D1.
+    // No historical Finworkar categories or production rows are activated.
+    for (let i = 0; i < 500; i++) {
+      const id = "fixture-" + i;
+      cat.run(id, id, "Fixture only", "परीक्षण");
+      listing.run(String(i).padStart(8, "0") + "-1111-4111-8111-111111111111", a, id);
+    }
+    const response = await f.send("/api/v1/me/data-export");
+    assert.equal(response.status, 503);
+    assert.deepEqual(response.json, {
+      ok: false, error: { code: "SERVICE_UNAVAILABLE", message: "Account unavailable" },
+    });
+    assert.equal(response.raw.includes(f.ownListing.id), false);
+    assert.equal(response.raw.includes(a), false);
+    // Overview remains functional and no account/listing was altered by export.
+    assert.equal((await f.send("/api/v1/me/overview")).status, 200);
+    assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM worker_listings WHERE worker_account_id=?")
+      .get(a).n, 501);
+  } finally { f.db.close(); }
+});

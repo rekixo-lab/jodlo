@@ -294,9 +294,59 @@ private fun testExceptionalSenderReleasesGate() {
     check(fake.postCalls == 2)
 }
 
+/** A document export must be discarded after logout/account replacement,
+ * even if its HTTP response arrives successfully from the previous session.
+ */
+private fun testOwnerExportAndEpochIsolation() {
+    var lateLogout = false
+    var exportCalls = 0
+    lateinit var session: InMemorySessionCoordinator
+    val exportBody = """{"ok":true,"data":{"schemaVersion":1,
+        "account":{"accountId":"account-identity-a111","createdAt":"2026-11-04T00:00:00.000Z",
+        "workerEnabled":false,"workerSince":null,"totalServices":0,
+        "publishedServices":0,"visibleServices":0,"activeSessions":1,"receivesCalls":false},
+        "identity":[],"services":[],"callPreferences":[],"availabilityPreferences":[],
+        "blocksMade":[],"abuseCounters":[],"sessions":[],
+        "limitations":["JODLO-owned D1 rows only"]}}""".trimIndent()
+    val sender = RequestSender { call ->
+        when (call.resource) {
+            "/api/v1/me/data-export" -> {
+                exportCalls++
+                check(call.headers()["Authorization"] == "Bearer $TOKEN_ONE")
+                if (lateLogout) {
+                    check(session.logout() == SessionResult.Success(true))
+                }
+                TransportReply(200, exportBody)
+            }
+            "/api/v1/auth/logout" -> TransportReply(
+                200, """{"ok":true,"data":{"revoked":true}}""",
+            )
+            else -> error(503, "SERVICE_UNAVAILABLE")
+        }
+    }
+    session = InMemorySessionCoordinator(FakeWorkers(), sender) { 0L }
+    check(session.accountExportSessionMarker() == null)
+    check(session.accountDataExport() == SessionResult.Failed(SessionFailure.SIGNED_OUT))
+    check(session.acceptIssuedSession(issued()) is ApiOutcome.Ok)
+    val firstMarker = session.accountExportSessionMarker()
+    check(firstMarker != null)
+    val first = session.accountDataExport()
+    check(first is SessionResult.Success)
+    check(first.value.json.contains("schemaVersion"))
+    check(!first.toString().contains("account-identity-a111"))
+    check(exportCalls == 1)
+    lateLogout = true
+    check(session.accountDataExport() == SessionResult.Failed(SessionFailure.REPLACED))
+    check(exportCalls == 2)
+    check(session.accountExportSessionMarker() == null)
+    check(session.acceptIssuedSession(issued(TOKEN_TWO)) is ApiOutcome.Ok)
+    check(session.accountExportSessionMarker() != firstMarker)
+}
+
 fun main() {
     testOldProfileCannotUndoOptIn()
     testConcurrentMutationsRejected()
+    testOwnerExportAndEpochIsolation()
     testStaleOwnListingsResponseRejected()
     testExceptionalSenderReleasesGate()
     testIssuanceAndExpiry()

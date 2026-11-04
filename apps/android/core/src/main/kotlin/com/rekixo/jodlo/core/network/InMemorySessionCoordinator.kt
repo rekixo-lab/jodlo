@@ -89,6 +89,14 @@ class InMemorySessionCoordinator(
         generation
     }
 
+    /** Temporary non-secret marker for a user-selected Android data-export
+     * picker. A late document selection must not save bytes from a previously
+     * logged-out/replaced account. No token or stable account ID leaves Core.
+     */
+    fun accountExportSessionMarker(): Long? = synchronized(lock) {
+        readableActive()?.let { generation }
+    }
+
     /** Non-secret fingerprint: a private read may be stale after ANY worker
      * mutation begins, even if the POST/DELETE response is lost or cancelled.
      * Never expose an account ID or bearer via this fingerprint.
@@ -325,6 +333,23 @@ class InMemorySessionCoordinator(
         cancellation = cancellation,
         consistentRead = true,
         update = { reply, _ -> outcome(reply) }
+    )
+
+    /** Private owner data export, requested only from Account UI. The token
+     * stays inside Core; the returned byte-bounded JSON never enters logs or
+     * Android saved-state. Session replacement, expiry and concurrent Worker
+     * mutation invalidate a late read through the existing withSession gate.
+     */
+    fun accountDataExport(
+        cancellation: CancellationSignal? = null,
+    ): SessionResult<OwnAccountDataExport> = withSession(
+        call = { token ->
+            performOnce(JodloRoutes.accountDataExport(token), authSender::send,
+                JodloReplyDecoder::accountDataExport)
+        },
+        consistentRead = true,
+        cancellation = cancellation,
+        update = { reply, _ -> outcome(reply) },
     )
 
     /** Optional PRIVATE listing pagination behind the existing session gate.

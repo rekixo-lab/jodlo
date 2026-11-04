@@ -101,6 +101,17 @@ fun main() {
         }
     }
     rejects("owner listing needs a real bearer") { JodloRoutes.myListingPage("fake") }
+    // Private Account export must not put the account ID or bearer in a URL,
+    // attach a request body, or accept a forged/short session token.
+    val privacyExport = JodloRoutes.accountDataExport(TOKEN)
+    check(privacyExport.method == HttpMethod.GET)
+    check(privacyExport.resource == "/api/v1/me/data-export")
+    check(privacyExport.headers()["Authorization"] == "Bearer $TOKEN")
+    check(privacyExport.bodyUtf8() == null)
+    check(!privacyExport.toString().contains(TOKEN))
+    rejects("personal export requires a signed-in session") {
+        JodloRoutes.accountDataExport("fake")
+    }
     check(JodloRoutes.workerDraft(TOKEN).resource == "/api/v1/me/worker-profile")
     check(JodloRoutes.unpublishListing(TOKEN,
         "11111111-1111-4111-8111-111111111111").method == HttpMethod.DELETE)

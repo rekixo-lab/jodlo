@@ -84,7 +84,7 @@
 
     <string name="tab_account">खाता</string>
     <string name="account_heading">मेरा खाता</string>
-    <string name="account_sign_in_hint">अपना खाता देखने के लिए वर्कर टैब पर Google से प्रवेश करें। ग्राहक और वैकल्पिक वर्कर मोड के लिए एक ही खाता है।</string>
+    <string name="account_sign_in_hint">अपना खाता देखने के लिए Google से प्रवेश करें। ग्राहक और वैकल्पिक वर्कर मोड के लिए एक ही खाता है।</string>
     <string name="account_private_notice">यह जानकारी केवल आपके लिए है। संख्या वर्तमान JODLO रिकॉर्ड दिखाती है, पहचान सत्यापन या कॉल उपलब्धता नहीं।</string>
     <string name="account_refresh">खाते की नई जानकारी देखें</string>
     <string name="account_read_failed">खाते की नई जानकारी की पुष्टि नहीं हुई। कोई बदलाव नहीं हुआ।</string>
@@ -100,4 +100,13 @@
     <string name="account_logout_all">सभी फ़ोन पर सत्र समाप्त करें</string>
     <string name="account_logged_out_all">सर्वर ने सभी सक्रिय सत्र समाप्त करने की पुष्टि की।</string>
     <string name="account_logged_out_uncertain">इस फ़ोन से बाहर निकल गए। दूसरे फ़ोन पर सत्र समाप्त होने की पुष्टि नहीं हुई।</string>
+
+    <string name="account_login_success">JODLO ने प्रवेश की पुष्टि की। खाते की नई जानकारी देखने के लिए ताज़ा करें।</string>
+    <string name="account_login_failed">प्रवेश की पुष्टि नहीं हुई। खाते का एक्सेस नहीं दिया गया।</string>
+    <string name="account_export_action">मेरे खाते के डेटा की फ़ाइल सहेजें</string>
+    <string name="account_export_privacy_notice">इस फ़ाइल में Google पहचान और खाते के संदर्भ हो सकते हैं। निजी स्थान चुनें; क्लाउड स्थान चुनने पर फ़ाइल अपलोड हो सकती है। निर्यात में केवल मौजूदा डेटाबेस रिकॉर्ड हैं, दूसरे प्रदाताओं या बैकअप का डेटा नहीं।</string>
+    <string name="account_export_saved">आपके चुने हुए स्थान पर खाते का डेटा सहेज दिया गया है।</string>
+    <string name="account_export_failed">डेटा फ़ाइल नहीं सहेज सके। यदि अधूरी फ़ाइल बनी हो, तो चुने हुए स्थान से उसे हटाएँ।</string>
+    <string name="account_export_cancelled">कोई फ़ाइल सहेजी नहीं गई।</string>
+    <string name="account_export_stale">खाते का सत्र बदल गया। पुराना डेटा निर्यात रद्द कर दिया गया। फिर प्रवेश करके प्रयास करें।</string>
 </resources>

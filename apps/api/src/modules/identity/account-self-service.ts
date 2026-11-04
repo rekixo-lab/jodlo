@@ -115,7 +115,7 @@ export async function exportOwnAccountData(
       "WHERE account_id=? ORDER BY created_at,expires_at",
     accountId,
   );
-  return {
+  const payload = {
     schemaVersion: 1,
     account: { accountId, ...overview },
     identity,
@@ -132,4 +132,11 @@ export async function exportOwnAccountData(
       "Accounts that blocked this user are never disclosed",
     ],
   };
+  // Never send a partial/truncated data export. The native one-shot UTF-8
+  // decoder accepts at most 65,536 response bytes. Reserve space for the API
+  // envelope and require an explicit failure if the account has grown beyond
+  // this first bounded export version. Future pagination needs its own review.
+  const byteLength = new TextEncoder().encode(JSON.stringify(payload)).length;
+  if (byteLength > 60_000) throw new Error("Account export exceeds byte budget");
+  return payload;
 }

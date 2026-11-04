@@ -142,7 +142,7 @@ private fun JodloApp(activity: ComponentActivity) {
             when (section) {
                 "customer" -> GuestDiscovery(customerCatalog, liveApiConfigured = sender != null)
                 "worker" -> WorkerDashboard(activity, session, writes, catalog)
-                else -> AccountDashboard(session)
+                else -> AccountDashboard(activity, session)
             }
         }
     }

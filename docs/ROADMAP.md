@@ -1,3 +1,9 @@
+## 2026-11-04 — account privacy and cross-mode sign-in usable journey
+
+- [x] PR #225 merged: server-owned private Account overview and per-account D1 export, native Account dashboard, owner isolation and session revocation.
+- [ ] Current engineering: allow direct Google sign-in on Account tab, strictly validated data export → user-chosen Android JSON document, local session invalidation, bilingual UX, fail-closed data-size limit. Verify exact PR-head and merged-main CI, then physical phone acceptance; this is not full-provider data portability.
+- [ ] Next whole-product work: useful moderated Worker service/profile and guided edit, review/activate source-backed Catalog, Customer discovery incl. consensual coarse area, full direct Agora/FCM calling and user safety, R2, admin/deletion, eligible payments and release recovery. Keep full behavior map as the cross-feature contract.
+
 ## 2026-11-04 — complete Finworkar-behavior rebuild, founder priority
 
 Read [the full feature map and feature-group acceptance gates](FINWORKAR_JODLO_BEHAVIOR_PARITY_2026-11-04.md). **Do not restart a series of one-service-preview or test-only pseudo-milestones.** Build complete user journeys and verified provider-backed functionality, keeping old Finworkar strictly read-only and JODLO's own product decisions.
