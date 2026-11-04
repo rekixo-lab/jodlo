@@ -85,3 +85,9 @@ The Markdown renderer refuses fabricated approvals, exposes zero SQL, and
 escapes untrusted original text before writing tables. The real D1 still has
 zero approved Categories as last checked by the founder; a new remote read
 would be required to claim a later state.
+
+## Public GitHub reviewer worksheet snapshot — 4 November 2026
+
+The [first five complete bilingual Category and Service worksheets](reference/JODLO_FIRST_FIVE_FULL_SERVICE_REVIEW_2026-11-04.md) are now readable on GitHub without a local Node environment. These are the **exact first five original priority Categories**: AC Technician (10), Home Tutor (8), Electrician (10), Two-Wheeler Mechanic (10), and Computer/Laptop Repair (10). Every original Service ID and both original names are shown, along with source flags/ambiguous parents and the three **NOT_STARTED** independent review gates per Category. The pinned source still covers **all 889 Categories and 7,267 Services**, not only these first five.
+
+The committed worksheet is mechanically checked against the existing `catalog-review-dossier` renderer and historical source by `npm run catalog:first-five-handoff -- --check`; `npm run reference:check` and GitHub Foundation CI also enforce byte-identical parity. It is a **static original-source snapshot**, not a live reviewer progress feed, legal assessment, finalized translation, founder approval or production import. For new reviewer tasks use [coordination #221](https://github.com/rekixo-lab/jodlo/issues/221) and [Category review issues #216–#220](https://github.com/rekixo-lab/jodlo/issues/216). Do not commit identity documents/credentials, invent signoffs or seed production D1.
