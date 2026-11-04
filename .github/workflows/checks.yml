@@ -22,8 +22,8 @@ jobs:
         run: npm run design:check
       - name: Enforce founder privacy, route, language and no-deploy safety (no deps)
         run: npm run founder:check
-      - name: Emit first five source-pinned review sheet for prepublication check (no writes)
-        run: node scripts/catalog-first-five-handoff.mjs --emit
+      - name: Verify committed first five full-Service reviewer handoff matches pinned source (no writes)
+        run: node scripts/catalog-first-five-handoff.mjs --check
       - name: Verify uploaded historical bilingual catalog reference (no deps)
         run: npm run reference:check
       - name: Enforce exhaustive Kotlin JVM suite wiring (no deps)
