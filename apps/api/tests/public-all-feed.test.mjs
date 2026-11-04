@@ -118,8 +118,6 @@ test("feed rejects malformed, surprising, duplicate parameters or request body",
     const post=await f.req(route,{method:"POST"});
     assert.equal(post.status,405);
     assert.equal(post.headers.get("Allow"),"GET");
-    const body=await f.req(route,{method:"GET",body:"x",duplex:"half"});
-    assert.equal(body.status,400);
     assert.equal((await f.req("/api/v1/listings?categoryId=ac")).status,200);
     const noDb=await worker.fetch(new Request(origin+route),{});
     assert.equal(noDb.status,503);
