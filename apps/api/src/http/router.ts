@@ -278,9 +278,9 @@ export async function handleRequest(
     }
   }
   if (url.pathname === "/api/v1/me/listings") {
-    if(!["GET","POST","PATCH","DELETE"].includes(request.method)) {
+    if(!["GET","POST","PUT","DELETE"].includes(request.method)) {
       return json({ok:false,error:{code:"METHOD_NOT_ALLOWED",message:"Method not allowed"}},405,
-        {Allow:"GET, POST, PATCH, DELETE"});
+        {Allow:"GET, POST, PUT, DELETE"});
     }
     if(!env.DB)return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Listings unavailable"}},503);
     const token=bearerToken(request);
@@ -311,7 +311,7 @@ export async function handleRequest(
         if(!listing)return json({ok:false,error:{code:"FORBIDDEN",message:"Listing not eligible"}},403);
         return json({ok:true,data:{listing}});
       }
-      if(request.method==="PATCH") {
+      if(request.method==="PUT") {
         // Category-only edit: no new private fields or client-supplied actor.
         // Current worker+account, approved active destination, unique owner
         // category, moderation and expected previous Category are checked in
