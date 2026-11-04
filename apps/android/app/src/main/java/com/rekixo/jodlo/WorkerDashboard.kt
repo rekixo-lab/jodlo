@@ -455,13 +455,48 @@ internal fun WorkerDashboard(
                                             color = MaterialTheme.colorScheme.error)
                                         PublicPreview.UNCHECKED -> { /* Never claim visibility from owner state. */ }
                                     }
-                                    JodloButton(
-                                        onClick = {
-                                            val id = selectedListing ?: return@JodloButton
-                                            mutate { writes.unpublish(id) }
-                                        },
-                                        enabled = canWrite,
-                                    ) { Text(stringResource(R.string.worker_unpublish_selected)) }
+                                    if (guided.pendingUnpublishId != selectedListing) {
+                                        JodloTextAction(
+                                            onClick = {
+                                                val row = ownListings.firstOrNull {
+                                                    it.id == selectedListing
+                                                } ?: return@JodloTextAction
+                                                guided = guided.reviewUnpublish(
+                                                    row, ownListings,
+                                                    session?.accountExportSessionMarker(),
+                                                )
+                                            },
+                                            enabled = canWrite,
+                                        ) { Text(stringResource(R.string.guided_unpublish_review)) }
+                                    } else {
+                                        Text(stringResource(R.string.guided_unpublish_warning),
+                                            color = MaterialTheme.colorScheme.error)
+                                        Row(horizontalArrangement = Arrangement.spacedBy(
+                                            JodloSizes.SmallGap)) {
+                                            JodloTextAction(
+                                                onClick = {
+                                                    guided = guided.cancelUnpublish()
+                                                },
+                                                enabled = canWrite,
+                                            ) { Text(stringResource(R.string.guided_post_back)) }
+                                            JodloButton(
+                                                onClick = {
+                                                    val id = guided.unpublishConfirmed(
+                                                        session?.accountExportSessionMarker(),
+                                                        ownListings,
+                                                    ) ?: return@JodloButton
+                                                    mutate { writes.unpublish(id) }
+                                                },
+                                                enabled = canWrite &&
+                                                    guided.unpublishConfirmed(
+                                                        session?.accountExportSessionMarker(),
+                                                        ownListings,
+                                                    ) != null,
+                                            ) {
+                                                Text(stringResource(R.string.worker_unpublish_selected))
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
