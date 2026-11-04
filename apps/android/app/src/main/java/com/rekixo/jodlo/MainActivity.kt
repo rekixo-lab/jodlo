@@ -7,6 +7,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -123,7 +125,9 @@ private fun JodloApp(activity: ComponentActivity) {
     var section by rememberSaveable { mutableStateOf("customer") }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = JodloSizes.ScreenPadding),
+            Modifier.fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = JodloSizes.ScreenPadding),
             horizontalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap),
         ) {
             JodloChip(
