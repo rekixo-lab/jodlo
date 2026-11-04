@@ -256,6 +256,7 @@ object JodloReplyDecoder {
                     FailureKind.FORBIDDEN -> reply.status == 403
                     FailureKind.BAD_INPUT -> reply.status == 400 || reply.status == 405
                     FailureKind.NOT_FOUND -> reply.status == 404
+                    FailureKind.CONFLICT -> reply.status == 409
                     FailureKind.RATE_LIMITED -> reply.status == 429
                     FailureKind.SERVICE_UNAVAILABLE -> reply.status == 503
                     else -> false
