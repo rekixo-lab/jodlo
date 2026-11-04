@@ -18,7 +18,15 @@ data class PublicCategory(val id: String, val slug: String, val name: String)
 data class PublicListing(val id: String, val categoryId: String)
 /** Optional public Listing pagination: no owner, timestamp, location or contact. */
 data class PublicListingPage(val listings: List<PublicListing>, val nextCursor: String?)
-data class OwnListing(val id: String, val categoryId: String, val visible: Boolean)
+/** Private publication intent for authenticated owner Management pages only.
+ * Not a Worker moderation reason, public status, approval or contact grant.
+ * null means a legacy/read-only reply that cannot authorize management UI.
+ */
+enum class OwnPublicationStatus { PUBLISHED, UNPUBLISHED }
+data class OwnListing(
+    val id: String, val categoryId: String, val visible: Boolean,
+    val publicationStatus: OwnPublicationStatus? = null,
+)
 /** Separate opt-in PRIVATE owner page. No worker account or moderation fields. */
 data class OwnListingPage(val listings: List<OwnListing>, val nextCursor: String?)
 /** Public Search keyset page (not a Category approval, alias or choice).
@@ -367,6 +375,38 @@ object JodloReplyDecoder {
         if (next != null && !opaqueId.matches(next)) bad()
         OwnListingPage(rows, next)
     }
+    /** Explicit MANAGEMENT owner page: the extra status is required here
+     * and forbidden in every legacy/public parser. 'published' but invisible
+     * is possible after Category/moderation changes; it must NOT be presented
+     * as Worker-paused. No moderation verdict or owner identity is returned.
+     */
+    fun managedOwnListingPage(reply: TransportReply): ApiOutcome<OwnListingPage> =
+        decode(reply) { data ->
+            data.keysOnly(setOf("listings", "nextCursor"))
+            val raw = data.required("listings").arr()
+            if (raw.size > 25) bad()
+            val rows = raw.map { element ->
+                val row = element.obj()
+                row.keysOnly(setOf("id", "categoryId", "visible", "publicationStatus"))
+                val listing = listing(JsonObject(mapOf(
+                    "id" to row.required("id"),
+                    "categoryId" to row.required("categoryId"),
+                )))
+                val visible = row.required("visible").bool()
+                val publication = when (row.required("publicationStatus").str()) {
+                    "published" -> OwnPublicationStatus.PUBLISHED
+                    "unpublished" -> OwnPublicationStatus.UNPUBLISHED
+                    else -> bad()
+                }
+                if (visible && publication != OwnPublicationStatus.PUBLISHED) bad()
+                OwnListing(listing.id, listing.categoryId, visible, publication)
+            }
+            if (rows.map { it.id }.toSet().size != rows.size) bad()
+            val next = data.optionalString("nextCursor")
+            if (next != null && !opaqueId.matches(next)) bad()
+            OwnListingPage(rows, next)
+        }
+
     /** Only the exact private overview projection is accepted. Refuse any
      * unexpected identity, contact, location, verification or token fields.
      */
