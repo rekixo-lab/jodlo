@@ -1,3 +1,9 @@
+## Progress checkpoint — native Customer Saved Services (4 November)
+
+A connected **Customer public Listing → deliberate Save → device-only Saved tab → fresh anonymous public eligibility GET → safe remove/clear** journey is being built. It uses only previously exposed public Listing/Category IDs, not account/identity data, location, contact, media or private synced interests; stored refs are never treated as still-public, verified, present or callable. It refuses synthetic debug preview persistence and never modifies the real service. [Complete acceptance and device/privacy scope](CUSTOMER_SAVED_SERVICES_2026-11-04.md).
+
+This advances Customer return/discovery behavior but is **not** full Finworkar parity: no useful public Worker profile, approved service details, consented area, live calls, moderation appeals or verified human Catalog readiness. Existing safe APIs stay unchanged; no new migration or provider deployment is activated.
+
 ## Progress checkpoint — real Worker service Category editing (4 November)
 
 Following native review/publishing (#227), the current feature branch implements **editing an already-owned Listing to another real reviewed Category** through the existing D1 worker_listings table and **no new sensitive fields**. Android compares old Category and new selection, requires a second explicit review, keeps the same Listing ID, and honors current owner/account generation. One authenticated D1 conditional UPDATE prevents stale, foreign, duplicate, inactive or moderated edits. Public Category listing and detail use the existing current eligibility joins rather than an optimistic device view. See [Category edit contract](WORKER_SERVICE_CATEGORY_EDIT_2026-11-04.md).

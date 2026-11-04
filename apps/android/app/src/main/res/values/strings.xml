@@ -130,4 +130,27 @@
     <string name="worker_edit_confirm">Save service category</string>
     <string name="worker_edit_cancel">Cancel editing</string>
     <string name="worker_edit_conflict">This service has changed, its replacement category is unavailable, or you already listed that work. Refresh My Services and start a new edit. No duplicate save was attempted.</string>
+
+    <string name="tab_saved">Saved</string>
+    <string name="saved_heading">Saved services on this device</string>
+    <string name="saved_device_notice">These are private bookmarks of public service references on this phone only. No Google sign-in, location, syncing or sharing. A bookmark never means the Worker is verified, currently available or ready to receive calls. Open each service to check current public status.</string>
+    <string name="saved_empty">No services saved yet. Open a public service in Customer and tap Save.</string>
+    <string name="saved_category_reference">Category ID: %1$s</string>
+    <string name="saved_unchecked_warning">Saved reference — current public status has not been checked.</string>
+    <string name="saved_check_now">Check current public status</string>
+    <string name="saved_add">Save this service on my device</string>
+    <string name="saved_remove">Remove from Saved</string>
+    <string name="saved_removed">Removed from this device.</string>
+    <string name="saved_storage_failed">Could not update device Saved items. No change was confirmed.</string>
+    <string name="saved_storage_failed_or_limit">Could not save this service. Device storage may be unavailable, or you have reached the 50-item limit.</string>
+    <string name="saved_clear_start">Clear my saved services</string>
+    <string name="saved_clear_warning">Remove every saved service reference from this phone? Your public services and JODLO account will not be changed.</string>
+    <string name="saved_cancel">Cancel</string>
+    <string name="saved_clear_confirm">Clear saved services</string>
+    <string name="saved_cleared">Saved services on this device were cleared.</string>
+    <string name="saved_back">Back to Saved services</string>
+    <string name="saved_currently_public">This exact service is currently returned by the public JODLO API. This is not contact or call permission.</string>
+    <string name="saved_not_public">The saved service is no longer public under its saved Category. It may have been unpublished, hidden or edited. You may remove the bookmark.</string>
+    <string name="saved_unavailable">Current status could not be confirmed. The saved reference is not proof the service is available.</string>
+    <string name="saved_no_live_api">A configured live HTTPS JODLO API is needed to verify a saved service. Bookmarks can still be removed locally.</string>
 </resources>

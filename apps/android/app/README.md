@@ -1,3 +1,9 @@
+## 2026-11-04 — device-only Saved Services (Customer, not account sync)
+
+On an actual configured JODLO API, Customer may browse/search an approved Category, open a freshly public Listing, then explicitly **Save this service on my device**. A new fourth **Saved** top tab offers saved references (up to 50), **Check current public status**, remove one, or confirm-clearing them all. These are strictly public Listing IDs and Category IDs persisted on this Android device with no backup; they do **not** sync to Google or Cloudflare. A saved entry is never considered currently visible until an explicit new anonymous detail request confirms that same Category and ID. Stale/unpublished/changed-Category rows are not claimed public; network issues are shown as unknown, not hidden. The debug-only synthetic Customer samples can never be persisted.
+
+**Device validation outstanding:** configured real OAuth-free Customer API, human-approved active Category, fresh public Listing, Save/restart/re-check, Worker unpublish/category edit then stale check, large text/Hindi-English, clear/cancel and offline behavior. [Full safety/acceptance](../../../docs/CUSTOMER_SAVED_SERVICES_2026-11-04.md). No Android storage permission, provider call/notification, backend schema, Cloudflare deploy or historical Finworkar data import.
+
 ## 2026-11-04 — Edit an existing service Category without deleting/recreating it
 
 In Worker mode, sign in with Google and confirm your Worker draft. Load **My Services**, tap an owned Listing, then choose **Edit my service category**. Browse or search the actual active approved Category Catalog in Hindi/English; tap a different Category; select **Review category change**, then **Save service category**. Cancel/back are non-mutating. The old listing reference, moderation and published/unpublished status remain unchanged, while anonymous Customer Category results are freshly rechecked by D1.
