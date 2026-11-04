@@ -23,7 +23,7 @@ async function fixture() {
   const tokA=(await issueSession(adapter,a)).accessToken;
   const tokB=(await issueSession(adapter,b)).accessToken;
   async function send({id=own.id,expected="plumber",next="carpenter",token=tokA,
-    body,method="PATCH",path="/api/v1/me/listings",type="application/json"}={}) {
+    body,method="PUT",path="/api/v1/me/listings",type="application/json"}={}) {
     const payload=body===undefined?JSON.stringify({
       listingId:id,expectedCategoryId:expected,nextCategoryId:next}):body;
     const res=await worker.fetch(new Request(origin+path,{
@@ -94,7 +94,7 @@ test("stale expected category, cross-owner, duplicate and inactive destination a
   }finally{f.db.close()}
 });
 
-test("strict PATCH input, active worker, revocation, and no unapproved extra fields",async()=>{
+test("strict PUT input, active worker, revocation, and no unapproved extra fields",async()=>{
   const f=await fixture();try{
     const baseline=JSON.stringify({listingId:f.own.id,
       expectedCategoryId:"plumber",nextCategoryId:"carpenter"});
