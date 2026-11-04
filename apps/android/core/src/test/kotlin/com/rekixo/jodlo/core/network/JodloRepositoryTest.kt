@@ -655,5 +655,72 @@ fun main() {
         bad(FailureKind.OFFLINE_OR_TIMEOUT))
     check(offlineCalls==1)
 
+    // The new owner-only management view is an opt-in read. It cannot
+    // weaken old strict owner/public decoders or guess "paused" from invisible.
+    val managedRoute=JodloRoutes.managedOwnListingPage(TOKEN,limit=2)
+    check(managedRoute.method==HttpMethod.GET)
+    check(managedRoute.resource=="/api/v1/me/listings?limit=2&view=management")
+    check(managedRoute.headers()["Authorization"]=="Bearer $TOKEN")
+    check(managedRoute.bodyUtf8()==null)
+    check(!managedRoute.resource.contains(TOKEN))
+    val otherManagedId="22222222-2222-4222-8222-222222222222"
+    val managedJson="""{"listings":[
+        {"id":"$LISTING_ID","categoryId":"plumber","visible":false,"publicationStatus":"unpublished"},
+        {"id":"$otherManagedId","categoryId":"carpenter","visible":false,"publicationStatus":"published"}
+    ],"nextCursor":"$otherManagedId"}"""
+    var managedRequests=0
+    val managedRepo:ManagedOwnListingPageRepository=RemoteWorkerRepository(RequestSender { call ->
+        managedRequests++
+        check(call.resource==managedRoute.resource)
+        check(call.headers()["Authorization"]=="Bearer $TOKEN")
+        ok(managedJson)
+    })
+    val managed=managedRepo.managedOwnListingPage(TOKEN,limit=2)
+    check(managed==ApiOutcome.Ok(OwnListingPage(listOf(
+        OwnListing(LISTING_ID,"plumber",false,OwnPublicationStatus.UNPUBLISHED),
+        OwnListing(otherManagedId,"carpenter",false,OwnPublicationStatus.PUBLISHED),
+    ),otherManagedId)))
+    check(managedRequests==1)
+    check(JodloReplyDecoder.ownListingPage(ok(managedJson))==bad())
+    val correctOwnerJson="""{"listings":[{"id":"$LISTING_ID",
+        "categoryId":"plumber","visible":false}],"nextCursor":null}"""
+    check(JodloReplyDecoder.ownListingPage(ok(correctOwnerJson)) is ApiOutcome.Ok)
+    check(JodloReplyDecoder.managedOwnListingPage(ok(correctOwnerJson))==bad())
+    check(JodloRoutes.managedOwnListingPage(TOKEN,2,LISTING_ID).resource==
+        "/api/v1/me/listings?limit=2&view=management&after=$LISTING_ID")
+    requireRejected("management bad cursor") {
+        JodloRoutes.managedOwnListingPage(TOKEN,after="../owner")
+    }
+    requireRejected("management >25") {
+        JodloRoutes.managedOwnListingPage(TOKEN,limit=26)
+    }
+    requireRejected("management bad token") {
+        JodloRoutes.managedOwnListingPage("bad")
+    }
+    for (payload in listOf(
+        """{"listings":[{"id":"$LISTING_ID","categoryId":"plumber","visible":false,"publicationStatus":"verified"}],"nextCursor":null}""",
+        """{"listings":[{"id":"$LISTING_ID","categoryId":"plumber","visible":false,"publicationStatus":"hidden"}],"nextCursor":null}""",
+        """{"listings":[{"id":"$LISTING_ID","categoryId":"plumber","visible":true,"publicationStatus":"unpublished"}],"nextCursor":null}""",
+        """{"listings":[{"id":"$LISTING_ID","categoryId":"plumber","visible":false,"publicationStatus":"published","moderation":"hidden"}],"nextCursor":null}""",
+        """{"listings":[{"id":"$LISTING_ID","categoryId":"plumber","visible":false,"publicationStatus":"published","workerId":"secret"}],"nextCursor":null}""",
+        """{"listings":[{"id":"$LISTING_ID","categoryId":"plumber","visible":false,"publicationStatus":"published"},{"id":"$LISTING_ID","categoryId":"plumber","visible":false,"publicationStatus":"published"}],"nextCursor":null}""",
+        """{"listings":[{"id":"$LISTING_ID","categoryId":"plumber","visible":false,"publicationStatus":"published"}],"nextCursor":"$LISTING_ID"}""",
+        """{"listings":[{"id":"$LISTING_ID","categoryId":"plumber","visible":false,"publicationStatus":"published"}],"nextCursor":"../bad"}""",
+    )) {
+        val fake:ManagedOwnListingPageRepository=
+            RemoteWorkerRepository(RequestSender { ok(payload) })
+        check(fake.managedOwnListingPage(TOKEN,limit=2)==bad()) {
+            "Unsafe owner Management data accepted"
+        }
+    }
+    val managedOffline:ManagedOwnListingPageRepository=
+        RemoteWorkerRepository(RequestSender { throw IOException("PRIVATE_TOKEN") })
+    check(managedOffline.managedOwnListingPage(TOKEN)==bad(FailureKind.OFFLINE_OR_TIMEOUT))
+    val managedDenied:ManagedOwnListingPageRepository=RemoteWorkerRepository(RequestSender {
+        TransportReply(401,
+            """{"ok":false,"error":{"code":"UNAUTHORIZED","message":"private"}}""")
+    })
+    check(managedDenied.managedOwnListingPage(TOKEN)==bad(FailureKind.UNAUTHORIZED))
+
     println("JODLO repositories: typed browse/search, explicit worker publishing, mismatched response rejection and no auto-retry and public Listing pagination OK")
 }
