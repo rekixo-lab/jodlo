@@ -49,7 +49,7 @@ export function renderPinnedFirstFiveSheet(){
       typeof s.historicalNameHi==="string"&&s.historicalNameHi));
   }
   const markdown=renderCategoryReviewDossierMarkdown(dossier);
-  assert.equal((markdown.match(/\\| Source Service ID \\|/gu)||[]).length,5);
+  assert.equal(markdown.split("| Source Service ID |").length-1,5);
   return markdown;
 }
 export function assertPublishedFirstFiveSheet(published,expected){
