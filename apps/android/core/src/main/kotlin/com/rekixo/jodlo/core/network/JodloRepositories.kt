@@ -55,6 +55,16 @@ interface OwnListingPageRepository {
                        after: String? = null): ApiOutcome<OwnListingPage>
 }
 
+/** Opt-in existing-service Category edit. No separate Worker identity, owner
+ * ID in query, profile data, phone, GPS, price or media changes.
+ */
+interface OwnListingCategoryEditRepository {
+    fun editCategory(
+        session: String, listingId: String,
+        expectedCategoryId: String, nextCategoryId: String,
+    ): ApiOutcome<PublicListing>
+}
+
 /** A separate privileged surface: caller must possess a valid session and
  * explicitly supply a Category ID to publish; Search NEVER triggers posting.
  */
@@ -164,7 +174,7 @@ class RemoteCatalogRepository(private val sender: RequestSender) :
 }
 
 class RemoteWorkerRepository(private val sender: RequestSender) :
-    WorkerRepository, OwnListingPageRepository {
+    WorkerRepository, OwnListingPageRepository, OwnListingCategoryEditRepository {
     override fun myDraft(session: String): ApiOutcome<WorkerDraft> =
         performOnce(JodloRoutes.workerDraft(session), sender::send, JodloReplyDecoder::workerDraft)
 
@@ -201,6 +211,14 @@ class RemoteWorkerRepository(private val sender: RequestSender) :
         return performOnce(call, sender::send, JodloReplyDecoder::published)
             .validated { listing -> listing.categoryId == confirmedCategoryId }
     }
+
+    override fun editCategory(
+        session: String, listingId: String,
+        expectedCategoryId: String, nextCategoryId: String,
+    ): ApiOutcome<PublicListing> =
+        performOnce(JodloRoutes.editListingCategory(session, listingId,
+                expectedCategoryId, nextCategoryId), sender::send, JodloReplyDecoder::published)
+            .validated { it.id == listingId && it.categoryId == nextCategoryId }
 
     override fun unpublish(session: String, listingId: String): ApiOutcome<Boolean> =
         performOnce(JodloRoutes.unpublishListing(session, listingId),
