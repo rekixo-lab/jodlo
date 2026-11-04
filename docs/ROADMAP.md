@@ -1,3 +1,9 @@
+## 2026-11-04 — phone QA deferred; finish software journeys first
+
+**Owner instruction:** Stop treating each new APK/feature as a request for founder physical-phone testing. Do code+API+Android integration and automated CI for each cohesive milestone, then offer **one final full-app device acceptance matrix only when necessary complete features/provider gates exist**. [Single engineering backlog, ordered prerequisites and exit criteria: #235](https://github.com/rekixo-lab/jodlo/issues/235).
+
+New native Customer **Home / होम** uses only approved/current public Category pages and routes into existing Category/Search, all-public Services, Saved and Worker journeys. It does not invent Categories/Workers, use GPS or contact, and deep-linked Category still performs a fresh public Listing read. [API/UI, stale-data and non-phone validation contract](CUSTOMER_HOME_APPROVED_DISCOVERY_2026-11-04.md). This is one software feature, **not** complete Finworkar parity, current production deployment or a reason to test a physical phone.
+
 ## 2026-11-04 — all-Category public Services feed build (PR/CI pending)
 
 - [ ] Enable a real Customer journey across **all currently approved public Categories** using one opt-in, nonpersonal, paginated all-Category Listing feed and live-only native Services tab. Preserve old Category browse and fresh server-owned Listing eligibility. [Acceptance and safety](CUSTOMER_ALL_PUBLIC_SERVICES_FEED_2026-11-04.md).

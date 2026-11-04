@@ -142,6 +142,51 @@ fun main() {
     })
     check(disconnectedFeed.allPublicListings()==bad(FailureKind.OFFLINE_OR_TIMEOUT))
 
+    // Home is an anonymous, live-only entry into existing verified Catalog
+    // pages: no synthetic "featured workers", stale language/filter tiles,
+    // overlapping pages, or pre-approved Category claims.
+    val ac=PublicCategory("ac","ac","एसी")
+    val tutor=PublicCategory("tutor","tutor","शिक्षक")
+    val initialHome=HomeCategorySnapshot.empty(Language.HI)
+    check(initialHome.select(Language.HI,false,ac)==null)
+    val firstHome=initialHome.withVerifiedPage(
+        Language.HI,false,null,listOf(ac),"0:ac",1)!!
+    check(firstHome.select(Language.HI,false,ac)==ac)
+    check(firstHome.select(Language.EN,false,ac)==null)
+    check(firstHome.select(Language.HI,true,ac)==null)
+    check(firstHome.select(Language.HI,false,
+        PublicCategory("ac","ac","Unapproved replacement"))==null)
+    check(firstHome.select(Language.HI,false,tutor)==null)
+    check(firstHome.withVerifiedPage(Language.EN,false,"0:ac",
+        listOf(tutor),null,1)==null)
+    check(firstHome.withVerifiedPage(Language.HI,true,"0:ac",
+        listOf(tutor),null,1)==null)
+    check(firstHome.withVerifiedPage(Language.HI,false,"0:fake",
+        listOf(tutor),null,1)==null)
+    check(firstHome.withVerifiedPage(Language.HI,false,"0:ac",
+        listOf(ac),null,1)==null)
+    check(firstHome.withVerifiedPage(Language.HI,false,"0:ac",
+        emptyList(),null,1)==null)
+    check(firstHome.withVerifiedPage(Language.HI,false,"0:ac",
+        listOf(tutor),"0:ac",1)==null)
+    val fullHome=firstHome.withVerifiedPage(
+        Language.HI,false,"0:ac",listOf(tutor),null,1)!!
+    check(fullHome.categories==listOf(ac,tutor))
+    check(fullHome.nextCursor==null)
+    check(fullHome.select(Language.HI,false,tutor)==tutor)
+    check(fullHome.withVerifiedPage(Language.HI,false,"0:ac",
+        listOf(tutor),null,1)==null)
+    check(HomeCategorySnapshot.empty(Language.EN,true).withVerifiedPage(
+        Language.EN,true,null,emptyList(),null,10)!=null)
+    check(HomeCategorySnapshot.empty(Language.HI,false).withVerifiedPage(
+        Language.HI,false,null,listOf(ac,ac),null,2)==null)
+    check(HomeCategorySnapshot.empty(Language.HI,false).withVerifiedPage(
+        Language.HI,false,null,listOf(ac),"bad",1)==null)
+    check(HomeCategorySnapshot.empty(Language.HI,false).withVerifiedPage(
+        Language.HI,false,null,listOf(ac),"0:ac",0)==null)
+    check(HomeCategorySnapshot.empty(Language.HI,false).withVerifiedPage(
+        Language.HI,false,null,listOf(ac),"0:ac",26)==null)
+
     val catalog: CatalogRepository = RemoteCatalogRepository(sender)
     val worker: WorkerRepository = RemoteWorkerRepository(sender)
     val browse = catalog.browse(Language.HI,limit=2)

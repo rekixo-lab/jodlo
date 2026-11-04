@@ -1,3 +1,9 @@
+## 2026-11-04 — native Home journey and deferred single final phone QA
+
+The first Home tab now offers real bilingual approved Category paging/filtering and user-directed entry to Customer Search, all-current-public Services feed, device Saved and Worker mode. Category cards are exact-current public Catalog rows with locale/filter/cursor guards; tapping one makes a fresh server-controlled Listing read. This is **not** Group/Family taxonomy, a useful disclosed public Worker profile, location relevance, media or live calling. [Current Home contract](CUSTOMER_HOME_APPROVED_DISCOVERY_2026-11-04.md).
+
+The founder requested **no more incremental physical-phone testing** until engineering and required real-provider/reviewer gates are ready for one integrated release-candidate test. Track remaining full-product implementation under [#235](https://github.com/rekixo-lab/jodlo/issues/235). Android CI remains mandatory; physical QA is deferred, not waived.
+
 ## 2026-11-04 — human-readable service labels across current Customer and Worker journeys
 
 New read-only approved Category ID lookup on the preexisting Catalog route lets device-only Saved references and authenticated Worker owner listing rows display **current approved Hindi/English Category names**, rather than only opaque IDs. No new personally identifying data or approval authority is introduced, and public Saved Listing eligibility remains a separate fresh GET. Display is context/account/language-scoped and only after deliberate request. [Implementation/acceptance](APPROVED_CATEGORY_LABELS_OWNER_SAVED_2026-11-04.md).

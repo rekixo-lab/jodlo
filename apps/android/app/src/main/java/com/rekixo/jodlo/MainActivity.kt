@@ -64,6 +64,14 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/** In-memory public navigation only; never persist a Home selected Category
+ * as proof that a Worker currently exists or is contactable.
+ */
+private data class HomeCategorySelection(
+    val category: PublicCategory,
+    val language: Language,
+)
+
 /** Native app entrypoint; Google sign-in is attempted only with explicit configuration. */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -126,7 +134,8 @@ private fun JodloApp(activity: ComponentActivity) {
     DisposableEffect(writes) {
         onDispose { writes?.close() }
     }
-    var section by rememberSaveable { mutableStateOf("customer") }
+    var homeCategory by remember { mutableStateOf<HomeCategorySelection?>(null) }
+    var section by rememberSaveable { mutableStateOf("home") }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Row(
             Modifier.fillMaxWidth()
@@ -135,8 +144,13 @@ private fun JodloApp(activity: ComponentActivity) {
             horizontalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap),
         ) {
             JodloChip(
+                selected = section == "home",
+                onClick = { homeCategory = null; section = "home" },
+                label = { Text(stringResource(R.string.tab_home)) },
+            )
+            JodloChip(
                 selected = section == "customer",
-                onClick = { section = "customer" },
+                onClick = { homeCategory = null; section = "customer" },
                 label = { Text(stringResource(R.string.tab_customer)) },
             )
             if (catalog != null) {
@@ -184,9 +198,21 @@ private fun JodloApp(activity: ComponentActivity) {
         }
         Box(Modifier.weight(1f)) {
             when (section) {
+                "home" -> CustomerHome(
+                    repository = catalog,
+                    openCategory = { category, language ->
+                        homeCategory = HomeCategorySelection(category, language)
+                        section = "customer"
+                    },
+                    openBrowse = { homeCategory = null; section = "customer" },
+                    openServices = { if (catalog != null) section = "feed" },
+                    openSaved = { section = "saved" },
+                    openWorker = { section = "worker" },
+                )
                 "customer" -> GuestDiscovery(
                     customerCatalog, liveApiConfigured = sender != null,
                     saved = savedServices, onSaveToggle = ::toggleSaved,
+                    homeCategory = homeCategory,
                 )
                 "saved" -> SavedServicesDashboard(
                     catalog, savedServices, ::removeSaved, ::clearSaved,
@@ -226,9 +252,13 @@ private fun GuestDiscovery(
     liveApiConfigured: Boolean,
     saved: SavedPublicServices,
     onSaveToggle: (PublicListing) -> Boolean,
+    homeCategory: HomeCategorySelection? = null,
 ) {
     val scope = rememberCoroutineScope()
-    var language by remember { mutableStateOf(Language.HI) }
+    var language by remember { mutableStateOf(homeCategory?.language ?: Language.HI) }
+    var homeEntryPending by remember(homeCategory) {
+        mutableStateOf(homeCategory != null)
+    }
     // Published listing existence is NOT online presence, busy status or
     // permission to initiate an Agora call.
     var publishedOnly by rememberSaveable { mutableStateOf(false) }
@@ -551,6 +581,14 @@ private fun GuestDiscovery(
         hints = CustomerLiveSuggestions.project(normalized, requestedLanguage, outcome)
     }
 
+    fun exitCategory() {
+        // A direct Home entry had no prior Customer Browse page. Returning
+        // must make a fresh, active-only Catalog GET, not show an empty fake page.
+        val needsBrowse = homeCategory != null && categories.isEmpty()
+        backToCategories()
+        if (needsBrowse) refreshBrowse()
+    }
+
     // Language and injected API-origin changes invalidate all existing public
     // data. A stale asynchronous response can never cross that boundary.
     LaunchedEffect(language, repository, publishedOnly) {
@@ -566,10 +604,20 @@ private fun GuestDiscovery(
         listingCursor = null
         failure = null
         pageFailure = false
-        if (repository != null) refreshBrowse()
+        if (repository != null) {
+            val homeSelection = homeCategory?.takeIf { homeEntryPending }
+            homeEntryPending = false
+            if (homeSelection != null && language == homeSelection.language) {
+                // Category was freshly public at Home tap time. Its Listings
+                // still require a new server-owned eligibility check.
+                showListings(homeSelection.category)
+            } else {
+                refreshBrowse()
+            }
+        }
     }
     BackHandler(enabled = selected != null) {
-        if (detailRequested != null) backToListings() else backToCategories()
+        if (detailRequested != null) backToListings() else exitCategory()
     }
 
     Scaffold { insets ->
@@ -727,7 +775,7 @@ private fun GuestDiscovery(
                     item {
                         JodloTextAction(onClick = {
                             if (detailRequested != null) backToListings()
-                            else backToCategories()
+                            else exitCategory()
                         }) {
                             Text(stringResource(if (detailRequested != null)
                                 R.string.back_to_listings else R.string.back_action))

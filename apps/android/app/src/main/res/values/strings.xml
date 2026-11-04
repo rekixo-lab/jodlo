@@ -177,4 +177,16 @@
     <string name="feed_category_id">Category ID: %1$s</string>
     <string name="feed_select_to_recheck">Open to verify the current public listing. No call or contact is initiated.</string>
     <string name="feed_back">Back to all public services</string>
+    <string name="tab_home">Home</string>
+    <string name="home_heading">Find a service</string>
+    <string name="home_intro">Browse approved work categories or open all public services. No sign-in or location is required to discover services.</string>
+    <string name="home_browse_action">Browse and search categories</string>
+    <string name="home_services_action">Explore currently public services</string>
+    <string name="home_saved_action">My saved services</string>
+    <string name="home_worker_action">Offer a service as a Worker</string>
+    <string name="home_category_heading">Approved work categories</string>
+    <string name="home_category_notice">Only active approved categories are shown. A category does not mean a Worker is online, verified or ready to take a call.</string>
+    <string name="home_open_category">Open current public listings for this category</string>
+    <string name="home_refresh">Refresh approved categories</string>
+    <string name="home_no_live_api">A configured JODLO HTTPS API is required for live categories. The Customer screen can offer a separate offline developer sample in a debug build.</string>
 </resources>
