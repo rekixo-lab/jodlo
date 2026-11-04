@@ -70,7 +70,7 @@ export async function hasEmptyBody(request: Request): Promise<boolean> {
  * This is deliberately narrower than all valid JSON, not a general API.
  */
 const RESUME_OWN_LISTING_JSON =
-  /^\\s*\\{\\s*"listingId"\\s*:\\s*"[A-Za-z0-9_-]{8,128}"\\s*,\\s*"expectedCategoryId"\\s*:\\s*"[A-Za-z0-9_-]{1,64}"\\s*\\}\\s*$/;
+  /^\s*\{\s*"listingId"\s*:\s*"[A-Za-z0-9_-]{8,128}"\s*,\s*"expectedCategoryId"\s*:\s*"[A-Za-z0-9_-]{1,64}"\s*\}\s*$/;
 
 const EDIT_CATEGORY_JSON =
   /^\s*\{\s*"listingId"\s*:\s*"[A-Za-z0-9_-]{8,128}"\s*,\s*"expectedCategoryId"\s*:\s*"[A-Za-z0-9_-]{1,64}"\s*,\s*"nextCategoryId"\s*:\s*"[A-Za-z0-9_-]{1,64}"\s*\}\s*$/;
