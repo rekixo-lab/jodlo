@@ -198,6 +198,14 @@ tasks.register<JavaExec>("verifyPrivateOwnerPages") {
     mainClass.set("com.rekixo.jodlo.core.network.HeadlessOwnerListingPaginationScopeTestKt")
 }
 
+tasks.register<JavaExec>("verifySavedServices") {
+    group = "verification"
+    description = "Verify strict anonymous local bookmarks, no auto-sync and fresh public service checks"
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.rekixo.jodlo.core.network.SavedPublicServicesTestKt")
+}
+
 /**
  * Release preflight: run EVERY explicit nonvisual Kotlin verification suite.
  * The matching task collection is lazy, so newly registered verify* JavaExec
