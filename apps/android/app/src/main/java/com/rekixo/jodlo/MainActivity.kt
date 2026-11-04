@@ -38,6 +38,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.rekixo.jodlo.core.network.ApiOutcome
 import com.rekixo.jodlo.core.network.FailureKind
+import com.rekixo.jodlo.core.network.CustomerLiveSuggestions
+import com.rekixo.jodlo.core.network.CustomerSuggestionPhase
+import com.rekixo.jodlo.core.network.CustomerSuggestionView
 import com.rekixo.jodlo.core.network.HeadlessWorkerWriteScope
 import com.rekixo.jodlo.core.network.HttpsTransport
 import com.rekixo.jodlo.core.network.InMemorySessionCoordinator
@@ -57,6 +60,7 @@ import com.rekixo.jodlo.ui.theme.JodloChip
 import com.rekixo.jodlo.ui.theme.JodloSearchField
 import com.rekixo.jodlo.ui.theme.JodloSizes
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -236,6 +240,11 @@ private fun GuestDiscovery(
     var invalidQuery by remember { mutableStateOf(false) }
     var requestRevision by remember { mutableIntStateOf(0) }
     var savedFailed by remember { mutableStateOf(false) }
+    // The existing API receives typed text ONLY after a deliberate opt-in.
+    // No saved search history, no auth token, no location or background polling.
+    var hintsEnabled by rememberSaveable { mutableStateOf(false) }
+    var hintsDismissed by remember { mutableStateOf(false) }
+    var hints by remember { mutableStateOf(CustomerSuggestionView(CustomerSuggestionPhase.OFF)) }
 
     fun backToListings() {
         requestRevision++
@@ -266,6 +275,7 @@ private fun GuestDiscovery(
         val revision = ++requestRevision
         val requestedLanguage = language
         feedMode = FeedMode.BROWSE
+        hintsDismissed = true
         submittedQuery = ""
         selected = null
         categories = emptyList()
@@ -307,6 +317,7 @@ private fun GuestDiscovery(
         val requestedLanguage = language
         val revision = ++requestRevision
         submittedQuery = query
+        hintsDismissed = true
         feedMode = FeedMode.SEARCH
         selected = null
         categories = emptyList()
@@ -499,6 +510,35 @@ private fun GuestDiscovery(
         }
     }
 
+    /** One read-only suggestion probe at most per 450ms pause. Compose
+     * cancels a prior effect when input, consent, language, filter, API or
+     * Customer destination changes. Already-sent HTTP may finish later, but
+     * no canceled result is allowed to update the current visible hints.
+     * Search/selection stay explicit and use the unchanged server contract.
+     */
+    LaunchedEffect(repository, language, publishedOnly, searchText,
+        hintsEnabled, hintsDismissed, selected) {
+        val client = repository
+        val normalized = CustomerLiveSuggestions.normalizedQuery(searchText)
+        hints = when {
+            !hintsEnabled || hintsDismissed || selected != null || client == null ->
+                CustomerSuggestionView(CustomerSuggestionPhase.OFF)
+            normalized == null -> CustomerSuggestionView(CustomerSuggestionPhase.TYPE_MORE)
+            else -> CustomerSuggestionView(CustomerSuggestionPhase.LOADING)
+        }
+        if (client == null || normalized == null || !hintsEnabled ||
+            hintsDismissed || selected != null) return@LaunchedEffect
+        delay(CustomerLiveSuggestions.DEBOUNCE_MILLIS)
+        val requestedLanguage = language
+        val requestedPublishedOnly = publishedOnly
+        val outcome = publicRead {
+            client.search(normalized, requestedLanguage,
+                availableOnly = requestedPublishedOnly, includeChoices = true,
+                limit = CustomerLiveSuggestions.MAX_RESULTS)
+        }
+        hints = CustomerLiveSuggestions.project(normalized, requestedLanguage, outcome)
+    }
+
     // Language and injected API-origin changes invalidate all existing public
     // data. A stale asynchronous response can never cross that boundary.
     LaunchedEffect(language, repository, publishedOnly) {
@@ -573,7 +613,11 @@ private fun GuestDiscovery(
                     item {
                         JodloSearchField(
                             value = searchText,
-                            onValueChange = { searchText = it; invalidQuery = false },
+                            onValueChange = {
+                                searchText = it
+                                invalidQuery = false
+                                hintsDismissed = false
+                            },
                             label = { Text(stringResource(R.string.search_label)) },
                             modifier = Modifier.fillMaxWidth(),
                         )
@@ -583,6 +627,68 @@ private fun GuestDiscovery(
                             stringResource(R.string.search_validation),
                             color = MaterialTheme.colorScheme.error,
                         )
+                    }
+                    item {
+                        JodloChip(
+                            selected = hintsEnabled,
+                            onClick = {
+                                hintsEnabled = !hintsEnabled
+                                hintsDismissed = false
+                            },
+                            label = { Text(stringResource(R.string.customer_live_hints_switch)) },
+                        )
+                        if (hintsEnabled) {
+                            Text(stringResource(if (liveApiConfigured)
+                                R.string.customer_live_hints_network_notice
+                            else R.string.customer_live_hints_demo_notice),
+                                style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                    if (hintsEnabled && !hintsDismissed) {
+                        when (hints.phase) {
+                            CustomerSuggestionPhase.LOADING -> item {
+                                Text(stringResource(R.string.customer_live_hints_loading),
+                                    style = MaterialTheme.typography.bodySmall)
+                            }
+                            CustomerSuggestionPhase.CHOICES,
+                            CustomerSuggestionPhase.MATCHES -> {
+                                item {
+                                    Text(stringResource(if (
+                                        hints.phase == CustomerSuggestionPhase.CHOICES)
+                                        R.string.customer_live_hints_ambiguous
+                                    else R.string.customer_live_hints_heading),
+                                        style = MaterialTheme.typography.titleMedium)
+                                }
+                                items(hints.categories, key = { "live-hint-" + it.id }) { category ->
+                                    JodloCard(
+                                        onClick = { showListings(category) },
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) {
+                                        Column(Modifier.padding(JodloSizes.CardPadding)) {
+                                            Text(category.name,
+                                                style = MaterialTheme.typography.titleMedium)
+                                            Text(stringResource(R.string.customer_live_hints_choose),
+                                                style = MaterialTheme.typography.bodySmall)
+                                        }
+                                    }
+                                }
+                                if (hints.moreMayExist) item {
+                                    JodloTextAction(onClick = { search() },
+                                        enabled = !loading) {
+                                        Text(stringResource(R.string.customer_live_hints_more))
+                                    }
+                                }
+                            }
+                            CustomerSuggestionPhase.EMPTY -> item {
+                                Text(stringResource(R.string.customer_live_hints_empty),
+                                    style = MaterialTheme.typography.bodySmall)
+                            }
+                            CustomerSuggestionPhase.UNAVAILABLE -> item {
+                                Text(stringResource(R.string.customer_live_hints_error),
+                                    style = MaterialTheme.typography.bodySmall)
+                            }
+                            else -> Unit
+                        }
                     }
                     item {
                         Row(horizontalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
