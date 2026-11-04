@@ -44,6 +44,7 @@ import com.rekixo.jodlo.core.network.PublicCategory
 import com.rekixo.jodlo.core.network.PublicListing
 import com.rekixo.jodlo.core.network.RemoteCatalogRepository
 import com.rekixo.jodlo.core.network.RemoteWorkerRepository
+import com.rekixo.jodlo.core.network.SavedPublicServices
 import com.rekixo.jodlo.core.network.asRequestSender
 import com.rekixo.jodlo.ui.theme.JodloPalette
 import com.rekixo.jodlo.ui.theme.JodloTheme
@@ -93,6 +94,29 @@ private fun JodloApp(activity: ComponentActivity) {
         sender?.let { InMemorySessionCoordinator(RemoteWorkerRepository(it), it) }
     }
     val writes = remember(session) { session?.let(::HeadlessWorkerWriteScope) }
+    val savedStore = remember(activity) { DeviceSavedServices(activity.applicationContext) }
+    var savedServices by remember(savedStore) { mutableStateOf(savedStore.read()) }
+    // All saved entries are anonymous, already public references and remain
+    // device-only. Every mutation is explicit; a failed local write is
+    // reported, never silently counted as saved.
+    fun toggleSaved(listing: PublicListing): Boolean {
+        val next = savedServices.toggle(listing)
+        if (next == savedServices || !savedStore.write(next)) return false
+        savedServices = next
+        return true
+    }
+    fun removeSaved(id: String): Boolean {
+        val next = savedServices.remove(id)
+        if (next == savedServices || !savedStore.write(next)) return false
+        savedServices = next
+        return true
+    }
+    fun clearSaved(): Boolean {
+        val next = savedServices.clear()
+        if (!savedStore.write(next)) return false
+        savedServices = next
+        return true
+    }
     DisposableEffect(writes) {
         onDispose { writes?.close() }
     }
@@ -117,6 +141,11 @@ private fun JodloApp(activity: ComponentActivity) {
                 onClick = { section = "account" },
                 label = { Text(stringResource(R.string.tab_account)) },
             )
+            JodloChip(
+                selected = section == "saved",
+                onClick = { section = "saved" },
+                label = { Text(stringResource(R.string.tab_saved)) },
+            )
         }
         if (BuildConfig.DEBUG && sender == null && section == "customer") {
             JodloTextAction(
@@ -140,7 +169,13 @@ private fun JodloApp(activity: ComponentActivity) {
         }
         Box(Modifier.weight(1f)) {
             when (section) {
-                "customer" -> GuestDiscovery(customerCatalog, liveApiConfigured = sender != null)
+                "customer" -> GuestDiscovery(
+                    customerCatalog, liveApiConfigured = sender != null,
+                    saved = savedServices, onSaveToggle = ::toggleSaved,
+                )
+                "saved" -> SavedServicesDashboard(
+                    catalog, savedServices, ::removeSaved, ::clearSaved,
+                )
                 "worker" -> WorkerDashboard(activity, session, writes, catalog)
                 else -> AccountDashboard(activity, session)
             }
@@ -168,7 +203,12 @@ private suspend fun <T> publicRead(action: () -> ApiOutcome<T>): ApiOutcome<T> =
     }
 
 @Composable
-private fun GuestDiscovery(repository: RemoteCatalogRepository?, liveApiConfigured: Boolean) {
+private fun GuestDiscovery(
+    repository: RemoteCatalogRepository?,
+    liveApiConfigured: Boolean,
+    saved: SavedPublicServices,
+    onSaveToggle: (PublicListing) -> Boolean,
+) {
     val scope = rememberCoroutineScope()
     var language by remember { mutableStateOf(Language.HI) }
     // Published listing existence is NOT online presence, busy status or
@@ -191,12 +231,14 @@ private fun GuestDiscovery(repository: RemoteCatalogRepository?, liveApiConfigur
     var pageFailure by remember { mutableStateOf(false) }
     var invalidQuery by remember { mutableStateOf(false) }
     var requestRevision by remember { mutableIntStateOf(0) }
+    var savedFailed by remember { mutableStateOf(false) }
 
     fun backToListings() {
         requestRevision++
         detailRequested = null
         detailResolved = null
         detailFailure = null
+        savedFailed = false
         loading = false
     }
 
@@ -206,6 +248,7 @@ private fun GuestDiscovery(repository: RemoteCatalogRepository?, liveApiConfigur
         detailRequested = null
         detailResolved = null
         detailFailure = null
+        savedFailed = false
         listings = emptyList()
         listingCursor = null
         loading = false
@@ -437,6 +480,7 @@ private fun GuestDiscovery(repository: RemoteCatalogRepository?, liveApiConfigur
         detailRequested = listing
         detailResolved = null
         detailFailure = null
+        savedFailed = false
         loading = true
         scope.launch {
             val outcome = publicRead {
@@ -627,6 +671,23 @@ private fun GuestDiscovery(repository: RemoteCatalogRepository?, liveApiConfigur
                                     Text(stringResource(R.string.listing_detail_private_notice))
                                 }
                             }
+                        }
+                    }
+                    // Only save a *freshly* server-confirmed public detail
+                    // in a real HTTPS build. Debug synthetic sample IDs are
+                    // never written to device Saved Services.
+                    if (detail != null && liveApiConfigured) {
+                        item {
+                            JodloButton(onClick = {
+                                savedFailed = !onSaveToggle(detail)
+                            }, enabled = !loading) {
+                                Text(stringResource(if (saved.contains(detail))
+                                    R.string.saved_remove else R.string.saved_add))
+                            }
+                        }
+                        if (savedFailed) item {
+                            Text(stringResource(R.string.saved_storage_failed_or_limit),
+                                color = MaterialTheme.colorScheme.error)
                         }
                     }
                     if (detailFailure != null) {
