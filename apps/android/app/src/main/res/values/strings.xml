@@ -84,7 +84,7 @@
 
     <string name="tab_account">Account</string>
     <string name="account_heading">My account</string>
-    <string name="account_sign_in_hint">Sign in with Google on the Worker tab to view your account. One account works for Customer and optional Worker mode.</string>
+    <string name="account_sign_in_hint">Sign in with Google to view your account. The same account works for Customer and optional Worker mode.</string>
     <string name="account_private_notice">Only you can view this account summary. Counts reflect current JODLO records, not identity verification or availability to take calls.</string>
     <string name="account_refresh">Refresh account information</string>
     <string name="account_read_failed">Current account data could not be confirmed. No change was made.</string>
@@ -100,4 +100,13 @@
     <string name="account_logout_all">Sign out on all devices</string>
     <string name="account_logged_out_all">All active sessions were revoked by the server.</string>
     <string name="account_logged_out_uncertain">Signed out on this phone. Server-wide revocation could not be confirmed.</string>
+
+    <string name="account_login_success">Sign-in confirmed by JODLO. Refresh to see current account information.</string>
+    <string name="account_login_failed">Sign-in could not be confirmed. No account access was granted.</string>
+    <string name="account_export_action">Save a copy of my account data</string>
+    <string name="account_export_privacy_notice">Your file may contain Google identity and account references. Select a private storage location; cloud destinations may upload the file. JODLO exports current database records only, not provider or backup records.</string>
+    <string name="account_export_saved">Your account data was saved to the location you selected.</string>
+    <string name="account_export_failed">Your data file could not be saved. If a partial file was created, delete it from the selected location.</string>
+    <string name="account_export_cancelled">No file was saved.</string>
+    <string name="account_export_stale">Your account session changed; the old export was discarded. Sign in and try again.</string>
 </resources>
