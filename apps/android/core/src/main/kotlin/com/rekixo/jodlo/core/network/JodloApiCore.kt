@@ -153,6 +153,12 @@ object JodloRoutes {
     fun accountOverview(token: String): ApiCall =
         ApiCall.getOwned("/api/v1/me/overview", token)
 
+    /** Explicit owner data portability; carries bearer in header only.
+     * The API response is private, and no export is fetched before a user action.
+     */
+    fun accountDataExport(token: String): ApiCall =
+        ApiCall.getOwned("/api/v1/me/data-export", token)
+
     fun myListings(token: String): ApiCall = ApiCall.getOwned("/api/v1/me/listings", token)
     /** Owner-only, opt-in keyset continuation: limit 1..25, opaque listing ID.
      * Never place a bearer or personal identifiers in URL/query.
