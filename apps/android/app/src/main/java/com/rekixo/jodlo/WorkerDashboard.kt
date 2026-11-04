@@ -224,7 +224,7 @@ internal fun WorkerDashboard(
         message = 0
         publicPreview = PublicPreview.UNCHECKED // Owner status is NOT a public read.
         clearApprovedNames()
-        guided = guided.cancelUnpublish()
+        guided = guided.cancelUnpublish().cancelResume()
         categoryEdit = categoryEdit.reset()
         val accountMarker = session.accountExportSessionMarker()
         scope.launch {
@@ -581,45 +581,102 @@ internal fun WorkerDashboard(
                                         },
                                         enabled = canWrite,
                                     ) { Text(stringResource(R.string.worker_edit_category)) }
-                                    if (guided.pendingUnpublishId != selectedListing) {
-                                        JodloTextAction(
-                                            onClick = {
-                                                val row = ownListings.firstOrNull {
-                                                    it.id == selectedListing
-                                                } ?: return@JodloTextAction
-                                                guided = guided.reviewUnpublish(
-                                                    row, ownListings,
-                                                    session?.accountExportSessionMarker(),
-                                                )
-                                            },
-                                            enabled = canWrite,
-                                        ) { Text(stringResource(R.string.guided_unpublish_review)) }
-                                    } else {
-                                        Text(stringResource(R.string.guided_unpublish_warning),
-                                            color = MaterialTheme.colorScheme.error)
-                                        Row(horizontalArrangement = Arrangement.spacedBy(
-                                            JodloSizes.SmallGap)) {
+                                    // 'visible=false' means only that the
+                                    // current owner page cannot certify
+                                    // public eligibility. It may be paused,
+                                    // moderated or attached to inactive work.
+                                    // Reactivation is never inferred here:
+                                    // only an exact paused CAS on the server
+                                    // can succeed.
+                                    val currentOwnRow = ownListings.firstOrNull {
+                                        it.id == selectedListing
+                                    }
+                                    if (currentOwnRow?.visible == true) {
+                                        if (guided.pendingUnpublishId != selectedListing) {
                                             JodloTextAction(
                                                 onClick = {
+                                                    guided = guided.cancelResume().reviewUnpublish(
+                                                        currentOwnRow, ownListings,
+                                                        session?.accountExportSessionMarker(),
+                                                    )
+                                                }, enabled = canWrite,
+                                            ) {
+                                                Text(stringResource(R.string.guided_unpublish_review))
+                                            }
+                                        } else {
+                                            Text(stringResource(R.string.guided_unpublish_warning),
+                                                color = MaterialTheme.colorScheme.error)
+                                            Row(horizontalArrangement = Arrangement.spacedBy(
+                                                JodloSizes.SmallGap)) {
+                                                JodloTextAction(onClick = {
                                                     guided = guided.cancelUnpublish()
-                                                },
-                                                enabled = canWrite,
-                                            ) { Text(stringResource(R.string.guided_post_back)) }
-                                            JodloButton(
-                                                onClick = {
+                                                }, enabled = canWrite) {
+                                                    Text(stringResource(R.string.guided_post_back))
+                                                }
+                                                JodloButton(onClick = {
                                                     val id = guided.unpublishConfirmed(
                                                         session?.accountExportSessionMarker(),
                                                         ownListings,
                                                     ) ?: return@JodloButton
                                                     mutate { writes.unpublish(id) }
-                                                },
-                                                enabled = canWrite &&
+                                                }, enabled = canWrite &&
                                                     guided.unpublishConfirmed(
                                                         session?.accountExportSessionMarker(),
                                                         ownListings,
-                                                    ) != null,
-                                            ) {
-                                                Text(stringResource(R.string.worker_unpublish_selected))
+                                                    ) != null) {
+                                                    Text(stringResource(R.string.worker_unpublish_selected))
+                                                }
+                                            }
+                                        }
+                                    } else if (currentOwnRow != null) {
+                                        if (guided.pendingResume?.id != currentOwnRow.id) {
+                                            JodloTextAction(onClick = {
+                                                guided = guided.cancelUnpublish().beginResume(
+                                                    currentOwnRow, ownListings,
+                                                    session?.accountExportSessionMarker(),
+                                                )
+                                                categoryEdit = categoryEdit.reset()
+                                            }, enabled = canWrite) {
+                                                Text(stringResource(R.string.worker_resume_review_action))
+                                            }
+                                        } else {
+                                            Text(stringResource(R.string.worker_resume_warning),
+                                                color = MaterialTheme.colorScheme.error)
+                                            Text(stringResource(R.string.worker_resume_category,
+                                                nameForOwnCategory(currentOwnRow.categoryId)
+                                                    ?: currentOwnRow.categoryId))
+                                            if (!guided.resumeReviewOpen) {
+                                                JodloButton(onClick = {
+                                                    guided = guided.reviewResume(
+                                                        session?.accountExportSessionMarker(),
+                                                    )
+                                                }, enabled = canWrite) {
+                                                    Text(stringResource(R.string.worker_resume_final_review))
+                                                }
+                                            } else {
+                                                Text(stringResource(R.string.worker_resume_final_warning),
+                                                    color = MaterialTheme.colorScheme.error)
+                                                JodloButton(onClick = {
+                                                    val command = guided.resumeConfirmed(
+                                                        session?.accountExportSessionMarker(),
+                                                        ownListings,
+                                                    ) ?: return@JodloButton
+                                                    mutate { writes.resumeOwnListing(
+                                                        command.listingId,
+                                                        command.expectedCategoryId,
+                                                    ) }
+                                                }, enabled = canWrite &&
+                                                    guided.resumeConfirmed(
+                                                        session?.accountExportSessionMarker(),
+                                                        ownListings,
+                                                    ) != null) {
+                                                    Text(stringResource(R.string.worker_resume_confirm))
+                                                }
+                                            }
+                                            JodloTextAction(onClick = {
+                                                guided = guided.cancelResume()
+                                            }, enabled = !busy) {
+                                                Text(stringResource(R.string.worker_resume_cancel))
                                             }
                                         }
                                     }
