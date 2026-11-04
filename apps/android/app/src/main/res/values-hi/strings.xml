@@ -189,4 +189,11 @@
     <string name="home_open_category">इस श्रेणी की वर्तमान सार्वजनिक सूचियाँ खोलें</string>
     <string name="home_refresh">स्वीकृत श्रेणियाँ ताज़ा करें</string>
     <string name="home_no_live_api">वास्तविक श्रेणियों के लिए कॉन्फ़िगर किया गया JODLO HTTPS API चाहिए। Debug बिल्ड में Customer स्क्रीन पर अलग ऑफ़लाइन नमूना मिल सकता है।</string>
+    <string name="worker_resume_review_action">इस सेवा को फिर चालू करने की समीक्षा करें</string>
+    <string name="worker_resume_warning">यह सेवा अभी सार्वजनिक नहीं है। इससे यह साबित नहीं होता कि आपने इसे बंद किया था: मॉडरेशन या निष्क्रिय श्रेणी के कारण भी यह छिप सकती है। केवल पहले अप्रकाशित की गई, वर्तमान में स्वीकृत सेवा दोबारा चालू हो सकती है।</string>
+    <string name="worker_resume_category">मौजूदा सेवा श्रेणी: %1$s</string>
+    <string name="worker_resume_final_review">दोबारा चालू करने की शर्तें जाँचें</string>
+    <string name="worker_resume_final_warning">यदि सर्वर पुष्टि करे कि यही पुरानी सेवा अप्रकाशित है, स्वीकृत है और अनुमति-प्राप्त है, तो उसी Listing संदर्भ के साथ तुरंत सार्वजनिक हो जाएगी। नई सेवा या सत्यापित वर्कर प्रोफ़ाइल नहीं बनेगी। बदली या अनुपलब्ध सेवा अस्वीकार होगी।</string>
+    <string name="worker_resume_confirm">पुष्टि: इस सेवा को फिर चालू करें</string>
+    <string name="worker_resume_cancel">दोबारा चालू करने की समीक्षा रद्द करें</string>
 </resources>
