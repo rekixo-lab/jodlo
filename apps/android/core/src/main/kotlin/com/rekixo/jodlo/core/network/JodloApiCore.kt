@@ -13,7 +13,7 @@ import javax.net.ssl.HttpsURLConnection
 
 /** Headless, Android-compatible Kotlin protocol; not an APK or approved UI. */
 enum class Language(val code: String) { EN("en"), HI("hi") }
-enum class HttpMethod { GET, POST, DELETE }
+enum class HttpMethod { GET, POST, PUT, DELETE }
 
 class ApiCall private constructor(
     val method: HttpMethod,
@@ -25,7 +25,7 @@ class ApiCall private constructor(
         require(resource.startsWith("/api/v1/") && !resource.contains('#') &&
                 !resource.any { it == '\r' || it == '\n' }) { "Invalid resource" }
         require(bearer == null || TOKEN.matches(bearer)) { "Invalid bearer" }
-        require(json == null || method == HttpMethod.POST) { "Body only for POST" }
+        require(json == null || method == HttpMethod.POST || method == HttpMethod.PUT) { "Body only for POST or PUT" }
     }
 
     fun headers(): Map<String, String> = buildMap {
@@ -43,6 +43,8 @@ class ApiCall private constructor(
         fun getOwned(path: String, bearer: String): ApiCall = ApiCall(HttpMethod.GET, path, bearer)
         fun post(path: String, bearer: String, body: String? = null): ApiCall =
             ApiCall(HttpMethod.POST, path, bearer, body)
+        fun put(path: String, bearer: String, body: String): ApiCall =
+            ApiCall(HttpMethod.PUT, path, bearer, body)
         fun delete(path: String, bearer: String): ApiCall =
             ApiCall(HttpMethod.DELETE, path, bearer)
 
@@ -181,6 +183,21 @@ object JodloRoutes {
         return ApiCall.post("/api/v1/me/listings", token,
             "{\"categoryId\":\"$categoryId\"}")
     }
+    /** Existing Listing ID is preserved; old Category compare-and-swap.
+     * No owner field, token in URL, GPS, price or public metadata change.
+     * An ambiguous PUT response must never be automatically retried.
+     */
+    fun editListingCategory(
+        token: String, listingId: String,
+        expectedCategoryId: String, nextCategoryId: String,
+    ): ApiCall {
+        requireListingId(listingId)
+        requireCategoryId(expectedCategoryId)
+        requireCategoryId(nextCategoryId)
+        require(expectedCategoryId != nextCategoryId) { "No category change" }
+        return ApiCall.put("/api/v1/me/listings", token,
+            """{"listingId":"$listingId","expectedCategoryId":"$expectedCategoryId","nextCategoryId":"$nextCategoryId"}""")
+    }
     fun unpublishListing(token: String, listingId: String): ApiCall {
         requireListingId(listingId)
         return ApiCall.delete("/api/v1/me/listings?id=${enc(listingId)}", token)
@@ -272,7 +289,11 @@ class HttpsTransport(origin: String) {
             for ((k,v) in request.headers()) c.setRequestProperty(k, v)
             val body = request.bodyUtf8()
             if (body != null) {
-                val maxBody = if (request.resource == "/api/v1/auth/google") 8192 else 256
+                val maxBody = when {
+                    request.resource == "/api/v1/auth/google" -> 8192
+                    request.method == HttpMethod.PUT -> 512
+                    else -> 256
+                }
                 require(body.size <= maxBody) { "Body over limit" }
                 c.doOutput = true
                 c.outputStream.use { it.write(body) }
