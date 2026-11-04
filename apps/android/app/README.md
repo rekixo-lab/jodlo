@@ -1,3 +1,11 @@
+## 2026-11-04 — Edit an existing service Category without deleting/recreating it
+
+In Worker mode, sign in with Google and confirm your Worker draft. Load **My Services**, tap an owned Listing, then choose **Edit my service category**. Browse or search the actual active approved Category Catalog in Hindi/English; tap a different Category; select **Review category change**, then **Save service category**. Cancel/back are non-mutating. The old listing reference, moderation and published/unpublished status remain unchanged, while anonymous Customer Category results are freshly rechecked by D1.
+
+An edit uses a new owner-only JSON `PUT /api/v1/me/listings` through the existing single-flight Coordinator/WorkerWriteScope. It sends only `listingId,expectedCategoryId,nextCategoryId`, with bearer in the header. The server validates all three and atomically fails if another device already changed the Category, the replacement is inactive, the owner has it listed already, moderation hid this listing, or ownership no longer matches. UI prompts manual refresh after conflict; uncertain outcomes block automatic replay, and a read-only recheck never proves the write committed.
+
+This does not store experience, price, address, profile description, location, photos or payment information and does not implement the whole old Finworkar guided form. [Backend, safety and real-device acceptance](../../../docs/WORKER_SERVICE_CATEGORY_EDIT_2026-11-04.md). The default APK without a configured real API/Google OAuth cannot perform this live change.
+
 ## 2026-11-04 — native Guided Work review before publishing/removing
 
 Worker service management now asks for an **explicit review step** after selecting an approved Category from real Hindi/English Browse/Search and before making the category-only public Listing. The reviewer sees the category name, exactly what public data exists, and clear warnings that photos, area, rates, identity validation and calling have **not** been implemented. Changing language/search/category/account invalidates review; a rejected/stale review cannot call the POST. A selected **owned** Listing requires a separate review to Unpublish and can cancel safely; uncertainty still uses the existing read-only reconciliation and never automatic retry.
