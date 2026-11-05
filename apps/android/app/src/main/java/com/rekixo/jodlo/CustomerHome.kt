@@ -51,6 +51,7 @@ internal fun CustomerHome(
     repository: RemoteCatalogRepository?,
     openCategory: (PublicCategory, Language) -> Unit,
     openBrowse: () -> Unit,
+    openHierarchy: () -> Unit,
     openServices: () -> Unit,
     openSaved: () -> Unit,
     openWorker: () -> Unit,
@@ -137,6 +138,12 @@ internal fun CustomerHome(
         item {
             JodloButton(onClick = openBrowse, modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.home_browse_action))
+            }
+        }
+        item {
+            JodloTextAction(onClick = openHierarchy, enabled = repository != null,
+                modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.home_hierarchy_action))
             }
         }
         item {
