@@ -98,6 +98,45 @@ test("hierarchy is optional to legacy fixtures but requires default-OFF full sch
   assert.match(unsafe.errors.join(" "),/must not seed/);
 });
 
+test("versioned Worker migration is optional to old fixtures but never seeds, exposes or bypasses trigger",async()=>{
+  const good=[
+    "ALTER TABLE worker_listings ADD COLUMN revision INTEGER NOT NULL DEFAULT 0 CHECK(revision BETWEEN 0 AND 2147483647);",
+    "CREATE TRIGGER worker_listing_bump_revision AFTER UPDATE OF category_id,status,moderation_status ON worker_listings",
+    "FOR EACH ROW WHEN OLD.category_id IS NOT NEW.category_id",
+    "OR OLD.status IS NOT NEW.status OR OLD.moderation_status IS NOT NEW.moderation_status",
+    "BEGIN UPDATE worker_listings SET revision=revision+1 WHERE id=NEW.id; END;",
+  ].join("\n");
+  const flag='\nconst mode==="revision"; params.get("revision");';
+  const approved=await fixture(files=>{
+    files["apps/api/src/http/router.ts"]+=flag;
+    files["infra/migrations/0011_worker_listing_revision.sql"]=good;
+  });
+  assert.deepEqual(approved.errors,[]);
+  const absentRoute=await fixture(files=>{
+    files["infra/migrations/0011_worker_listing_revision.sql"]=good;
+  });
+  assert.match(absentRoute.errors.join(" "),/needs exact private GET and CAS PUT/);
+  const noTrigger=await fixture(files=>{
+    files["apps/api/src/http/router.ts"]+=flag;
+    files["infra/migrations/0011_worker_listing_revision.sql"]=good
+      .replace("OLD.moderation_status IS NOT NEW.moderation_status","1=1");
+  });
+  assert.match(noTrigger.errors.join(" "),/trigger must bump all actual/);
+  const badSchema=await fixture(files=>{
+    files["apps/api/src/http/router.ts"]+=flag;
+    files["infra/migrations/0011_worker_listing_revision.sql"]=good
+      .replace("DEFAULT 0","DEFAULT 1")+"\nALTER TABLE worker_listings ADD COLUMN phone TEXT;";
+  });
+  assert.match(badSchema.errors.join(" "),/bounded default-zero column/);
+  assert.match(badSchema.errors.join(" "),/personal\/public fields/);
+  const seeded=await fixture(files=>{
+    files["apps/api/src/http/router.ts"]+=flag;
+    files["infra/migrations/0011_worker_listing_revision.sql"]=good+
+      "\nINSERT INTO worker_listings VALUES('fake');";
+  });
+  assert.match(seeded.errors.join(" "),/may not seed/);
+});
+
 test("unapproved workers, requests, area and listing routes fail",async()=>{
   for(const p of ["/api/v1/workers","/api/v1/requests","/api/v1/areas","/api/v1/contact"]){
     const result=await fixture(f=>{f["apps/api/src/http/router.ts"]+='\nif(url.pathname==="'+p+'")return;';});
