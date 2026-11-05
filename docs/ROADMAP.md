@@ -1,3 +1,9 @@
+## 2026-11-05 — Revision-safe selected Worker Service edit
+
+New opt-in, owner-only revision snapshot and atomic `?revision=1` v2 edit stops stale multi-device Category writes (including ABA when old v1 edits return to the original Category). Native bilingual guided Worker edit requires the fresh revision; one local-only D1 0011 column/trigger increments on actual old/new status/Category/moderation changes, preserving existing legacy and Customer public contracts. The same no-retry uncertainty fence remains mandatory. [Implementation contract](WORKER_REVISION_CAS_2026-11-05.md).
+
+**Still pending:** Foundation/Android exact-head and merged-main CI, controlled remote D1/API rollout, full approved Worker details/field retention/public profile, safety/providers/billing, and one final integrated physical-phone test (#235). No live migration/seed/deploy by this PR.
+
 ## 2026-11-05 — Worker editing: exact single-Service owner refresh
 
 One private, authenticated, **manual** current-Service read now supplements existing guided Category editing: a single owned Listing can be rechecked without a 100-row/paged scan. Same strict private four-field status projection, session/logout/stale-write fences, bilingual Android status and review invalidation; existing Customer public fields and owner Category mutation CAS remain unchanged. See [source implementation and remaining approvals](WORKER_EXACT_OWNER_RECHECK_2026-11-05.md).
