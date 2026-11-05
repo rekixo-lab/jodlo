@@ -1,5 +1,8 @@
 # JODLO
 
+> **CURRENT VERIFIED STATE — 2026-11-05:** Read the [code-versus-live evidence ledger](docs/CURRENT_STATE.md) **first**. It supersedes historical first-deploy and PR-pending paragraphs below. Main `fd5a5d0` and its Foundation/Android JDK17/21 checks passed; owner-confirmed 2026-11-03 API/Google integration is **not** proof the newest main was deployed. Last owner-read D1 had 0 approved Categories/0 public Listings; Marketplace release, real Agora/FCM, human Catalog signoffs and one deferred final physical-phone acceptance remain open. Do not deploy, seed, or modify Finworkar on the basis of CI alone.
+
+
 > **CURRENT VERIFIED HANDOFF — 2026-11-04 (read before historical Cloudflare notes):** The owner-operated live `jodlo-api` Worker was deployed to `https://api.jodlo.rekixo.com` and tested with real Google Sign-In and a private Worker draft on an Android device on 2026-11-03, as recorded in [STATUS](docs/STATUS.md). It is **not** a public Marketplace launch. The last owner-read production D1 still had **0 total/active Categories and 0 published Listings**, and no qualified human Catalog approvals. The newer app/API improvements in PRs #225–#231 are **merged on main with green Foundation/Android CI**, but those checks do not prove that this newer code has been redeployed or accepted on a phone. Historical “first Worker deploy pending” notices below describe an earlier point in time; do **not** redeploy on their authority. Next: [review coordination #221](https://github.com/rekixo-lab/jodlo/issues/221), source-backed human approvals, separately verified live acceptance and the full [product gap map](docs/FINWORKAR_JODLO_BEHAVIOR_PARITY_2026-11-04.md). No automatic Category seed, fake worker or public release.
 
 
