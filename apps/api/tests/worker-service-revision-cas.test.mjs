@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import worker from "../src/index.ts";
 import {openLocalDatabase} from "./helpers/local-db.mjs";
+import {editOwnListingCategoryVersioned,unpublishListing,resumeOwnListing,
+  editOwnListingCategory} from "../src/modules/workers/listings.ts";
 
 const origin="https://api.jodlo.rekixo.com";
 const owner="worker-revision-owner", stranger="worker-revision-other";
@@ -128,6 +130,36 @@ test("legacy and private moderator/publication updates bump revisions, no-op doe
    f.db.prepare("UPDATE categories SET is_active=1 WHERE id='painter'").run();
    assert.equal((await f.edit(4,"plumber","painter")).status,200);
    assert.equal((await f.snapshot()).data.data.listing.revision,5);
+ }finally{f.db.close();}
+});
+
+test("D1 meta.changes 2 from AFTER trigger does not misreport one owned update as conflict",async()=>{
+ const f=fixture();try{
+   // Node:sqlite reports 1 direct change; workerd D1 may include the
+   // revision trigger's own update and report 2. Never treat 0 as success.
+   const doubleChanges={prepare(query){
+     const stmt=f.adapter.prepare(query);
+     return {bind(...args){
+       const bound=stmt.bind(...args);
+       return {async run(){
+         const result=await bound.run();
+         return {meta:{changes:result.meta.changes===1?2:0}};
+       },async all(){return bound.all();}};
+     }};
+   }};
+   const edited=await editOwnListingCategoryVersioned(
+     doubleChanges,owner,listing(1),"plumber","carpenter",0);
+   assert.deepEqual(edited,{id:listing(1),categoryId:"carpenter",revision:1});
+   assert.equal(await unpublishListing(doubleChanges,owner,listing(1)),true);
+   assert.equal(await unpublishListing(doubleChanges,owner,listing(1)),false);
+   const resumed=await resumeOwnListing(doubleChanges,owner,listing(1),"carpenter");
+   assert.deepEqual(resumed,{id:listing(1),categoryId:"carpenter"});
+   const old=await editOwnListingCategory(
+     doubleChanges,owner,listing(1),"carpenter","painter");
+   assert.deepEqual(old,{id:listing(1),categoryId:"painter"});
+   assert.equal((await f.snapshot()).data.data.listing.revision,4);
+   assert.equal(await editOwnListingCategoryVersioned(
+     doubleChanges,owner,listing(1),"painter","plumber",0),null);
  }finally{f.db.close();}
 });
 
