@@ -35,7 +35,9 @@ test("Storage Access Framework is user-driven, strict UTF8 and bounded before pa
   assert.match(file, /out\.size\(\) \+ count > LocalPublicServiceBackup\.MAX_BYTES/);
   assert.match(file, /CodingErrorAction\.REPORT/g);
   assert.match(file, /openOutputStream\(uri, "wt"\)/);
-  assert.doesNotMatch(file, /readBytes\s*\(|takePersistableUriPermission\s*\(|SharedPreferences|HttpURLConnection|Log\.|println\(/);
+  // Comments may document forbidden APIs; check executable Kotlin only.
+  const executableFile = file.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "");
+  assert.doesNotMatch(executableFile, /readBytes\s*\(|takePersistableUriPermission\s*\(|SharedPreferences|HttpURLConnection|Log\.|println\(/);
   assert.doesNotMatch(ui, /startActivity|ACTION_SEND|Intent\.ACTION_SEND|ClipboardManager|WebView|Uri\.parse/);
 });
 
