@@ -240,6 +240,16 @@ object JodloRoutes {
         return ApiCall.getOwned(path, token)
     }
 
+    /** Exact current OWNER service, after deliberate selection only.
+     * Authentication stays in the header; no arbitrary account or PII in
+     * the URI. The API checks ownership and returns generic 404 otherwise.
+     */
+    fun exactManagedOwnListing(token: String, listingId: String): ApiCall {
+        requireListingId(listingId)
+        return ApiCall.getOwned(
+            "/api/v1/me/listings?id=${enc(listingId)}&view=management", token)
+    }
+
     fun workerDraft(token: String): ApiCall =
         ApiCall.getOwned("/api/v1/me/worker-profile", token)
     fun optInWorker(token: String): ApiCall =
