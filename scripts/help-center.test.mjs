@@ -60,7 +60,7 @@ test("Language switch is display-only and does not store or transmit user data",
   assert.match(js, /setAttribute\("aria-pressed"/);
   assert.match(js, /panel\.hidden\s*=/);
   assert.match(js, /document\.documentElement\.lang\s*=/);
-  assert.doesNotMatch(js, /\bfetch\s*\(|XMLHttpRequest|localStorage|sessionStorage|\bcookie\b\s*=|navigator\.geolocation|sendBeacon|new\s+WebSocket/i);
+  assert.doesNotMatch(js.replace(/^\s*\/\/.*$/gm, ""), /\bfetch\s*\(|XMLHttpRequest|localStorage|sessionStorage|\bcookie\b\s*=|navigator\.geolocation|sendBeacon|new\s+WebSocket/i);
   assert.doesNotMatch(html, /name=["'](?:email|phone|address|accountId)["']/i);
 });
 
