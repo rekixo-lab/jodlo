@@ -361,6 +361,7 @@ private fun GuestDiscovery(
         detailResolved = null
         detailFailure = null
         savedFailed = false
+        hideFailed = false
         loading = false
     }
 
@@ -371,6 +372,7 @@ private fun GuestDiscovery(
         detailResolved = null
         detailFailure = null
         savedFailed = false
+        hideFailed = false
         listings = emptyList()
         listingCursor = null
         loading = false
@@ -608,6 +610,7 @@ private fun GuestDiscovery(
         detailResolved = null
         detailFailure = null
         savedFailed = false
+        hideFailed = false
         loading = true
         scope.launch {
             val outcome = publicRead {
