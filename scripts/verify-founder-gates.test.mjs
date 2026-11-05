@@ -72,6 +72,32 @@ test("approved routes, tables, draft state and languages pass",async()=>{
   assert.equal(result.routes.length,11);
   assert.equal(result.tables.length,12);
 });
+test("hierarchy is optional to legacy fixtures but requires default-OFF full schema",async()=>{
+  const schema=[
+    "CREATE TABLE catalog_groups (id TEXT, is_active INTEGER NOT NULL DEFAULT 0, is_approved INTEGER NOT NULL DEFAULT 0);",
+    "CREATE TABLE catalog_families (id TEXT, is_active INTEGER NOT NULL DEFAULT 0, is_approved INTEGER NOT NULL DEFAULT 0);",
+    "CREATE TABLE catalog_family_categories (family_id TEXT, is_approved INTEGER NOT NULL DEFAULT 0);",
+  ].join("\n");
+  const full=await fixture(files=>{
+    files["apps/api/src/http/router.ts"]+='\nif(url.pathname==="/api/v1/catalog/hierarchy") return;';
+    files["infra/migrations/0010_approved_catalog_hierarchy.sql"]=schema;
+  });
+  assert.deepEqual(full.errors,[]);
+  const noRoute=await fixture(files=>{
+    files["infra/migrations/0010_approved_catalog_hierarchy.sql"]=schema;
+  });
+  assert.match(noRoute.errors.join(" "),/migration missing public read route/);
+  const unsafe=await fixture(files=>{
+    files["apps/api/src/http/router.ts"]+='\nif(url.pathname==="/api/v1/catalog/hierarchy") return;';
+    files["infra/migrations/0010_approved_catalog_hierarchy.sql"]=
+      schema.replace("is_approved INTEGER NOT NULL DEFAULT 0",
+        "is_approved INTEGER NOT NULL DEFAULT 1")+
+      "\nINSERT INTO catalog_groups VALUES('fake',1,1);";
+  });
+  assert.match(unsafe.errors.join(" "),/approval must default OFF/);
+  assert.match(unsafe.errors.join(" "),/must not seed/);
+});
+
 test("unapproved workers, requests, area and listing routes fail",async()=>{
   for(const p of ["/api/v1/workers","/api/v1/requests","/api/v1/areas","/api/v1/contact"]){
     const result=await fixture(f=>{f["apps/api/src/http/router.ts"]+='\nif(url.pathname==="'+p+'")return;';});
