@@ -8,6 +8,10 @@ sealed class WorkerWriteAction {
     data class EditCategory(
         val listingId: String, val expectedCategoryId: String, val nextCategoryId: String,
     ) : WorkerWriteAction()
+    data class VersionedCategoryEdit(
+        val listingId: String, val expectedCategoryId: String,
+        val nextCategoryId: String, val expectedRevision: Long,
+    ) : WorkerWriteAction()
 }
 
 enum class WorkerVisibility {
@@ -170,6 +174,27 @@ class HeadlessWorkerWriteScope(private val session: InMemorySessionCoordinator) 
         }
     }
 
+    /** Only the fully reviewed current owner revision can be sent.
+     * The caller must first read and confirm an immutable same-account
+     * versioned review. This shares the existing uncertain-write fence and
+     * NEVER falls back to unversioned PUT on network/API failure.
+     */
+    fun editCategoryVersioned(
+        listingId:String,expectedCategoryId:String,nextCategoryId:String,
+        expectedRevision:Long,
+    ): WorkerWriteCompletion {
+        JodloRoutes.requireListingId(listingId)
+        JodloRoutes.requireCategoryId(expectedCategoryId)
+        JodloRoutes.requireCategoryId(nextCategoryId)
+        require(expectedCategoryId!=nextCategoryId)
+        require(expectedRevision in 0..2147483646L)
+        return write(WorkerWriteAction.VersionedCategoryEdit(
+            listingId,expectedCategoryId,nextCategoryId,expectedRevision)) {
+            session.editListingCategoryVersioned(
+                listingId,expectedCategoryId,nextCategoryId,expectedRevision,it)
+        }
+    }
+
     /** Explicit two-step owner resume review enters through the SAME
      * single-flight/uncertainty fence as every other Worker mutation. This
      * command is not generic Publish: the server can only UPDATE the exact
@@ -258,6 +283,8 @@ class HeadlessWorkerWriteScope(private val session: InMemorySessionCoordinator) 
                             is WorkerWriteAction.Unpublish ->
                                 reply.value.listings.firstOrNull { it.id == action.listingId }
                             is WorkerWriteAction.EditCategory ->
+                                reply.value.listings.firstOrNull { it.id == action.listingId }
+                            is WorkerWriteAction.VersionedCategoryEdit ->
                                 reply.value.listings.firstOrNull { it.id == action.listingId }
                             is WorkerWriteAction.Resume ->
                                 reply.value.listings.firstOrNull {
