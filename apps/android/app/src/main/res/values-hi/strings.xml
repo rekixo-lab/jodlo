@@ -278,6 +278,10 @@
     <string name="worker_edit_revision_notice">इस edit के लिए ताज़ा निजी revision और सर्वर conflict जाँच ज़रूरी है। समीक्षा के बाद Service बदले तो edit रुक जाएगा। अनिश्चित परिणाम पर अपने आप दोबारा बदलाव न करें।</string>
 
     <!-- No-personal-data public Service cards; exact check is only a past-time observation. -->
+    <string name="service_profile_heading">इस सार्वजनिक सेवा की जानकारी</string>
+    <string name="service_profile_identity">Worker की पहचान और अनुभव: इस Service के लिए स्वीकृत सार्वजनिक Worker Profile या सत्यापन उपलब्ध नहीं है।</string>
+    <string name="service_profile_area">सेवा क्षेत्र: स्वीकृत शहर, पता या दूरी उपलब्ध नहीं है। Nearby में शहर चुनने से इस Service के वहाँ काम करने की पुष्टि नहीं होती।</string>
+    <string name="service_profile_rates_calls">दर, फोटो और संपर्क: यहाँ उपलब्ध या सत्यापित नहीं हैं। इंटरनेट वॉइस कॉल अभी चालू नहीं हैं।</string>
     <string name="service_card_category_not_confirmed">स्वीकृत श्रेणी का नाम अभी जाँचा नहीं जा सका</string>
     <string name="service_card_approved_category_notice">यह केवल श्रेणी का नाम है, Worker की लिखी प्रोफ़ाइल या अभी प्रकाशित होने का प्रमाण नहीं। ऑफ़लाइन डेवेलपर नमूने असली सेवाएँ नहीं हैं।</string>
     <string name="service_card_checked_time_only">पिछली सटीक जाँच के समय यह सेवा सार्वजनिक थी। उसके बाद स्थिति बदल सकती है।</string>
