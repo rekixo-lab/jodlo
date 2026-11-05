@@ -27,6 +27,7 @@ import com.rekixo.jodlo.core.network.ApprovedCategoryNameSnapshot
 import com.rekixo.jodlo.core.network.Language
 import com.rekixo.jodlo.core.network.PublicCategory
 import com.rekixo.jodlo.core.network.FailureKind
+import com.rekixo.jodlo.core.network.CustomerServiceCard
 import com.rekixo.jodlo.core.network.PublicApprovedServiceDetail
 import com.rekixo.jodlo.core.network.PublicListing
 import com.rekixo.jodlo.core.network.RemoteCatalogRepository
@@ -287,15 +288,14 @@ internal fun SavedServicesDashboard(
                 ) {
                     Column(Modifier.padding(JodloSizes.CardPadding),
                         verticalArrangement=Arrangement.spacedBy(JodloSizes.SmallGap)) {
-                        Text(stringResource(R.string.public_listing),
-                            style=MaterialTheme.typography.titleMedium)
                         val approvedName=categoryNames?.approvedName(
                             row.categoryId,categoryLanguage,currentCategoryIds)
-                        if (approvedName!=null) Text(approvedName,
-                            style=MaterialTheme.typography.titleMedium)
-                        Text(stringResource(R.string.saved_category_reference,row.categoryId))
-                        Text(stringResource(R.string.listing_reference,row.id),
-                            style=MaterialTheme.typography.bodySmall)
+                        // A saved reference stays unchecked, even if an
+                        // earlier batch saw it publicly visible.
+                        SafeServiceCardContents(
+                            CustomerServiceCard.reference(row,approvedName),
+                            modifier=Modifier,
+                        )
                         val reviewStatus=review.statusFor(saved,row)
                         val reviewLabel=when(reviewStatus) {
                             SavedServiceReviewStatus.PUBLIC_WHEN_CHECKED ->
@@ -357,25 +357,19 @@ internal fun SavedServicesDashboard(
                     Text(stringResource(R.string.saved_back))
                 }
             }
+            val currentCard=CustomerServiceCard.publicWhenChecked(
+                selected!!,categoryLanguage,verified)
             item {
-                val approvedName=verified?.category?.name
-                if (approvedName!=null) Text(approvedName,
-                    style=MaterialTheme.typography.titleMedium)
-                Text(stringResource(R.string.saved_category_reference,selected!!.categoryId))
-                Text(stringResource(R.string.listing_reference,selected!!.id),
-                    style=MaterialTheme.typography.bodySmall)
+                SafeServiceCard(currentCard ?: CustomerServiceCard.reference(
+                    selected!!,
+                    categoryNames?.approvedName(
+                        selected!!.categoryId,categoryLanguage,currentCategoryIds)))
             }
-            if (verified!=null) item {
-                JodloCard(modifier=Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(JodloSizes.CardPadding),
-                        verticalArrangement=Arrangement.spacedBy(JodloSizes.SmallGap)) {
-                        Text(stringResource(R.string.saved_currently_public))
-                        Text(stringResource(R.string.service_category_approved_label),
-                            style=MaterialTheme.typography.bodySmall)
-                        Text(stringResource(R.string.listing_detail_private_notice),
-                            style=MaterialTheme.typography.bodySmall)
-                    }
-                }
+            if (verified!=null && currentCard==null) item {
+                // Invalid or stale detail never becomes a checked-public
+                // card. Existing explicit Check Now is the only retry.
+                Text(stringResource(R.string.saved_unavailable),
+                    color=MaterialTheme.colorScheme.error)
             }
             if (failure!=null) item {
                 Text(stringResource(if (failure==FailureKind.NOT_FOUND)
