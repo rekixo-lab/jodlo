@@ -30,6 +30,7 @@ internal fun HelpAndPrivacyDashboard(
     onHome: () -> Unit,
     onBrowse: () -> Unit,
     onSaved: () -> Unit,
+    onHidden: () -> Unit,
     onAccount: () -> Unit,
     onWorker: () -> Unit,
 ) {
@@ -74,6 +75,22 @@ internal fun HelpAndPrivacyDashboard(
                         style = MaterialTheme.typography.bodySmall)
                     JodloTextAction(onClick = onSaved) {
                         Text(stringResource(R.string.help_open_saved))
+                    }
+                }
+            }
+        }
+        item {
+            JodloCard(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(JodloSizes.CardPadding),
+                    verticalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap),
+                ) {
+                    Text(stringResource(R.string.hidden_heading),
+                        style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.hidden_privacy_note),
+                        style = MaterialTheme.typography.bodySmall)
+                    JodloTextAction(onClick = onHidden) {
+                        Text(stringResource(R.string.hidden_manage))
                     }
                 }
             }
