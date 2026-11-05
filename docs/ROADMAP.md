@@ -1,3 +1,9 @@
+## 2026-11-05 — Worker editing: exact single-Service owner refresh
+
+One private, authenticated, **manual** current-Service read now supplements existing guided Category editing: a single owned Listing can be rechecked without a 100-row/paged scan. Same strict private four-field status projection, session/logout/stale-write fences, bilingual Android status and review invalidation; existing Customer public fields and owner Category mutation CAS remain unchanged. See [source implementation and remaining approvals](WORKER_EXACT_OWNER_RECHECK_2026-11-05.md).
+
+This **does not close** full P1 Worker editing or public Worker card: human-approved public fields, full moderated service inputs, persistent version checks, media, service-area precision and real backend/live rollout remain blocked. No production writes or incremental physical-phone test. Track [#235](https://github.com/rekixo-lab/jodlo/issues/235).
+
 ## 2026-11-05 — Approved hierarchy: whole Customer Group → Family → Category path
 
 The Customer's real Home links to a separate bilingual, consent-safe Group/Family/Category screen, backed by strict anonymous, bounded, single-read D1 approval/current-listing eligibility. Forward migration 0010 adds **no rows** and keeps new Groups, Families and memberships default OFF. New API opt-in, typed Kotlin decoder, native navigation through existing public Category listings, manual pagination/refresh, stale response defenses and old-server flat Browse fallback are specified in [hierarchy acceptance contract](CUSTOMER_APPROVED_HIERARCHY_2026-11-05.md). Neither unreviewed historical Categories nor Worker private/personal fields can be activated by code alone. Verify exact-head and merged-main Foundation + Android CI before a source milestone is complete.
