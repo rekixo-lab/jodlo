@@ -25,6 +25,7 @@ import androidx.compose.ui.res.stringResource
 import com.rekixo.jodlo.core.network.ApiOutcome
 import com.rekixo.jodlo.core.network.FailureKind
 import com.rekixo.jodlo.core.network.Language
+import com.rekixo.jodlo.core.network.CustomerServiceCard
 import com.rekixo.jodlo.core.network.PublicApprovedServiceDetail
 import com.rekixo.jodlo.core.network.PublicListing
 import com.rekixo.jodlo.core.network.RemoteCatalogRepository
@@ -215,19 +216,11 @@ internal fun PublicServicesFeed(
                 Text(stringResource(R.string.feed_empty))
             }
             items(listings, key = { "all-public-" + it.id }) { listing ->
-                JodloCard(onClick = { inspect(listing) },
-                    modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(JodloSizes.CardPadding),
-                        verticalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
-                        Text(categoryNames[listing.categoryId]
-                            ?: stringResource(R.string.feed_category_id, listing.categoryId),
-                            style = MaterialTheme.typography.titleMedium)
-                        Text(stringResource(R.string.listing_reference, listing.id),
-                            style = MaterialTheme.typography.bodySmall)
-                        Text(stringResource(R.string.feed_select_to_recheck),
-                            style = MaterialTheme.typography.bodySmall)
-                    }
-                }
+                SafeServiceCard(
+                    card = CustomerServiceCard.reference(
+                        listing, categoryNames[listing.categoryId]),
+                    onClick = { inspect(listing) },
+                )
             }
             if (nextCursor != null) item {
                 JodloTextAction(onClick = { loadPage(nextCursor) }, enabled = !busy) {
@@ -247,26 +240,21 @@ internal fun PublicServicesFeed(
                     Text(stringResource(R.string.feed_back))
                 }
             }
-            item {
-                Text(verified?.category?.name
-                    ?: stringResource(R.string.feed_category_id, selected!!.categoryId),
-                    style = MaterialTheme.typography.titleMedium)
-                Text(stringResource(R.string.listing_reference, selected!!.id),
-                    style = MaterialTheme.typography.bodySmall)
+            // Only exact public Service+Category+language matching this
+            // selection can authorize a checked-public card or Save action.
+            val safeCard = selected?.let {
+                CustomerServiceCard.publicWhenChecked(it, language, verified)
             }
-            if (verified != null) {
-                item {
-                    Text(stringResource(R.string.saved_currently_public))
-                    Text(stringResource(R.string.service_category_approved_label),
-                        style = MaterialTheme.typography.bodySmall)
-                    Text(stringResource(R.string.listing_detail_private_notice),
-                        style = MaterialTheme.typography.bodySmall)
-                }
+            item {
+                SafeServiceCard(safeCard ?: CustomerServiceCard.reference(
+                    selected!!, categoryNames[selected!!.categoryId]))
+            }
+            if (safeCard != null) {
                 item {
                     JodloButton(onClick = {
-                        verified?.let { savingFailure = !onSaveToggle(it.listing) }
+                        savingFailure = !onSaveToggle(safeCard.listing)
                     },enabled = !busy) {
-                        Text(stringResource(if (saved.contains(verified!!.listing))
+                        Text(stringResource(if (saved.contains(safeCard.listing))
                             R.string.saved_remove else R.string.saved_add))
                     }
                 }
