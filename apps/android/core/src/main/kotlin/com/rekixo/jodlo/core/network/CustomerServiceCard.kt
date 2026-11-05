@@ -11,7 +11,7 @@ enum class CustomerServiceCardEvidence {
     PUBLIC_WHEN_CHECKED,
 }
 
-data class CustomerServiceCard private constructor(
+class CustomerServiceCard private constructor(
     val listing: PublicListing,
     val approvedCategoryName: String?,
     val evidence: CustomerServiceCardEvidence,
