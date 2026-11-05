@@ -1,5 +1,8 @@
 # JODLO — Code completion and first production release gates
 
+> **CURRENT VERIFIED STATE — 2026-11-05:** See [current code/live/reviewer evidence ledger](CURRENT_STATE.md) **first**; it supersedes older historical deployment and PR-pending statements below. Latest verified main `fd5a5d0` passed Foundation and native Android JDK17/21 CI. The owner previously proved the live API/Google login/private Worker draft on 2026-11-03, but this does **not** prove the newest code was deployed. Last owner-read D1 had 0 approved Categories and 0 public Listings; human review, consent-safe Agora/FCM, full product, release and final consolidated physical-phone acceptance remain gated. No blind redeploy, data seed, outreach emails or Finworkar modifications.
+
+
 > **2026-11-04 CURRENT RELEASE STATE:** Founder-provided 2026-11-03 evidence in [STATUS](STATUS.md) confirms an existing deployed JODLO API Worker, real Android Google Sign-In and private Worker draft. The older “no verified live resources” statements below are historical and superseded for *these specific facts only*. Latest merged main (#225–#231) Foundation/Android CI is green, but its deployment, production Categories/Worker Listings, full phone acceptance, Agora/FCM and public Marketplace release are **not** verified. Last read D1: 0 Categories/0 public Listings. Never repeat an obsolete first-deploy step without checking the current live resource. No automatic launch, seed, provider activation, secrets or Finworkar writes.
 
 

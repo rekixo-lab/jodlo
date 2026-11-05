@@ -16,6 +16,8 @@ jobs:
           node-version: '22'
       - name: Validate linked docs (no deps)
         run: npm run docs:check
+      - name: Test status-ledger guard against unsupported live or reviewer claims (no deps)
+        run: node --test scripts/verify-current-state.test.mjs
       - name: Enforce founder-approved flat dark and outlined native UI (no deps)
         run: node scripts/verify-approved-flat-ui.mjs
       - name: Enforce design token and asset deduplication rules (no deps)
