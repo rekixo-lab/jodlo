@@ -1,3 +1,9 @@
+## 2026-11-05 — Current-approved bilingual public Service details (software only)
+
+Customer Category results, all-Category Services and device-only Saved now open a **fresh opt-in Service detail** that includes the current published/moderation-approved Listing plus its **currently active approved Category name** from the same D1 read. Exact Hindi/English, no stale list-only label, Worker identity/phone/location/profile/price/badges or call permission. The old public `?id=` DTO and every owner/legacy method are unchanged; opt-in `?id=<id>&view=service&lang=hi|en` is strictly bound and anonymous. [Contract, revocation/privacy and automated tests](PUBLIC_APPROVED_SERVICE_DETAIL_2026-11-05.md).
+
+**Still not a moderated public Worker profile.** Catalog reviews, consent-safe contact/location/media/rates/experience, real Agora/FCM, reporting/moderation, account deletion, payments and website remain. Founder explicitly deferred incremental physical-phone testing until one full app acceptance; #235 stays open. No production D1/Cloudflare deploy, provider action, email or Finworkar modification.
+
 ## 2026-11-04 — Worker My Services: owner-paused vs published-but-not-visible
 
 An opt-in private `GET /api/v1/me/listings?limit=20&view=management` now distinguishes **owner-unpublished** from **still-published but not publicly eligible**. Existing public and legacy owner DTOs remain unchanged. Native Android en/hi Worker cards display both owner publication intent and current visibility; resume is ONLY offered for a securely owner-confirmed unpublished row. A published-but-invisible row can be deliberately unpublished but is never presented as "paused". Pure Kotlin `GuidedWorkerServiceActions` refuses legacy/unknown and hidden-published resume regardless of false visibility, and the D1 resume CAS still checks ownership/moderation/Category. [End-to-end private API/Android contract and safety tests](WORKER_PRIVATE_PUBLICATION_MANAGEMENT_2026-11-04.md).
