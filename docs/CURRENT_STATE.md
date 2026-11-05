@@ -1,6 +1,6 @@
 # JODLO — current evidence ledger and release gates
 
-> **Read this before date-stamped historical runbooks.** Snapshot recorded 2026-11-05 from GitHub and previously documented founder-operated provider checks. It is **not** a fresh Cloudflare/phone probe. A newer observed event must replace the corresponding fact and include its own evidence; passing GitHub CI never advances a live-provider status automatically.
+> **Read this before date-stamped historical runbooks.** Snapshot recorded 2026-11-05 from GitHub and previously documented founder-operated provider checks. It is not a fresh Cloudflare/phone probe. A newer observed event must replace the corresponding fact and include its own evidence; passing GitHub CI never advances a live-provider status automatically.
 
 <!-- JODLO_STATE_LEDGER_V1
 as_of_date: 2026-11-05
@@ -52,7 +52,7 @@ The source is **a working software foundation, not a complete released Marketpla
 3. **Provider/operator gates:** separately read current Worker/domain/D1/Android versions, migrations and backup plan. Avoid deployments/production writes without a verified controlled-release procedure. A historical successful login is not the latest deployment acceptance.
 4. **Only when all integrated features and provider/reviewer gates are genuinely ready:** conduct one final physical-phone test (not per-PR), resolve defects, complete security/rollback/Play acceptance and obtain explicit release authorization.
 
-**Boundaries:** Never modify or import the old Finworkar production app/data, perform unapproved production writes, send outreach emails, create fictitious workers/approval, turn on Agora without consent, or claim real-provider success from a mock. JODLO API origin is `https://api.jodlo.rekixo.com`; the distinct website is `https://jodlo.rekixo.com`. This ledger supersedes *historical status wording*, not the founder's standing engineering authorization or required approvals.
+**Boundaries:** Do not deploy based on this ledger alone. Never modify or import the old Finworkar production app/data, perform unapproved production writes, send outreach emails, create fictitious workers/approval, turn on Agora without consent, or claim real-provider success from a mock. JODLO API origin is `https://api.jodlo.rekixo.com`; the distinct website is `https://jodlo.rekixo.com`. This ledger supersedes *historical status wording*, not the founder's standing engineering authorization or required approvals.
 
 ## Status maintenance contract
 
