@@ -218,3 +218,11 @@ tasks.register("verifyHeadlessCore") {
     description = "Run all headless Kotlin/JVM executable contract, race and end-to-end suites"
     dependsOn(tasks.withType<JavaExec>().matching { it.name.startsWith("verify") })
 }
+
+tasks.register<JavaExec>("verifyHiddenServices") {
+    group = "verification"
+    description = "Verify guest-local hidden public Listing IDs and Saved display isolation"
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.rekixo.jodlo.core.network.HiddenPublicServicesTestKt")
+}
