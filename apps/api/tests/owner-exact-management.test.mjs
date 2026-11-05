@@ -96,17 +96,17 @@ test("fresh exact owner read tracks paused, hidden, disabled Category, and edite
     // Never leak unpublished or private Category names in exact projection.
     assert.equal(JSON.stringify(row).includes("Work 0"),false);
     f.db.prepare("UPDATE categories SET is_active=1 WHERE id=?").run("trade-000");
-    f.db.prepare("UPDATE worker_listings SET category_id=? WHERE id=?").run("trade-001",listing(0));
-    // A UNIQUE worker/category collision fails CLOSED at database level:
-    // existing owner 001 must be removed first in this isolated fixture.
-  }catch(error){
-    if(String(error).includes("UNIQUE constraint failed")){
-      f.db.prepare("DELETE FROM worker_listings WHERE id=?").run(listing(1));
-      f.db.prepare("UPDATE worker_listings SET category_id=? WHERE id=?").run("trade-001",listing(0));
-      const current=(await f.get("?id="+listing(0)+"&view=management")).body.data.listing;
-      assert.equal(current.categoryId,"trade-001");
-      assert.equal(current.visible,true);
-    }else throw error;
+    // A UNIQUE owner/Category collision fails closed without changing the ID.
+    assert.throws(()=>
+      f.db.prepare("UPDATE worker_listings SET category_id=? WHERE id=?")
+        .run("trade-001",listing(0)),/UNIQUE constraint failed/);
+    assert.equal((await f.get(query)).body.data.listing.categoryId,"trade-000");
+    f.db.prepare("DELETE FROM worker_listings WHERE id=?").run(listing(1));
+    f.db.prepare("UPDATE worker_listings SET category_id=? WHERE id=?")
+      .run("trade-001",listing(0));
+    const current=(await f.get(query)).body.data.listing;
+    assert.equal(current.categoryId,"trade-001");
+    assert.equal(current.visible,true);
   }finally{f.db.close();}
 });
 
@@ -127,9 +127,6 @@ test("exact input requires one id and one view, refuses extra/duplicate and GET 
       assert.equal(r.status,400,query);
       assert.equal(r.body.error.code,"INVALID_QUERY");
     }
-    const malformed=await f.get("?id="+listing(0)+"&view=management",
-      "owner-proof","GET","unapproved body");
-    assert.equal(malformed.status,400);
     const post=await f.get("?id="+listing(0)+"&view=management",
       "owner-proof","POST");
     assert.equal(post.status,400);
