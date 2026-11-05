@@ -46,6 +46,8 @@ import com.rekixo.jodlo.core.network.HttpsTransport
 import com.rekixo.jodlo.core.network.InMemorySessionCoordinator
 import com.rekixo.jodlo.core.network.Language
 import com.rekixo.jodlo.core.network.PublicCategory
+import com.rekixo.jodlo.core.network.CustomerServiceCard
+import com.rekixo.jodlo.core.network.CustomerServiceCardEvidence
 import com.rekixo.jodlo.core.network.PublicApprovedServiceDetail
 import com.rekixo.jodlo.core.network.PublicListing
 import com.rekixo.jodlo.core.network.RemoteCatalogRepository
@@ -844,36 +846,35 @@ private fun GuestDiscovery(
                         )
                     }
                     val detail = detailResolved
-                    if (detail != null) {
-                        item {
-                            JodloCard(modifier = Modifier.fillMaxWidth()) {
-                                Column(Modifier.padding(JodloSizes.CardPadding)) {
-                                    Text(stringResource(R.string.public_listing))
-                                    Text(detail.category.name,
-                                        style = MaterialTheme.typography.titleMedium)
-                                    Text(stringResource(R.string.service_category_approved_label))
-                                    Text(
-                                        stringResource(R.string.listing_reference, detail.listing.id),
-                                        style = MaterialTheme.typography.bodySmall,
-                                    )
-                                    Text(stringResource(R.string.listing_detail_private_notice))
-                                }
-                            }
+                    // Only a fresh exact HTTPS public response in the SAME
+                    // language/ID/Category may show "public when checked".
+                    // Offline debug samples stay references, never verified.
+                    val card = if (detail == null) null else if (liveApiConfigured) {
+                        detailRequested?.let {
+                            CustomerServiceCard.publicWhenChecked(it, language, detail)
                         }
+                    } else CustomerServiceCard.reference(
+                        detail.listing, detail.category.name)
+                    if (card != null) item {
+                        SafeServiceCard(card)
                     }
-                    // Only save a *freshly* server-confirmed public detail
-                    // in a real HTTPS build. Debug synthetic sample IDs are
-                    // never written to device Saved Services.
-                    if (detail != null && liveApiConfigured) {
+                    if (detail != null && card == null) item {
+                        Text(stringResource(R.string.request_failed),
+                            color = MaterialTheme.colorScheme.error)
+                    }
+                    // Only save a freshly confirmed exact PUBLIC detail
+                    // obtained over configured HTTPS, never a debug sample.
+                    if (card?.evidence == CustomerServiceCardEvidence.PUBLIC_WHEN_CHECKED &&
+                        liveApiConfigured) {
                         item {
                             JodloButton(onClick = {
-                                savedFailed = !onSaveToggle(detail.listing)
+                                savedFailed = !onSaveToggle(card.listing)
                             }, enabled = !loading) {
-                                Text(stringResource(if (saved.contains(detail.listing))
+                                Text(stringResource(if (saved.contains(card.listing))
                                     R.string.saved_remove else R.string.saved_add))
                             }
                         }
-                        if (savedFailed) item {
+                    if (savedFailed) item {
                             Text(stringResource(R.string.saved_storage_failed_or_limit),
                                 color = MaterialTheme.colorScheme.error)
                         }
@@ -901,18 +902,13 @@ private fun GuestDiscovery(
                         Text(stringResource(R.string.empty_listings))
                     }
                     items(listings, key = { "public-" + it.id }) { listing ->
-                        JodloCard(
+                        SafeServiceCard(
+                            card = CustomerServiceCard.reference(
+                                listing,
+                                selected?.takeIf { it.id == listing.categoryId }?.name,
+                            ),
                             onClick = { showListingDetail(listing) },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Column(Modifier.padding(JodloSizes.CardPadding)) {
-                                Text(stringResource(R.string.public_listing))
-                                Text(
-                                    stringResource(R.string.listing_reference, listing.id),
-                                    style = MaterialTheme.typography.bodySmall,
-                                )
-                            }
-                        }
+                        )
                     }
                     if (listingCursor != null) item {
                         JodloTextAction(onClick = {
