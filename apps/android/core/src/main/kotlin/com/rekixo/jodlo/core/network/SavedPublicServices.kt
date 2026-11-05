@@ -43,6 +43,13 @@ data class SavedPublicServices private constructor(val entries: List<PublicListi
             }.isSuccess
     }
 
+    /** Presentation-only subset. Hidden bookmark data stays unchanged:
+     * unhide must restore the original local bookmark. Review/GET callers
+     * must operate on this subset to avoid looking up hidden references.
+     */
+    fun withoutHidden(hidden: HiddenPublicServices): SavedPublicServices =
+        SavedPublicServices(hidden.visible(entries))
+
     fun contains(listing: PublicListing): Boolean =
         entries.any { it.id == listing.id && it.categoryId == listing.categoryId }
 

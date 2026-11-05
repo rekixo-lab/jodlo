@@ -30,6 +30,7 @@ import com.rekixo.jodlo.core.network.PublicApprovedServiceDetail
 import com.rekixo.jodlo.core.network.PublicListing
 import com.rekixo.jodlo.core.network.RemoteCatalogRepository
 import com.rekixo.jodlo.core.network.SavedPublicServices
+import com.rekixo.jodlo.core.network.HiddenPublicServices
 import com.rekixo.jodlo.ui.theme.JodloButton
 import com.rekixo.jodlo.ui.theme.JodloCard
 import com.rekixo.jodlo.ui.theme.JodloChip
@@ -52,6 +53,8 @@ internal fun PublicServicesFeed(
     repository: RemoteCatalogRepository,
     saved: SavedPublicServices,
     onSaveToggle: (PublicListing) -> Boolean,
+    hidden: HiddenPublicServices,
+    onHide: (String) -> Boolean,
 ) {
     val scope = rememberCoroutineScope()
     var language by remember { mutableStateOf(Language.HI) }
@@ -64,6 +67,7 @@ internal fun PublicServicesFeed(
     var failure by remember { mutableStateOf(false) }
     var pageFailure by remember { mutableStateOf(false) }
     var savingFailure by remember { mutableStateOf(false) }
+    var hidingFailure by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var revision by remember { mutableIntStateOf(0) }
 
@@ -73,6 +77,7 @@ internal fun PublicServicesFeed(
         verified = null
         detailFailure = null
         savingFailure = false
+        hidingFailure = false
         busy = false
     }
     fun loadPage(after: String? = null) {
@@ -151,6 +156,7 @@ internal fun PublicServicesFeed(
         verified = null
         detailFailure = null
         savingFailure = false
+        hidingFailure = false
         busy = true
         scope.launch {
             val result = withContext(Dispatchers.IO) {
@@ -212,10 +218,12 @@ internal fun PublicServicesFeed(
                 Text(stringResource(R.string.request_failed),
                     color = MaterialTheme.colorScheme.error)
             }
-            if (listings.isEmpty() && !busy && !failure) item {
-                Text(stringResource(R.string.feed_empty))
+            val visibleListings = hidden.visible(listings)
+            if (visibleListings.isEmpty() && !busy && !failure) item {
+                Text(stringResource(if (listings.isEmpty()) R.string.feed_empty
+                    else R.string.hidden_page_filtered))
             }
-            items(listings, key = { "all-public-" + it.id }) { listing ->
+            items(visibleListings, key = { "all-public-" + it.id }) { listing ->
                 SafeServiceCard(
                     card = CustomerServiceCard.reference(
                         listing, categoryNames[listing.categoryId]),
@@ -248,6 +256,19 @@ internal fun PublicServicesFeed(
             item {
                 SafeServiceCard(safeCard ?: CustomerServiceCard.reference(
                     selected!!, categoryNames[selected!!.categoryId]))
+            }
+            item {
+                JodloTextAction(
+                    onClick = {
+                        val id = selected?.id ?: return@JodloTextAction
+                        if (onHide(id)) leaveDetail()
+                        else hidingFailure = true
+                    }, enabled = !busy,
+                ) { Text(stringResource(R.string.hidden_hide_here)) }
+            }
+            if (hidingFailure) item {
+                Text(stringResource(R.string.hidden_storage_failed),
+                    color = MaterialTheme.colorScheme.error)
             }
             if (safeCard != null) {
                 item { SafePublicProfileFacts() }
