@@ -41,6 +41,9 @@ import com.rekixo.jodlo.core.network.SessionResult
 import com.rekixo.jodlo.core.network.WorkerCustomerServicePreview
 import com.rekixo.jodlo.core.network.WorkerCustomerServicePreviewPhase
 import com.rekixo.jodlo.core.network.WorkerState
+import com.rekixo.jodlo.core.network.WorkerExactObservation
+import com.rekixo.jodlo.core.network.WorkerVisibility
+import com.rekixo.jodlo.core.network.WorkerWriteAction
 import com.rekixo.jodlo.core.network.WorkerWriteCompletion
 import com.rekixo.jodlo.core.network.WorkerWriteState
 import com.rekixo.jodlo.ui.theme.JodloButton
@@ -630,10 +633,78 @@ internal fun WorkerDashboard(
                     item { Text(stringResource(R.string.worker_draft_status)) }
                     if (uncertain) {
                         item {
+                            val review = writeState as WorkerWriteState.NeedsReview
                             Text(
                                 stringResource(R.string.worker_uncertain_write),
                                 color = MaterialTheme.colorScheme.error,
                             )
+                            val actionLabel = when(review.action) {
+                                is WorkerWriteAction.Publish -> R.string.worker_uncertain_action_publish
+                                is WorkerWriteAction.Unpublish -> R.string.worker_uncertain_action_pause
+                                is WorkerWriteAction.Resume -> R.string.worker_uncertain_action_resume
+                                is WorkerWriteAction.EditCategory,
+                                is WorkerWriteAction.VersionedCategoryEdit ->
+                                    R.string.worker_uncertain_action_edit
+                            }
+                            Text(stringResource(R.string.worker_uncertain_action, stringResource(actionLabel)))
+                            // Exact owner status is PRIVATE and independent of the
+                            // lost write acknowledgement. Never infer causality.
+                            when(val exact = review.exactObservation) {
+                                is WorkerExactObservation.Current -> {
+                                    Text(stringResource(R.string.worker_uncertain_exact_category,
+                                        exact.categoryId))
+                                    Text(stringResource(if(exact.publicationStatus ==
+                                        OwnPublicationStatus.PUBLISHED)
+                                        R.string.worker_management_published
+                                        else R.string.worker_management_paused))
+                                    Text(stringResource(if(exact.visible)
+                                        R.string.worker_visible else R.string.worker_not_visible))
+                                }
+                                WorkerExactObservation.NotFound ->
+                                    Text(stringResource(R.string.worker_uncertain_exact_missing))
+                                null -> { /* Not checked yet, or failed to check. */ }
+                            }
+                            if (review.readFailure != null) {
+                                Text(stringResource(R.string.worker_uncertain_read_failed),
+                                    color = MaterialTheme.colorScheme.error)
+                            }
+                            if (review.pagedPagesChecked > 0) {
+                                Text(stringResource(R.string.worker_uncertain_pages_checked,
+                                    review.pagedPagesChecked))
+                                val observation = when(review.observation) {
+                                    WorkerVisibility.VISIBLE -> R.string.worker_uncertain_page_visible
+                                    WorkerVisibility.NOT_VISIBLE ->
+                                        R.string.worker_uncertain_page_not_visible
+                                    WorkerVisibility.NOT_IN_FIRST_100,
+                                    WorkerVisibility.NOT_OBSERVED_IN_PAGED_SCAN ->
+                                        R.string.worker_uncertain_page_not_observed
+                                    null -> R.string.worker_uncertain_read_failed
+                                }
+                                Text(stringResource(observation))
+                                Text(stringResource(if(review.pagedScanComplete)
+                                    R.string.worker_uncertain_scan_ended
+                                    else R.string.worker_uncertain_scan_more))
+                            }
+                            Text(stringResource(R.string.worker_recheck_not_proof),
+                                style = MaterialTheme.typography.bodySmall)
+                            if (review.action.exactTargetId() != null) {
+                                JodloTextAction(onClick = {
+                                    if (busy) return@JodloTextAction
+                                    busy = true
+                                    scope.launch {
+                                        try {
+                                            withContext(Dispatchers.IO) {
+                                                writes.recheckUncertainListingExactly()
+                                            }
+                                        } catch (_: Exception) { /* no write retry */ }
+                                        writeState = writes.snapshot().state
+                                        busy = false
+                                        message = R.string.worker_recheck_not_proof
+                                    }
+                                }, enabled = !busy) {
+                                    Text(stringResource(R.string.worker_uncertain_exact_check))
+                                }
+                            }
                             JodloTextAction(onClick = {
                                 if (busy) return@JodloTextAction
                                 busy = true
@@ -641,17 +712,21 @@ internal fun WorkerDashboard(
                                     try {
                                         withContext(Dispatchers.IO) { writes.recheckOwnListingsPage() }
                                     } catch (_: Exception) { /* no retry */ }
-                                    busy = false
                                     writeState = writes.snapshot().state
+                                    busy = false
                                     message = R.string.worker_recheck_not_proof
                                 }
-                            }) { Text(stringResource(R.string.worker_recheck_read_only)) }
+                            }, enabled = !busy) {
+                                Text(stringResource(R.string.worker_recheck_read_only))
+                            }
                             JodloTextAction(onClick = {
                                 if (writes.acknowledgeUncertainty()) {
                                     writeState = writes.snapshot().state
                                     message = R.string.worker_review_acknowledged
                                 }
-                            }) { Text(stringResource(R.string.worker_acknowledge_uncertainty)) }
+                            }, enabled = !busy) {
+                                Text(stringResource(R.string.worker_acknowledge_uncertainty))
+                            }
                         }
                     } else {
                         item {
