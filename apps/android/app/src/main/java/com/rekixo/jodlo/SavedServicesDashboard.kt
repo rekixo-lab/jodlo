@@ -32,6 +32,7 @@ import com.rekixo.jodlo.core.network.PublicApprovedServiceDetail
 import com.rekixo.jodlo.core.network.PublicListing
 import com.rekixo.jodlo.core.network.RemoteCatalogRepository
 import com.rekixo.jodlo.core.network.SavedPublicServices
+import com.rekixo.jodlo.core.network.HiddenPublicServices
 import com.rekixo.jodlo.core.network.SavedServiceReview
 import com.rekixo.jodlo.core.network.SavedServiceReviewStatus
 import com.rekixo.jodlo.ui.theme.JodloButton
@@ -51,10 +52,15 @@ import kotlinx.coroutines.withContext
 @Composable
 internal fun SavedServicesDashboard(
     repository: RemoteCatalogRepository?,
-    saved: SavedPublicServices,
+    savedOriginal: SavedPublicServices,
     onRemove: (String) -> Boolean,
     onClear: () -> Boolean,
+    hidden: HiddenPublicServices,
+    onHide: (String) -> Boolean,
 ) {
+    // A hidden bookmark remains durable but is not displayed or sent to
+    // explicit review/Category-name HTTP reads until the user unhides it.
+    val saved = savedOriginal.withoutHidden(hidden)
     val scope=rememberCoroutineScope()
     var selected by remember { mutableStateOf<PublicListing?>(null) }
     var verified by remember { mutableStateOf<PublicApprovedServiceDetail?>(null) }
@@ -63,6 +69,7 @@ internal fun SavedServicesDashboard(
     var revision by remember { mutableIntStateOf(0) }
     var confirmClear by remember { mutableStateOf(false) }
     var notice by remember { mutableIntStateOf(0) }
+    var hideFailure by remember { mutableStateOf(false) }
     // Ephemeral review results never enter the device Saved storage.
     var review by remember { mutableStateOf(SavedServiceReview.start(saved)) }
     var reviewBusy by remember { mutableStateOf(false) }
@@ -247,8 +254,14 @@ internal fun SavedServicesDashboard(
                         color=MaterialTheme.colorScheme.error)
                 }
             }
+            if (savedOriginal.entries.size > saved.entries.size) item {
+                Text(stringResource(R.string.hidden_saved_filtered,
+                    savedOriginal.entries.size - saved.entries.size),
+                    style=MaterialTheme.typography.bodySmall)
+            }
             if (saved.entries.isEmpty()) item {
-                Text(stringResource(R.string.saved_empty))
+                Text(stringResource(if (savedOriginal.entries.isEmpty())
+                    R.string.saved_empty else R.string.hidden_page_filtered))
             }
             if (saved.entries.isNotEmpty()) item {
                 Text(stringResource(R.string.saved_review_explanation),
@@ -322,6 +335,14 @@ internal fun SavedServicesDashboard(
                             },enabled=!busy && !reviewBusy) {
                                 Text(stringResource(R.string.saved_remove))
                             }
+                            JodloTextAction(onClick={
+                                if (onHide(row.id)) {
+                                    hideFailure=false
+                                    notice=R.string.hidden_saved_locally
+                                } else hideFailure=true
+                            },enabled=!busy && !reviewBusy) {
+                                Text(stringResource(R.string.hidden_hide_here))
+                            }
                         }
                     }
                 }
@@ -366,6 +387,18 @@ internal fun SavedServicesDashboard(
                         selected!!.categoryId,categoryLanguage,currentCategoryIds)))
             }
             if (currentCard != null) item { SafePublicProfileFacts() }
+            item {
+                JodloTextAction(onClick={
+                    val id=selected?.id ?: return@JodloTextAction
+                    if (onHide(id)) {
+                        hideFailure=false
+                        back()
+                        notice=R.string.hidden_saved_locally
+                    } else hideFailure=true
+                },enabled=!busy && !reviewBusy) {
+                    Text(stringResource(R.string.hidden_hide_here))
+                }
+            }
             if (verified!=null && currentCard==null) item {
                 // Invalid or stale detail never becomes a checked-public
                 // card. Existing explicit Check Now is the only retry.
@@ -402,6 +435,11 @@ internal fun SavedServicesDashboard(
                 color=MaterialTheme.colorScheme.error)
         }
         if (busy) item { CircularProgressIndicator() }
+        if (hideFailure) item {
+            Text(stringResource(R.string.hidden_storage_failed),
+                color=MaterialTheme.colorScheme.error,
+                style=MaterialTheme.typography.bodySmall)
+        }
         if (notice!=0) item {
             Text(stringResource(notice),style=MaterialTheme.typography.bodySmall)
         }
