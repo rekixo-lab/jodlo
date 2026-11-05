@@ -210,8 +210,16 @@ private fun JodloApp(activity: ComponentActivity) {
                     openBrowse = { homeCategory = null; section = "customer" },
                     openHierarchy = { section = "hierarchy" },
                     openServices = { if (catalog != null) section = "feed" },
+                    openNearby = { section = "nearby" },
                     openSaved = { section = "saved" },
                     openWorker = { section = "worker" },
+                )
+                "nearby" -> ManualNearbyDiscovery(
+                    onBrowseAll = {
+                        homeCategory = null
+                        section = if (catalog != null) "feed" else "customer"
+                    },
+                    onHome = { section = "home" },
                 )
                 "hierarchy" -> CustomerHierarchy(
                     repository = catalog,
