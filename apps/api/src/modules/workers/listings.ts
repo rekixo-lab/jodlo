@@ -216,6 +216,16 @@ export async function exactVersionedOwnListing(
     publicationStatus:row.publicationStatus,revision:row.revision};
 }
 
+/** Every mutation below is scoped to one PRIMARY KEY listing ID and
+ * authenticated owner. The new 0011 AFTER UPDATE trigger updates the same
+ * row's revision once. SQLite changes() (Node adapter) reports the ONE
+ * direct update, while local Cloudflare D1 meta.changes may report TWO
+ * including the trigger. Accept ONLY these two exact counts, never "any
+ * positive count" and never a zero-row conflict as success.
+ */
+const changedExactlyOneOwnerListing=(count:number):boolean =>
+  Number.isSafeInteger(count)&&(count===1||count===2);
+
 export const UNPUBLISH_LISTING_QUERY =
   "UPDATE worker_listings SET status='unpublished' WHERE id=? AND worker_account_id=? " +
   "AND status='published' AND EXISTS (SELECT 1 FROM accounts " +
@@ -459,14 +469,14 @@ export async function resumeOwnListing(
       !validCategoryId(expectedCategoryId))return null;
   const {meta}=await db.prepare(RESUME_OWN_LISTING_QUERY)
     .bind(id,actor,expectedCategoryId).run();
-  if(meta.changes!==1)return null;
+  if(!changedExactlyOneOwnerListing(meta.changes))return null;
   return Object.freeze({id,categoryId:expectedCategoryId});
 }
 
 export async function unpublishListing(db:D1Database,actor:string,id:string):Promise<boolean> {
   if(!validOpaqueId(actor)||!validOpaqueId(id))return false;
   const {meta}=await db.prepare(UNPUBLISH_LISTING_QUERY).bind(id,actor).run();
-  return meta.changes===1;
+  return changedExactlyOneOwnerListing(meta.changes);
 }
 
 /** Owner-scoped compare-and-swap of an existing Category-only service.
@@ -514,7 +524,7 @@ export async function editOwnListingCategoryVersioned(
   const {meta}=await db.prepare(EDIT_OWN_CATEGORY_VERSIONED_QUERY)
     .bind(nextCategoryId,listingId,actor,expectedCategoryId,
       nextCategoryId,expectedRevision,nextCategoryId).run();
-  if(meta.changes!==1)return null;
+  if(!changedExactlyOneOwnerListing(meta.changes))return null;
   // The declared migration trigger increments once for the Category change.
   // A subsequent cross-device write may advance it again; this response is
   // ONLY the version of our successful update, not a fresh current read.
@@ -531,6 +541,6 @@ export async function editOwnListingCategory(
       expectedCategoryId===nextCategoryId) return null;
   const {meta}=await db.prepare(EDIT_OWN_CATEGORY_QUERY)
     .bind(nextCategoryId,listingId,actor,expectedCategoryId,nextCategoryId,nextCategoryId).run();
-  if(meta.changes!==1) return null;
+  if(!changedExactlyOneOwnerListing(meta.changes)) return null;
   return Object.freeze({id:listingId,categoryId:nextCategoryId});
 }
