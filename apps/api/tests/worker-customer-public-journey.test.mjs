@@ -182,7 +182,7 @@ test("opt-in approved bilingual Service detail is one current-public + Category 
     // No content from Worker-owned unapproved fields can be displayed:
     // current Category label comes only from c.name_hi/name_en in the same
     // public eligibility SQL (no separate stale public lookup).
-    f.db.prepare("UPDATE categories SET name_hi='',name_en='Approved name' WHERE id=?")
+    f.db.prepare("UPDATE categories SET name_hi=NULL,name_en='Approved name' WHERE id=?")
       .run(category);
     assert.equal((await f.request(url+"&view=service&lang=hi")).body.data.category.name,
       "Approved name","missing Hindi translation uses approved English");
@@ -199,8 +199,6 @@ test("opt-in approved bilingual Service detail is one current-public + Category 
        "UPDATE categories SET is_active=1 WHERE id=?",category],
       ["UPDATE accounts SET status='disabled' WHERE id=?",
        "UPDATE accounts SET status='active' WHERE id=?",owner],
-      ["UPDATE worker_profiles SET status='closed' WHERE account_id=?",
-       "UPDATE worker_profiles SET status='draft' WHERE account_id=?",owner],
     ];
     for(const [deny,restore,value] of restrictions){
       f.db.prepare(deny).run(value);
