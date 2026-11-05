@@ -201,4 +201,13 @@
     <string name="worker_management_published">Your publication setting: Published</string>
     <string name="worker_management_not_public">Published, but not publicly visible. This does not indicate that you paused it. It may have a Category or moderation restriction. Reactivation is not applicable.</string>
     <string name="service_category_approved_label">Current approved Category name (not a verified Worker profile or guarantee of availability).</string>
+    <string name="saved_review_explanation">Check up to 10 saved services per tap using one fresh public-only request each. These temporary results are from the time checked, are never saved or synced, and are not Worker availability, identity or call permission. A network error is NOT proof a service was removed.</string>
+    <string name="saved_review_progress">Checked %1$d of %2$d saved references</string>
+    <string name="saved_review_summary">Public when checked: %1$d · Not public when checked: %2$d · Could not confirm: %3$d</string>
+    <string name="saved_review_next">Check next 10 saved services</string>
+    <string name="saved_review_stop">Stop after current check</string>
+    <string name="saved_review_reset">Discard results and check again</string>
+    <string name="saved_review_row_public">Public at last check only. Open to verify again.</string>
+    <string name="saved_review_row_missing">Not public at last check. It may be unpublished or restricted; bookmark remains on this device.</string>
+    <string name="saved_review_row_unknown">Could not confirm at last check. This does not mean the service was removed.</string>
 </resources>
