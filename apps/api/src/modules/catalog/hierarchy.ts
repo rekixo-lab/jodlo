@@ -20,9 +20,11 @@ export type HierarchyItem = Readonly<{ id: string; name: string; slug?: string }
 
 export function parseHierarchy(params: URLSearchParams): HierarchyOptions | null {
   const permitted=new Set(["level","lang","parentId","availableOnly","limit","after"]);
-  for(const key of params.keys()) {
-    if(!permitted.has(key) || params.getAll(key).length!==1)return null;
-  }
+  let unexpected=false;
+  params.forEach((_value,key)=>{
+    if(!permitted.has(key) || params.getAll(key).length!==1)unexpected=true;
+  });
+  if(unexpected)return null;
   const level=params.get("level");
   if(level!=="groups" && level!=="families" && level!=="categories")return null;
   const language=params.get("lang");
