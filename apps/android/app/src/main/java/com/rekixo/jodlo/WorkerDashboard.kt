@@ -203,7 +203,7 @@ internal fun WorkerDashboard(
             clearApprovedNames()
             selectedListing = null
             previewRevision++
-        publicPreview = WorkerCustomerServicePreview.unchecked()
+            publicPreview = WorkerCustomerServicePreview.unchecked()
             guided = guided.reset()
             categoryEdit = categoryEdit.reset()
             clearCategoryResults()
@@ -344,7 +344,7 @@ internal fun WorkerDashboard(
             guided = guided.reset()
             categoryEdit = categoryEdit.reset()
             previewRevision++
-        publicPreview = WorkerCustomerServicePreview.unchecked()
+            publicPreview = WorkerCustomerServicePreview.unchecked()
 
             // Only after a CONFIRMED owner write, refresh the current
             // private Listing list through an existing read-only route.
@@ -460,7 +460,7 @@ internal fun WorkerDashboard(
                             categoryEdit = categoryEdit.reset()
                             selectedListing = null
                             previewRevision++
-        publicPreview = WorkerCustomerServicePreview.unchecked()
+                            publicPreview = WorkerCustomerServicePreview.unchecked()
                             checkedAction({ session.logout() }, R.string.worker_logout_local)
                         },
                         enabled = !busy,
@@ -543,7 +543,7 @@ internal fun WorkerDashboard(
                                         guided = guided.cancelUnpublish().cancelResume()
                                         categoryEdit = categoryEdit.reset()
                                         previewRevision++
-        publicPreview = WorkerCustomerServicePreview.unchecked()
+                                        publicPreview = WorkerCustomerServicePreview.unchecked()
                                     }
                                 },
                                 selected = selectedListing == listing.id,
@@ -583,6 +583,30 @@ internal fun WorkerDashboard(
                                     Text(stringResource(R.string.worker_customer_preview_heading),
                                         style = MaterialTheme.typography.titleMedium)
                                     Text(stringResource(R.string.worker_customer_preview_explainer))
+                                    Row(horizontalArrangement=Arrangement.spacedBy(JodloSizes.SmallGap)) {
+                                        JodloChip(
+                                            selected=categoryLanguage==Language.HI,
+                                            onClick={
+                                                if(categoryLanguage!=Language.HI) {
+                                                    categoryLanguage=Language.HI
+                                                    clearCategoryResults()
+                                                }
+                                            },
+                                            enabled=!busy,
+                                            label={Text(stringResource(R.string.language_hindi))},
+                                        )
+                                        JodloChip(
+                                            selected=categoryLanguage==Language.EN,
+                                            onClick={
+                                                if(categoryLanguage!=Language.EN) {
+                                                    categoryLanguage=Language.EN
+                                                    clearCategoryResults()
+                                                }
+                                            },
+                                            enabled=!busy,
+                                            label={Text(stringResource(R.string.language_english))},
+                                        )
+                                    }
                                     JodloTextAction(
                                         onClick = { checkPublicPreview() },
                                         enabled = !busy,
