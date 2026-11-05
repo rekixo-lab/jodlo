@@ -44,9 +44,9 @@
     <string name="worker_load_more">अगला पृष्ठ देखें</string>
     <string name="worker_unpublish_selected">चुनी हुई सेवा सूची हटाएँ</string>
     <string name="worker_customer_preview_heading">ग्राहक को दिखने वाली सेवा जाँचें</string>
-    <string name="worker_customer_preview_explainer">ग्राहक की तरह इस सेवा की नई सार्वजनिक जानकारी देखें। इससे वर्कर के ऑनलाइन होने या कॉल उठाने की पुष्टि नहीं होती।</string>
-    <string name="worker_customer_preview_check">अभी सार्वजनिक सेवा जाँचें</string>
-    <string name="worker_customer_preview_visible">यह सेवा अभी सार्वजनिक एपीआई में मिल रही है। इससे पहचान सत्यापित या कॉल की अनुमति नहीं मिलती।</string>
+    <string name="worker_customer_preview_explainer">ठीक वही Service जानकारी देखें जो ग्राहक देख सकता है: एक नई सार्वजनिक जाँच में Listing और स्वीकृत श्रेणी का हिंदी या अंग्रेज़ी नाम। वर्कर का निजी विवरण या कॉल उपलब्धता शामिल नहीं है।</string>
+    <string name="worker_customer_preview_check">ग्राहक को दिखने वाला सेवा विवरण जाँचें</string>
+    <string name="worker_customer_preview_visible">पिछली जाँच के समय सार्वजनिक थी। ऊपर दिया गया स्वीकृत श्रेणी नाम और मूल Service संदर्भ एक ही सार्वजनिक जाँच से मिले हैं। इससे वर्कर की पहचान सत्यापित या संपर्क की अनुमति नहीं मिलती।</string>
     <string name="worker_customer_preview_not_public">यह सेवा अभी सार्वजनिक नहीं है। अप्रकाशित, छिपी या अनुपलब्ध हो सकती है; कारण यहाँ नहीं बताया जाता।</string>
     <string name="worker_customer_preview_failed">सार्वजनिक स्थिति की पुष्टि नहीं हुई। दिखाई देना या न दिखना मानकर न चलें; दोबारा जाँचें।</string>
     <string name="worker_publish_category">सेवा श्रेणी प्रकाशित करें</string>
@@ -210,4 +210,5 @@
     <string name="saved_review_row_public">पिछली जाँच के समय सार्वजनिक थी। दोबारा जाँचने के लिए खोलें।</string>
     <string name="saved_review_row_missing">पिछली जाँच के समय सार्वजनिक नहीं थी। बंद या प्रतिबंधित हो सकती है; सेव की हुई प्रविष्टि फोन पर बनी रहेगी।</string>
     <string name="saved_review_row_unknown">पिछली जाँच में पुष्टि नहीं हो सकी। इसका अर्थ सेवा हटना नहीं है।</string>
+    <string name="worker_customer_preview_approved_label">उसी सार्वजनिक Service Detail जाँच से मिला वर्तमान स्वीकृत श्रेणी नाम। यह वर्कर की सत्यापित पहचान, उसका निजी विवरण या उपलब्धता की गारंटी नहीं है।</string>
 </resources>
