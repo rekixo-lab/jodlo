@@ -142,7 +142,27 @@ internal fun browseCursorAdvances(after: String?, next: String): Boolean {
 class RemoteCatalogRepository(private val sender: RequestSender) :
     CatalogRepository, PublicListingPageRepository, CatalogSearchCursorRepository,
     PublicListingDetailRepository, PublicApprovedServiceDetailRepository,
-    ApprovedCategoryNamesRepository, AllPublicListingFeedRepository {
+    ApprovedCategoryNamesRepository, AllPublicListingFeedRepository,
+    ApprovedHierarchyRepository {
+    override fun hierarchy(
+        level: HierarchyLevel, parentId: String?, language: Language,
+        availableOnly: Boolean, limit: Int, after: String?,
+    ): ApiOutcome<HierarchyPage> {
+        val call = JodloRoutes.hierarchy(level, parentId, language, availableOnly, limit, after)
+        return performOnce(call, sender::send, JodloReplyDecoder::hierarchy)
+            .validated { page ->
+                page.level == level && page.parentId == parentId &&
+                page.language == language && page.items.size <= limit &&
+                page.items.zipWithNext().all { (a, b) -> a.id < b.id } &&
+                (after == null || page.items.all { it.id > after }) &&
+                page.items.all { if (level == HierarchyLevel.CATEGORIES)
+                    it.slug != null else it.slug == null } &&
+                (page.nextCursor == null ||
+                    (page.items.size == limit &&
+                     page.items.lastOrNull()?.id == page.nextCursor))
+            }
+    }
+
     override fun approvedNames(
         ids: List<String>, language: Language,
     ): ApiOutcome<List<PublicCategory>> {
