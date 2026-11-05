@@ -1,3 +1,9 @@
+## 2026-11-05 — Unified Customer public Service cards (source-only; PR CI pending)
+
+Customer Browse, anonymous all-Service Feed and on-device Saved now share a bilingual **public Category / Listing reference** card. The headless evidence model distinguishes a stale/page/saved **reference** from a fresh same-ID, same-Category, same-language exact public Service detail **public when checked** result. Only the latter allows Save on configured HTTPS; neither implies Worker verification, rate, address or call availability. A wrong/stale detail cannot be promoted to a checked card. [Contract, tests and future field-level policy proposal](PUBLIC_SERVICE_CARDS_SAFE_SLICE_2026-11-05.md).
+
+**Not ready/live:** Only already-approved public DTOs; no private Worker metadata, new endpoint/schema, Catalog activation, provider call, email, production deployment or interim physical-phone test. Full public Worker profile remains blocked on field-level approvals and release acceptance (#235).
+
 ## 2026-11-05 — Worker Category editing now uses versioned CAS (source PR, checks pending)
 
 An opt-in, owner-private `revision` GET and one atomic v2 Category PUT are now wired from **native Worker selection → fresh owner revision → review → guarded confirmation**. New local-only migration 0011 adds one default-0 private integer and trigger for actual Category/status/moderation updates; even an old client A→B→A leaves a newer revision and cannot satisfy the v2 expected version. Old owner/public DTOs and original routes remain separate and wire-compatible, while the updated Android editor never falls back to an unversioned PUT on an old server or unknown network result. [Full contract, negative tests and deployment/consent limits](WORKER_REVISION_CAS_2026-11-05.md).
