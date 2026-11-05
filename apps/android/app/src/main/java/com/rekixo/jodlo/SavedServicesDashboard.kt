@@ -365,6 +365,7 @@ internal fun SavedServicesDashboard(
                     categoryNames?.approvedName(
                         selected!!.categoryId,categoryLanguage,currentCategoryIds)))
             }
+            if (currentCard != null) item { SafePublicProfileFacts() }
             if (verified!=null && currentCard==null) item {
                 // Invalid or stale detail never becomes a checked-public
                 // card. Existing explicit Check Now is the only retry.
