@@ -6,6 +6,10 @@
 
 The only initially named example pilot choices are **Bilaspur** and **Raipur**. They are UI options, **not** assertions that approved Workers, service-area mappings, prices, exact locations or local availability exist there, and do not restrict JODLO's approved all-category Catalog coverage.
 
+## Honest public Service profile facts, reused across three Customer journeys
+
+After a **validated fresh exact public Service read** (not an unchecked Feed/Bookmark reference), Browse, all-public Services Feed and Saved now render the same reusable no-PII facts panel. It explicitly tells Customers that no public Worker identity/experience verification, public city/address/distance, rate/photograph or real call facility has been supplied or enabled. This is **not** a new public Worker profile, badge, eligibility check, or populated Worker data. It never appears as a fabricated checked profile for a missing, forged, stale or offline listing, and it reuses existing strict `CustomerServiceCard.publicWhenChecked` proof.
+
 ## Binding privacy and truthfulness boundary
 
 The public listing contract currently provides **only an opaque Service reference and approved Category**. Neither it nor the Worker listing has a vetted public service area; there is no safe city→Worker match. Therefore:
