@@ -213,6 +213,7 @@ private fun JodloApp(activity: ComponentActivity) {
                     openNearby = { section = "nearby" },
                     openSaved = { section = "saved" },
                     openWorker = { section = "worker" },
+                    openHelp = { section = "help" },
                 )
                 "nearby" -> ManualNearbyDiscovery(
                     onBrowseAll = {
@@ -242,7 +243,14 @@ private fun JodloApp(activity: ComponentActivity) {
                     catalog, savedServices, ::toggleSaved,
                 )
                 "worker" -> WorkerDashboard(activity, session, writes, catalog)
-                else -> AccountDashboard(activity, session)
+                "help" -> HelpAndPrivacyDashboard(
+                    onHome = { section = "home" },
+                    onBrowse = { homeCategory = null; section = "customer" },
+                    onSaved = { section = "saved" },
+                    onAccount = { section = "account" },
+                    onWorker = { section = "worker" },
+                )
+                else -> AccountDashboard(activity, session, openHelp = { section = "help" })
             }
         }
     }
