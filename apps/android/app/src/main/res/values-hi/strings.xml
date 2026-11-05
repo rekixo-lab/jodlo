@@ -201,4 +201,13 @@
     <string name="worker_management_published">आपकी प्रकाशन स्थिति: प्रकाशित</string>
     <string name="worker_management_not_public">प्रकाशित है, लेकिन सार्वजनिक नहीं दिख रही। इसका मतलब यह नहीं कि आपने बंद किया है। श्रेणी या मॉडरेशन की रोक हो सकती है। इसे दोबारा चालू करने वाला बटन लागू नहीं होता।</string>
     <string name="service_category_approved_label">वर्तमान स्वीकृत श्रेणी का नाम (वर्कर की सत्यापित प्रोफ़ाइल या उपलब्धता की गारंटी नहीं)।</string>
+    <string name="saved_review_explanation">हर बार बटन दबाने पर अधिकतम 10 सेव की हुई सेवाएँ, प्रत्येक की एक नई सार्वजनिक जाँच से देखें। ये नतीजे केवल जाँच के समय के हैं, फोन में नहीं सहेजे जाते और वर्कर की उपलब्धता, पहचान या कॉल की अनुमति नहीं हैं। नेटवर्क की गलती सेवा हटने का प्रमाण नहीं है।</string>
+    <string name="saved_review_progress">%2$d में से %1$d सेव की हुई सेवाएँ जाँची गईं</string>
+    <string name="saved_review_summary">जाँच के समय सार्वजनिक: %1$d · सार्वजनिक नहीं: %2$d · पुष्टि नहीं हो सकी: %3$d</string>
+    <string name="saved_review_next">अगली 10 सेवाओं की जाँच करें</string>
+    <string name="saved_review_stop">चल रही जाँच के बाद रोकें</string>
+    <string name="saved_review_reset">नतीजे हटाकर फिर से जाँचें</string>
+    <string name="saved_review_row_public">पिछली जाँच के समय सार्वजनिक थी। दोबारा जाँचने के लिए खोलें।</string>
+    <string name="saved_review_row_missing">पिछली जाँच के समय सार्वजनिक नहीं थी। बंद या प्रतिबंधित हो सकती है; सेव की हुई प्रविष्टि फोन पर बनी रहेगी।</string>
+    <string name="saved_review_row_unknown">पिछली जाँच में पुष्टि नहीं हो सकी। इसका अर्थ सेवा हटना नहीं है।</string>
 </resources>

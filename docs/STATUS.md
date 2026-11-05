@@ -1,3 +1,9 @@
+## 2026-11-05 — Saved Services: manual bounded current-public review
+
+Customer Saved now has a real **Check next 10** action that runs at most ten sequential one-shot anonymous current-approved public Service-detail GETs, reports progress and differentiates **public when checked**, **404 not public**, and **network/other could not confirm**. Results are ephemeral and **never** become a bookmark field, cache, Worker availability, contact or calling authorization. A visible cancel stops after the current request; Saved/language/API changes invalidate in-flight results; list remains device-only up to 50, with no auto-removal or background polling. Kotlin pure-state tests exercise all five 10-item batches, 404 vs transient failures, forged response, stale snapshot and no persistence. [Implementation and acceptance contract](SAVED_SERVICE_BOUNDED_PUBLIC_REVIEW_2026-11-05.md).
+
+Founder phone-test directive remains **only one final consolidated acceptance after complete engineering/provider/reviewer readiness**. No emails, production D1/Cloudflare deployment, catalog approval or Finworkar legacy changes. Full product backlog [#235](https://github.com/rekixo-lab/jodlo/issues/235) remains OPEN.
+
 ## 2026-11-05 — Current-approved bilingual public Service details (software only)
 
 Customer Category results, all-Category Services and device-only Saved now open a **fresh opt-in Service detail** that includes the current published/moderation-approved Listing plus its **currently active approved Category name** from the same D1 read. Exact Hindi/English, no stale list-only label, Worker identity/phone/location/profile/price/badges or call permission. The old public `?id=` DTO and every owner/legacy method are unchanged; opt-in `?id=<id>&view=service&lang=hi|en` is strictly bound and anonymous. [Contract, revocation/privacy and automated tests](PUBLIC_APPROVED_SERVICE_DETAIL_2026-11-05.md).
