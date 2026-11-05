@@ -9,6 +9,8 @@ import { fileURLToPath } from "node:url";
 const rootDefault = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const allowedRoutes = new Set([
   "/api/v1/health", "/api/v1/catalog", "/api/v1/catalog/search",
+  // Only approved, default-OFF taxonomy hierarchy; no public Worker or GPS.
+  "/api/v1/catalog/hierarchy",
   "/api/v1/auth/google", "/api/v1/auth/logout", "/api/v1/auth/logout-all",
   "/api/v1/me/worker-profile", "/api/v1/me/listings", "/api/v1/listings",
   // 2026-11-04: owner-only READs over already-approved JODLO D1 tables.
@@ -18,7 +20,10 @@ const allowedRoutes = new Set([
   "/api/v1/me/overview", "/api/v1/me/data-export",
 ]);
 const allowedTables = new Set([
-  "categories", "accounts", "worker_profiles", "google_identities", "auth_sessions", "worker_listings",
+  "categories",
+  // No auto-seed, no public data until human-reviewed Group/Family/mapping approval.
+  "catalog_groups", "catalog_families", "catalog_family_categories",
+  "accounts", "worker_profiles", "google_identities", "auth_sessions", "worker_listings",
   // Exactly one newly engineered, non-recipient delivery receipt; never a
   // blanket permission for contact, notification preference or token storage.
   "notification_delivery_receipts",
