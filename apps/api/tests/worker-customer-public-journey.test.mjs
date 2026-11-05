@@ -149,3 +149,94 @@ test("Customer preview has no privileged bypass of current moderation/Category/a
     assert.equal(missing.status,503);
   }finally{f.db.close();}
 });
+
+
+test("opt-in approved bilingual Service detail is one current-public + Category read, with legacy parity",async()=>{
+  const f=setup();
+  try{
+    await f.request("/api/v1/me/worker-profile","POST",ownerToken);
+    const created=await f.request("/api/v1/me/listings","POST",ownerToken,
+      {categoryId:category});
+    assert.equal(created.status,200);
+    const listing=created.body.data.listing;
+    const url="/api/v1/listings?id="+listing.id;
+    for(const [lang,name] of [["hi","प्लंबिंग"],["en","Plumbing"]]){
+      const result=await f.request(url+"&view=service&lang="+lang);
+      assert.equal(result.status,200);
+      assert.equal(result.cacheControl,"no-store");
+      assert.deepEqual(result.body,{ok:true,data:{
+        language:lang,listing,category:{id:category,slug:"plumbing",name},
+      }});
+      const serialized=JSON.stringify(result.body);
+      for(const forbidden of [owner,stranger,ownerToken,"workerId","googleSub",
+        "phone","location","latitude","longitude","price","rating",
+        "verified","moderation","contact","profile","availability"]){
+        assert.equal(serialized.includes(forbidden),false,forbidden);
+      }
+    }
+    assert.deepEqual((await f.request(url)).body,{ok:true,data:{listing}},
+      "legacy public detail never changes response DTO");
+    assert.deepEqual((await f.request("/api/v1/listings?categoryId="+category)).body.data,
+      {listings:[listing]},"public Category read never adds fields");
+
+    // No content from Worker-owned unapproved fields can be displayed:
+    // current Category label comes only from c.name_hi/name_en in the same
+    // public eligibility SQL (no separate stale public lookup).
+    f.db.prepare("UPDATE categories SET name_hi='',name_en='Approved name' WHERE id=?")
+      .run(category);
+    assert.equal((await f.request(url+"&view=service&lang=hi")).body.data.category.name,
+      "Approved name","missing Hindi translation uses approved English");
+    f.db.prepare("UPDATE categories SET name_hi='नया स्वीकृत नाम' WHERE id=?").run(category);
+    assert.equal((await f.request(url+"&view=service&lang=hi")).body.data.category.name,
+      "नया स्वीकृत नाम","no stale label cache");
+
+    const restrictions=[
+      ["UPDATE worker_listings SET status='unpublished' WHERE id=?",
+       "UPDATE worker_listings SET status='published' WHERE id=?",listing.id],
+      ["UPDATE worker_listings SET moderation_status='hidden' WHERE id=?",
+       "UPDATE worker_listings SET moderation_status='allowed' WHERE id=?",listing.id],
+      ["UPDATE categories SET is_active=0 WHERE id=?",
+       "UPDATE categories SET is_active=1 WHERE id=?",category],
+      ["UPDATE accounts SET status='disabled' WHERE id=?",
+       "UPDATE accounts SET status='active' WHERE id=?",owner],
+      ["UPDATE worker_profiles SET status='closed' WHERE account_id=?",
+       "UPDATE worker_profiles SET status='draft' WHERE account_id=?",owner],
+    ];
+    for(const [deny,restore,value] of restrictions){
+      f.db.prepare(deny).run(value);
+      assert.equal((await f.request(url+"&view=service&lang=hi")).status,404,
+        "revocation must make new service detail inaccessible");
+      f.db.prepare(restore).run(value);
+      assert.equal((await f.request(url+"&view=service&lang=hi")).status,200);
+    }
+    assert.equal((await f.request("/api/v1/listings?id=22222222-2222-4222-8222-222222222222&view=service&lang=hi")).status,404);
+  }finally{f.db.close();}
+});
+
+test("approved Service detail query is strictly opt-in and never accepts arbitrary Worker fields",async()=>{
+  const f=setup();
+  try{
+    const uri="/api/v1/listings?id=11111111-1111-4111-8111-111111111111";
+    for(const query of [
+      "&view=service","&lang=hi","&view=worker&lang=hi",
+      "&view=service&lang=fr","&view=service&lang=",
+      "&view=service&lang=HI",
+      "&view=service&lang=hi&lang=hi",
+      "&view=service&view=service&lang=hi",
+      "&view=service&lang=hi&categoryId="+category,
+      "&view=service&lang=hi&workerId=foreign",
+      "&view=service&lang=hi&phone=1",
+      "&view=service&lang=hi&price=100",
+      "&view=service&lang=hi&verified=1",
+      "&view=service&lang=hi&after=foo",
+    ]){
+      const r=await f.request(uri+query);
+      assert.equal(r.status,400,query);
+      assert.equal(r.body.error.code,"INVALID_QUERY");
+    }
+    assert.equal((await f.request(uri+"&view=service&lang=hi","POST")).status,405);
+    const missing=await worker.fetch(
+      new Request(origin+uri+"&view=service&lang=hi"),{});
+    assert.equal(missing.status,503,"no production DB cannot disclose metadata");
+  }finally{f.db.close();}
+});
