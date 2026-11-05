@@ -162,6 +162,7 @@ object HeadlessWorkerDashboardMapper {
             is WorkerWriteAction.Publish -> WorkerMutationKind.PUBLISH
             is WorkerWriteAction.Unpublish -> WorkerMutationKind.UNPUBLISH
             is WorkerWriteAction.EditCategory -> WorkerMutationKind.EDIT_CATEGORY
+            is WorkerWriteAction.VersionedCategoryEdit -> WorkerMutationKind.EDIT_CATEGORY
             is WorkerWriteAction.Resume -> WorkerMutationKind.RESUME
             null -> null
         }
