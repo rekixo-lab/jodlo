@@ -242,17 +242,17 @@ export async function auditFounderGates(root = rootDefault) {
     if(!hasRevisionRoute)
       errors.push("Worker revision migration needs exact private GET and CAS PUT");
     if(sql!==null) {
-      const stripped=sql.replace(/--[^\\n]*/g,"");
-      if(!/ALTER\\s+TABLE\\s+worker_listings\\s+ADD\\s+COLUMN\\s+revision\\s+INTEGER\\s+NOT\\s+NULL\\s+DEFAULT\\s+0\\s+CHECK\\s*\\(\\s*revision\\s+BETWEEN\\s+0\\s+AND\\s+2147483647\\s*\\)/i.test(stripped))
+      const stripped=sql.replace(/--[^\n]*/g,"");
+      if(!/ALTER\s+TABLE\s+worker_listings\s+ADD\s+COLUMN\s+revision\s+INTEGER\s+NOT\s+NULL\s+DEFAULT\s+0\s+CHECK\s*\(\s*revision\s+BETWEEN\s+0\s+AND\s+2147483647\s*\)/i.test(stripped))
         errors.push("Worker revision must be only bounded default-zero column");
-      if(!/CREATE\\s+TRIGGER\\s+worker_listing_bump_revision\\s+AFTER\\s+UPDATE\\s+OF\\s+category_id\\s*,\\s*status\\s*,\\s*moderation_status\\s+ON\\s+worker_listings/i.test(stripped)||
-        !/UPDATE\\s+worker_listings\\s+SET\\s+revision\\s*=\\s*revision\\s*\\+\\s*1\\s+WHERE\\s+id\\s*=\\s*NEW\\.id/i.test(stripped)||
-        !/OLD\\.category_id\\s+IS\\s+NOT\\s+NEW\\.category_id/i.test(stripped)||
-        !/OLD\\.status\\s+IS\\s+NOT\\s+NEW\\.status/i.test(stripped)||
-        !/OLD\\.moderation_status\\s+IS\\s+NOT\\s+NEW\\.moderation_status/i.test(stripped))
+      if(!/CREATE\s+TRIGGER\s+worker_listing_bump_revision\s+AFTER\s+UPDATE\s+OF\s+category_id\s*,\s*status\s*,\s*moderation_status\s+ON\s+worker_listings/i.test(stripped)||
+        !/UPDATE\s+worker_listings\s+SET\s+revision\s*=\s*revision\s*\+\s*1\s+WHERE\s+id\s*=\s*NEW\.id/i.test(stripped)||
+        !/OLD\.category_id\s+IS\s+NOT\s+NEW\.category_id/i.test(stripped)||
+        !/OLD\.status\s+IS\s+NOT\s+NEW\.status/i.test(stripped)||
+        !/OLD\.moderation_status\s+IS\s+NOT\s+NEW\.moderation_status/i.test(stripped))
         errors.push("Worker version trigger must bump all actual old-route changes");
-      if(/\\b(?:INSERT\\s+INTO|DROP\\s+TABLE|DELETE\\s+FROM)\\b/i.test(stripped)||
-        /\\b(?:phone|gps|address|rate|price|email|identity|verified|description|biography|media|contact)\\b/i.test(stripped))
+      if(/\b(?:INSERT\s+INTO|DROP\s+TABLE|DELETE\s+FROM)\b/i.test(stripped)||
+        /\b(?:phone|gps|address|rate|price|email|identity|verified|description|biography|media|contact)\b/i.test(stripped))
         errors.push("Worker revision migration may not seed or add personal/public fields");
     }
   }else if(hasRevisionRoute) {
