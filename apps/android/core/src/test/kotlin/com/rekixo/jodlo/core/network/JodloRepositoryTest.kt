@@ -749,7 +749,9 @@ fun main() {
             PublicCategory("plumber","plumber","प्लंबर"))))
     check(detailCalls==1)
     check(approvedRepo.approvedServiceDetail(LISTING_ID,"carpenter",Language.HI)==bad())
-    check(approvedRepo.approvedServiceDetail(LISTING_ID,"plumber",Language.EN)==bad())
+    val wrongLocaleRepo:PublicApprovedServiceDetailRepository =
+        RemoteCatalogRepository(RequestSender { ok(approvedJson) })
+    check(wrongLocaleRepo.approvedServiceDetail(LISTING_ID,"plumber",Language.EN)==bad())
     check(JodloReplyDecoder.publicListingDetail(ok(approvedJson))==bad())
     check(JodloReplyDecoder.approvedServiceDetail(ok(
         """{"listing":{"id":"$LISTING_ID","categoryId":"plumber"}}"""))==bad())
