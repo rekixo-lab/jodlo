@@ -133,6 +133,14 @@ object JodloRoutes {
         return ApiCall.get("/api/v1/listings?id=${enc(listingId)}")
     }
 
+    /** Exact, anonymous opt-in approved-category Service information.
+     * This request contains NO Worker ID, account, phone, location or bearer.
+     */
+    fun approvedServiceDetail(listingId: String, language: Language): ApiCall {
+        requireListingId(listingId)
+        return ApiCall.get("/api/v1/listings?id=${enc(listingId)}&view=service&lang=${language.code}")
+    }
+
     fun publicListings(categoryId: String): ApiCall {
         requireCategoryId(categoryId)
         return ApiCall.get("/api/v1/listings?categoryId=${enc(categoryId)}")
