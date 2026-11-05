@@ -864,7 +864,8 @@ private fun GuestDiscovery(
                     }
                     // Only save a freshly confirmed exact PUBLIC detail
                     // obtained over configured HTTPS, never a debug sample.
-                    if (card?.evidence == CustomerServiceCardEvidence.PUBLIC_WHEN_CHECKED &&
+                    if (card != null &&
+                        card.evidence == CustomerServiceCardEvidence.PUBLIC_WHEN_CHECKED &&
                         liveApiConfigured) {
                         item {
                             JodloButton(onClick = {
@@ -874,7 +875,7 @@ private fun GuestDiscovery(
                                     R.string.saved_remove else R.string.saved_add))
                             }
                         }
-                    if (savedFailed) item {
+                        if (savedFailed) item {
                             Text(stringResource(R.string.saved_storage_failed_or_limit),
                                 color = MaterialTheme.colorScheme.error)
                         }
