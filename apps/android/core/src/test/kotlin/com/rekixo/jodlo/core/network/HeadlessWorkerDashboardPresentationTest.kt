@@ -851,9 +851,19 @@ private fun guidedCategoryEditRequiresSameCurrentAccountAndApprovedRows() {
     val chosen=editing.chooseDestination(carpenter,listOf(carpenter,electrician),marker)
     check(chosen.destination==carpenter && !chosen.reviewOpen)
     check(chosen.confirmed(listOf(first),listOf(carpenter),marker)==null)
-    val reviewed=chosen.review(marker)
+    check(!chosen.review(marker).reviewOpen)
+    check(!chosen.reviewScope(marker,listOf(electrician),listOf(first)).scopeReviewOpen)
+    check(!chosen.reviewScope(marker+1,listOf(carpenter),listOf(first))
+        .scopeReviewOpen)
+    // The other Service already occupies 'carpenter'; only a current row
+    // without that duplicate may enter final review. The server checks all.
+    check(!chosen.reviewScope(marker,listOf(carpenter),listOf(first,other))
+        .scopeReviewOpen)
+    val reviewed=chosen.reviewScope(marker,listOf(carpenter),listOf(first))
+        .review(marker)
     check(reviewed.confirmed(listOf(first),listOf(carpenter),marker)==
         CategoryEditCommand(DASH_OWN_ID,"plumber","carpenter"))
+    check(reviewed.confirmed(listOf(first,other),listOf(carpenter),marker)==null)
     check(reviewed.confirmed(listOf(other),listOf(carpenter),marker)==null)
     check(reviewed.confirmed(listOf(first),listOf(electrician),marker)==null)
     check(reviewed.confirmed(listOf(first.copy(categoryId="carpenter")),
