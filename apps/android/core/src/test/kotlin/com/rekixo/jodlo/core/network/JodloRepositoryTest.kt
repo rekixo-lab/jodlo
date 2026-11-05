@@ -722,5 +722,54 @@ fun main() {
     })
     check(managedDenied.managedOwnListingPage(TOKEN)==bad(FailureKind.UNAUTHORIZED))
 
+    // A fresh approved Service page is one public-only GET with an exact
+    // Category label in the selected language. A historical public Listing
+    // row can never grant trust, private Worker metadata or contact access.
+    val approvedCall=JodloRoutes.approvedServiceDetail(LISTING_ID,Language.HI)
+    check(approvedCall.method==HttpMethod.GET)
+    check(approvedCall.resource==
+        "/api/v1/listings?id=$LISTING_ID&view=service&lang=hi")
+    check(approvedCall.headers()["Authorization"]==null)
+    check(approvedCall.bodyUtf8()==null)
+    requireRejected("invalid approved Service ID") {
+        JodloRoutes.approvedServiceDetail("../owner",Language.EN)
+    }
+    val approvedJson="""{"language":"hi","listing":
+        {"id":"$LISTING_ID","categoryId":"plumber"},"category":$PLUMBER}"""
+    var detailCalls=0
+    val approvedRepo:PublicApprovedServiceDetailRepository=
+        RemoteCatalogRepository(RequestSender { call ->
+            detailCalls++
+            check(call.resource==approvedCall.resource)
+            ok(approvedJson)
+        })
+    check(approvedRepo.approvedServiceDetail(LISTING_ID,"plumber",Language.HI)==
+        ApiOutcome.Ok(PublicApprovedServiceDetail(
+            Language.HI, PublicListing(LISTING_ID,"plumber"),
+            PublicCategory("plumber","plumber","प्लंबर"))))
+    check(detailCalls==1)
+    check(approvedRepo.approvedServiceDetail(LISTING_ID,"carpenter",Language.HI)==bad())
+    check(approvedRepo.approvedServiceDetail(LISTING_ID,"plumber",Language.EN)==bad())
+    check(JodloReplyDecoder.publicListingDetail(ok(approvedJson))==bad())
+    check(JodloReplyDecoder.approvedServiceDetail(ok(
+        """{"listing":{"id":"$LISTING_ID","categoryId":"plumber"}}"""))==bad())
+    for(payload in listOf(
+        """{"language":"en","listing":{"id":"$LISTING_ID","categoryId":"plumber"},"category":$PLUMBER}""",
+        """{"language":"hi","listing":{"id":"$LISTING_ID","categoryId":"plumber"},"category":$CARPENTER}""",
+        """{"language":"hi","listing":{"id":"$LISTING_ID","categoryId":"plumber","phone":"private"},"category":$PLUMBER}""",
+        """{"language":"hi","listing":{"id":"$LISTING_ID","categoryId":"plumber"},"category":{"id":"plumber","slug":"plumber","name":"प्लंबर","workerId":"private"}}""",
+        """{"language":"hi","listing":{"id":"$LISTING_ID","categoryId":"plumber"},"category":$PLUMBER,"verified":true}""",
+        """{"language":"hi","listing":{"id":"22222222-2222-4222-8222-222222222222","categoryId":"plumber"},"category":$PLUMBER}""",
+    )){
+        val client:PublicApprovedServiceDetailRepository=
+            RemoteCatalogRepository(RequestSender { ok(payload) })
+        check(client.approvedServiceDetail(LISTING_ID,"plumber",Language.HI)==bad())
+    }
+    val approvedOffline:PublicApprovedServiceDetailRepository=
+        RemoteCatalogRepository(RequestSender { throw IOException("SECRET_TOKEN") })
+    check(approvedOffline.approvedServiceDetail(LISTING_ID,"plumber",Language.HI)==
+        bad(FailureKind.OFFLINE_OR_TIMEOUT))
+    check(JodloReplyDecoder.approvedServiceDetail(ok(approvedJson)) is ApiOutcome.Ok)
+
     println("JODLO repositories: typed browse/search, explicit worker publishing, mismatched response rejection and no auto-retry and public Listing pagination OK")
 }
