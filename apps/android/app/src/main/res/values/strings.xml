@@ -134,6 +134,15 @@
     <string name="guided_unpublish_review">Review service removal</string>
     <string name="guided_unpublish_warning">Unpublishing removes this service from public discovery. Confirm only if you want to stop showing this listing. This does not delete your account.</string>
 
+    <string name="worker_editor_step_choose">Step 1 — Choose approved work</string>
+    <string name="worker_editor_step_scope">Step 2 — Review disclosure before continuing</string>
+    <string name="worker_editor_step_final">Step 3 — Review selected Category and continue</string>
+    <string name="worker_editor_step_confirm">Final confirmation — no automatic save</string>
+    <string name="worker_editor_duplicate">A Service with this Category already appears in your loaded My Services. Select another Category or review the existing Service. The server will also check all your Services.</string>
+    <string name="worker_editor_scope_intro">Only a currently approved Category can be saved. Check the exact scope before you continue.</string>
+    <string name="worker_editor_review_scope">Review Category-only disclosure</string>
+    <string name="worker_editor_scope_public">Public when eligible: the approved Category and an opaque Service reference. A publish or edit may be rejected or later hidden by the server; it is not Worker verification, online status or calling permission.</string>
+    <string name="worker_editor_scope_locked">Not collected or editable in this version: Worker name, work description, experience, rate, location or service area, photos, phone, verification or contact. These need separate approval, consent and moderation; this review does not grant them.</string>
     <string name="worker_edit_category">Edit my service category</string>
     <string name="worker_edit_heading">Edit existing service · choose a new category</string>
     <string name="worker_edit_existing_category">Current category: %1$s</string>
