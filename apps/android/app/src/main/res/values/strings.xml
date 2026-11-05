@@ -224,7 +224,7 @@
     <string name="help_guest_detail">Guest browsing and approved Category search do not require sign-in or GPS. An active Category or public Service reference does not establish Worker identity, current availability or permission to call.</string>
     <string name="help_open_browse">Open Customer browse</string>
     <string name="help_saved_heading">Saved services on this phone</string>
-    <string name="help_saved_detail">Bookmarks are stored only on this device, not synced to your account. Open Saved to check public status, remove individual references or clear all saved references. Clearing Saved does not erase account or provider records.</string>
+    <string name="help_saved_detail">Bookmarks are stored only on this device, not synced to your account. Open Saved to check public status, remove individual references or clear them. You can also Hide an unwanted Service locally and later restore it in Hidden; this is not a server block or report. Clearing Saved does not erase account or provider records.</string>
     <string name="help_open_saved">Manage or clear Saved services</string>
     <string name="help_account_heading">My account data and sessions</string>
     <string name="help_account_detail">After Google sign-in, Account can export current JODLO database records to a document location you choose and sign out on all devices. Exports may include private identity details; choosing cloud storage can upload the file. An export does not cover external providers or backups.</string>
