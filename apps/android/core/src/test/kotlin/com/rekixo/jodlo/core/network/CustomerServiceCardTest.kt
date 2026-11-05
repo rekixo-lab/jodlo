@@ -51,5 +51,5 @@ internal fun verifyCustomerServiceCards() {
         PublicApprovedServiceDetail(Language.EN, selected,
             approved.copy(name="Plumber")))
     check(en?.approvedCategoryName == "Plumber")
-    check(en.evidence == CustomerServiceCardEvidence.PUBLIC_WHEN_CHECKED)
+    check(en?.evidence == CustomerServiceCardEvidence.PUBLIC_WHEN_CHECKED)
 }
