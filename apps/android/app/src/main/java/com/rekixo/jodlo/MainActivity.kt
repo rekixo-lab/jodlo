@@ -53,6 +53,7 @@ import com.rekixo.jodlo.core.network.PublicListing
 import com.rekixo.jodlo.core.network.RemoteCatalogRepository
 import com.rekixo.jodlo.core.network.RemoteWorkerRepository
 import com.rekixo.jodlo.core.network.SavedPublicServices
+import com.rekixo.jodlo.core.network.HiddenPublicServices
 import com.rekixo.jodlo.core.network.asRequestSender
 import com.rekixo.jodlo.ui.theme.JodloPalette
 import com.rekixo.jodlo.ui.theme.JodloTheme
@@ -113,6 +114,29 @@ private fun JodloApp(activity: ComponentActivity) {
     val writes = remember(session) { session?.let(::HeadlessWorkerWriteScope) }
     val savedStore = remember(activity) { DeviceSavedServices(activity.applicationContext) }
     var savedServices by remember(savedStore) { mutableStateOf(savedStore.read()) }
+    val hiddenStore = remember(activity) {
+        DeviceHiddenServices(activity.applicationContext)
+    }
+    var hiddenServices by remember(hiddenStore) { mutableStateOf(hiddenStore.read()) }
+    /** Explicit local-only hide, no server block/report, no Saved deletion. */
+    fun hideService(id: String): Boolean {
+        val next = hiddenServices.hide(id)
+        if (next == hiddenServices || !hiddenStore.write(next)) return false
+        hiddenServices = next
+        return true
+    }
+    fun unhideService(id: String): Boolean {
+        val next = hiddenServices.unhide(id)
+        if (next == hiddenServices || !hiddenStore.write(next)) return false
+        hiddenServices = next
+        return true
+    }
+    fun clearHidden(): Boolean {
+        val next = hiddenServices.clear()
+        if (!hiddenStore.write(next)) return false
+        hiddenServices = next
+        return true
+    }
     // All saved entries are anonymous, already public references and remain
     // device-only. Every mutation is explicit; a failed local write is
     // reported, never silently counted as saved.
@@ -178,6 +202,11 @@ private fun JodloApp(activity: ComponentActivity) {
                 onClick = { section = "saved" },
                 label = { Text(stringResource(R.string.tab_saved)) },
             )
+            JodloChip(
+                selected = section == "hidden",
+                onClick = { section = "hidden" },
+                label = { Text(stringResource(R.string.hidden_tab)) },
+            )
         }
         if (BuildConfig.DEBUG && sender == null && section == "customer") {
             JodloTextAction(
@@ -234,19 +263,27 @@ private fun JodloApp(activity: ComponentActivity) {
                 "customer" -> GuestDiscovery(
                     customerCatalog, liveApiConfigured = sender != null,
                     saved = savedServices, onSaveToggle = ::toggleSaved,
+                    hidden = hiddenServices, onHide = ::hideService,
                     homeCategory = homeCategory,
                 )
                 "saved" -> SavedServicesDashboard(
                     catalog, savedServices, ::removeSaved, ::clearSaved,
+                    hiddenServices, ::hideService,
+                )
+                "hidden" -> HiddenServicesDashboard(
+                    hiddenServices, ::unhideService, ::clearHidden,
+                    onHome = { section = "home" },
                 )
                 "feed" -> if (catalog != null) PublicServicesFeed(
                     catalog, savedServices, ::toggleSaved,
+                    hiddenServices, ::hideService,
                 )
                 "worker" -> WorkerDashboard(activity, session, writes, catalog)
                 "help" -> HelpAndPrivacyDashboard(
                     onHome = { section = "home" },
                     onBrowse = { homeCategory = null; section = "customer" },
                     onSaved = { section = "saved" },
+                    onHidden = { section = "hidden" },
                     onAccount = { section = "account" },
                     onWorker = { section = "worker" },
                 )
@@ -281,6 +318,8 @@ private fun GuestDiscovery(
     liveApiConfigured: Boolean,
     saved: SavedPublicServices,
     onSaveToggle: (PublicListing) -> Boolean,
+    hidden: HiddenPublicServices,
+    onHide: (String) -> Boolean,
     homeCategory: HomeCategorySelection? = null,
 ) {
     val scope = rememberCoroutineScope()
