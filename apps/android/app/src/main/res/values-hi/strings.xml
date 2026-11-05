@@ -202,6 +202,20 @@
     <string name="feed_select_to_recheck">वर्तमान सार्वजनिक स्थिति जाँचने के लिए खोलें। कोई कॉल या संपर्क शुरू नहीं होता।</string>
     <string name="feed_back">सभी सार्वजनिक सेवाओं पर लौटें</string>
     <string name="tab_home">होम</string>
+    <string name="home_nearby_action">शहर चुनें — आसपास की सेवाएँ अभी सत्यापित नहीं हैं</string>
+    <string name="nearby_heading">शहर के अनुसार खोज की तैयारी</string>
+    <string name="nearby_privacy_notice">शहर चुनना वैकल्पिक है। चुनाव केवल इस स्क्रीन पर रहता है; JODLO GPS नहीं माँगता, शहर सेव नहीं करता और API को नहीं भेजता। अभी किसी Worker का सेवा क्षेत्र स्वीकृत नहीं है।</string>
+    <string name="nearby_choose_city">शहर खुद चुनें (वैकल्पिक)</string>
+    <string name="nearby_city_bilaspur">बिलासपुर</string>
+    <string name="nearby_city_raipur">रायपुर</string>
+    <string name="nearby_clear_city">चुना हुआ शहर हटाएँ</string>
+    <string name="nearby_no_city">कोई शहर नहीं चुना है। बिना लोकेशन बताए भी सभी सार्वजनिक सेवाएँ देख सकते हैं।</string>
+    <string name="nearby_selected">चुना शहर (भेजा नहीं गया): %1$s</string>
+    <string name="nearby_unverified">अभी आसपास के Workers की पुष्टि नहीं की जा सकती। सेवा क्षेत्र, शहर में उपलब्धता और मिलान के नियमों को अलग गोपनीयता तथा मॉडरेशन स्वीकृति चाहिए। इसका यह मतलब नहीं कि इस शहर में Worker नहीं है।</string>
+    <string name="nearby_no_matching_claims">किसी सेवा को आसपास की नहीं बताया गया, न दूरी के हिसाब से रखा गया, न इस शहर में काम करने का दावा किया गया। प्रकाशित श्रेणी या Service पहचान से सेवा क्षेत्र की पुष्टि नहीं होती।</string>
+    <string name="nearby_browse_all">सभी सार्वजनिक सेवाएँ देखें (बिना शहर फ़िल्टर)</string>
+    <string name="nearby_browse_unfiltered_notice">अगली स्क्रीन चुने शहर से फ़िल्टर नहीं होगी। Service खोलकर केवल उसकी वर्तमान सार्वजनिक श्रेणी और पहचान जाँच सकते हैं; उपलब्धता, क्षेत्र और कॉल की पुष्टि नहीं है।</string>
+    <string name="nearby_back_home">होम पर लौटें</string>
     <string name="home_heading">सेवा खोजें</string>
     <string name="home_intro">स्वीकृत काम की श्रेणियाँ देखें या सभी सार्वजनिक सेवाएँ खोलें। सेवाएँ खोजने के लिए प्रवेश या स्थान देना आवश्यक नहीं है।</string>
     <string name="home_browse_action">श्रेणियाँ देखें और खोजें</string>
@@ -264,6 +278,10 @@
     <string name="worker_edit_revision_notice">इस edit के लिए ताज़ा निजी revision और सर्वर conflict जाँच ज़रूरी है। समीक्षा के बाद Service बदले तो edit रुक जाएगा। अनिश्चित परिणाम पर अपने आप दोबारा बदलाव न करें।</string>
 
     <!-- No-personal-data public Service cards; exact check is only a past-time observation. -->
+    <string name="service_profile_heading">इस सार्वजनिक सेवा की जानकारी</string>
+    <string name="service_profile_identity">Worker की पहचान और अनुभव: इस Service के लिए स्वीकृत सार्वजनिक Worker Profile या सत्यापन उपलब्ध नहीं है।</string>
+    <string name="service_profile_area">सेवा क्षेत्र: स्वीकृत शहर, पता या दूरी उपलब्ध नहीं है। Nearby में शहर चुनने से इस Service के वहाँ काम करने की पुष्टि नहीं होती।</string>
+    <string name="service_profile_rates_calls">दर, फोटो और संपर्क: यहाँ उपलब्ध या सत्यापित नहीं हैं। इंटरनेट वॉइस कॉल अभी चालू नहीं हैं।</string>
     <string name="service_card_category_not_confirmed">स्वीकृत श्रेणी का नाम अभी जाँचा नहीं जा सका</string>
     <string name="service_card_approved_category_notice">यह केवल श्रेणी का नाम है, Worker की लिखी प्रोफ़ाइल या अभी प्रकाशित होने का प्रमाण नहीं। ऑफ़लाइन डेवेलपर नमूने असली सेवाएँ नहीं हैं।</string>
     <string name="service_card_checked_time_only">पिछली सटीक जाँच के समय यह सेवा सार्वजनिक थी। उसके बाद स्थिति बदल सकती है।</string>

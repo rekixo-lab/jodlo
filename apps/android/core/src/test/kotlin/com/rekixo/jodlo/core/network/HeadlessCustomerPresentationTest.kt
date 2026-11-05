@@ -322,7 +322,34 @@ private fun optInLiveSuggestionsShowOnlyExplicitReviewedCategories() {
     // Pure state can never confirm a Listing, contact, location or publishing.
     check(catalog.searchGET.get()==1 && catalog.listingGET.get()==0)
 }
+/** Nearby UI is an explicit local intent, never an approved area query.
+ * Public Listing records have no city, so matching cannot be inferred.
+ */
+private fun manualNearbyCityCannotCertifyWorkersOrTransmitArea() {
+    val initial = ManualNearbyIntent()
+    check(initial.city == null)
+    check(initial.evidence == NearbyEvidence.NO_CITY_SELECTED)
+    check(!initial.nearbyLookupAllowed)
+    check(initial.verifiedNearbyListings.isEmpty())
+    val bilaspur = initial.choose(NearbyPilotCity.BILASPUR)
+    check(bilaspur.city == NearbyPilotCity.BILASPUR)
+    check(bilaspur.evidence == NearbyEvidence.SERVICE_AREAS_NOT_APPROVED)
+    check(!bilaspur.nearbyLookupAllowed)
+    check(bilaspur.verifiedNearbyListings.isEmpty())
+    val raipur = bilaspur.choose(NearbyPilotCity.RAIPUR)
+    check(raipur.city == NearbyPilotCity.RAIPUR)
+    check(raipur.evidence == NearbyEvidence.SERVICE_AREAS_NOT_APPROVED)
+    check(!raipur.nearbyLookupAllowed)
+    check(raipur.verifiedNearbyListings.isEmpty())
+    check(raipur.clear() == initial)
+    check(raipur.clear().city == null)
+    // No API client, request sender, GPS, account, disk or coordinate field
+    // participates in these state transitions, even after two selections.
+    check(ManualNearbyIntent().city == null) // New screen, no persisted city.
+}
+
 fun main() {
+    manualNearbyCityCannotCertifyWorkersOrTransmitArea()
     optInLiveSuggestionsShowOnlyExplicitReviewedCategories()
     initialAndEmptySearchHaveNoHiddenRequests()
     typedErrorShowsOnlyExplicitRetryAndNoOldRows()

@@ -210,8 +210,16 @@ private fun JodloApp(activity: ComponentActivity) {
                     openBrowse = { homeCategory = null; section = "customer" },
                     openHierarchy = { section = "hierarchy" },
                     openServices = { if (catalog != null) section = "feed" },
+                    openNearby = { section = "nearby" },
                     openSaved = { section = "saved" },
                     openWorker = { section = "worker" },
+                )
+                "nearby" -> ManualNearbyDiscovery(
+                    onBrowseAll = {
+                        homeCategory = null
+                        section = if (catalog != null) "feed" else "customer"
+                    },
+                    onHome = { section = "home" },
                 )
                 "hierarchy" -> CustomerHierarchy(
                     repository = catalog,
@@ -857,6 +865,9 @@ private fun GuestDiscovery(
                         detail.listing, detail.category.name)
                     if (card != null) item {
                         SafeServiceCard(card)
+                    }
+                    if (card?.evidence == CustomerServiceCardEvidence.PUBLIC_WHEN_CHECKED) {
+                        item { SafePublicProfileFacts() }
                     }
                     if (detail != null && card == null) item {
                         Text(stringResource(R.string.request_failed),

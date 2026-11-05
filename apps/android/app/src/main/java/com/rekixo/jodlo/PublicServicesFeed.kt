@@ -250,6 +250,7 @@ internal fun PublicServicesFeed(
                     selected!!, categoryNames[selected!!.categoryId]))
             }
             if (safeCard != null) {
+                item { SafePublicProfileFacts() }
                 item {
                     JodloButton(onClick = {
                         savingFailure = !onSaveToggle(safeCard.listing)
