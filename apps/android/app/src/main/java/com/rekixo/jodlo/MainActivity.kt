@@ -206,9 +206,19 @@ private fun JodloApp(activity: ComponentActivity) {
                         section = "customer"
                     },
                     openBrowse = { homeCategory = null; section = "customer" },
+                    openHierarchy = { section = "hierarchy" },
                     openServices = { if (catalog != null) section = "feed" },
                     openSaved = { section = "saved" },
                     openWorker = { section = "worker" },
+                )
+                "hierarchy" -> CustomerHierarchy(
+                    repository = catalog,
+                    openCategory = { category, language ->
+                        homeCategory = HomeCategorySelection(category, language)
+                        section = "customer"
+                    },
+                    openBrowse = { homeCategory = null; section = "customer" },
+                    openHome = { section = "home" },
                 )
                 "customer" -> GuestDiscovery(
                     customerCatalog, liveApiConfigured = sender != null,
