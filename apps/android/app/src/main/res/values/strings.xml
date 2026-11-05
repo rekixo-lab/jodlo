@@ -232,4 +232,10 @@
     <string name="worker_exact_changed">This service changed since the earlier owner page. The old edit/review was cleared; review the current Category and status before any new action.</string>
     <string name="worker_exact_missing">The selected service is no longer available to this account. The old selection was cleared; no write was performed.</string>
     <string name="worker_exact_failed">Could not verify the selected service. The server may be offline or not support this exact read yet. No write was performed; existing Category editing still uses its server-side conflict checks.</string>
+
+    <!-- Exact owner revision editing; no newly approved profile fields. -->
+    <string name="worker_revision_ready">Fresh private revision verified. Choose a new approved Category, review and confirm. Another device can still change this Service; the server will reject a stale edit.</string>
+    <string name="worker_revision_changed">This Service changed on the server. Earlier edit review was cleared. Check the current status and begin again.</string>
+    <string name="worker_revision_failed">Could not verify an edit revision. This API may be older or unavailable. No edit was sent; versioned editing cannot safely fall back.</string>
+    <string name="worker_edit_revision_notice">This edit requires a fresh private revision and server conflict check. If the Service changed since review, the edit is rejected. Do not retry an uncertain write automatically.</string>
 </resources>
