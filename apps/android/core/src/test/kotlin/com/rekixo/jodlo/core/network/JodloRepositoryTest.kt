@@ -14,6 +14,7 @@ private fun requireRejected(label: String, call: () -> Unit) =
     check(runCatching(call).isFailure) { "Expected rejection: $label" }
 
 fun main() {
+    verifyCustomerServiceCards()
     val versionedGet = JodloRoutes.exactVersionedOwnListing(TOKEN, LISTING_ID)
     check(versionedGet.method == HttpMethod.GET)
     check(versionedGet.resource ==
