@@ -132,6 +132,29 @@ export function parseOwnListingsPage(params:URLSearchParams):OwnListingsPageOpti
     ...(view==="management"?{management:true as const}:{})};
 }
 
+/** Explicit, AUTHENTICATED owner management view: current publication
+ * intent is safe to show to the SAME owner, not a moderation verdict.
+ * Existing legacy/paged DTOs and ALL public reads stay byte-compatible.
+ * Public visibility may be false for an active 'published' row when Category
+ * or moderation changes, so never infer status from visible alone.
+ */
+const MANAGED_OWN_LISTINGS_SELECT =
+  "SELECT wl.id,wl.category_id AS categoryId,wl.status AS publicationStatus, " +
+  "CASE WHEN wl.status='published' AND wl.moderation_status='allowed' AND c.is_active=1 " +
+  "AND EXISTS(SELECT 1 FROM worker_profiles AS wp " +
+  "WHERE wp.account_id=wl.worker_account_id AND wp.status='draft') " +
+  "THEN 1 ELSE 0 END AS visible FROM worker_listings AS wl " +
+  "JOIN accounts AS a ON a.id=wl.worker_account_id JOIN categories AS c ON c.id=wl.category_id " +
+  "WHERE wl.worker_account_id=? AND a.status='active'";
+
+export const MANAGED_OWN_LISTINGS_QUERY =
+  MANAGED_OWN_LISTINGS_SELECT+" ORDER BY wl.created_at,wl.id LIMIT ?";
+export const CONTINUED_MANAGED_OWN_LISTINGS_QUERY =
+  MANAGED_OWN_LISTINGS_SELECT+
+  " AND (wl.created_at,wl.id) > (SELECT prior.created_at,prior.id " +
+  "FROM worker_listings AS prior WHERE prior.worker_account_id=? AND prior.id=? LIMIT 1)" +
+  " ORDER BY wl.created_at,wl.id LIMIT ?";
+
 /** Exact owner-selected read, separate from a paged or legacy GET.
  * Uses the SAME private status projection as managed pages, with actor+ID
  * filters in ONE SQL statement. Foreign, removed and disabled accounts
@@ -159,28 +182,7 @@ export async function exactManagedOwnListing(
     visible:row.visible===1,publicationStatus:row.publicationStatus};
 }
 
-/** Explicit, AUTHENTICATED owner management view: current publication
- * intent is safe to show to the SAME owner, not a moderation verdict.
- * Existing legacy/paged DTOs and ALL public reads stay byte-compatible.
- * Public visibility may be false for an active 'published' row when Category
- * or moderation changes, so never infer status from visible alone.
- */
-const MANAGED_OWN_LISTINGS_SELECT =
-  "SELECT wl.id,wl.category_id AS categoryId,wl.status AS publicationStatus, " +
-  "CASE WHEN wl.status='published' AND wl.moderation_status='allowed' AND c.is_active=1 " +
-  "AND EXISTS(SELECT 1 FROM worker_profiles AS wp " +
-  "WHERE wp.account_id=wl.worker_account_id AND wp.status='draft') " +
-  "THEN 1 ELSE 0 END AS visible FROM worker_listings AS wl " +
-  "JOIN accounts AS a ON a.id=wl.worker_account_id JOIN categories AS c ON c.id=wl.category_id " +
-  "WHERE wl.worker_account_id=? AND a.status='active'";
 
-export const MANAGED_OWN_LISTINGS_QUERY =
-  MANAGED_OWN_LISTINGS_SELECT+" ORDER BY wl.created_at,wl.id LIMIT ?";
-export const CONTINUED_MANAGED_OWN_LISTINGS_QUERY =
-  MANAGED_OWN_LISTINGS_SELECT+
-  " AND (wl.created_at,wl.id) > (SELECT prior.created_at,prior.id " +
-  "FROM worker_listings AS prior WHERE prior.worker_account_id=? AND prior.id=? LIMIT 1)" +
-  " ORDER BY wl.created_at,wl.id LIMIT ?";
 
 export const UNPUBLISH_LISTING_QUERY =
   "UPDATE worker_listings SET status='unpublished' WHERE id=? AND worker_account_id=? " +
