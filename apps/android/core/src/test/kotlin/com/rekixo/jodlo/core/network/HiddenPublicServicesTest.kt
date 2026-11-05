@@ -52,6 +52,57 @@ fun main() {
     check(full.unhide(id(0)).hide(id(HiddenPublicServices.MAX_ENTRIES)).ids.size ==
         HiddenPublicServices.MAX_ENTRIES)
     check(HiddenPublicServices.decode(full.encode()) == full)
+    // User-controlled JSON backup is a snapshot of opaque public references,
+    // not proof of Service availability or a current public Worker.
+    val portable = LocalPublicServiceBackup(saved, two)
+    val portableJson = portable.encode()
+    check(LocalPublicServiceBackup.decode(portableJson) == portable)
+    check(LocalPublicServiceBackup.decode(
+        LocalPublicServiceBackup(SavedPublicServices.empty(), empty).encode()) ==
+        LocalPublicServiceBackup(SavedPublicServices.empty(), empty))
+    check(portableJson.contains("\"saved\"") && portableJson.contains("\"hidden\""))
+    check(!portableJson.contains("phone") && !portableJson.contains("workerId"))
+    // Imported data never rewrites an existing Category, nor exceeds capacity.
+    check(saved.mergeFrom(SavedPublicServices.empty()) == saved)
+    check(saved.mergeFrom(saved) == saved)
+    val newSave = SavedPublicServices.empty()
+        .toggle(PublicListing(id(4), "carpenter"))
+    check(saved.mergeFrom(newSave)?.entries?.size == saved.entries.size + 1)
+    val conflict = SavedPublicServices.empty()
+        .toggle(PublicListing(id(1), "different-category"))
+    check(saved.mergeFrom(conflict) == null)
+    val fullSaved = (0 until SavedPublicServices.MAX_ENTRIES).fold(
+        SavedPublicServices.empty()) { state, i ->
+        state.toggle(PublicListing(id(i + 100), "plumber"))
+    }
+    check(fullSaved.mergeFrom(newSave) == null)
+    check(two.mergeFrom(empty) == two)
+    check(two.mergeFrom(two) == two)
+    check(two.mergeFrom(empty.hide(id(3)))?.ids?.size == 3)
+    check(full.mergeFrom(empty.hide(id(200))) == null)
+
+    // Malformed, forged, extended, duplicated, or overlarge backups are
+    // rejected in their entirety; no partial restore or unknown metadata.
+    val wrong = listOf(
+        "", " ", "null", "[]", "{",
+        "{}",
+        """{"format":"different","version":1,"saved":[],"hidden":[]}""",
+        """{"format":"jodlo-public-reference-backup","version":2,"saved":[],"hidden":[]}""",
+        """{"format":"jodlo-public-reference-backup","version":"1","saved":[],"hidden":[]}""",
+        """{"format":"jodlo-public-reference-backup","version":1,"saved":[],"hidden":[],"workerId":"secret"}""",
+        """{"format":"jodlo-public-reference-backup","version":1,"saved":[{"id":"abc","categoryId":"plumber"}],"hidden":[]}""",
+        """{"format":"jodlo-public-reference-backup","version":1,"saved":[{"id":"${id(1)}","categoryId":"plumber","name":"private"}],"hidden":[]}""",
+        """{"format":"jodlo-public-reference-backup","version":1,"saved":[{"id":"${id(1)}","categoryId":"plumber"},{"id":"${id(1)}","categoryId":"painter"}],"hidden":[]}""",
+        """{"format":"jodlo-public-reference-backup","version":1,"saved":[],"hidden":["${id(1)}","${id(1)}"]}""",
+        """{"format":"jodlo-public-reference-backup","version":1,"saved":[null],"hidden":[]}""",
+        """{"format":"jodlo-public-reference-backup","version":1,"saved":[],"hidden":[42]}""",
+        "A".repeat(LocalPublicServiceBackup.MAX_BYTES + 1),
+    )
+    for (bad in wrong) check(LocalPublicServiceBackup.decode(bad) == null) {
+        "Forged or malformed public reference backup was accepted"
+    }
+    // If the user explicitly chooses cloud storage, that is the SYSTEM
+    // document picker's action, never a network operation in this model.
     // No RequestSender, bearer, Google subject, location, provider or side
     // effect participates in the model. No public eligibility is inferred.
     println("JODLO hidden services: exact local IDs, strict storage, Saved preservation and no network OK")
