@@ -2,6 +2,7 @@ import type { Env } from "../data/d1.ts";
 import { validOpaqueId } from "../modules/shared/identifiers.ts";
 import { browsePublicCategories, parseCatalogBrowse, parseCatalogSearch, searchPublicCategories, parsePublicCategoryLabels, resolveApprovedCategoryLabels } from "../modules/catalog/catalog.ts";
 import { healthData } from "../modules/system/health.ts";
+import { parseHierarchy, readApprovedHierarchy } from "../modules/catalog/hierarchy.ts";
 import { optInAsWorker, ownWorkerDraft } from "../modules/workers/profile.ts";
 import { ownAccountOverview, exportOwnAccountData } from "../modules/identity/account-self-service.ts";
 import { validGoogleClientId, verifyGoogleIdToken } from "../modules/identity/google.ts";
@@ -56,6 +57,24 @@ export async function handleRequest(
   const url = new URL(request.url);
   if (url.pathname === "/api/v1/health") {
     return getOnly(request) ?? json({ ok: true, data: healthData() });
+  }
+  if (url.pathname === "/api/v1/catalog/hierarchy") {
+    // Strict opt-in hierarchy, no migration seeding and no new public fields.
+    const methodError=getOnly(request);
+    if(methodError)return methodError;
+    const options=parseHierarchy(url.searchParams);
+    if(!options)return json({ok:false,error:{
+      code:"INVALID_QUERY",message:"Invalid hierarchy query"}},400);
+    if(!env.DB)return json({ok:false,error:{
+      code:"SERVICE_UNAVAILABLE",message:"Catalog unavailable"}},503);
+    try {
+      const page=await readApprovedHierarchy(env.DB,options);
+      return json({ok:true,data:page});
+    }catch {
+      // Older un-migrated D1 or any SQL error must not reveal internals.
+      return json({ok:false,error:{
+        code:"SERVICE_UNAVAILABLE",message:"Catalog unavailable"}},503);
+    }
   }
   if (url.pathname === "/api/v1/catalog/search") {
     const methodError = getOnly(request);
