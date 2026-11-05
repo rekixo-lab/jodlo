@@ -93,6 +93,19 @@ interface ExactManagedOwnListingRepository {
     fun exactManagedOwnListing(session: String, listingId: String): ApiOutcome<OwnListing>
 }
 
+/** Separate private opt-in owner revision and versioned Category CAS.
+ * Legacy repositories and Customer/public DTOs remain unchanged. Failure
+ * on an older API/missing migration MUST NOT downgrade to unversioned edit.
+ */
+interface VersionedOwnListingRepository {
+    fun exactVersionedOwnListing(session: String, listingId: String):
+        ApiOutcome<VersionedOwnListing>
+    fun editCategoryVersioned(
+        session: String, listingId: String, expectedCategoryId: String,
+        nextCategoryId: String, expectedRevision: Long,
+    ): ApiOutcome<VersionedCategoryEditReceipt>
+}
+
 /** Private owner-only resume of one EXISTING, previously-unpublished Listing.
  * Unlike generic publish, this cannot insert or resurrect a hidden Listing.
  * It does not read private moderation reasons or create a public profile.
@@ -297,7 +310,7 @@ class RemoteCatalogRepository(private val sender: RequestSender) :
 class RemoteWorkerRepository(private val sender: RequestSender) :
     WorkerRepository, OwnListingPageRepository, ManagedOwnListingPageRepository,
     OwnListingCategoryEditRepository, OwnListingResumeRepository,
-    ExactManagedOwnListingRepository {
+    ExactManagedOwnListingRepository, VersionedOwnListingRepository {
     override fun myDraft(session: String): ApiOutcome<WorkerDraft> =
         performOnce(JodloRoutes.workerDraft(session), sender::send, JodloReplyDecoder::workerDraft)
 
@@ -347,6 +360,25 @@ class RemoteWorkerRepository(private val sender: RequestSender) :
         performOnce(JodloRoutes.exactManagedOwnListing(session, listingId),
             sender::send, JodloReplyDecoder::exactManagedOwnListing)
             .validated { row -> row.id == listingId && row.publicationStatus != null }
+
+    override fun exactVersionedOwnListing(
+        session: String, listingId: String,
+    ): ApiOutcome<VersionedOwnListing> =
+        performOnce(JodloRoutes.exactVersionedOwnListing(session, listingId),
+            sender::send, JodloReplyDecoder::exactVersionedOwnListing)
+            .validated { it.row.id == listingId && it.row.publicationStatus != null &&
+                it.revision in 0..2147483647L }
+
+    override fun editCategoryVersioned(
+        session: String, listingId: String, expectedCategoryId: String,
+        nextCategoryId: String, expectedRevision: Long,
+    ): ApiOutcome<VersionedCategoryEditReceipt> =
+        performOnce(JodloRoutes.editListingCategoryVersioned(session, listingId,
+                expectedCategoryId, nextCategoryId, expectedRevision),
+            sender::send, JodloReplyDecoder::versionedEditReceipt)
+            .validated { it.listing.id == listingId &&
+                it.listing.categoryId == nextCategoryId &&
+                it.revision == expectedRevision + 1 }
 
     /** The server still verifies the active Category and the authenticated
      * opted-in worker; a syntactically valid ID is not an approval to publish.
