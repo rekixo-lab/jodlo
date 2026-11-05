@@ -36,6 +36,7 @@ import com.rekixo.jodlo.core.network.OwnListing
 import com.rekixo.jodlo.core.network.OwnPublicationStatus
 import com.rekixo.jodlo.core.network.PublicCategory
 import com.rekixo.jodlo.core.network.RemoteCatalogRepository
+import com.rekixo.jodlo.core.network.SessionFailure
 import com.rekixo.jodlo.core.network.SessionResult
 import com.rekixo.jodlo.core.network.WorkerCustomerServicePreview
 import com.rekixo.jodlo.core.network.WorkerCustomerServicePreviewPhase
