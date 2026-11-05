@@ -251,6 +251,10 @@ internal fun WorkerDashboard(
                     ownListings = if (after == null) reply.value.listings
                         else (ownListings + reply.value.listings).distinctBy { it.id }
                     ownerCursor = reply.value.nextCursor
+                    if(selectedListing != null &&
+                        ownListings.none { it.id == selectedListing }) {
+                        selectedListing = null
+                    }
                 }
                 else -> message = R.string.worker_read_failed
             }
@@ -379,10 +383,11 @@ internal fun WorkerDashboard(
      */
     fun checkPublicPreview() {
         val chosen=ownListings.firstOrNull { it.id==selectedListing } ?: return
-        val actor=session?.accountExportSessionMarker() ?: return
+        val activeSession=session ?: return
+        val actor=activeSession.accountExportSessionMarker() ?: return
         val reader=catalog ?: return
         if(busy || uncertain ||
-            (session.snapshot() as? LoginState.SignedIn)?.worker!=WorkerState.DRAFT) return
+            (activeSession.snapshot() as? LoginState.SignedIn)?.worker!=WorkerState.DRAFT) return
         val lang=categoryLanguage
         val generation=++previewRevision
         publicPreview=WorkerCustomerServicePreview.unchecked()
@@ -401,8 +406,8 @@ internal fun WorkerDashboard(
                 }
             busy=false
             if(generation!=previewRevision ||
-                session.accountExportSessionMarker()!=actor ||
-                (session.snapshot() as? LoginState.SignedIn)?.worker!=WorkerState.DRAFT ||
+                activeSession.accountExportSessionMarker()!=actor ||
+                (activeSession.snapshot() as? LoginState.SignedIn)?.worker!=WorkerState.DRAFT ||
                 selectedListing!=chosen.id || categoryLanguage!=lang ||
                 ownListings.firstOrNull{it.id==chosen.id}!=chosen) return@launch
             publicPreview=WorkerCustomerServicePreview.fromPublicRead(chosen,lang,reply)
