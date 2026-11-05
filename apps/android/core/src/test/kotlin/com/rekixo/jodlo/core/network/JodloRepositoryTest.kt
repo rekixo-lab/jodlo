@@ -89,20 +89,38 @@ fun main() {
     val destination=PublicCategory("carpenter","carpenter","Carpenter")
     val guidedVersion=GuidedWorkerCategoryEdit().beginVersioned(
         currentSnapshot,listOf(approvedOwn),101L)
-        .chooseDestination(destination,listOf(destination),101L).review(101L)
+        .chooseDestination(destination,listOf(destination),101L)
+        .reviewScope(101L,listOf(destination),listOf(approvedOwn)).review(101L)
     check(guidedVersion.confirmedVersioned(
         listOf(approvedOwn),listOf(destination),101L) ==
         VersionedCategoryEditCommand(
             LISTING_ID,"plumber","carpenter",2L))
     check(guidedVersion.confirmedVersioned(
         emptyList(),listOf(destination),101L)==null)
+    val beforeDisclosure=GuidedWorkerCategoryEdit().beginVersioned(
+        currentSnapshot,listOf(approvedOwn),101L)
+        .chooseDestination(destination,listOf(destination),101L)
+    check(!beforeDisclosure.review(101L).reviewOpen)
+    check(!beforeDisclosure.reviewScope(102L,listOf(destination),listOf(approvedOwn))
+        .scopeReviewOpen)
+    check(!beforeDisclosure.reviewScope(101L,emptyList(),listOf(approvedOwn))
+        .scopeReviewOpen)
+    val duplicate=OwnListing(
+        "22222222-2222-4222-8222-222222222222","carpenter",true)
+    check(!beforeDisclosure.reviewScope(101L,listOf(destination),
+        listOf(approvedOwn,duplicate)).scopeReviewOpen)
+    check(guidedVersion.confirmedVersioned(
+        listOf(approvedOwn,duplicate),listOf(destination),101L)==null)
+    check(guidedVersion.invalidateCategory().confirmedVersioned(
+        listOf(approvedOwn),listOf(destination),101L)==null)
     check(guidedVersion.confirmedVersioned(
         listOf(approvedOwn),listOf(destination),102L)==null)
     check(guidedVersion.confirmedVersioned(
         listOf(approvedOwn),emptyList(),101L)==null)
     check(GuidedWorkerCategoryEdit().begin(
         approvedOwn,listOf(approvedOwn),101L)
-        .chooseDestination(destination,listOf(destination),101L).review(101L)
+        .chooseDestination(destination,listOf(destination),101L)
+        .reviewScope(101L,listOf(destination),listOf(approvedOwn)).review(101L)
         .confirmedVersioned(listOf(approvedOwn),listOf(destination),101L)==null)
     val oldRevisionApi:VersionedOwnListingRepository =
         RemoteWorkerRepository(RequestSender {
