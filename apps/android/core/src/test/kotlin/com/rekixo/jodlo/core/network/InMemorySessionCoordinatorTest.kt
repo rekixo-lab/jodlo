@@ -343,7 +343,59 @@ private fun testOwnerExportAndEpochIsolation() {
     check(session.accountExportSessionMarker() != firstMarker)
 }
 
+private fun testExactSelectedServiceReadSessionIsolation() {
+    val selected=OwnListing(LISTING_ID,"plumber",true,
+        OwnPublicationStatus.PUBLISHED)
+    val fake=FakeWorkers()
+    lateinit var current: InMemorySessionCoordinator
+    var changeSession=false
+    var mutateDuringRead=false
+    var seen=0
+    val capable=object : WorkerRepository by fake, ExactManagedOwnListingRepository {
+        override fun exactManagedOwnListing(session:String,listingId:String):
+            ApiOutcome<OwnListing> {
+            seen++
+            check(listingId==LISTING_ID)
+            check(session==TOKEN_ONE || session==TOKEN_TWO)
+            if(changeSession) check(current.acceptIssuedSession(issued(TOKEN_TWO))
+                is ApiOutcome.Ok)
+            if(mutateDuringRead) check(current.optIn() ==
+                SessionResult.Success(WorkerState.DRAFT))
+            return ApiOutcome.Ok(selected)
+        }
+    }
+    current=InMemorySessionCoordinator(capable,
+        RequestSender { error(503,"SERVICE_UNAVAILABLE") }) { 0L }
+    check(current.exactManagedOwnListing(LISTING_ID) ==
+        SessionResult.Failed(SessionFailure.SIGNED_OUT))
+    check(seen==0)
+    check(current.acceptIssuedSession(issued()) is ApiOutcome.Ok)
+    check(current.exactManagedOwnListing(LISTING_ID)==SessionResult.Success(selected))
+    changeSession=true
+    check(current.exactManagedOwnListing(LISTING_ID)==
+        SessionResult.Failed(SessionFailure.REPLACED))
+    changeSession=false
+    // New/current session after replacement has an independent epoch.
+    check(current.exactManagedOwnListing(LISTING_ID)==SessionResult.Success(selected))
+    mutateDuringRead=true
+    check(current.exactManagedOwnListing(LISTING_ID)==
+        SessionResult.Failed(SessionFailure.STALE_RESULT))
+    mutateDuringRead=false
+    check(current.exactManagedOwnListing(LISTING_ID)==SessionResult.Success(selected))
+    check(seen==5)
+    checkRejected("exact ID syntax") {
+        current.exactManagedOwnListing("../foreign")
+    }
+    val unsupported=InMemorySessionCoordinator(fake,
+        RequestSender { error(503,"SERVICE_UNAVAILABLE") }) { 0L }
+    check(unsupported.acceptIssuedSession(issued()) is ApiOutcome.Ok)
+    check(unsupported.exactManagedOwnListing(LISTING_ID)==
+        SessionResult.Failed(SessionFailure.REMOTE_FAILURE,
+            FailureKind.SERVICE_UNAVAILABLE))
+}
+
 fun main() {
+    testExactSelectedServiceReadSessionIsolation()
     testOldProfileCannotUndoOptIn()
     testConcurrentMutationsRejected()
     testOwnerExportAndEpochIsolation()

@@ -398,6 +398,26 @@ class InMemorySessionCoordinator(
         )
     }
 
+    /** One explicit, current, authenticated owner Service GET.
+     * Current-session and Worker write generation fence both the reply and
+     * any future edit review. 404 is generic absence, never verification
+     * that a prior uncertain write did or did not commit.
+     */
+    fun exactManagedOwnListing(
+        listingId: String, cancellation: CancellationSignal? = null,
+    ): SessionResult<OwnListing> {
+        JodloRoutes.requireListingId(listingId)
+        val exact = workers as? ExactManagedOwnListingRepository
+            ?: return SessionResult.Failed(
+                SessionFailure.REMOTE_FAILURE, FailureKind.SERVICE_UNAVAILABLE)
+        return withSession(
+            call = { exact.exactManagedOwnListing(it, listingId) },
+            update = { reply, _ -> outcome(reply) },
+            consistentRead = true,
+            cancellation = cancellation,
+        )
+    }
+
     /** The Category ID must have been explicitly confirmed outside this
      * layer. Server-side active-Category and worker checks remain authoritative.
      */

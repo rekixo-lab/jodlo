@@ -85,6 +85,14 @@ interface ManagedOwnListingPageRepository {
     ): ApiOutcome<OwnListingPage>
 }
 
+/** Opt-in current exact OWNER status read; one authenticated ID, no
+ * pagination, account identifier, moderator reason, or public Worker card.
+ * A missing/foreign row is always indistinguishable from an absent row.
+ */
+interface ExactManagedOwnListingRepository {
+    fun exactManagedOwnListing(session: String, listingId: String): ApiOutcome<OwnListing>
+}
+
 /** Private owner-only resume of one EXISTING, previously-unpublished Listing.
  * Unlike generic publish, this cannot insert or resurrect a hidden Listing.
  * It does not read private moderation reasons or create a public profile.
@@ -288,7 +296,8 @@ class RemoteCatalogRepository(private val sender: RequestSender) :
 
 class RemoteWorkerRepository(private val sender: RequestSender) :
     WorkerRepository, OwnListingPageRepository, ManagedOwnListingPageRepository,
-    OwnListingCategoryEditRepository, OwnListingResumeRepository {
+    OwnListingCategoryEditRepository, OwnListingResumeRepository,
+    ExactManagedOwnListingRepository {
     override fun myDraft(session: String): ApiOutcome<WorkerDraft> =
         performOnce(JodloRoutes.workerDraft(session), sender::send, JodloReplyDecoder::workerDraft)
 
@@ -331,6 +340,13 @@ class RemoteWorkerRepository(private val sender: RequestSender) :
                             page.nextCursor != after))
             }
     }
+
+    override fun exactManagedOwnListing(
+        session: String, listingId: String,
+    ): ApiOutcome<OwnListing> =
+        performOnce(JodloRoutes.exactManagedOwnListing(session, listingId),
+            sender::send, JodloReplyDecoder::exactManagedOwnListing)
+            .validated { row -> row.id == listingId && row.publicationStatus != null }
 
     /** The server still verifies the active Category and the authenticated
      * opted-in worker; a syntactically valid ID is not an approval to publish.

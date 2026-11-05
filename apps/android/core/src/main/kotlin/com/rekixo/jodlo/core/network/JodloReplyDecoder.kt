@@ -431,6 +431,34 @@ object JodloReplyDecoder {
         if (next != null && !opaqueId.matches(next)) bad()
         OwnListingPage(rows, next)
     }
+    /** Shared exact owner-only projection; unpublished is a Worker intent,
+     * not a disclosure of moderation reasons, worker account or location.
+     */
+    private fun managedOwnRow(element: JsonElement): OwnListing {
+        val row = element.obj()
+        row.keysOnly(setOf("id", "categoryId", "visible", "publicationStatus"))
+        val value = listing(JsonObject(mapOf(
+            "id" to row.required("id"), "categoryId" to row.required("categoryId"),
+        )))
+        val visible = row.required("visible").bool()
+        val publication = when (row.required("publicationStatus").str()) {
+            "published" -> OwnPublicationStatus.PUBLISHED
+            "unpublished" -> OwnPublicationStatus.UNPUBLISHED
+            else -> bad()
+        }
+        if (visible && publication != OwnPublicationStatus.PUBLISHED) bad()
+        return OwnListing(value.id, value.categoryId, visible, publication)
+    }
+
+    /** Exact owner GET accepts one row ONLY, never a page fallback or
+     * omitted revision/worker account. Decoder forbids private extra keys.
+     */
+    fun exactManagedOwnListing(reply: TransportReply): ApiOutcome<OwnListing> =
+        decode(reply) { data ->
+            data.keysOnly(setOf("listing"))
+            managedOwnRow(data.required("listing"))
+        }
+
     /** Explicit MANAGEMENT owner page: the extra status is required here
      * and forbidden in every legacy/public parser. 'published' but invisible
      * is possible after Category/moderation changes; it must NOT be presented
@@ -441,22 +469,7 @@ object JodloReplyDecoder {
             data.keysOnly(setOf("listings", "nextCursor"))
             val raw = data.required("listings").arr()
             if (raw.size > 25) bad()
-            val rows = raw.map { element ->
-                val row = element.obj()
-                row.keysOnly(setOf("id", "categoryId", "visible", "publicationStatus"))
-                val listing = listing(JsonObject(mapOf(
-                    "id" to row.required("id"),
-                    "categoryId" to row.required("categoryId"),
-                )))
-                val visible = row.required("visible").bool()
-                val publication = when (row.required("publicationStatus").str()) {
-                    "published" -> OwnPublicationStatus.PUBLISHED
-                    "unpublished" -> OwnPublicationStatus.UNPUBLISHED
-                    else -> bad()
-                }
-                if (visible && publication != OwnPublicationStatus.PUBLISHED) bad()
-                OwnListing(listing.id, listing.categoryId, visible, publication)
-            }
+            val rows = raw.map(::managedOwnRow)
             if (rows.map { it.id }.toSet().size != rows.size) bad()
             val next = data.optionalString("nextCursor")
             if (next != null && !opaqueId.matches(next)) bad()

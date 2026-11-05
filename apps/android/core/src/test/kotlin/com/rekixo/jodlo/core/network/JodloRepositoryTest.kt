@@ -14,6 +14,59 @@ private fun requireRejected(label: String, call: () -> Unit) =
     check(runCatching(call).isFailure) { "Expected rejection: $label" }
 
 fun main() {
+    // Exact owner service read supplements old 100-cap/paged management.
+    // One authenticated GET, no actor/account identity in the URL, no write.
+    val ownExactRoute = JodloRoutes.exactManagedOwnListing(TOKEN, LISTING_ID)
+    check(ownExactRoute.resource ==
+        "/api/v1/me/listings?id=$LISTING_ID&view=management")
+    check(ownExactRoute.method == HttpMethod.GET)
+    check(ownExactRoute.headers()["Authorization"] == "Bearer $TOKEN")
+    check(ownExactRoute.bodyUtf8() == null)
+    check(!ownExactRoute.toString().contains(TOKEN))
+    for (badId in listOf("", "x", "../secret", "bad%0A", "with.dot")) {
+        requireRejected("exact owner ID") {
+            JodloRoutes.exactManagedOwnListing(TOKEN, badId)
+        }
+    }
+    val ownerCurrent: ExactManagedOwnListingRepository =
+        RemoteWorkerRepository(RequestSender { call ->
+            check(call.method == HttpMethod.GET && call.resource == ownExactRoute.resource)
+            ok("""{"listing":{"id":"$LISTING_ID","categoryId":"plumber","visible":true,"publicationStatus":"published"}}""")
+        })
+    check(ownerCurrent.exactManagedOwnListing(TOKEN, LISTING_ID) ==
+        ApiOutcome.Ok(OwnListing(LISTING_ID, "plumber", true,
+            OwnPublicationStatus.PUBLISHED)))
+    val hiddenExact = RemoteWorkerRepository(RequestSender {
+        ok("""{"listing":{"id":"$LISTING_ID","categoryId":"plumber","visible":false,"publicationStatus":"published"}}""")
+    })
+    check(hiddenExact.exactManagedOwnListing(TOKEN,LISTING_ID) ==
+        ApiOutcome.Ok(OwnListing(LISTING_ID, "plumber", false,
+            OwnPublicationStatus.PUBLISHED)))
+    val invalidOwnerExact = listOf(
+        """{"listing":{"id":"$LISTING_ID","categoryId":"plumber","visible":true,"publicationStatus":"unpublished"}}""",
+        """{"listing":{"id":"different-owner","categoryId":"plumber","visible":true,"publicationStatus":"published"}}""",
+        """{"listing":{"id":"$LISTING_ID","categoryId":"plumber","visible":true,"publicationStatus":"hidden"}}""",
+        """{"listing":{"id":"$LISTING_ID","categoryId":"plumber","visible":true,"publicationStatus":"published","workerId":"secret"}}""",
+        """{"listing":{"id":"$LISTING_ID","categoryId":"plumber","visible":true,"publicationStatus":"published","phone":"private"}}""",
+        """{"listings":[{"id":"$LISTING_ID","categoryId":"plumber","visible":true,"publicationStatus":"published"}]}""",
+        """{"listing":{"id":"$LISTING_ID","categoryId":"plumber","visible":true,"publicationStatus":"published"},"nextCursor":null}""",
+    )
+    for (payload in invalidOwnerExact) {
+        val forged: ExactManagedOwnListingRepository =
+            RemoteWorkerRepository(RequestSender { ok(payload) })
+        check(forged.exactManagedOwnListing(TOKEN, LISTING_ID) == bad())
+    }
+    val ownerMissing: ExactManagedOwnListingRepository =
+        RemoteWorkerRepository(RequestSender {
+            TransportReply(404,
+                """{"ok":false,"error":{"code":"NOT_FOUND","message":"No owner info"}}""")
+        })
+    check(ownerMissing.exactManagedOwnListing(TOKEN,LISTING_ID) == bad(FailureKind.NOT_FOUND))
+    val ownerOffline: ExactManagedOwnListingRepository =
+        RemoteWorkerRepository(RequestSender { throw IOException("private network") })
+    check(ownerOffline.exactManagedOwnListing(TOKEN,LISTING_ID) ==
+        bad(FailureKind.OFFLINE_OR_TIMEOUT))
+
     // Optional real approved Group -> Family -> Category navigation. It is
     // anonymous, bounded and NEVER a locally guessed 889-Category mapping.
     val groupCall = JodloRoutes.hierarchy(HierarchyLevel.GROUPS, null, Language.HI)

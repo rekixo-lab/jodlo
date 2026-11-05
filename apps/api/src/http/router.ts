@@ -10,7 +10,7 @@ import { resolveGoogleAccount } from "../modules/identity/google-accounts.ts";
 import { issueSession, makeSessionVerifier, revokeAllSessions, revokeSession, SESSION_TTL_SECONDS } from "../modules/identity/sessions.ts";
 import { hasEmptyBody, readGoogleLoginBody, readServiceListingBody, readCategoryEditBody, readResumeOwnListingBody } from "./body.ts";
 import { validCategoryId } from "../modules/shared/identifiers.ts";
-import { publishListing, myListings, pageMyListings, pageManagedOwnListings, parseOwnListingsPage, publicListings, pagePublicListings, publicListingDetail, publicApprovedServiceDetail, pageAllPublicListings, unpublishListing, editOwnListingCategory, resumeOwnListing } from "../modules/workers/listings.ts";
+import { publishListing, myListings, pageMyListings, pageManagedOwnListings, exactManagedOwnListing, parseOwnListingsPage, publicListings, pagePublicListings, publicListingDetail, publicApprovedServiceDetail, pageAllPublicListings, unpublishListing, editOwnListingCategory, resumeOwnListing } from "../modules/workers/listings.ts";
 import {
   allowGoogleAccountLogin, allowLoginBurst,
   LOGIN_BURST_RETRY_SECONDS, ACCOUNT_LOGIN_RETRY_SECONDS,
@@ -365,6 +365,25 @@ export async function handleRequest(
         return json({ok:false,error:{code:"UNAUTHORIZED",message:"Authentication required"}},401);
       }
       if(request.method==="GET") {
+        // Optional EXACT owner read for editing stale-device status and
+        // deliberate uncertain-write observation. Never fall through to
+        // a broader page or accept owner/identity IDs from the caller.
+        if(url.searchParams.has("id")) {
+          const params=url.searchParams;
+          if(params.size!==2 || params.getAll("id").length!==1 ||
+              params.getAll("view").length!==1 ||
+              params.get("view")!=="management" ||
+              !validOpaqueId(params.get("id")) ||
+              !(await hasEmptyBody(request))) {
+            return json({ok:false,error:{
+              code:"INVALID_QUERY",message:"Invalid selected listing query"}},400);
+          }
+          const selected=await exactManagedOwnListing(
+            env.DB,actor.accountId,params.get("id")!);
+          if(!selected)return json({ok:false,error:{
+            code:"NOT_FOUND",message:"Listing not found"}},404);
+          return json({ok:true,data:{listing:selected}});
+        }
         const page=parseOwnListingsPage(url.searchParams);
         if(!page||!(await hasEmptyBody(request)))
           return json({ok:false,error:{code:"INVALID_QUERY",message:"Unexpected input"}},400);

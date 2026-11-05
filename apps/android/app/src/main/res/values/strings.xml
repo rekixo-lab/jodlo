@@ -224,4 +224,12 @@
     <string name="hierarchy_empty">No approved mapping at this level yet. All Categories remain available through regular Browse.</string>
     <string name="hierarchy_unavailable">This API version does not provide approved hierarchy yet. Use Browse Categories; no data was changed.</string>
     <string name="hierarchy_open_next">Open the next approved level</string>
+
+    <!-- Opt-in exact private owner Service read; no auto-retry or public disclosure. -->
+    <string name="worker_exact_read_action">Refresh this selected service from my account</string>
+    <string name="worker_exact_notice">Read-only current owner status at the last check. This is not a verified identity, proof a previous write committed, or live Customer visibility.</string>
+    <string name="worker_exact_current">This service matches the latest private server read. For Customer visibility, perform a separate public check.</string>
+    <string name="worker_exact_changed">This service changed since the earlier owner page. The old edit/review was cleared; review the current Category and status before any new action.</string>
+    <string name="worker_exact_missing">The selected service is no longer available to this account. The old selection was cleared; no write was performed.</string>
+    <string name="worker_exact_failed">Could not verify the selected service. The server may be offline or not support this exact read yet. No write was performed; existing Category editing still uses its server-side conflict checks.</string>
 </resources>
