@@ -348,6 +348,7 @@ private fun GuestDiscovery(
     var invalidQuery by remember { mutableStateOf(false) }
     var requestRevision by remember { mutableIntStateOf(0) }
     var savedFailed by remember { mutableStateOf(false) }
+    var hideFailed by remember { mutableStateOf(false) }
     // The existing API receives typed text ONLY after a deliberate opt-in.
     // No saved search history, no auth token, no location or background polling.
     var hintsEnabled by rememberSaveable { mutableStateOf(false) }
@@ -938,6 +939,22 @@ private fun GuestDiscovery(
                                 color = MaterialTheme.colorScheme.error)
                         }
                     }
+                    item {
+                        JodloTextAction(
+                            onClick = {
+                                val row = detailRequested ?: return@JodloTextAction
+                                if (onHide(row.id)) {
+                                    hideFailed = false
+                                    backToListings()
+                                } else hideFailed = true
+                            },
+                            enabled = !loading,
+                        ) { Text(stringResource(R.string.hidden_hide_here)) }
+                    }
+                    if (hideFailed) item {
+                        Text(stringResource(R.string.hidden_storage_failed),
+                            color = MaterialTheme.colorScheme.error)
+                    }
                     if (detailFailure != null) {
                         item {
                             Text(
@@ -957,10 +974,12 @@ private fun GuestDiscovery(
                         }
                     }
                 } else {
-                    if (listings.isEmpty() && !loading) item {
-                        Text(stringResource(R.string.empty_listings))
+                    val visibleListings = hidden.visible(listings)
+                    if (visibleListings.isEmpty() && !loading) item {
+                        Text(stringResource(if (listings.isEmpty()) R.string.empty_listings
+                            else R.string.hidden_page_filtered))
                     }
-                    items(listings, key = { "public-" + it.id }) { listing ->
+                    items(visibleListings, key = { "public-" + it.id }) { listing ->
                         SafeServiceCard(
                             card = CustomerServiceCard.reference(
                                 listing,
