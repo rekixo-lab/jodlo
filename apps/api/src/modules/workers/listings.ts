@@ -295,7 +295,7 @@ export async function publicApprovedServiceDetail(
       !validCategoryId(row.categorySlug)||
       typeof row.categoryName!=="string"||!row.categoryName.trim()||
       Array.from(row.categoryName).length>160||
-      /[\\u0000-\\u001F\\u007F]/.test(row.categoryName))return null;
+      /[\u0000-\u001F\u007F]/.test(row.categoryName))return null;
   const listing=publicListingProjections([row])[0];
   if(!listing)return null;
   return Object.freeze({
