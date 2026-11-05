@@ -241,7 +241,7 @@
 
     <!-- No-personal-data public Service cards; exact check is only a past-time observation. -->
     <string name="service_card_category_not_confirmed">Approved category name could not be checked</string>
-    <string name="service_card_approved_category_notice">Service category from approved public catalog information; not a Worker-written profile.</string>
+    <string name="service_card_approved_category_notice">Category label only. It is not a Worker-written profile or proof of current publication; offline developer samples are not real services.</string>
     <string name="service_card_checked_time_only">This exact service was public at the time of its latest check. It may change afterward.</string>
     <string name="service_card_must_recheck">This is only a service reference. Open it to check whether it is public now.</string>
     <string name="service_card_no_worker_claims">No verified Worker identity, rating, price, address, contact or calling availability is provided.</string>
