@@ -20,9 +20,12 @@ import com.rekixo.jodlo.ui.theme.JodloSizes
  * An exact read label is explicitly "when checked", not "online"/verified.
  */
 @Composable
-internal fun SafeServiceCardContents(card: CustomerServiceCard) {
+internal fun SafeServiceCardContents(
+    card: CustomerServiceCard,
+    modifier: Modifier = Modifier.padding(JodloSizes.CardPadding),
+) {
     Column(
-        modifier = Modifier.padding(JodloSizes.CardPadding),
+        modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap),
     ) {
         Text(
