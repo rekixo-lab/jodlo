@@ -1,3 +1,9 @@
+## 2026-11-05 — Worker-selected exact owner Service refresh (source-only)
+
+The Worker Dashboard now includes a manual, authenticated **one-selected-Service exact status** read using the existing `GET /api/v1/me/listings?id=...&view=management`. Unlike the first 100 owner rows or paginated scan, it checks precisely the requested owned Listing, even beyond 100. The four existing safe private fields (`id,categoryId,visible,publicationStatus`) are shared with Management pages, and a changed/absent row invalidates the UI's old selection/review. Any old-API/network/foreign-owner failure stays unconfirmed, not a public Worker status or proof an uncertain write committed. No new public profile, payment, GPS, phone, moderation verdict, migration or remote write.
+
+See [full contract and pending policy gates](WORKER_EXACT_OWNER_RECHECK_2026-11-05.md), [master backlog #235](https://github.com/rekixo-lab/jodlo/issues/235), and GitHub Actions for exact-source non-device Foundation + JDK17/21 build checks. This source change is **not verified live/deployed or final phone tested**.
+
 ## 2026-11-05 — Reviewed Group / Family / Category Customer navigation (source PR; CI pending)
 
 Native Customer Home now offers a separate **Group → Family → Category** screen backed by strict opt-in public `/api/v1/catalog/hierarchy` reads. The new *empty/default-OFF* D1 migration 0010 has reviewed Group/Family/member gates plus the existing current active Category eligibility check; the original flat Search/Feed and Customer Listing checks are unchanged. Hindi/English, availability-only, manual bounded continuation, current-anchor revocation, parent/filter/language race invalidation, explicit error/empty and legacy-API fallback are included. No historical mapping/889 rows are auto-inserted and no real Worker identity, rate, GPS or contact is exposed. [Complete implementation and rollout conditions](CUSTOMER_APPROVED_HIERARCHY_2026-11-05.md).
