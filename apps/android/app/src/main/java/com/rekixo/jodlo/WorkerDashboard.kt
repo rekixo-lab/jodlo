@@ -1092,44 +1092,93 @@ internal fun WorkerDashboard(
                                         style=MaterialTheme.typography.bodySmall)
                                     val next = categoryEdit.destination
                                     if (next == null) {
+                                        Text(stringResource(R.string.worker_editor_step_choose),
+                                            style = MaterialTheme.typography.titleSmall)
                                         Text(stringResource(R.string.worker_edit_choose_category))
-                                    } else if (!categoryEdit.reviewOpen) {
-                                        Text(stringResource(R.string.worker_edit_new_category,
-                                            next.name))
-                                        JodloButton(onClick = {
-                                            categoryEdit = categoryEdit.review(
-                                                session?.accountExportSessionMarker())
-                                        }, enabled = canWrite) {
-                                            Text(stringResource(R.string.worker_edit_review))
-                                        }
                                     } else {
+                                        val alreadyOwned = ownListings.any {
+                                            it.id != categoryEdit.source?.id &&
+                                                it.categoryId == next.id
+                                        }
                                         Text(stringResource(R.string.worker_edit_new_category,
                                             next.name))
-                                        Text(stringResource(R.string.worker_edit_public_warning),
-                                            color = MaterialTheme.colorScheme.error)
-                                        JodloTextAction(onClick = {
-                                            categoryEdit = categoryEdit.cancelReview()
-                                        }, enabled = canWrite) {
-                                            Text(stringResource(R.string.guided_post_back))
+                                        if (alreadyOwned) {
+                                            Text(stringResource(R.string.worker_editor_duplicate),
+                                                color = MaterialTheme.colorScheme.error)
                                         }
-                                        JodloButton(onClick = {
-                                            val command = categoryEdit.confirmedVersioned(
-                                                ownListings, categoryRows,
-                                                session?.accountExportSessionMarker(),
-                                            ) ?: return@JodloButton
-                                            mutate {
-                                                writes.editCategoryVersioned(
-                                                    command.listingId,
-                                                    command.expectedCategoryId,
-                                                    command.nextCategoryId,
-                                                    command.expectedRevision,
-                                                )
+                                        when {
+                                            !categoryEdit.scopeReviewOpen -> {
+                                                Text(stringResource(R.string.worker_editor_step_scope),
+                                                    style = MaterialTheme.typography.titleSmall)
+                                                Text(stringResource(
+                                                    R.string.worker_editor_scope_intro))
+                                                JodloButton(onClick = {
+                                                    categoryEdit = categoryEdit.reviewScope(
+                                                        session?.accountExportSessionMarker(),
+                                                        categoryRows, ownListings)
+                                                }, enabled = canWrite && !alreadyOwned) {
+                                                    Text(stringResource(
+                                                        R.string.worker_editor_review_scope))
+                                                }
                                             }
-                                        }, enabled = canWrite && categoryEdit.confirmedVersioned(
-                                            ownListings, categoryRows,
-                                            session?.accountExportSessionMarker(),
-                                        ) != null) {
-                                            Text(stringResource(R.string.worker_edit_confirm))
+                                            !categoryEdit.reviewOpen -> {
+                                                Text(stringResource(R.string.worker_editor_step_final),
+                                                    style = MaterialTheme.typography.titleSmall)
+                                                Text(stringResource(
+                                                    R.string.worker_editor_scope_public))
+                                                Text(stringResource(
+                                                    R.string.worker_editor_scope_locked))
+                                                Text(stringResource(
+                                                    R.string.worker_edit_revision_notice),
+                                                    style = MaterialTheme.typography.bodySmall)
+                                                JodloTextAction(onClick = {
+                                                    categoryEdit = categoryEdit.invalidateCategory()
+                                                }, enabled = canWrite) {
+                                                    Text(stringResource(R.string.guided_post_back))
+                                                }
+                                                JodloButton(onClick = {
+                                                    categoryEdit = categoryEdit.review(
+                                                        session?.accountExportSessionMarker())
+                                                }, enabled = canWrite && !alreadyOwned) {
+                                                    Text(stringResource(R.string.worker_edit_review))
+                                                }
+                                            }
+                                            else -> {
+                                                Text(stringResource(
+                                                    R.string.worker_editor_step_confirm),
+                                                    style = MaterialTheme.typography.titleSmall)
+                                                Text(stringResource(
+                                                    R.string.worker_editor_scope_public))
+                                                Text(stringResource(
+                                                    R.string.worker_edit_public_warning),
+                                                    color = MaterialTheme.colorScheme.error)
+                                                JodloTextAction(onClick = {
+                                                    categoryEdit = categoryEdit.cancelReview()
+                                                }, enabled = canWrite) {
+                                                    Text(stringResource(R.string.guided_post_back))
+                                                }
+                                                JodloButton(onClick = {
+                                                    val command = categoryEdit.confirmedVersioned(
+                                                        ownListings, categoryRows,
+                                                        session?.accountExportSessionMarker(),
+                                                    ) ?: return@JodloButton
+                                                    mutate {
+                                                        writes.editCategoryVersioned(
+                                                            command.listingId,
+                                                            command.expectedCategoryId,
+                                                            command.nextCategoryId,
+                                                            command.expectedRevision,
+                                                        )
+                                                    }
+                                                }, enabled = canWrite &&
+                                                    !alreadyOwned && categoryEdit.confirmedVersioned(
+                                                        ownListings, categoryRows,
+                                                        session?.accountExportSessionMarker(),
+                                                    ) != null) {
+                                                    Text(stringResource(
+                                                        R.string.worker_edit_confirm))
+                                                }
+                                            }
                                         }
                                     }
                                     JodloTextAction(onClick = {
@@ -1145,43 +1194,74 @@ internal fun WorkerDashboard(
                                 Column(Modifier.padding(JodloSizes.CardPadding),
                                     verticalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
                                     val chosen = guided.selectedCategory!!
-                                    Text(stringResource(R.string.guided_post_step),
+                                    Text(stringResource(R.string.worker_editor_step_choose),
                                         style = MaterialTheme.typography.titleMedium)
                                     Text(chosen.name, style = MaterialTheme.typography.titleMedium)
-                                    if (!guided.publishReviewOpen) {
-                                        Text(stringResource(R.string.guided_post_before_review))
-                                        JodloButton(
-                                            onClick = {
+                                    val knownDuplicate = ownListings.any {
+                                        it.categoryId == chosen.id
+                                    }
+                                    if (knownDuplicate) {
+                                        Text(stringResource(R.string.worker_editor_duplicate),
+                                            color = MaterialTheme.colorScheme.error)
+                                    }
+                                    when {
+                                        !guided.publishScopeReviewOpen -> {
+                                            Text(stringResource(R.string.worker_editor_step_scope),
+                                                style = MaterialTheme.typography.titleSmall)
+                                            Text(stringResource(R.string.guided_post_before_review))
+                                            JodloButton(onClick = {
+                                                guided = guided.reviewPublicationScope(
+                                                    session?.accountExportSessionMarker(),
+                                                    categoryRows, ownListings)
+                                            }, enabled = canWrite && !knownDuplicate) {
+                                                Text(stringResource(
+                                                    R.string.worker_editor_review_scope))
+                                            }
+                                        }
+                                        !guided.publishReviewOpen -> {
+                                            Text(stringResource(R.string.worker_editor_step_final),
+                                                style = MaterialTheme.typography.titleSmall)
+                                            Text(stringResource(R.string.worker_editor_scope_intro))
+                                            Text(stringResource(R.string.worker_editor_scope_public))
+                                            Text(stringResource(R.string.worker_editor_scope_locked))
+                                            JodloTextAction(onClick = {
+                                                guided = guided.clearPublication()
+                                            }, enabled = canWrite) {
+                                                Text(stringResource(R.string.guided_post_back))
+                                            }
+                                            JodloButton(onClick = {
                                                 guided = guided.reviewPublication(
                                                     session?.accountExportSessionMarker())
-                                            },
-                                            enabled = canWrite,
-                                        ) { Text(stringResource(R.string.guided_post_review)) }
-                                    } else {
-                                        Text(stringResource(R.string.guided_post_review_notice))
-                                        Text(stringResource(R.string.guided_post_public_data))
-                                        Row(horizontalArrangement = Arrangement.spacedBy(
-                                            JodloSizes.SmallGap)) {
-                                            JodloTextAction(
-                                                onClick = {
+                                            }, enabled = canWrite && !knownDuplicate) {
+                                                Text(stringResource(R.string.guided_post_review))
+                                            }
+                                        }
+                                        else -> {
+                                            Text(stringResource(R.string.worker_editor_step_confirm),
+                                                style = MaterialTheme.typography.titleSmall)
+                                            Text(stringResource(R.string.guided_post_review_notice))
+                                            Text(stringResource(R.string.guided_post_public_data))
+                                            Row(horizontalArrangement = Arrangement.spacedBy(
+                                                JodloSizes.SmallGap)) {
+                                                JodloTextAction(onClick = {
                                                     guided = guided.cancelPublicationReview()
-                                                },
-                                                enabled = canWrite,
-                                            ) { Text(stringResource(R.string.guided_post_back)) }
-                                            JodloButton(
-                                                onClick = {
+                                                }, enabled = canWrite) {
+                                                    Text(stringResource(R.string.guided_post_back))
+                                                }
+                                                JodloButton(onClick = {
                                                     val id = guided.categoryConfirmedForPublish(
                                                         session?.accountExportSessionMarker(),
-                                                        categoryRows,
+                                                        categoryRows, ownListings,
                                                     ) ?: return@JodloButton
                                                     mutate { writes.publishExplicitCategory(id) }
-                                                },
-                                                enabled = canWrite &&
+                                                }, enabled = canWrite && !knownDuplicate &&
                                                     guided.categoryConfirmedForPublish(
                                                         session?.accountExportSessionMarker(),
-                                                        categoryRows,
-                                                    ) != null,
-                                            ) { Text(stringResource(R.string.worker_publish_selected)) }
+                                                        categoryRows, ownListings,
+                                                    ) != null) {
+                                                    Text(stringResource(R.string.worker_publish_selected))
+                                                }
+                                            }
                                         }
                                     }
                                 }
