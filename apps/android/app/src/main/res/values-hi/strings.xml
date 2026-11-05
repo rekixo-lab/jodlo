@@ -134,6 +134,15 @@
     <string name="guided_unpublish_review">सेवा हटाने से पहले जाँचें</string>
     <string name="guided_unpublish_warning">अप्रकाशित करने पर यह सेवा ग्राहक की सार्वजनिक खोज से हट जाएगी। यदि यही चाहते हैं तभी पुष्टि करें। इससे आपका खाता नहीं मिटेगा।</string>
 
+    <string name="worker_editor_step_choose">चरण 1 — स्वीकृत काम चुनें</string>
+    <string name="worker_editor_step_scope">चरण 2 — आगे बढ़ने से पहले सार्वजनिक जानकारी देखें</string>
+    <string name="worker_editor_step_final">चरण 3 — चुनी गई श्रेणी जाँचें और आगे बढ़ें</string>
+    <string name="worker_editor_step_confirm">अंतिम पुष्टि — अपने-आप सेव नहीं होगा</string>
+    <string name="worker_editor_duplicate">इस श्रेणी की सेवा आपकी लोड हुई सूची में पहले से है। दूसरी श्रेणी चुनें या पहले वाली सेवा देखें। सर्वर भी आपकी सभी सेवाओं की जाँच करेगा।</string>
+    <string name="worker_editor_scope_intro">केवल अभी स्वीकृत श्रेणी सेव की जा सकती है। आगे बढ़ने से पहले जानकारी की सीमा जाँचें।</string>
+    <string name="worker_editor_review_scope">केवल श्रेणी की सार्वजनिक जानकारी देखें</string>
+    <string name="worker_editor_scope_public">योग्य होने पर ग्राहकों को स्वीकृत श्रेणी और सेवा की तकनीकी पहचान दिखेगी। सर्वर बदलाव अस्वीकार कर सकता है या बाद में छिपा सकता है। यह Worker सत्यापन, ऑनलाइन होने या कॉल की अनुमति का प्रमाण नहीं है।</string>
+    <string name="worker_editor_scope_locked">इस संस्करण में नहीं लिया या बदला जाता: Worker का नाम, काम का विवरण, अनुभव, दर, स्थान या सेवा क्षेत्र, फोटो, फोन, सत्यापन और संपर्क। इसके लिए अलग अनुमति, सहमति और मॉडरेशन चाहिए; यहाँ की समीक्षा इन्हें अनुमति नहीं देती।</string>
     <string name="worker_edit_category">मेरी सेवा की श्रेणी बदलें</string>
     <string name="worker_edit_heading">मौजूदा सेवा बदलें · नई श्रेणी चुनें</string>
     <string name="worker_edit_existing_category">अभी की श्रेणी: %1$s</string>
