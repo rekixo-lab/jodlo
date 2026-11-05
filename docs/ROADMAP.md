@@ -1,3 +1,9 @@
+## 2026-11-05 — Public-only Service card foundation
+
+A reusable native Customer Service card is now wired through Browse, all-public Feed and Saved; two explicit evidence states prevent saved bookmarks and stale pages from implying present public availability. Category names come from already approved public reads, with missing names shown neutrally and no Worker personal/contact/rate/area data. A successful exact public read (same Listing/Category/Hindi-English language) is required for a "public when checked" label and Save. See [safe slice and still-unapproved public Worker field proposal](PUBLIC_SERVICE_CARDS_SAFE_SLICE_2026-11-05.md).
+
+P1 **full public Worker/Service card** stays open: human public field/disclosure/moderation/retention decisions, genuine Catalog approvals, real deployed API, and final physical-device QA are still required. Source changes are not live releases.
+
 ## 2026-11-05 — Revision-safe selected Worker Service edit
 
 New opt-in, owner-only revision snapshot and atomic `?revision=1` v2 edit stops stale multi-device Category writes (including ABA when old v1 edits return to the original Category). Native bilingual guided Worker edit requires the fresh revision; one local-only D1 0011 column/trigger increments on actual old/new status/Category/moderation changes, preserving existing legacy and Customer public contracts. The same no-retry uncertainty fence remains mandatory. [Implementation contract](WORKER_REVISION_CAS_2026-11-05.md).

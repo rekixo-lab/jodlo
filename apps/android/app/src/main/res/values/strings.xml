@@ -238,4 +238,11 @@
     <string name="worker_revision_changed">This Service changed on the server. Earlier edit review was cleared. Check the current status and begin again.</string>
     <string name="worker_revision_failed">Could not verify an edit revision. This API may be older or unavailable. No edit was sent; versioned editing cannot safely fall back.</string>
     <string name="worker_edit_revision_notice">This edit requires a fresh private revision and server conflict check. If the Service changed since review, the edit is rejected. Do not retry an uncertain write automatically.</string>
+
+    <!-- No-personal-data public Service cards; exact check is only a past-time observation. -->
+    <string name="service_card_category_not_confirmed">Approved category name could not be checked</string>
+    <string name="service_card_approved_category_notice">Category label only. It is not a Worker-written profile or proof of current publication; offline developer samples are not real services.</string>
+    <string name="service_card_checked_time_only">This exact service was public at the time of its latest check. It may change afterward.</string>
+    <string name="service_card_must_recheck">This is only a service reference. Open it to check whether it is public now.</string>
+    <string name="service_card_no_worker_claims">No verified Worker identity, rating, price, address, contact or calling availability is provided.</string>
 </resources>
