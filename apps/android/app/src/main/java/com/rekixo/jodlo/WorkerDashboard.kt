@@ -37,6 +37,8 @@ import com.rekixo.jodlo.core.network.OwnPublicationStatus
 import com.rekixo.jodlo.core.network.PublicCategory
 import com.rekixo.jodlo.core.network.RemoteCatalogRepository
 import com.rekixo.jodlo.core.network.SessionResult
+import com.rekixo.jodlo.core.network.WorkerCustomerServicePreview
+import com.rekixo.jodlo.core.network.WorkerCustomerServicePreviewPhase
 import com.rekixo.jodlo.core.network.WorkerState
 import com.rekixo.jodlo.core.network.WorkerWriteCompletion
 import com.rekixo.jodlo.core.network.WorkerWriteState
@@ -51,7 +53,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private enum class WorkerCatalogMode { BROWSE, SEARCH }
-private enum class PublicPreview { UNCHECKED, VISIBLE, NOT_PUBLIC, FAILED }
 private data class WorkerCategoryPage(val rows: List<PublicCategory>, val next: String?)
 
 /**
@@ -101,14 +102,21 @@ internal fun WorkerDashboard(
     val ownerCategoryIds = ownListings.map { it.categoryId }.distinct()
         .take(ApprovedCategoryNameSnapshot.MAX_IDS)
 
+    var publicPreview by remember(session) {
+        mutableStateOf(WorkerCustomerServicePreview.unchecked())
+    }
+    var previewRevision by remember(session) { mutableIntStateOf(0) }
+
     LaunchedEffect(ownListings, categoryLanguage, session) {
         namesRevision++
         approvedNames = null
         approvedNamesMarker = null
         namesBusy = false
         namesFailed = false
+        previewRevision++
+        publicPreview = WorkerCustomerServicePreview.unchecked()
     }
-    var publicPreview by remember(session) { mutableStateOf(PublicPreview.UNCHECKED) }
+
     var writeState by remember(session) {
         mutableStateOf(writes?.snapshot()?.state ?: WorkerWriteState.Idle)
     }
@@ -194,7 +202,8 @@ internal fun WorkerDashboard(
             ownerCursor = null
             clearApprovedNames()
             selectedListing = null
-            publicPreview = PublicPreview.UNCHECKED
+            previewRevision++
+        publicPreview = WorkerCustomerServicePreview.unchecked()
             guided = guided.reset()
             categoryEdit = categoryEdit.reset()
             clearCategoryResults()
@@ -223,7 +232,8 @@ internal fun WorkerDashboard(
             (session.snapshot() as? LoginState.SignedIn)?.worker != WorkerState.DRAFT) return
         busy = true
         message = 0
-        publicPreview = PublicPreview.UNCHECKED // Owner status is NOT a public read.
+        previewRevision++
+        publicPreview = WorkerCustomerServicePreview.unchecked() // Owner status is NOT a public read.
         clearApprovedNames()
         guided = guided.cancelUnpublish().cancelResume()
         categoryEdit = categoryEdit.reset()
@@ -333,7 +343,8 @@ internal fun WorkerDashboard(
             selectedListing = null
             guided = guided.reset()
             categoryEdit = categoryEdit.reset()
-            publicPreview = PublicPreview.UNCHECKED
+            previewRevision++
+        publicPreview = WorkerCustomerServicePreview.unchecked()
 
             // Only after a CONFIRMED owner write, refresh the current
             // private Listing list through an existing read-only route.
@@ -362,33 +373,39 @@ internal fun WorkerDashboard(
     }
 
 
-    /** Fresh anonymous Customer projection for an explicitly selected owner's
-     * Listing. Owner-visible status is not itself evidence of public visibility.
-     * No Worker bearer, account ID, contact, or call consent enters this GET.
+    /** Fresh anonymous Customer Service detail, identical to Customer's
+     * approved-category data. A stale owner/login/language/list change
+     * can never certify an older public view.
      */
     fun checkPublicPreview() {
-        val chosen = ownListings.firstOrNull { it.id == selectedListing } ?: return
-        if (busy || uncertain || catalog == null ||
-            (session?.snapshot() as? LoginState.SignedIn)?.worker != WorkerState.DRAFT) return
-        publicPreview = PublicPreview.UNCHECKED
-        busy = true
-        message = 0
+        val chosen=ownListings.firstOrNull { it.id==selectedListing } ?: return
+        val actor=session?.accountExportSessionMarker() ?: return
+        val reader=catalog ?: return
+        if(busy || uncertain ||
+            (session.snapshot() as? LoginState.SignedIn)?.worker!=WorkerState.DRAFT) return
+        val lang=categoryLanguage
+        val generation=++previewRevision
+        publicPreview=WorkerCustomerServicePreview.unchecked()
+        busy=true
+        message=0
         scope.launch {
-            val reply = try {
-                withContext(Dispatchers.IO) {
-                    catalog.listingDetail(chosen.id, chosen.categoryId)
+            val reply:ApiOutcome<com.rekixo.jodlo.core.network.PublicApprovedServiceDetail> =
+                try {
+                    withContext(Dispatchers.IO) {
+                        reader.approvedServiceDetail(chosen.id,chosen.categoryId,lang)
+                    }
+                } catch (cancelled:kotlin.coroutines.cancellation.CancellationException) {
+                    throw cancelled
+                } catch (_:Exception) {
+                    ApiOutcome.Failed(FailureKind.BAD_RESPONSE,false)
                 }
-            } catch (_: Exception) { null }
-            busy = false
-            // A late response must never become a badge for another selected row.
-            if (selectedListing != chosen.id) return@launch
-            publicPreview = when (reply) {
-                is ApiOutcome.Ok -> PublicPreview.VISIBLE
-                is ApiOutcome.Failed ->
-                    if (reply.kind == FailureKind.NOT_FOUND) PublicPreview.NOT_PUBLIC
-                    else PublicPreview.FAILED
-                else -> PublicPreview.FAILED
-            }
+            busy=false
+            if(generation!=previewRevision ||
+                session.accountExportSessionMarker()!=actor ||
+                (session.snapshot() as? LoginState.SignedIn)?.worker!=WorkerState.DRAFT ||
+                selectedListing!=chosen.id || categoryLanguage!=lang ||
+                ownListings.firstOrNull{it.id==chosen.id}!=chosen) return@launch
+            publicPreview=WorkerCustomerServicePreview.fromPublicRead(chosen,lang,reply)
         }
     }
 
@@ -442,7 +459,8 @@ internal fun WorkerDashboard(
                             guided = guided.reset()
                             categoryEdit = categoryEdit.reset()
                             selectedListing = null
-                            publicPreview = PublicPreview.UNCHECKED
+                            previewRevision++
+        publicPreview = WorkerCustomerServicePreview.unchecked()
                             checkedAction({ session.logout() }, R.string.worker_logout_local)
                         },
                         enabled = !busy,
@@ -524,7 +542,8 @@ internal fun WorkerDashboard(
                                         selectedListing = listing.id
                                         guided = guided.cancelUnpublish().cancelResume()
                                         categoryEdit = categoryEdit.reset()
-                                        publicPreview = PublicPreview.UNCHECKED
+                                        previewRevision++
+        publicPreview = WorkerCustomerServicePreview.unchecked()
                                     }
                                 },
                                 selected = selectedListing == listing.id,
@@ -570,15 +589,29 @@ internal fun WorkerDashboard(
                                     ) {
                                         Text(stringResource(R.string.worker_customer_preview_check))
                                     }
-                                    when (publicPreview) {
-                                        PublicPreview.VISIBLE -> Text(
-                                            stringResource(R.string.worker_customer_preview_visible))
-                                        PublicPreview.NOT_PUBLIC -> Text(
-                                            stringResource(R.string.worker_customer_preview_not_public))
-                                        PublicPreview.FAILED -> Text(
-                                            stringResource(R.string.worker_customer_preview_failed),
-                                            color = MaterialTheme.colorScheme.error)
-                                        PublicPreview.UNCHECKED -> { /* Never claim visibility from owner state. */ }
+                                    when(publicPreview.phase) {
+                                        WorkerCustomerServicePreviewPhase.PUBLIC_WHEN_CHECKED -> {
+                                            Text(publicPreview.approvedCategoryName.orEmpty(),
+                                                style=MaterialTheme.typography.titleMedium)
+                                            Text(stringResource(
+                                                R.string.worker_customer_preview_approved_label))
+                                            val row=ownListings.firstOrNull{it.id==selectedListing}
+                                            if(row!=null){
+                                                Text(stringResource(R.string.listing_reference,row.id))
+                                                Text(stringResource(R.string.worker_listing_category,row.categoryId))
+                                            }
+                                            Text(stringResource(R.string.worker_customer_preview_visible))
+                                            Text(stringResource(R.string.listing_detail_private_notice),
+                                                style=MaterialTheme.typography.bodySmall)
+                                        }
+                                        WorkerCustomerServicePreviewPhase.NOT_PUBLIC_WHEN_CHECKED ->
+                                            Text(stringResource(R.string.worker_customer_preview_not_public))
+                                        WorkerCustomerServicePreviewPhase.CANNOT_CONFIRM ->
+                                            Text(stringResource(R.string.worker_customer_preview_failed),
+                                                color=MaterialTheme.colorScheme.error)
+                                        WorkerCustomerServicePreviewPhase.UNCHECKED -> {
+                                            /* Owner status never certifies Customer visibility. */
+                                        }
                                     }
                                     JodloTextAction(
                                         onClick = {
