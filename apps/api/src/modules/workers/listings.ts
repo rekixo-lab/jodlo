@@ -56,6 +56,21 @@ export const PUBLIC_LISTING_DETAIL_QUERY =
   "JOIN worker_profiles AS wp ON wp.account_id=a.id JOIN categories AS c ON c.id=wl.category_id " +
   "WHERE wl.id=? AND " + PUBLIC_LISTING_ELIGIBILITY + " LIMIT 1";
 
+/** Explicit, public-only SERVICE detail. A single authoritative query
+ * rechecks the existing listing/owner/worker/moderation/current Category join
+ * and obtains that same approved Category's language-specific name. No
+ * Worker profile, phone, location, rate, badge or free-form description.
+ */
+export const PUBLIC_APPROVED_SERVICE_DETAIL_QUERY =
+  "SELECT wl.id,wl.category_id AS categoryId,wl.worker_account_id AS workerId," +
+  " c.id AS approvedCategoryId,c.slug AS categorySlug," +
+  " CASE WHEN ?='hi' THEN COALESCE(NULLIF(c.name_hi,''),c.name_en)" +
+  " ELSE c.name_en END AS categoryName " +
+  "FROM worker_listings AS wl JOIN accounts AS a ON a.id=wl.worker_account_id " +
+  "JOIN worker_profiles AS wp ON wp.account_id=a.id " +
+  "JOIN categories AS c ON c.id=wl.category_id " +
+  "WHERE wl.id=? AND " + PUBLIC_LISTING_ELIGIBILITY + " LIMIT 1";
+
 /** Cursor eligibility is evaluated inside the SAME SQL statement as the
  * page. Reuse the exact public listing predicate so moderation and account
  * changes invalidate a previously public cursor without a race-prone pre-read.
@@ -256,6 +271,40 @@ export async function publicListingDetail(
   const {results}=await db.prepare(PUBLIC_LISTING_DETAIL_QUERY).bind(id)
     .all<PublicListingDbRow>();
   return publicListingProjections(results)[0]??null;
+}
+
+export type PublicApprovedServiceDetail = Readonly<{
+  language:"en"|"hi";
+  listing:PublicListing;
+  category:Readonly<{id:string;slug:string;name:string}>;
+}>;
+
+/** No second query or TOCTOU Category-label lookup. The returned name is
+ * exactly current approved Catalog text, never generated from Worker input.
+ */
+export async function publicApprovedServiceDetail(
+  db:D1Database,id:string,language:"en"|"hi",
+):Promise<PublicApprovedServiceDetail|null> {
+  if(!validOpaqueId(id)||(language!=="en"&&language!=="hi"))return null;
+  const {results}=await db.prepare(PUBLIC_APPROVED_SERVICE_DETAIL_QUERY)
+    .bind(language,id).all<PublicListingDbRow&{
+      approvedCategoryId:string;categorySlug:string;categoryName:string;
+    }>();
+  const row=results[0];
+  if(!row||row.categoryId!==row.approvedCategoryId||
+      !validCategoryId(row.categorySlug)||
+      typeof row.categoryName!=="string"||!row.categoryName.trim()||
+      Array.from(row.categoryName).length>160||
+      /[\\u0000-\\u001F\\u007F]/.test(row.categoryName))return null;
+  const listing=publicListingProjections([row])[0];
+  if(!listing)return null;
+  return Object.freeze({
+    language,
+    listing,
+    category:Object.freeze({
+      id:listing.categoryId,slug:row.categorySlug,name:row.categoryName,
+    }),
+  });
 }
 
 export type PublicListingPage = Readonly<{
