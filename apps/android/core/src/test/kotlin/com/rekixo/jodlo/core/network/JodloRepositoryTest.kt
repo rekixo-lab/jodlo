@@ -773,5 +773,74 @@ fun main() {
         bad(FailureKind.OFFLINE_OR_TIMEOUT))
     check(JodloReplyDecoder.approvedServiceDetail(ok(approvedJson)) is ApiOutcome.Ok)
 
+    // Device-only bulk review never creates Worker badges or caches
+    // server status as a durable Saved value. Five explicit batches (50 max)
+    // require five user actions; each batch contains at most ten exact IDs.
+    var savedBatch=SavedPublicServices.empty()
+    repeat(SavedPublicServices.MAX_ENTRIES) { n ->
+        savedBatch=savedBatch.toggle(
+            PublicListing("saved-ref-${n.toString().padStart(8,'0')}","plumber"))
+    }
+    check(savedBatch.entries.size==50)
+    val firstSnapshot=savedBatch.encode()
+    var review=SavedServiceReview.start(savedBatch)
+    check(review.checkedCount==0 && review.totalCount==50)
+    check(review.publicCount==0 && review.notPublicCount==0 && review.unknownCount==0)
+    val batch=review.nextBatch(savedBatch)
+    check(batch.size==10 && batch==savedBatch.entries.take(10))
+    val firstRow=batch[0]
+    fun approved(row:PublicListing,language:Language=Language.HI) =
+        ApiOutcome.Ok(PublicApprovedServiceDetail(
+            language,row,PublicCategory("plumber","plumber","प्लंबर")))
+    review=review.record(savedBatch,firstRow,Language.HI,approved(firstRow))
+    check(review.statusFor(savedBatch,firstRow)==SavedServiceReviewStatus.PUBLIC_WHEN_CHECKED)
+    check(review.publicCount==1)
+    check(review.record(savedBatch,firstRow,Language.HI,
+        ApiOutcome.Failed(FailureKind.NOT_FOUND,false)).checkedCount==1)
+    val hidden=batch[1]
+    review=review.record(savedBatch,hidden,Language.HI,
+        ApiOutcome.Failed(FailureKind.NOT_FOUND,false))
+    check(review.statusFor(savedBatch,hidden)==
+        SavedServiceReviewStatus.NOT_PUBLIC_WHEN_CHECKED)
+    for((index,kind) in listOf(
+        FailureKind.OFFLINE_OR_TIMEOUT,FailureKind.SERVICE_UNAVAILABLE,
+        FailureKind.RATE_LIMITED,FailureKind.UNAUTHORIZED,
+        FailureKind.BAD_RESPONSE,FailureKind.FORBIDDEN,
+    ).withIndex()){
+        val row=batch[index+2]
+        review=review.record(savedBatch,row,Language.HI,ApiOutcome.Failed(kind,false))
+        check(review.statusFor(savedBatch,row)==SavedServiceReviewStatus.CANNOT_CONFIRM)
+    }
+    // Even a supposedly OK reply never grants current public status when
+    // Listing ID, Category ID or requested locale differs.
+    val mismatch=batch[8]
+    review=review.record(savedBatch,mismatch,Language.HI,approved(mismatch,Language.EN))
+    check(review.statusFor(savedBatch,mismatch)==SavedServiceReviewStatus.CANNOT_CONFIRM)
+    val badCategory=batch[9]
+    review=review.record(savedBatch,badCategory,Language.HI,
+        ApiOutcome.Ok(PublicApprovedServiceDetail(
+            Language.HI,badCategory,PublicCategory("carpenter","carpenter","बढ़ई"))))
+    check(review.statusFor(savedBatch,badCategory)==SavedServiceReviewStatus.CANNOT_CONFIRM)
+    check(review.checkedCount==10 && review.publicCount==1 &&
+        review.notPublicCount==1 && review.unknownCount==8)
+    check(review.nextBatch(savedBatch)==savedBatch.entries.drop(10).take(10))
+    val stale=savedBatch.remove(firstRow.id)
+    check(review.nextBatch(stale).isEmpty())
+    check(review.statusFor(stale,hidden)==null)
+    check(review.record(stale,batch[0],Language.HI,approved(batch[0])).checkedCount==10)
+    check(savedBatch.encode()==firstSnapshot) // transient review never persists
+    var manualActions=1
+    while(review.checkedCount<savedBatch.entries.size){
+        val next=review.nextBatch(savedBatch)
+        check(next.isNotEmpty() && next.size<=SavedServiceReview.MAX_PER_TAP)
+        for(row in next) review=review.record(savedBatch,row,Language.HI,approved(row))
+        manualActions++
+    }
+    check(manualActions==5 && review.checkedCount==50)
+    check(review.nextBatch(savedBatch).isEmpty())
+    check(review.publicCount==41 && review.notPublicCount==1 && review.unknownCount==8)
+    check(SavedServiceReview.start(savedBatch).checkedCount==0)
+    check(SavedPublicServices.decode(firstSnapshot)==savedBatch)
+
     println("JODLO repositories: typed browse/search, explicit worker publishing, mismatched response rejection and no auto-retry and public Listing pagination OK")
 }
