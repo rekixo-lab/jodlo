@@ -56,6 +56,7 @@ internal fun CustomerHome(
     openNearby: () -> Unit,
     openSaved: () -> Unit,
     openWorker: () -> Unit,
+    openHelp: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     var language by remember { mutableStateOf(Language.HI) }
@@ -159,6 +160,9 @@ internal fun CustomerHome(
             }
             JodloTextAction(onClick = openWorker) {
                 Text(stringResource(R.string.home_worker_action))
+            }
+            JodloTextAction(onClick = openHelp) {
+                Text(stringResource(R.string.help_home_action))
             }
         }
         item {
