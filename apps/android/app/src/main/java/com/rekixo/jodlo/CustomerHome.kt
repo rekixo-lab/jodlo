@@ -53,6 +53,7 @@ internal fun CustomerHome(
     openBrowse: () -> Unit,
     openHierarchy: () -> Unit,
     openServices: () -> Unit,
+    openNearby: () -> Unit,
     openSaved: () -> Unit,
     openWorker: () -> Unit,
 ) {
@@ -149,6 +150,9 @@ internal fun CustomerHome(
         item {
             JodloTextAction(onClick = openServices, enabled = repository != null) {
                 Text(stringResource(R.string.home_services_action))
+            }
+            JodloTextAction(onClick = openNearby) {
+                Text(stringResource(R.string.home_nearby_action))
             }
             JodloTextAction(onClick = openSaved) {
                 Text(stringResource(R.string.home_saved_action))
