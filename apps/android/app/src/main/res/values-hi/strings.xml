@@ -224,4 +224,12 @@
     <string name="hierarchy_empty">इस स्तर पर अभी कोई स्वीकृत मैपिंग नहीं है। सामान्य श्रेणी सूची उपलब्ध है।</string>
     <string name="hierarchy_unavailable">इस API संस्करण में स्वीकृत समूह/परिवार सूची अभी उपलब्ध नहीं है। सामान्य श्रेणियाँ देखें; कोई डेटा नहीं बदला।</string>
     <string name="hierarchy_open_next">अगला स्वीकृत स्तर खोलें</string>
+
+    <!-- Opt-in exact private owner Service read; no auto-retry or public disclosure. -->
+    <string name="worker_exact_read_action">चुनी हुई सेवा की निजी स्थिति फिर से जाँचें</string>
+    <string name="worker_exact_notice">पिछली जाँच में मालिक को मिली वर्तमान स्थिति। इससे पहचान सत्यापन, पिछले बदलाव की पुष्टि या ग्राहक को दिखने की गारंटी नहीं मिलती।</string>
+    <string name="worker_exact_current">निजी सर्वर की नई जाँच में सेवा पहले जैसी है। ग्राहक को दिख रही है या नहीं, यह अलग सार्वजनिक जाँच से पता चलेगा।</string>
+    <string name="worker_exact_changed">पहले की सूची के बाद इस सेवा में बदलाव हुआ है। पुरानी edit/review प्रक्रिया साफ़ कर दी गई है; नया बदलाव करने से पहले वर्तमान श्रेणी और स्थिति देखें।</string>
+    <string name="worker_exact_missing">यह सेवा अब इस खाते में उपलब्ध नहीं है। पुराना चुनाव हटा दिया गया; कोई बदलाव नहीं किया गया।</string>
+    <string name="worker_exact_failed">चुनी हुई सेवा की पुष्टि नहीं हुई। सर्वर ऑफ़लाइन या पुराने API वाला हो सकता है। कोई बदलाव नहीं किया गया; मौजूदा श्रेणी संपादन में सर्वर के conflict checks लागू रहेंगे।</string>
 </resources>
