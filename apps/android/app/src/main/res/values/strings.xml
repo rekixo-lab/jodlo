@@ -278,6 +278,10 @@
     <string name="worker_edit_revision_notice">This edit requires a fresh private revision and server conflict check. If the Service changed since review, the edit is rejected. Do not retry an uncertain write automatically.</string>
 
     <!-- No-personal-data public Service cards; exact check is only a past-time observation. -->
+    <string name="service_profile_heading">About this public Service</string>
+    <string name="service_profile_identity">Worker identity and experience: no approved public Worker profile or verification is available for this Service.</string>
+    <string name="service_profile_area">Service area: no approved city, address or distance is supplied. Choosing a city in Nearby does not verify this Service covers it.</string>
+    <string name="service_profile_rates_calls">Rates, photos and contact: not supplied or verified here. Internet voice calls are not currently enabled.</string>
     <string name="service_card_category_not_confirmed">Approved category name could not be checked</string>
     <string name="service_card_approved_category_notice">Category label only. It is not a Worker-written profile or proof of current publication; offline developer samples are not real services.</string>
     <string name="service_card_checked_time_only">This exact service was public at the time of its latest check. It may change afterward.</string>
