@@ -9,7 +9,7 @@ import { resolveGoogleAccount } from "../modules/identity/google-accounts.ts";
 import { issueSession, makeSessionVerifier, revokeAllSessions, revokeSession, SESSION_TTL_SECONDS } from "../modules/identity/sessions.ts";
 import { hasEmptyBody, readGoogleLoginBody, readServiceListingBody, readCategoryEditBody, readResumeOwnListingBody } from "./body.ts";
 import { validCategoryId } from "../modules/shared/identifiers.ts";
-import { publishListing, myListings, pageMyListings, pageManagedOwnListings, parseOwnListingsPage, publicListings, pagePublicListings, publicListingDetail, pageAllPublicListings, unpublishListing, editOwnListingCategory, resumeOwnListing } from "../modules/workers/listings.ts";
+import { publishListing, myListings, pageMyListings, pageManagedOwnListings, parseOwnListingsPage, publicListings, pagePublicListings, publicListingDetail, publicApprovedServiceDetail, pageAllPublicListings, unpublishListing, editOwnListingCategory, resumeOwnListing } from "../modules/workers/listings.ts";
 import {
   allowGoogleAccountLogin, allowLoginBurst,
   LOGIN_BURST_RETRY_SECONDS, ACCOUNT_LOGIN_RETRY_SECONDS,
@@ -254,12 +254,26 @@ export async function handleRequest(
     // route. Exactly one opaque id; no extra params, body or private metadata.
     if(params.has("id")) {
       const id=params.get("id");
-      if(params.size!==1||params.getAll("id").length!==1||
-          !validOpaqueId(id)||!(await hasEmptyBody(request))) {
+      // Legacy GET ?id=<id> remains exactly its two-field Listing response.
+      // The approved Category detail is STRICTLY opt-in, with one requested
+      // language and no caller-supplied owner/category/status or extra keys.
+      const view=params.get("view"),lang=params.get("lang");
+      const approvedDetail=view==="service" &&
+        (lang==="hi"||lang==="en") &&
+        params.size===3 && params.getAll("view").length===1 &&
+        params.getAll("lang").length===1;
+      if(params.getAll("id").length!==1||!validOpaqueId(id)||
+          !(view===null&&lang===null&&params.size===1 || approvedDetail)||
+          !(await hasEmptyBody(request))) {
         return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid listing detail request"}},400);
       }
       if(!env.DB)return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Listings unavailable"}},503);
       try {
+        if(approvedDetail){
+          const detail=await publicApprovedServiceDetail(env.DB,id!,lang as "hi"|"en");
+          if(!detail)return json({ok:false,error:{code:"NOT_FOUND",message:"Listing not found"}},404);
+          return json({ok:true,data:detail});
+        }
         const listing=await publicListingDetail(env.DB,id!);
         if(!listing)return json({ok:false,error:{code:"NOT_FOUND",message:"Listing not found"}},404);
         return json({ok:true,data:{listing}});

@@ -27,6 +27,7 @@ import com.rekixo.jodlo.core.network.ApprovedCategoryNameSnapshot
 import com.rekixo.jodlo.core.network.Language
 import com.rekixo.jodlo.core.network.PublicCategory
 import com.rekixo.jodlo.core.network.FailureKind
+import com.rekixo.jodlo.core.network.PublicApprovedServiceDetail
 import com.rekixo.jodlo.core.network.PublicListing
 import com.rekixo.jodlo.core.network.RemoteCatalogRepository
 import com.rekixo.jodlo.core.network.SavedPublicServices
@@ -53,7 +54,7 @@ internal fun SavedServicesDashboard(
 ) {
     val scope=rememberCoroutineScope()
     var selected by remember { mutableStateOf<PublicListing?>(null) }
-    var verified by remember { mutableStateOf<PublicListing?>(null) }
+    var verified by remember { mutableStateOf<PublicApprovedServiceDetail?>(null) }
     var failure by remember { mutableStateOf<FailureKind?>(null) }
     var busy by remember { mutableStateOf(false) }
     var revision by remember { mutableIntStateOf(0) }
@@ -129,6 +130,7 @@ internal fun SavedServicesDashboard(
         val client=repository ?: return
         if (busy || !saved.contains(row)) return
         val generation=++revision
+        val selectedLanguage=categoryLanguage
         selected=row
         verified=null
         failure=null
@@ -137,7 +139,7 @@ internal fun SavedServicesDashboard(
         scope.launch {
             val result = withContext(Dispatchers.IO) {
                 try {
-                    client.listingDetail(row.id,row.categoryId)
+                    client.approvedServiceDetail(row.id,row.categoryId,selectedLanguage)
                 } catch (cancelled: kotlin.coroutines.cancellation.CancellationException) {
                     throw cancelled
                 } catch (_: Exception) {
@@ -261,8 +263,7 @@ internal fun SavedServicesDashboard(
                 }
             }
             item {
-                val approvedName=categoryNames?.approvedName(
-                    selected!!.categoryId,categoryLanguage,currentCategoryIds)
+                val approvedName=verified?.category?.name
                 if (approvedName!=null) Text(approvedName,
                     style=MaterialTheme.typography.titleMedium)
                 Text(stringResource(R.string.saved_category_reference,selected!!.categoryId))
@@ -274,6 +275,8 @@ internal fun SavedServicesDashboard(
                     Column(Modifier.padding(JodloSizes.CardPadding),
                         verticalArrangement=Arrangement.spacedBy(JodloSizes.SmallGap)) {
                         Text(stringResource(R.string.saved_currently_public))
+                        Text(stringResource(R.string.service_category_approved_label),
+                            style=MaterialTheme.typography.bodySmall)
                         Text(stringResource(R.string.listing_detail_private_notice),
                             style=MaterialTheme.typography.bodySmall)
                     }

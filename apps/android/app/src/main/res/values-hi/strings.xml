@@ -200,4 +200,5 @@
     <string name="worker_management_paused">आपकी प्रकाशन स्थिति: बंद</string>
     <string name="worker_management_published">आपकी प्रकाशन स्थिति: प्रकाशित</string>
     <string name="worker_management_not_public">प्रकाशित है, लेकिन सार्वजनिक नहीं दिख रही। इसका मतलब यह नहीं कि आपने बंद किया है। श्रेणी या मॉडरेशन की रोक हो सकती है। इसे दोबारा चालू करने वाला बटन लागू नहीं होता।</string>
+    <string name="service_category_approved_label">वर्तमान स्वीकृत श्रेणी का नाम (वर्कर की सत्यापित प्रोफ़ाइल या उपलब्धता की गारंटी नहीं)।</string>
 </resources>

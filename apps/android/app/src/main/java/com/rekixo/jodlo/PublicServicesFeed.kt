@@ -25,6 +25,7 @@ import androidx.compose.ui.res.stringResource
 import com.rekixo.jodlo.core.network.ApiOutcome
 import com.rekixo.jodlo.core.network.FailureKind
 import com.rekixo.jodlo.core.network.Language
+import com.rekixo.jodlo.core.network.PublicApprovedServiceDetail
 import com.rekixo.jodlo.core.network.PublicListing
 import com.rekixo.jodlo.core.network.RemoteCatalogRepository
 import com.rekixo.jodlo.core.network.SavedPublicServices
@@ -57,7 +58,7 @@ internal fun PublicServicesFeed(
     var nextCursor by remember { mutableStateOf<String?>(null) }
     var categoryNames by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var selected by remember { mutableStateOf<PublicListing?>(null) }
-    var verified by remember { mutableStateOf<PublicListing?>(null) }
+    var verified by remember { mutableStateOf<PublicApprovedServiceDetail?>(null) }
     var detailFailure by remember { mutableStateOf<FailureKind?>(null) }
     var failure by remember { mutableStateOf(false) }
     var pageFailure by remember { mutableStateOf(false) }
@@ -144,6 +145,7 @@ internal fun PublicServicesFeed(
     fun inspect(row: PublicListing) {
         if (busy || row !in listings) return
         val current = ++revision
+        val lang = language
         selected = row
         verified = null
         detailFailure = null
@@ -151,7 +153,7 @@ internal fun PublicServicesFeed(
         busy = true
         scope.launch {
             val result = withContext(Dispatchers.IO) {
-                try { repository.listingDetail(row.id, row.categoryId) }
+                try { repository.approvedServiceDetail(row.id, row.categoryId, lang) }
                 catch (cancelled: kotlin.coroutines.cancellation.CancellationException) {
                     throw cancelled
                 } catch (_: Exception) {
@@ -246,8 +248,8 @@ internal fun PublicServicesFeed(
                 }
             }
             item {
-                Text(categoryNames[selected!!.categoryId] ?: stringResource(
-                    R.string.feed_category_id, selected!!.categoryId),
+                Text(verified?.category?.name
+                    ?: stringResource(R.string.feed_category_id, selected!!.categoryId),
                     style = MaterialTheme.typography.titleMedium)
                 Text(stringResource(R.string.listing_reference, selected!!.id),
                     style = MaterialTheme.typography.bodySmall)
@@ -255,14 +257,16 @@ internal fun PublicServicesFeed(
             if (verified != null) {
                 item {
                     Text(stringResource(R.string.saved_currently_public))
+                    Text(stringResource(R.string.service_category_approved_label),
+                        style = MaterialTheme.typography.bodySmall)
                     Text(stringResource(R.string.listing_detail_private_notice),
                         style = MaterialTheme.typography.bodySmall)
                 }
                 item {
                     JodloButton(onClick = {
-                        verified?.let { savingFailure = !onSaveToggle(it) }
+                        verified?.let { savingFailure = !onSaveToggle(it.listing) }
                     },enabled = !busy) {
-                        Text(stringResource(if (saved.contains(verified!!))
+                        Text(stringResource(if (saved.contains(verified!!.listing))
                             R.string.saved_remove else R.string.saved_add))
                     }
                 }

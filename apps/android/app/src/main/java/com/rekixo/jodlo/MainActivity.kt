@@ -46,6 +46,7 @@ import com.rekixo.jodlo.core.network.HttpsTransport
 import com.rekixo.jodlo.core.network.InMemorySessionCoordinator
 import com.rekixo.jodlo.core.network.Language
 import com.rekixo.jodlo.core.network.PublicCategory
+import com.rekixo.jodlo.core.network.PublicApprovedServiceDetail
 import com.rekixo.jodlo.core.network.PublicListing
 import com.rekixo.jodlo.core.network.RemoteCatalogRepository
 import com.rekixo.jodlo.core.network.RemoteWorkerRepository
@@ -271,7 +272,7 @@ private fun GuestDiscovery(
     var listingCursor by remember { mutableStateOf<String?>(null) }
     var selected by remember { mutableStateOf<PublicCategory?>(null) }
     var detailRequested by remember { mutableStateOf<PublicListing?>(null) }
-    var detailResolved by remember { mutableStateOf<PublicListing?>(null) }
+    var detailResolved by remember { mutableStateOf<PublicApprovedServiceDetail?>(null) }
     var detailFailure by remember { mutableStateOf<FailureKind?>(null) }
     var showChoiceHint by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
@@ -534,6 +535,7 @@ private fun GuestDiscovery(
         val client = repository ?: return
         if (loading || selected?.id != listing.categoryId) return
         val revision = ++requestRevision
+        val expectedLanguage = language
         detailRequested = listing
         detailResolved = null
         detailFailure = null
@@ -541,7 +543,8 @@ private fun GuestDiscovery(
         loading = true
         scope.launch {
             val outcome = publicRead {
-                client.listingDetail(listing.id, listing.categoryId)
+                client.approvedServiceDetail(listing.id, listing.categoryId,
+                    expectedLanguage)
             }
             if (requestRevision != revision) return@launch
             loading = false
@@ -836,8 +839,11 @@ private fun GuestDiscovery(
                             JodloCard(modifier = Modifier.fillMaxWidth()) {
                                 Column(Modifier.padding(JodloSizes.CardPadding)) {
                                     Text(stringResource(R.string.public_listing))
+                                    Text(detail.category.name,
+                                        style = MaterialTheme.typography.titleMedium)
+                                    Text(stringResource(R.string.service_category_approved_label))
                                     Text(
-                                        stringResource(R.string.listing_reference, detail.id),
+                                        stringResource(R.string.listing_reference, detail.listing.id),
                                         style = MaterialTheme.typography.bodySmall,
                                     )
                                     Text(stringResource(R.string.listing_detail_private_notice))
@@ -851,9 +857,9 @@ private fun GuestDiscovery(
                     if (detail != null && liveApiConfigured) {
                         item {
                             JodloButton(onClick = {
-                                savedFailed = !onSaveToggle(detail)
+                                savedFailed = !onSaveToggle(detail.listing)
                             }, enabled = !loading) {
-                                Text(stringResource(if (saved.contains(detail))
+                                Text(stringResource(if (saved.contains(detail.listing))
                                     R.string.saved_remove else R.string.saved_add))
                             }
                         }

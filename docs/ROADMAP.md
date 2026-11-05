@@ -1,3 +1,7 @@
+## 2026-11-05 — unified current-public Service info in Customer journeys
+
+Build an opt-in read-only Detail endpoint that atomically checks a Listing's current public eligibility and obtains the **current approved Category name** in Hindi/English without leaking Worker, moderation or caller data. The three real Android Customer entrypoints use the same strict DTO and Save requires fresh current eligibility; old public/owner API contracts stay unchanged. [Software acceptance and scope](PUBLIC_APPROVED_SERVICE_DETAIL_2026-11-05.md). Final phone testing remains deferred by founder. This is not actual useful Worker public profile, approved identity/experience/rate/area/photos or real calling. Continue full-app backlog #235 without fabricating reviews or deploying production changes.
+
 ## 2026-11-04 — truthful owner Service management read
 
 Add opt-in **authenticated publicationStatus** to a bounded OWNER management read (only `published|unpublished`, no moderation reason), preserving existing legacy and public APIs. Native Worker Service cards distinguish Paused, Published+public and Published+not public. Resume review only permits a row that the owner-management API identifies as unpublished; the server rechecks it atomically. Refresh/pagination and bilingual display stay user-directed; no new D1 columns or live Catalog changes. [Source contract/tests](WORKER_PRIVATE_PUBLICATION_MANAGEMENT_2026-11-04.md).
