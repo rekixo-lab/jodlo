@@ -132,6 +132,33 @@ export function parseOwnListingsPage(params:URLSearchParams):OwnListingsPageOpti
     ...(view==="management"?{management:true as const}:{})};
 }
 
+/** Exact owner-selected read, separate from a paged or legacy GET.
+ * Uses the SAME private status projection as managed pages, with actor+ID
+ * filters in ONE SQL statement. Foreign, removed and disabled accounts
+ * return identical absence, without leaking worker/category/moderator data.
+ */
+export const EXACT_MANAGED_OWN_LISTING_QUERY =
+  MANAGED_OWN_LISTINGS_SELECT+" AND wl.id=? LIMIT 1";
+
+export async function exactManagedOwnListing(
+  db:D1Database,actor:string,listingId:string,
+):Promise<{id:string;categoryId:string;visible:boolean;
+  publicationStatus:"published"|"unpublished"}|null> {
+  if(!validOpaqueId(actor)||!validOpaqueId(listingId))return null;
+  const {results}=await db.prepare(EXACT_MANAGED_OWN_LISTING_QUERY)
+    .bind(actor,listingId).all<ManagedOwnListingRow>();
+  const row=results[0];
+  if(!row)return null;
+  if(row.id!==listingId || !validCategoryId(row.categoryId) ||
+    (row.publicationStatus!=="published"&&row.publicationStatus!=="unpublished") ||
+    (row.visible!==0&&row.visible!==1) ||
+    (row.visible===1&&row.publicationStatus!=="published")) {
+    throw new Error("Invalid own service projection");
+  }
+  return {id:row.id,categoryId:row.categoryId,
+    visible:row.visible===1,publicationStatus:row.publicationStatus};
+}
+
 /** Explicit, AUTHENTICATED owner management view: current publication
  * intent is safe to show to the SAME owner, not a moderation verdict.
  * Existing legacy/paged DTOs and ALL public reads stay byte-compatible.
