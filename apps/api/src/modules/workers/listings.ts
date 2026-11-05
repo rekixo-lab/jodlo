@@ -184,6 +184,38 @@ export async function exactManagedOwnListing(
 
 
 
+/** Private opt-in v2 snapshot. The legacy exact owner query and public
+ * two-field Listing DTO remain untouched. One actor+ID SQL statement,
+ * and no account, Google, moderator reason or Worker personal fields.
+ */
+export const EXACT_VERSIONED_OWN_LISTING_QUERY =
+  MANAGED_OWN_LISTINGS_SELECT.replace(
+    "SELECT wl.id,",
+    "SELECT wl.revision AS revision,wl.id,"
+  )+" AND wl.id=? LIMIT 1";
+
+export type VersionedOwnListing = Readonly<{
+  id:string;categoryId:string;visible:boolean;
+  publicationStatus:"published"|"unpublished";revision:number;
+}>;
+export async function exactVersionedOwnListing(
+  db:D1Database,actor:string,listingId:string,
+):Promise<VersionedOwnListing|null> {
+  if(!validOpaqueId(actor)||!validOpaqueId(listingId))return null;
+  const {results}=await db.prepare(EXACT_VERSIONED_OWN_LISTING_QUERY)
+    .bind(actor,listingId).all<ManagedOwnListingRow&{revision:number}>();
+  const row=results[0];
+  if(!row)return null;
+  if(row.id!==listingId||!validCategoryId(row.categoryId)||
+    (row.visible!==0&&row.visible!==1)||
+    (row.publicationStatus!=="published"&&row.publicationStatus!=="unpublished")||
+    (row.visible===1&&row.publicationStatus!=="published")||
+    !Number.isSafeInteger(row.revision)||row.revision<0||
+    row.revision>2147483647)throw new Error("Invalid private Service revision");
+  return {id:row.id,categoryId:row.categoryId,visible:row.visible===1,
+    publicationStatus:row.publicationStatus,revision:row.revision};
+}
+
 export const UNPUBLISH_LISTING_QUERY =
   "UPDATE worker_listings SET status='unpublished' WHERE id=? AND worker_account_id=? " +
   "AND status='published' AND EXISTS (SELECT 1 FROM accounts " +
@@ -457,6 +489,38 @@ export const EDIT_OWN_CATEGORY_QUERY =
   "AND EXISTS(SELECT 1 FROM categories AS c WHERE c.id=? AND c.is_active=1) " +
   "AND NOT EXISTS(SELECT 1 FROM worker_listings AS other " +
   "WHERE other.worker_account_id=wl.worker_account_id AND other.category_id=?)";
+
+/** v2 exact-revision CAS, including ABA safety. Existing owner, moderation,
+ * current active Category, UNIQUE(owner,Category) and expected Category
+ * checks remain mandatory. The versioned route never falls back to v1.
+ * An AFTER UPDATE trigger bumps revision even for old v1 or moderation writes.
+ */
+export const EDIT_OWN_CATEGORY_VERSIONED_QUERY =
+  EDIT_OWN_CATEGORY_QUERY.replace(
+    "AND NOT EXISTS(SELECT 1 FROM worker_listings AS other ",
+    "AND wl.revision=? AND wl.revision<2147483647 "+
+    "AND NOT EXISTS(SELECT 1 FROM worker_listings AS other "
+  );
+
+export async function editOwnListingCategoryVersioned(
+  db:D1Database,actor:string,listingId:string,
+  expectedCategoryId:string,nextCategoryId:string,expectedRevision:number,
+):Promise<{id:string;categoryId:string;revision:number}|null> {
+  if(!validOpaqueId(actor)||!validOpaqueId(listingId)||
+    !validCategoryId(expectedCategoryId)||!validCategoryId(nextCategoryId)||
+    expectedCategoryId===nextCategoryId||
+    !Number.isSafeInteger(expectedRevision)||expectedRevision<0||
+    expectedRevision>=2147483647)return null;
+  const {meta}=await db.prepare(EDIT_OWN_CATEGORY_VERSIONED_QUERY)
+    .bind(nextCategoryId,listingId,actor,expectedCategoryId,
+      nextCategoryId,expectedRevision,nextCategoryId).run();
+  if(meta.changes!==1)return null;
+  // The declared migration trigger increments once for the Category change.
+  // A subsequent cross-device write may advance it again; this response is
+  // ONLY the version of our successful update, not a fresh current read.
+  return Object.freeze({id:listingId,categoryId:nextCategoryId,
+    revision:expectedRevision+1});
+}
 
 export async function editOwnListingCategory(
   db: D1Database, actor: string, listingId: string,
