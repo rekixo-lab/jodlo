@@ -20,7 +20,7 @@ private fun reached(latch: CountDownLatch) {
 
 private class ReviewFakeWorkerRepository : WorkerRepository, OwnListingPageRepository,
     ManagedOwnListingPageRepository, OwnListingCategoryEditRepository,
-    OwnListingResumeRepository {
+    OwnListingResumeRepository, ExactManagedOwnListingRepository {
     var published: ApiOutcome<PublicListing> = ApiOutcome.Ok(PublicListing(LISTING_ID,"plumber"))
     var unpublished: ApiOutcome<Boolean> = ApiOutcome.Ok(true)
     var edited: ApiOutcome<PublicListing> = ApiOutcome.Ok(PublicListing(LISTING_ID,"carpenter"))
@@ -46,6 +46,19 @@ private class ReviewFakeWorkerRepository : WorkerRepository, OwnListingPageRepos
         beforePageRead?.invoke()
         return pageResponse?.invoke(limit, after)
             ?: ApiOutcome.Failed(FailureKind.SERVICE_UNAVAILABLE, false)
+    }
+    var exactCalls = 0
+    var beforeExact: (() -> Unit)? = null
+    var exactRow: ApiOutcome<OwnListing> = ApiOutcome.Ok(
+        OwnListing(LISTING_ID, "plumber", false, OwnPublicationStatus.UNPUBLISHED))
+    override fun exactManagedOwnListing(
+        session: String, listingId: String,
+    ): ApiOutcome<OwnListing> {
+        check(session == TOKEN_A || session == TOKEN_B)
+        check(listingId == LISTING_ID)
+        exactCalls++
+        beforeExact?.invoke()
+        return exactRow
     }
     var managedCalls = 0
     var beforeManaged: (() -> Unit)? = null
@@ -630,7 +643,110 @@ private fun managedOwnerReadIsCurrentAccountOnly() {
     check(session.pageManagedOwnListings(20)==SessionResult.Failed(SessionFailure.SIGNED_OUT))
 }
 
+private fun testExactUncertainEditShowsOnlyPrivateCurrentStateNeverConfirmsWrite() {
+    val fake = ReviewFakeWorkerRepository()
+    val scope = HeadlessWorkerWriteScope(signedInDraft(fake))
+    fake.edited = ApiOutcome.Failed(FailureKind.OFFLINE_OR_TIMEOUT, false)
+    check(scope.editCategory(LISTING_ID, "plumber", "carpenter") ==
+        WorkerWriteCompletion.APPLIED)
+    check(scope.snapshot().state is WorkerWriteState.NeedsReview)
+    fake.exactRow = ApiOutcome.Ok(OwnListing(LISTING_ID, "carpenter", false,
+        OwnPublicationStatus.PUBLISHED))
+    check(scope.recheckUncertainListingExactly() == WorkerWriteCompletion.APPLIED)
+    val inspected = review(scope.snapshot().state)
+    check(inspected.exactObservation == WorkerExactObservation.Current(
+        "carpenter", OwnPublicationStatus.PUBLISHED, false))
+    check(inspected.readFailure == null && inspected.observation == null)
+    check(inspected.pagedPagesChecked == 0 && inspected.pagedNextCursor == null)
+    check(inspected.action == WorkerWriteAction.EditCategory(
+        LISTING_ID, "plumber", "carpenter"))
+    check(scope.editCategory(LISTING_ID, "plumber", "carpenter") ==
+        WorkerWriteCompletion.BLOCKED)
+    check(fake.editCalls == 1 && fake.exactCalls == 1 && fake.pageCalls == 0)
+    // Current Category may have been changed by another device, so this is
+    // deliberately NOT a confirmed write, regardless of what it resembles.
+    fake.exactRow = ApiOutcome.Failed(FailureKind.NOT_FOUND, false)
+    check(scope.recheckUncertainListingExactly() == WorkerWriteCompletion.APPLIED)
+    check(review(scope.snapshot().state).exactObservation ==
+        WorkerExactObservation.NotFound)
+    check(scope.snapshot().state is WorkerWriteState.NeedsReview)
+    fake.exactRow = ApiOutcome.Failed(FailureKind.SERVICE_UNAVAILABLE, false)
+    check(scope.recheckUncertainListingExactly() == WorkerWriteCompletion.APPLIED)
+    val failed = review(scope.snapshot().state)
+    check(failed.exactObservation == null && failed.readFailure ==
+        SessionFailure.REMOTE_FAILURE)
+    fake.exactRow = ApiOutcome.Ok(OwnListing(
+        "22222222-2222-4222-8222-222222222222", "carpenter", true,
+        OwnPublicationStatus.PUBLISHED))
+    check(scope.recheckUncertainListingExactly() == WorkerWriteCompletion.APPLIED)
+    check(review(scope.snapshot().state).readFailure ==
+        SessionFailure.REMOTE_FAILURE)
+    check(review(scope.snapshot().state).exactObservation == null)
+    check(fake.editCalls == 1 && fake.exactCalls == 4)
+    check(scope.acknowledgeUncertainty())
+    check(scope.snapshot().state == WorkerWriteState.Idle)
+}
+
+private fun testExactUncertaintyWorksForPauseResumeButNotUnknownPublishId() {
+    val fake = ReviewFakeWorkerRepository()
+    val scope = HeadlessWorkerWriteScope(signedInDraft(fake))
+    fake.published = ApiOutcome.Failed(FailureKind.OFFLINE_OR_TIMEOUT, false)
+    check(scope.publishExplicitCategory("plumber") == WorkerWriteCompletion.APPLIED)
+    check(scope.recheckUncertainListingExactly() == WorkerWriteCompletion.BLOCKED)
+    check(fake.exactCalls == 0)
+    check(scope.snapshot().state is WorkerWriteState.NeedsReview)
+    check(scope.acknowledgeUncertainty())
+
+    fake.unpublished = ApiOutcome.Failed(FailureKind.OFFLINE_OR_TIMEOUT, false)
+    check(scope.unpublish(LISTING_ID) == WorkerWriteCompletion.APPLIED)
+    check(scope.recheckUncertainListingExactly() == WorkerWriteCompletion.APPLIED)
+    check(review(scope.snapshot().state).exactObservation ==
+        WorkerExactObservation.Current("plumber",
+            OwnPublicationStatus.UNPUBLISHED, false))
+    check(scope.acknowledgeUncertainty())
+
+    fake.resumed = ApiOutcome.Failed(FailureKind.BAD_RESPONSE, false)
+    check(scope.resumeOwnListing(LISTING_ID, "plumber") ==
+        WorkerWriteCompletion.APPLIED)
+    check(scope.recheckUncertainListingExactly() == WorkerWriteCompletion.APPLIED)
+    check(review(scope.snapshot().state).exactObservation != null)
+    check(fake.unpublishCalls == 1 && fake.resumeCalls == 1 &&
+        fake.exactCalls == 2)
+    check(scope.resumeOwnListing(LISTING_ID, "plumber") ==
+        WorkerWriteCompletion.BLOCKED)
+}
+
+private fun testExactRecheckRejectsConcurrentAndReplacedSession() {
+    val fake = ReviewFakeWorkerRepository()
+    val session = signedInDraft(fake)
+    val scope = HeadlessWorkerWriteScope(session)
+    fake.unpublished = ApiOutcome.Failed(FailureKind.OFFLINE_OR_TIMEOUT, false)
+    check(scope.unpublish(LISTING_ID) == WorkerWriteCompletion.APPLIED)
+    val started = CountDownLatch(1)
+    val release = CountDownLatch(1)
+    fake.beforeExact = {
+        started.countDown()
+        check(release.await(5, TimeUnit.SECONDS))
+    }
+    val read = background { scope.recheckUncertainListingExactly() }
+    try {
+        reached(started)
+        check(scope.snapshot().state is WorkerWriteState.Rechecking)
+        check(scope.recheckUncertainListingExactly() == WorkerWriteCompletion.BLOCKED)
+        check(scope.recheckOwnListingsPage() == WorkerWriteCompletion.BLOCKED)
+        check(scope.unpublish(LISTING_ID) == WorkerWriteCompletion.BLOCKED)
+        check(session.acceptIssuedSession(issued(TOKEN_B)) is ApiOutcome.Ok)
+        check(scope.snapshot().state == WorkerWriteState.Idle)
+    } finally { release.countDown() }
+    check(completed(read) == WorkerWriteCompletion.DISCARDED)
+    check(scope.snapshot().state == WorkerWriteState.Idle)
+    check(fake.exactCalls == 1 && fake.unpublishCalls == 1)
+}
+
 fun main() {
+    testExactUncertainEditShowsOnlyPrivateCurrentStateNeverConfirmsWrite()
+    testExactUncertaintyWorksForPauseResumeButNotUnknownPublishId()
+    testExactRecheckRejectsConcurrentAndReplacedSession()
     managedOwnerReadIsCurrentAccountOnly()
     guidedResumeOnlyFromCurrentNonvisibleOwnerRow()
     scopedResumeNeverRetriesAmbiguousOwnerWrite()
