@@ -1,3 +1,7 @@
+## 2026-11-05 — Worker uncertain-write exact owner recovery (source; CI verification required)
+
+A lost edit/pause/resume reply now has one deliberate owner-only single-Service status GET and bilingual Android observation, rather than merely an opaque page-scan prompt. Generic 404, changed Category/status, offline and account replacement are all **not proof** of whether the earlier write committed. The explicit one-page scan remains available, especially for lost Publish responses without a trusted Listing ID. No automatic write retry, public Worker detail, data migration, production deploy or physical-phone testing. [Engineering/test contract](WORKER_UNCERTAIN_EXACT_RECOVERY_2026-11-05.md). Full P1 Worker service editing remains open under [#235](https://github.com/rekixo-lab/jodlo/issues/235).
+
 ## 2026-11-05 — Public-only Service card foundation
 
 A reusable native Customer Service card is now wired through Browse, all-public Feed and Saved; two explicit evidence states prevent saved bookmarks and stale pages from implying present public availability. Category names come from already approved public reads, with missing names shown neutrally and no Worker personal/contact/rate/area data. A successful exact public read (same Listing/Category/Hindi-English language) is required for a "public when checked" label and Save. See [safe slice and still-unapproved public Worker field proposal](PUBLIC_SERVICE_CARDS_SAFE_SLICE_2026-11-05.md).

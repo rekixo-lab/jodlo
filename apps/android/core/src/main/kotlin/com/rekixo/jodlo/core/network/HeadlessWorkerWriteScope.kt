@@ -12,6 +12,27 @@ sealed class WorkerWriteAction {
         val listingId: String, val expectedCategoryId: String,
         val nextCategoryId: String, val expectedRevision: Long,
     ) : WorkerWriteAction()
+
+    /** Publish has no confirmed Listing ID after a lost response; it must
+     * use the deliberately paginated read, never guess an owner's ID.
+     */
+    fun exactTargetId(): String? = when (this) {
+        is Publish -> null
+        is Unpublish -> listingId
+        is Resume -> listingId
+        is EditCategory -> listingId
+        is VersionedCategoryEdit -> listingId
+    }
+}
+
+/** Private point-in-time evidence, never proof that an uncertain mutation ran. */
+sealed class WorkerExactObservation {
+    data class Current(
+        val categoryId: String,
+        val publicationStatus: OwnPublicationStatus,
+        val visible: Boolean,
+    ) : WorkerExactObservation()
+    object NotFound : WorkerExactObservation()
 }
 
 enum class WorkerVisibility {
@@ -44,6 +65,10 @@ sealed class WorkerWriteState {
         val networkKind: FailureKind? = null,
         val observation: WorkerVisibility? = null,
         val readFailure: SessionFailure? = null,
+        /** An explicit, owner-authenticated single-Listing read. A 404
+         * remains indistinguishable from missing/foreign/inactive ownership.
+         */
+        val exactObservation: WorkerExactObservation? = null,
         /** Private, opaque continuation for an explicit read-only scan.
          * This is never a public Customer cursor or a worker identity.
          */
@@ -216,6 +241,73 @@ class HeadlessWorkerWriteScope(private val session: InMemorySessionCoordinator) 
         }
     }
 
+    /** For a failed edit/pause/resume with a known opaque Listing ID, one
+     * explicit owner-authenticated GET avoids scanning arbitrary owner pages.
+     * A fresh Category/status/visibility snapshot, or a generic 404, NEVER
+     * certifies whether the earlier PUT/DELETE committed. Publish cannot
+     * use this method: its lost response has no trusted new Listing ID.
+     */
+    fun recheckUncertainListingExactly(): WorkerWriteCompletion {
+        val ticket = synchronized(lock) {
+            checkSessionLocked()
+            if (closed) return@synchronized null
+            val prior = state as? WorkerWriteState.NeedsReview
+                ?: return@synchronized null
+            val id = prior.action.exactTargetId() ?: return@synchronized null
+            Pair(ReviewTicket(CancellationSignal(), null), id).also {
+                signal = it.first.signal
+                state = WorkerWriteState.Rechecking(prior)
+            }
+        } ?: return synchronized(lock) {
+            if (closed) WorkerWriteCompletion.DISCARDED else WorkerWriteCompletion.BLOCKED
+        }
+        val captured = ticket.first.signal
+        val id = ticket.second
+        val reply: SessionResult<OwnListing> = try {
+            if (captured.isCancelled) SessionResult.Failed(SessionFailure.CANCELLED)
+            else session.exactManagedOwnListing(id, captured)
+        } catch (_: Exception) {
+            SessionResult.Failed(SessionFailure.REMOTE_FAILURE, FailureKind.BAD_RESPONSE)
+        }
+        return synchronized(lock) {
+            checkSessionLocked()
+            val checking = state as? WorkerWriteState.Rechecking
+            if (closed || signal !== captured || captured.isCancelled || checking == null) {
+                WorkerWriteCompletion.DISCARDED
+            } else {
+                val prior = checking.prior
+                state = when (reply) {
+                    is SessionResult.Success -> {
+                        val row = reply.value
+                        if (row.id != id || row.publicationStatus == null)
+                            prior.copy(exactObservation = null, observation = null,
+                                readFailure = SessionFailure.REMOTE_FAILURE,
+                                pagedNextCursor = null, pagedPagesChecked = 0,
+                                pagedScanComplete = false)
+                        else prior.copy(
+                            exactObservation = WorkerExactObservation.Current(
+                                row.categoryId, row.publicationStatus, row.visible),
+                            observation = null, readFailure = null,
+                            pagedNextCursor = null, pagedPagesChecked = 0,
+                            pagedScanComplete = false,
+                        )
+                    }
+                    is SessionResult.Failed -> prior.copy(
+                        exactObservation = if (reply.networkKind == FailureKind.NOT_FOUND)
+                            WorkerExactObservation.NotFound else null,
+                        observation = null,
+                        readFailure = if (reply.networkKind == FailureKind.NOT_FOUND)
+                            null else reply.reason,
+                        pagedNextCursor = null, pagedPagesChecked = 0,
+                        pagedScanComplete = false,
+                    )
+                }
+                signal = null
+                WorkerWriteCompletion.APPLIED
+            }
+        }
+    }
+
     /** Explicit one-page read-only uncertainty recheck.
      *
      * Legacy recheckOwnListings() intentionally keeps its first-100 API for
@@ -297,7 +389,7 @@ class HeadlessWorkerWriteScope(private val session: InMemorySessionCoordinator) 
                             // A deleted/inactive/foreign keyset anchor can return
                             // an empty terminal reply. Do not treat that as a
                             // completed scan; restart explicitly from page one.
-                            prior.copy(observation = null,
+                            prior.copy(observation = null, exactObservation = null,
                                 readFailure = SessionFailure.STALE_RESULT,
                                 pagedNextCursor = null, pagedPagesChecked = 0,
                                 pagedScanComplete = false)
@@ -310,7 +402,8 @@ class HeadlessWorkerWriteScope(private val session: InMemorySessionCoordinator) 
                                 else -> WorkerVisibility.NOT_VISIBLE
                             }
                             prior.copy(
-                                observation = observation, readFailure = null,
+                                observation = observation, exactObservation = null,
+                                readFailure = null,
                                 pagedNextCursor = if (paged && match == null)
                                     reply.value.nextCursor else null,
                                 pagedPagesChecked = if (paged)
@@ -323,6 +416,7 @@ class HeadlessWorkerWriteScope(private val session: InMemorySessionCoordinator) 
                     }
                     is SessionResult.Failed ->
                         prior.copy(readFailure = reply.reason, observation = null,
+                            exactObservation = null,
                             pagedNextCursor = if (paged) ticket.after else null,
                             pagedPagesChecked = if (paged && ticket.after != null)
                                 prior.pagedPagesChecked else 0,
