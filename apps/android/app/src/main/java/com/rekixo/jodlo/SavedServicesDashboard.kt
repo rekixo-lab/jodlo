@@ -31,6 +31,8 @@ import com.rekixo.jodlo.core.network.PublicApprovedServiceDetail
 import com.rekixo.jodlo.core.network.PublicListing
 import com.rekixo.jodlo.core.network.RemoteCatalogRepository
 import com.rekixo.jodlo.core.network.SavedPublicServices
+import com.rekixo.jodlo.core.network.SavedServiceReview
+import com.rekixo.jodlo.core.network.SavedServiceReviewStatus
 import com.rekixo.jodlo.ui.theme.JodloButton
 import com.rekixo.jodlo.ui.theme.JodloChip
 import com.rekixo.jodlo.ui.theme.JodloCard
@@ -60,6 +62,11 @@ internal fun SavedServicesDashboard(
     var revision by remember { mutableIntStateOf(0) }
     var confirmClear by remember { mutableStateOf(false) }
     var notice by remember { mutableIntStateOf(0) }
+    // Ephemeral review results never enter the device Saved storage.
+    var review by remember { mutableStateOf(SavedServiceReview.start(saved)) }
+    var reviewBusy by remember { mutableStateOf(false) }
+    var reviewCancelRequested by remember { mutableStateOf(false) }
+    var reviewRevision by remember { mutableIntStateOf(0) }
     // A Saved reference is private to this phone. Explicitly fetching only
     // its distinct *Category IDs* reveals neither a Listing ID nor account.
     var categoryLanguage by remember { mutableStateOf(Language.HI) }
@@ -74,13 +81,18 @@ internal fun SavedServicesDashboard(
         categoryNames = null
         categoryNamesBusy = false
         categoryNamesFailed = false
+        // Saved, language or repository changes revoke all previous results.
+        reviewRevision++
+        review = SavedServiceReview.start(saved)
+        reviewBusy = false
+        reviewCancelRequested = false
     }
 
     fun loadApprovedNames() {
         val client = repository ?: return
         val ids = currentCategoryIds
         if (ids.isEmpty() || ids.size > ApprovedCategoryNameSnapshot.MAX_IDS ||
-            categoryNamesBusy) return
+            categoryNamesBusy || reviewBusy) return
         val language = categoryLanguage
         val generation = ++categoryNamesRevision
         categoryNamesBusy = true
@@ -117,6 +129,42 @@ internal fun SavedServicesDashboard(
         }
     }
 
+    /** At most 10 sequential anonymous GETs per explicit tap, no retry.
+     * Cancel finishes the current request, then stops without a new GET.
+     */
+    fun reviewNextBatch() {
+        val client = repository ?: return
+        if (reviewBusy || busy || selected != null) return
+        val batch = review.nextBatch(saved)
+        if (batch.isEmpty()) return
+        val generation = ++reviewRevision
+        val selectedLanguage = categoryLanguage
+        reviewCancelRequested = false
+        reviewBusy = true
+        scope.launch {
+            for (row in batch) {
+                val result: ApiOutcome<PublicApprovedServiceDetail> =
+                    withContext(Dispatchers.IO) {
+                        try {
+                            client.approvedServiceDetail(row.id, row.categoryId, selectedLanguage)
+                        } catch (cancelled: kotlin.coroutines.cancellation.CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            ApiOutcome.Failed(FailureKind.BAD_RESPONSE, false)
+                        }
+                    }
+                if (generation != reviewRevision) return@launch
+                if (reviewCancelRequested || !saved.contains(row) ||
+                    categoryLanguage != selectedLanguage) break
+                review = review.record(saved, row, selectedLanguage, result)
+            }
+            if (generation == reviewRevision) {
+                reviewBusy = false
+                reviewCancelRequested = false
+            }
+        }
+    }
+
     fun back() {
         revision++
         selected=null
@@ -128,7 +176,7 @@ internal fun SavedServicesDashboard(
 
     fun inspect(row: PublicListing) {
         val client=repository ?: return
-        if (busy || !saved.contains(row)) return
+        if (busy || reviewBusy || !saved.contains(row)) return
         val generation=++revision
         val selectedLanguage=categoryLanguage
         selected=row
@@ -178,13 +226,15 @@ internal fun SavedServicesDashboard(
                     Row(horizontalArrangement=Arrangement.spacedBy(JodloSizes.SmallGap)) {
                         JodloChip(selected=categoryLanguage==Language.HI,
                             onClick={categoryLanguage=Language.HI},
+                            enabled=!reviewBusy,
                             label={Text(stringResource(R.string.language_hindi))})
                         JodloChip(selected=categoryLanguage==Language.EN,
                             onClick={categoryLanguage=Language.EN},
+                            enabled=!reviewBusy,
                             label={Text(stringResource(R.string.language_english))})
                     }
                     JodloTextAction(onClick={loadApprovedNames()},
-                        enabled=repository!=null && !categoryNamesBusy) {
+                        enabled=repository!=null && !categoryNamesBusy && !reviewBusy) {
                         Text(stringResource(R.string.category_label_lookup_action))
                     }
                     Text(stringResource(R.string.category_label_lookup_privacy),
@@ -199,9 +249,40 @@ internal fun SavedServicesDashboard(
             if (saved.entries.isEmpty()) item {
                 Text(stringResource(R.string.saved_empty))
             }
+            if (saved.entries.isNotEmpty()) item {
+                Text(stringResource(R.string.saved_review_explanation),
+                    style=MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.saved_review_progress,
+                    review.checkedCount, review.totalCount))
+                if (review.checkedCount > 0) {
+                    Text(stringResource(R.string.saved_review_summary,
+                        review.publicCount, review.notPublicCount, review.unknownCount),
+                        style=MaterialTheme.typography.bodySmall)
+                }
+                if (review.nextBatch(saved).isNotEmpty()) {
+                    JodloButton(onClick={reviewNextBatch()},
+                        enabled=repository!=null && !reviewBusy && !busy) {
+                        Text(stringResource(R.string.saved_review_next))
+                    }
+                }
+                if (reviewBusy) {
+                    JodloTextAction(onClick={reviewCancelRequested=true},
+                        enabled=!reviewCancelRequested) {
+                        Text(stringResource(R.string.saved_review_stop))
+                    }
+                    CircularProgressIndicator()
+                } else if (review.checkedCount > 0) {
+                    JodloTextAction(onClick={
+                        reviewRevision++
+                        review=SavedServiceReview.start(saved)
+                    },enabled=!busy && !reviewBusy) {
+                        Text(stringResource(R.string.saved_review_reset))
+                    }
+                }
+            }
             items(saved.entries,key={ "saved-${it.id}" }) { row ->
                 JodloCard(
-                    onClick={ if (repository!=null && !busy) inspect(row) },
+                    onClick={ if (repository!=null && !busy && !reviewBusy) inspect(row) },
                     modifier=Modifier.fillMaxWidth(),
                 ) {
                     Column(Modifier.padding(JodloSizes.CardPadding),
@@ -215,17 +296,30 @@ internal fun SavedServicesDashboard(
                         Text(stringResource(R.string.saved_category_reference,row.categoryId))
                         Text(stringResource(R.string.listing_reference,row.id),
                             style=MaterialTheme.typography.bodySmall)
-                        Text(stringResource(R.string.saved_unchecked_warning),
-                            style=MaterialTheme.typography.bodySmall)
+                        val reviewStatus=review.statusFor(saved,row)
+                        val reviewLabel=when(reviewStatus) {
+                            SavedServiceReviewStatus.PUBLIC_WHEN_CHECKED ->
+                                R.string.saved_review_row_public
+                            SavedServiceReviewStatus.NOT_PUBLIC_WHEN_CHECKED ->
+                                R.string.saved_review_row_missing
+                            SavedServiceReviewStatus.CANNOT_CONFIRM ->
+                                R.string.saved_review_row_unknown
+                            null -> R.string.saved_unchecked_warning
+                        }
+                        Text(stringResource(reviewLabel),
+                            style=MaterialTheme.typography.bodySmall,
+                            color=if (reviewStatus==SavedServiceReviewStatus.NOT_PUBLIC_WHEN_CHECKED)
+                                MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurface)
                         Row(horizontalArrangement=Arrangement.spacedBy(JodloSizes.SmallGap)) {
                             JodloTextAction(onClick={inspect(row)},
-                                enabled=repository!=null && !busy) {
+                                enabled=repository!=null && !busy && !reviewBusy) {
                                 Text(stringResource(R.string.saved_check_now))
                             }
                             JodloTextAction(onClick={
                                 if (onRemove(row.id)) notice=R.string.saved_removed
                                 else notice=R.string.saved_storage_failed
-                            },enabled=!busy) {
+                            },enabled=!busy && !reviewBusy) {
                                 Text(stringResource(R.string.saved_remove))
                             }
                         }
@@ -235,13 +329,14 @@ internal fun SavedServicesDashboard(
             if (saved.entries.isNotEmpty()) {
                 item {
                     if (!confirmClear) {
-                        JodloTextAction(onClick={confirmClear=true},enabled=!busy) {
+                        JodloTextAction(onClick={confirmClear=true},
+                            enabled=!busy && !reviewBusy) {
                             Text(stringResource(R.string.saved_clear_start))
                         }
                     } else {
                         Text(stringResource(R.string.saved_clear_warning))
                         Row(horizontalArrangement=Arrangement.spacedBy(JodloSizes.SmallGap)) {
-                            JodloTextAction(onClick={confirmClear=false},enabled=!busy) {
+                            JodloTextAction(onClick={confirmClear=false},enabled=!busy && !reviewBusy) {
                                 Text(stringResource(R.string.saved_cancel))
                             }
                             JodloButton(onClick={
@@ -249,7 +344,7 @@ internal fun SavedServicesDashboard(
                                     notice=R.string.saved_cleared
                                     confirmClear=false
                                 } else notice=R.string.saved_storage_failed
-                            },enabled=!busy) {
+                            },enabled=!busy && !reviewBusy) {
                                 Text(stringResource(R.string.saved_clear_confirm))
                             }
                         }
@@ -302,7 +397,7 @@ internal fun SavedServicesDashboard(
                     val id=selected?.id ?: return@JodloTextAction
                     if(onRemove(id)) back()
                     else notice=R.string.saved_storage_failed
-                },enabled=!busy) {
+                },enabled=!busy && !reviewBusy) {
                     Text(stringResource(R.string.saved_remove))
                 }
             }
