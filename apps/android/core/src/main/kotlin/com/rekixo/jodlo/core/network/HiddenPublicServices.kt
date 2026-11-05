@@ -38,6 +38,14 @@ data class HiddenPublicServices private constructor(val ids: List<String>) {
         if (!valid(id) || contains(id) || ids.size >= MAX_ENTRIES) this
         else HiddenPublicServices(listOf(id) + ids)
 
+    /** Non-destructive, bounded import; hidden IDs never leave this phone. */
+    fun mergeFrom(incoming: HiddenPublicServices): HiddenPublicServices? {
+        val known = ids.toSet()
+        val additional = incoming.ids.filterNot { it in known }
+        if (ids.size + additional.size > MAX_ENTRIES) return null
+        return HiddenPublicServices(ids + additional)
+    }
+
     fun unhide(id: String): HiddenPublicServices =
         if (!contains(id)) this
         else HiddenPublicServices(ids.filterNot { it == id })

@@ -50,6 +50,20 @@ data class SavedPublicServices private constructor(val entries: List<PublicListi
     fun withoutHidden(hidden: HiddenPublicServices): SavedPublicServices =
         SavedPublicServices(hidden.visible(entries))
 
+    /** Non-destructive, validated, device-only import.
+     * Existing IDs/categories remain authoritative; reject a conflicting
+     * Category or overflow rather than altering a saved public reference.
+     */
+    fun mergeFrom(incoming: SavedPublicServices): SavedPublicServices? {
+        val current = entries.associateBy { it.id }
+        if (incoming.entries.any { row ->
+            current[row.id]?.let { it.categoryId != row.categoryId } == true
+        }) return null
+        val additional = incoming.entries.filter { it.id !in current }
+        if (entries.size + additional.size > MAX_ENTRIES) return null
+        return SavedPublicServices(entries + additional)
+    }
+
     fun contains(listing: PublicListing): Boolean =
         entries.any { it.id == listing.id && it.categoryId == listing.categoryId }
 

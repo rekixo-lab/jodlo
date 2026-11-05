@@ -137,6 +137,19 @@ private fun JodloApp(activity: ComponentActivity) {
         hiddenServices = next
         return true
     }
+    /** User-confirmed import; each collection is its own private durable
+     * transaction. No partial two-store transaction is ever claimed.
+     */
+    fun applyImportedSaved(next: SavedPublicServices): Boolean {
+        if (!savedStore.write(next)) return false
+        savedServices = next
+        return true
+    }
+    fun applyImportedHidden(next: HiddenPublicServices): Boolean {
+        if (!hiddenStore.write(next)) return false
+        hiddenServices = next
+        return true
+    }
     // All saved entries are anonymous, already public references and remain
     // device-only. Every mutation is explicit; a failed local write is
     // reported, never silently counted as saved.
@@ -207,6 +220,11 @@ private fun JodloApp(activity: ComponentActivity) {
                 onClick = { section = "hidden" },
                 label = { Text(stringResource(R.string.hidden_tab)) },
             )
+            JodloChip(
+                selected = section == "local-data",
+                onClick = { section = "local-data" },
+                label = { Text(stringResource(R.string.local_backup_tab)) },
+            )
         }
         if (BuildConfig.DEBUG && sender == null && section == "customer") {
             JodloTextAction(
@@ -274,6 +292,14 @@ private fun JodloApp(activity: ComponentActivity) {
                     hiddenServices, ::unhideService, ::clearHidden,
                     onHome = { section = "home" },
                 )
+                "local-data" -> LocalDataTransferDashboard(
+                    activity = activity,
+                    saved = savedServices,
+                    hidden = hiddenServices,
+                    onApplySaved = ::applyImportedSaved,
+                    onApplyHidden = ::applyImportedHidden,
+                    onHome = { section = "home" },
+                )
                 "feed" -> if (catalog != null) PublicServicesFeed(
                     catalog, savedServices, ::toggleSaved,
                     hiddenServices, ::hideService,
@@ -284,6 +310,7 @@ private fun JodloApp(activity: ComponentActivity) {
                     onBrowse = { homeCategory = null; section = "customer" },
                     onSaved = { section = "saved" },
                     onHidden = { section = "hidden" },
+                    onLocalData = { section = "local-data" },
                     onAccount = { section = "account" },
                     onWorker = { section = "worker" },
                 )
