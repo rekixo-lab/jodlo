@@ -13,7 +13,8 @@ import java.nio.charset.StandardCharsets
  * Always bound untrusted import bytes BEFORE decoding, never readBytes().
  */
 internal object LocalPortableFileIO {
-    fun readBounded(resolver: ContentResolver, uri: Uri): String? = try {
+    fun readBounded(resolver: ContentResolver, uri: Uri): String? {
+        return try {
         val bytes = resolver.openInputStream(uri)?.use { input ->
             val out = ByteArrayOutputStream()
             val chunk = ByteArray(4096)
@@ -34,9 +35,10 @@ internal object LocalPortableFileIO {
     } catch (_: Exception) {
         null // Never log a URI, source contents, provider exception or IDs.
     }
+    }
 
-    fun write(resolver: ContentResolver, uri: Uri, backup: LocalPublicServiceBackup): Boolean =
-        try {
+    fun write(resolver: ContentResolver, uri: Uri, backup: LocalPublicServiceBackup): Boolean {
+        return try {
             val bytes = backup.encode().toByteArray(StandardCharsets.UTF_8)
             if (bytes.size > LocalPublicServiceBackup.MAX_BYTES) return false
             resolver.openOutputStream(uri, "wt")?.use { stream ->
@@ -47,4 +49,5 @@ internal object LocalPortableFileIO {
         } catch (_: Exception) {
             false
         }
+    }
 }
