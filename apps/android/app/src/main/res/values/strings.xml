@@ -238,7 +238,7 @@
     <string name="help_back_home">Back to Home</string>
     <string name="hidden_tab">Hidden</string>
     <string name="hidden_heading">Hidden Services on this phone</string>
-    <string name="hidden_privacy_note">Hide only changes what this installation displays in Customer Browse, Feed and Saved. It does NOT report or block a Worker, modify the server, prevent new listings, delete Saved bookmarks or sync across devices/accounts. Clearing this app's data may reset your hidden list.</string>
+    <string name="hidden_privacy_note">Hide only changes what this installation displays in Customer Browse, Feed and Saved. It does NOT report or block a Worker, modify the server, prevent new listings, delete Saved bookmarks or sync across devices/accounts. Clearing app data may reset your hidden list.</string>
     <string name="hidden_manage">Manage hidden Services</string>
     <string name="hidden_count">%1$d / %2$d locally hidden Service references</string>
     <string name="hidden_empty">No Services hidden on this phone.</string>
@@ -246,7 +246,7 @@
     <string name="hidden_unhide">Show again on this phone</string>
     <string name="hidden_restored">Service can appear in future results again. Current eligibility is not verified.</string>
     <string name="hidden_saved_locally">Service hidden locally. An existing Saved bookmark is kept and can reappear after unhide.</string>
-    <string name="hidden_storage_failed">Could not update this phone's hidden list. Storage may be unavailable or the 100-entry limit reached.</string>
+    <string name="hidden_storage_failed">Could not update the hidden list on this phone. Storage may be unavailable or the 100-entry limit reached.</string>
     <string name="hidden_page_filtered">Services in this loaded page were hidden on this phone. More public results may exist; choose More to continue.</string>
     <string name="hidden_saved_filtered">%1$d Saved Service references are hidden on this phone. They are still bookmarked; use Hidden to restore them.</string>
     <string name="hidden_clear_start">Show all hidden Services again</string>
