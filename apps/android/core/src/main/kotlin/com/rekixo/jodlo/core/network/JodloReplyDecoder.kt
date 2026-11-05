@@ -16,6 +16,14 @@ import kotlinx.serialization.json.jsonPrimitive
 /** Typed DTOs for the CURRENT public API. No worker trust, phone, location or permission fields. */
 data class PublicCategory(val id: String, val slug: String, val name: String)
 data class PublicListing(val id: String, val categoryId: String)
+/** Fresh public-only service information: a listing and its SAME approved
+ * Category label in the explicitly requested language. No Worker metadata.
+ */
+data class PublicApprovedServiceDetail(
+    val language: Language,
+    val listing: PublicListing,
+    val category: PublicCategory,
+)
 /** Optional public Listing pagination: no owner, timestamp, location or contact. */
 data class PublicListingPage(val listings: List<PublicListing>, val nextCursor: String?)
 /** Private publication intent for authenticated owner Management pages only.
@@ -324,6 +332,20 @@ object JodloReplyDecoder {
         decode(reply) { data ->
             data.keysOnly(setOf("listing"))
             listing(data.required("listing"))
+        }
+
+    /** Strict opt-in public Service detail. The approved name is read from
+     * the SAME current server visibility SQL as the Listing, not a stale
+     * feed cache or a Worker-submitted biography/price/verified claim.
+     */
+    fun approvedServiceDetail(reply: TransportReply): ApiOutcome<PublicApprovedServiceDetail> =
+        decode(reply) { data ->
+            data.keysOnly(setOf("language", "listing", "category"))
+            val lang = language(data.required("language"))
+            val current = listing(data.required("listing"))
+            val approved = category(data.required("category"))
+            if (current.categoryId != approved.id) bad()
+            PublicApprovedServiceDetail(lang, current, approved)
         }
 
     fun publicListings(reply: TransportReply): ApiOutcome<List<PublicListing>> = decode(reply) { data ->
