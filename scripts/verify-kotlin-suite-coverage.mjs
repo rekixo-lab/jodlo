@@ -30,7 +30,7 @@ export function readSuiteInputs(base = root) {
 
 export function auditKotlinSuiteCoverage(
   { gradle, workflow, tests },
-  { minimumSuites = 23 } = {},
+  { minimumSuites = 24 } = {},
 ) {
   const problems = [];
   const allTests = new Set();
