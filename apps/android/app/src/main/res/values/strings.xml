@@ -211,4 +211,17 @@
     <string name="saved_review_row_missing">Not public at last check. It may be unpublished or restricted; bookmark remains on this device.</string>
     <string name="saved_review_row_unknown">Could not confirm at last check. This does not mean the service was removed.</string>
     <string name="worker_customer_preview_approved_label">Currently approved Category name from the same public Service Detail read. Not Worker verification, a custom Worker description, or a guarantee of availability.</string>
+    <!-- Optional reviewed Group -> Family -> Category navigation, no seed or PII. -->
+    <string name="home_hierarchy_action">Browse approved Groups → Families → Categories</string>
+    <string name="hierarchy_heading">Find work by Group and Family</string>
+    <string name="hierarchy_notice">Only separately approved Group, Family and active Category mappings appear. This is not Worker availability, verification or contact permission. You can always browse all approved Categories instead.</string>
+    <string name="hierarchy_back">Back one level / Home</string>
+    <string name="hierarchy_flat_browse">Browse and search all approved Categories</string>
+    <string name="hierarchy_refresh">Refresh current approved level</string>
+    <string name="hierarchy_groups">Approved Groups</string>
+    <string name="hierarchy_families">Approved Families</string>
+    <string name="hierarchy_categories">Approved Categories</string>
+    <string name="hierarchy_empty">No approved mapping at this level yet. All Categories remain available through regular Browse.</string>
+    <string name="hierarchy_unavailable">This API version does not provide approved hierarchy yet. Use Browse Categories; no data was changed.</string>
+    <string name="hierarchy_open_next">Open the next approved level</string>
 </resources>

@@ -9,6 +9,8 @@ import { fileURLToPath } from "node:url";
 const rootDefault = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const allowedRoutes = new Set([
   "/api/v1/health", "/api/v1/catalog", "/api/v1/catalog/search",
+  // Only approved, default-OFF taxonomy hierarchy; no public Worker or GPS.
+  "/api/v1/catalog/hierarchy",
   "/api/v1/auth/google", "/api/v1/auth/logout", "/api/v1/auth/logout-all",
   "/api/v1/me/worker-profile", "/api/v1/me/listings", "/api/v1/listings",
   // 2026-11-04: owner-only READs over already-approved JODLO D1 tables.
@@ -18,7 +20,10 @@ const allowedRoutes = new Set([
   "/api/v1/me/overview", "/api/v1/me/data-export",
 ]);
 const allowedTables = new Set([
-  "categories", "accounts", "worker_profiles", "google_identities", "auth_sessions", "worker_listings",
+  "categories",
+  // No auto-seed, no public data until human-reviewed Group/Family/mapping approval.
+  "catalog_groups", "catalog_families", "catalog_family_categories",
+  "accounts", "worker_profiles", "google_identities", "auth_sessions", "worker_listings",
   // Exactly one newly engineered, non-recipient delivery receipt; never a
   // blanket permission for contact, notification preference or token storage.
   "notification_delivery_receipts",
@@ -82,7 +87,8 @@ export async function auditFounderGates(root = rootDefault) {
   for(const route of new Set(routes))
     if(!allowedRoutes.has(route)) errors.push("Unapproved API route: " + route + " (M-005/M-003)");
   for(const route of allowedRoutes)
-    if(!routes.includes(route)) errors.push("Previously approved API route missing: " + route);
+    if(route!=="/api/v1/catalog/hierarchy" && !routes.includes(route))
+      errors.push("Previously approved API route missing: " + route);
   if(catalog !== null &&
      !/export\s+type\s+CatalogLanguage\s*=\s*["']en["']\s*\|\s*["']hi["']\s*;/.test(catalog))
     errors.push("Catalog locales must be exactly en|hi (ADR-0008)");
@@ -189,8 +195,39 @@ export async function auditFounderGates(root = rootDefault) {
        /\b(?:ALTER|DROP)\s+TABLE\s+worker_profiles\b/i.test(content))
       errors.push("Unauthorized worker_profiles schema mutation: "+name);
   }
+  // Existing synthetic test fixtures represent the pre-hierarchy baseline.
+  // The optional hierarchy is only a valid extension if the exact forward
+  // migration AND the opt-in router are both present. Fail closed on partial
+  // migration/route removal without changing historical fixture contracts.
+  const hierarchyTables=["catalog_groups","catalog_families",
+    "catalog_family_categories"];
   for(const table of allowedTables)
-    if(!tables.includes(table)) errors.push("Expected D1 table missing: "+table);
+    if(!hierarchyTables.includes(table) && !tables.includes(table))
+      errors.push("Expected D1 table missing: "+table);
+  const hasHierarchy=migrations.includes("0010_approved_catalog_hierarchy.sql");
+  const hasHierarchyRoute=routes.includes("/api/v1/catalog/hierarchy");
+  if(hasHierarchy) {
+    if(!hasHierarchyRoute)errors.push("Reviewed hierarchy migration missing public read route");
+    for(const table of hierarchyTables)
+      if(!tables.includes(table))errors.push("Reviewed hierarchy table missing: "+table);
+    const definition=await required(root,
+      "infra/migrations/0010_approved_catalog_hierarchy.sql",errors);
+    if(definition!==null) {
+      for(const table of hierarchyTables) {
+        const statement=definition.match(new RegExp(
+          "CREATE\\s+TABLE\\s+"+table+"\\s*\\(([\\s\\S]*?)\\);","i"));
+        if(!statement || !/is_approved\s+INTEGER\s+NOT\s+NULL\s+DEFAULT\s+0/i.test(statement[1]))
+          errors.push("Hierarchy approval must default OFF: "+table);
+        if(table!=="catalog_family_categories" &&
+            (!statement || !/is_active\s+INTEGER\s+NOT\s+NULL\s+DEFAULT\s+0/i.test(statement[1])))
+          errors.push("Hierarchy activation must default OFF: "+table);
+      }
+      if(/\bINSERT\s+INTO\s+(?:catalog_groups|catalog_families|catalog_family_categories|categories)\b/i.test(definition))
+        errors.push("Hierarchy migration must not seed or activate public records");
+    }
+  }else if(hasHierarchyRoute || hierarchyTables.some(t=>tables.includes(t))) {
+    errors.push("Hierarchy route/tables without reviewed forward migration");
+  }
   // GitHub can execute ANY YAML workflow here; checking checks.yml alone is not enough.
   let workflowFiles=[];
   try {

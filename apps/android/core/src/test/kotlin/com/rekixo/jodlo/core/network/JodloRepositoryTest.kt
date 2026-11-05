@@ -14,6 +14,75 @@ private fun requireRejected(label: String, call: () -> Unit) =
     check(runCatching(call).isFailure) { "Expected rejection: $label" }
 
 fun main() {
+    // Optional real approved Group -> Family -> Category navigation. It is
+    // anonymous, bounded and NEVER a locally guessed 889-Category mapping.
+    val groupCall = JodloRoutes.hierarchy(HierarchyLevel.GROUPS, null, Language.HI)
+    check(groupCall.resource ==
+        "/api/v1/catalog/hierarchy?level=groups&lang=hi&limit=20")
+    check(groupCall.method == HttpMethod.GET)
+    check(groupCall.headers()["Authorization"] == null && groupCall.bodyUtf8() == null)
+    val familyCall = JodloRoutes.hierarchy(HierarchyLevel.FAMILIES, "home",
+        Language.EN, availableOnly = true, limit = 2, after = "f1")
+    check(familyCall.resource ==
+        "/api/v1/catalog/hierarchy?level=families&lang=en&limit=2&parentId=home&availableOnly=1&after=f1")
+    for (badLevel in listOf(0, -1, 26)) {
+        requireRejected("hierarchy limit") {
+            JodloRoutes.hierarchy(HierarchyLevel.GROUPS, null, Language.EN, limit = badLevel)
+        }
+    }
+    requireRejected("groups cannot have a parent") {
+        JodloRoutes.hierarchy(HierarchyLevel.GROUPS, "home", Language.EN)
+    }
+    requireRejected("families require a reviewed parent") {
+        JodloRoutes.hierarchy(HierarchyLevel.FAMILIES, null, Language.EN)
+    }
+    requireRejected("reject fabricated path") {
+        JodloRoutes.hierarchy(HierarchyLevel.CATEGORIES, "../private", Language.EN)
+    }
+    requireRejected("reject unsafe cursor") {
+        JodloRoutes.hierarchy(HierarchyLevel.GROUPS, null, Language.EN, after = "x%0A")
+    }
+    val hierarchyRows: ApprovedHierarchyRepository =
+        RemoteCatalogRepository(RequestSender { call ->
+            check(call.resource == groupCall.resource)
+            ok("""{"language":"hi","level":"groups","parentId":null,"items":[{"id":"home","name":"घर"}],"nextCursor":null}""")
+        })
+    check(hierarchyRows.hierarchy(HierarchyLevel.GROUPS, null, Language.HI) ==
+        ApiOutcome.Ok(HierarchyPage(Language.HI, HierarchyLevel.GROUPS, null,
+            listOf(HierarchyItem("home", "घर")), null)))
+    val categoryRows: ApprovedHierarchyRepository =
+        RemoteCatalogRepository(RequestSender { call ->
+            check(call.resource.contains("level=categories"))
+            ok("""{"language":"en","level":"categories","parentId":"repair","items":[{"id":"plumber","slug":"plumber","name":"Plumbing"}],"nextCursor":null}""")
+        })
+    check(categoryRows.hierarchy(HierarchyLevel.CATEGORIES, "repair", Language.EN) ==
+        ApiOutcome.Ok(HierarchyPage(Language.EN, HierarchyLevel.CATEGORIES, "repair",
+            listOf(HierarchyItem("plumber", "Plumbing", "plumber")), null)))
+    val hierarchyMismatches = listOf(
+        """{"language":"en","level":"groups","parentId":null,"items":[],"nextCursor":null}""",
+        """{"language":"hi","level":"families","parentId":"home","items":[],"nextCursor":null}""",
+        """{"language":"hi","level":"groups","parentId":null,"items":[{"id":"home","name":"Home","workerId":"secret"}],"nextCursor":null}""",
+        """{"language":"hi","level":"groups","parentId":null,"items":[{"id":"home","name":"Home"},{"id":"home","name":"Duplicate"}],"nextCursor":null}""",
+        """{"language":"hi","level":"groups","parentId":null,"items":[{"id":"home","name":"Home","slug":"home"}],"nextCursor":null}""",
+        """{"language":"hi","level":"groups","parentId":null,"items":[{"id":"home","name":"Home"}],"nextCursor":"other"}""",
+        """{"language":"hi","level":"groups","parentId":null,"items":[{"id":"home","name":"Home"}],"nextCursor":"home"}""",
+    )
+    for (payload in hierarchyMismatches) {
+        val untrusted: ApprovedHierarchyRepository =
+            RemoteCatalogRepository(RequestSender { ok(payload) })
+        check(untrusted.hierarchy(HierarchyLevel.GROUPS, null, Language.HI) == bad())
+    }
+    val hierarchyOffline: ApprovedHierarchyRepository = RemoteCatalogRepository(RequestSender {
+        throw IOException("Do not log backend URL, token or messages")
+    })
+    check(hierarchyOffline.hierarchy(HierarchyLevel.GROUPS, null, Language.HI) ==
+        bad(FailureKind.OFFLINE_OR_TIMEOUT))
+    val hierarchyOldServer: ApprovedHierarchyRepository = RemoteCatalogRepository(RequestSender {
+        TransportReply(404, """{"ok":false,"error":{"code":"NOT_FOUND","message":"Not deployed"}}""")
+    })
+    check(hierarchyOldServer.hierarchy(HierarchyLevel.GROUPS, null, Language.EN) ==
+        bad(FailureKind.NOT_FOUND))
+
     val seen = mutableListOf<ApiCall>()
     val sender = RequestSender { call ->
         seen.add(call)

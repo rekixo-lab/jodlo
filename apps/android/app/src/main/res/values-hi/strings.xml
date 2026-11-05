@@ -211,4 +211,17 @@
     <string name="saved_review_row_missing">पिछली जाँच के समय सार्वजनिक नहीं थी। बंद या प्रतिबंधित हो सकती है; सेव की हुई प्रविष्टि फोन पर बनी रहेगी।</string>
     <string name="saved_review_row_unknown">पिछली जाँच में पुष्टि नहीं हो सकी। इसका अर्थ सेवा हटना नहीं है।</string>
     <string name="worker_customer_preview_approved_label">उसी सार्वजनिक Service Detail जाँच से मिला वर्तमान स्वीकृत श्रेणी नाम। यह वर्कर की सत्यापित पहचान, उसका निजी विवरण या उपलब्धता की गारंटी नहीं है।</string>
+    <!-- Optional reviewed Group -> Family -> Category navigation, no seed or PII. -->
+    <string name="home_hierarchy_action">स्वीकृत समूह → परिवार → श्रेणियाँ देखें</string>
+    <string name="hierarchy_heading">समूह और परिवार से सेवा खोजें</string>
+    <string name="hierarchy_notice">केवल अलग से स्वीकृत समूह, परिवार और सक्रिय श्रेणी की मैपिंग दिखती है। इससे वर्कर की उपलब्धता, पहचान सत्यापन या संपर्क की अनुमति सिद्ध नहीं होती। आप सभी स्वीकृत श्रेणियाँ अलग से भी देख सकते हैं।</string>
+    <string name="hierarchy_back">एक स्तर पीछे / होम</string>
+    <string name="hierarchy_flat_browse">सभी स्वीकृत श्रेणियाँ देखें और खोजें</string>
+    <string name="hierarchy_refresh">वर्तमान स्वीकृत स्तर ताज़ा करें</string>
+    <string name="hierarchy_groups">स्वीकृत समूह</string>
+    <string name="hierarchy_families">स्वीकृत परिवार</string>
+    <string name="hierarchy_categories">स्वीकृत श्रेणियाँ</string>
+    <string name="hierarchy_empty">इस स्तर पर अभी कोई स्वीकृत मैपिंग नहीं है। सामान्य श्रेणी सूची उपलब्ध है।</string>
+    <string name="hierarchy_unavailable">इस API संस्करण में स्वीकृत समूह/परिवार सूची अभी उपलब्ध नहीं है। सामान्य श्रेणियाँ देखें; कोई डेटा नहीं बदला।</string>
+    <string name="hierarchy_open_next">अगला स्वीकृत स्तर खोलें</string>
 </resources>

@@ -80,6 +80,30 @@ object JodloRoutes {
         return ApiCall.get("/api/v1/catalog?${p.joinToString("&")}")
     }
 
+    /** Opt-in approved Group -> Family -> Category, no historical data seed.
+     * Required level and parent scope, a bounded ID-only cursor, no account,
+     * location, Worker, GPS or authentication data.
+     */
+    fun hierarchy(level: HierarchyLevel, parentId: String?, lang: Language,
+                  availableOnly: Boolean = false, limit: Int = 20,
+                  after: String? = null): ApiCall {
+        require(limit in 1..25) { "Invalid hierarchy page size" }
+        if (level == HierarchyLevel.GROUPS) {
+            require(parentId == null) { "Groups have no parent" }
+        } else {
+            require(parentId != null) { "Missing hierarchy parent" }
+            requireCategoryId(parentId)
+        }
+        if (after != null) requireCategoryId(after)
+        val params = mutableListOf(
+            "level=${level.code}", "lang=${lang.code}", "limit=$limit",
+        )
+        if (parentId != null) params += "parentId=${enc(parentId)}"
+        if (availableOnly) params += "availableOnly=1"
+        if (after != null) params += "after=${enc(after)}"
+        return ApiCall.get("/api/v1/catalog/hierarchy?${params.joinToString("&")}")
+    }
+
     /** Exact already-approved category name lookup; never carries a bearer,
      * Worker identifier, Saved Listing ID, or availability status.
      */

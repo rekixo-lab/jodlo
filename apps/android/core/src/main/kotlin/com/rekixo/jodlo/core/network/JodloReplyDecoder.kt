@@ -285,6 +285,40 @@ object JodloReplyDecoder {
             ApiOutcome.Failed(FailureKind.BAD_RESPONSE, retryable = false)
         }
     }
+    /** Strict, optional reviewed-hierarchy response. No private or extra
+     * field may enter the UI; duplicate JSON keys are rejected by decode().
+     */
+    fun hierarchy(reply: TransportReply): ApiOutcome<HierarchyPage> =
+        decode(reply) { data ->
+            data.keysOnly(setOf("language", "level", "parentId", "items", "nextCursor"))
+            val language = language(data.required("language"))
+            val level = HierarchyLevel.fromCode(data.required("level").str()) ?: bad()
+            val parent = data.optionalString("parentId")
+            if ((level == HierarchyLevel.GROUPS) != (parent == null) ||
+                (parent != null && !categoryId.matches(parent))) bad()
+            val nodes = data.required("items").arr()
+            if (nodes.size > 25) bad()
+            val items = nodes.map { element ->
+                val node = element.obj()
+                val leaf = level == HierarchyLevel.CATEGORIES
+                node.keysOnly(if (leaf) setOf("id", "name", "slug")
+                    else setOf("id", "name"))
+                val id = node.required("id").str()
+                val name = node.required("name").str()
+                val slug = if (leaf) node.required("slug").str() else null
+                if (!categoryId.matches(id) ||
+                    (slug != null && !categoryId.matches(slug)) ||
+                    name.isBlank() || name.codePointCount(0, name.length) > 160 ||
+                    name.any { Character.isISOControl(it) }) bad()
+                HierarchyItem(id, name, slug)
+            }
+            if (items.map { it.id }.toSet().size != items.size) bad()
+            val cursor = data.optionalString("nextCursor")
+            if (cursor != null && (!categoryId.matches(cursor) ||
+                items.lastOrNull()?.id != cursor)) bad()
+            HierarchyPage(language, level, parent, items, cursor)
+        }
+
     fun browse(reply: TransportReply): ApiOutcome<CatalogBrowse> = decode(reply) { data ->
         data.keysOnly(setOf("language", "categories"), setOf("nextCursor"))
         CatalogBrowse(language(data.required("language")),
