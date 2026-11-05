@@ -90,6 +90,10 @@ internal fun WorkerDashboard(
     var guided by remember(session) { mutableStateOf(GuidedWorkerServiceActions()) }
     var categoryEdit by remember(session) { mutableStateOf(GuidedWorkerCategoryEdit()) }
     var selectedListing by remember(session) { mutableStateOf<String?>(null) }
+    // One explicit current-owner GET for the selected existing Service.
+    // Not a worker public profile, revision token, or proof of a prior write.
+    var exactObserved by remember(session) { mutableStateOf<OwnListing?>(null) }
+    var exactObservationRevision by remember(session) { mutableIntStateOf(0) }
     // Public approved Category names are fetched only on an explicit user tap.
     // Keep the private owner/account generation separate from public names.
     var approvedNames by remember(session) {
@@ -124,6 +128,11 @@ internal fun WorkerDashboard(
     val signedIn = login as? LoginState.SignedIn
     val uncertain = writeState is WorkerWriteState.NeedsReview
     val canWrite = signedIn?.worker == WorkerState.DRAFT && !busy && !uncertain
+
+    fun clearExactObservation() {
+        exactObservationRevision++
+        exactObserved = null
+    }
 
     fun clearApprovedNames() {
         namesRevision++
@@ -182,6 +191,7 @@ internal fun WorkerDashboard(
         else null
 
     fun clearCategoryResults() {
+        clearExactObservation()
         categoryRows = emptyList()
         categoryCursor = null
         categoryPageGeneration += 1
@@ -201,7 +211,9 @@ internal fun WorkerDashboard(
             ownListings = emptyList()
             ownerCursor = null
             clearApprovedNames()
+            clearExactObservation()
             selectedListing = null
+            clearExactObservation()
             previewRevision++
             publicPreview = WorkerCustomerServicePreview.unchecked()
             guided = guided.reset()
@@ -234,6 +246,7 @@ internal fun WorkerDashboard(
         message = 0
         previewRevision++
         publicPreview = WorkerCustomerServicePreview.unchecked() // Owner status is NOT a public read.
+        clearExactObservation()
         clearApprovedNames()
         guided = guided.cancelUnpublish().cancelResume()
         categoryEdit = categoryEdit.reset()
@@ -376,6 +389,67 @@ internal fun WorkerDashboard(
         }
     }
 
+
+    /** One user-requested authenticated status read of EXACTLY the selected
+     * owner Service. Replaces a stale local row only after session/selection
+     * checks. Never calls a mutation or assumes a previous write committed.
+     * A preexisting server without the opt-in endpoint remains an honest
+     * read failure; the original owner-page/editor controls still exist.
+     */
+    fun refreshSelectedService() {
+        val liveSession = session ?: return
+        val chosen = ownListings.firstOrNull { it.id == selectedListing } ?: return
+        val actor = liveSession.accountExportSessionMarker() ?: return
+        if (busy || uncertain ||
+            (liveSession.snapshot() as? LoginState.SignedIn)?.worker != WorkerState.DRAFT) return
+        val callRevision = ++exactObservationRevision
+        exactObserved = null
+        guided = guided.cancelUnpublish().cancelResume()
+        categoryEdit = categoryEdit.reset()
+        previewRevision++
+        publicPreview = WorkerCustomerServicePreview.unchecked()
+        busy = true
+        message = 0
+        scope.launch {
+            val result: SessionResult<OwnListing> = try {
+                withContext(Dispatchers.IO) {
+                    liveSession.exactManagedOwnListing(chosen.id)
+                }
+            } catch (cancelled: kotlin.coroutines.cancellation.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                SessionResult.Failed(SessionFailure.REMOTE_FAILURE, FailureKind.BAD_RESPONSE)
+            }
+            busy = false
+            if (exactObservationRevision != callRevision ||
+                liveSession.accountExportSessionMarker() != actor ||
+                (liveSession.snapshot() as? LoginState.SignedIn)?.worker != WorkerState.DRAFT ||
+                selectedListing != chosen.id ||
+                ownListings.firstOrNull { it.id == chosen.id } != chosen ||
+                writes?.snapshot()?.state is WorkerWriteState.NeedsReview) return@launch
+            when (result) {
+                is SessionResult.Success -> {
+                    if (result.value.id != chosen.id) {
+                        message = R.string.worker_exact_failed
+                    } else {
+                        ownListings = ownListings.map {
+                            if (it.id == chosen.id) result.value else it
+                        }
+                        exactObserved = result.value
+                        message = if (chosen == result.value)
+                            R.string.worker_exact_current else R.string.worker_exact_changed
+                    }
+                }
+                is SessionResult.Failed -> {
+                    if (result.networkKind == FailureKind.NOT_FOUND) {
+                        ownListings = ownListings.filterNot { it.id == chosen.id }
+                        selectedListing = null
+                        message = R.string.worker_exact_missing
+                    } else message = R.string.worker_exact_failed
+                }
+            }
+        }
+    }
 
     /** Fresh anonymous Customer Service detail, identical to Customer's
      * approved-category data. A stale owner/login/language/list change
@@ -545,6 +619,7 @@ internal fun WorkerDashboard(
                                 onClick = {
                                     if (!busy) {
                                         selectedListing = listing.id
+                                        clearExactObservation()
                                         guided = guided.cancelUnpublish().cancelResume()
                                         categoryEdit = categoryEdit.reset()
                                         previewRevision++
@@ -611,6 +686,16 @@ internal fun WorkerDashboard(
                                             enabled=!busy,
                                             label={Text(stringResource(R.string.language_english))},
                                         )
+                                    }
+                                    JodloTextAction(
+                                        onClick = { refreshSelectedService() },
+                                        enabled = !busy,
+                                    ) {
+                                        Text(stringResource(R.string.worker_exact_read_action))
+                                    }
+                                    if (exactObserved?.id == selectedListing) {
+                                        Text(stringResource(R.string.worker_exact_notice),
+                                            style = MaterialTheme.typography.bodySmall)
                                     }
                                     JodloTextAction(
                                         onClick = { checkPublicPreview() },
