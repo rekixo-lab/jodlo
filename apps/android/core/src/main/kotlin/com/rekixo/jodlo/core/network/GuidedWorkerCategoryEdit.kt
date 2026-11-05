@@ -12,6 +12,8 @@ data class GuidedWorkerCategoryEdit(
     val source: OwnListing? = null,
     private val accountGeneration: Long? = null,
     val destination: PublicCategory? = null,
+    /** Manual step before final confirmation: disclose Category-only change. */
+    val scopeReviewOpen: Boolean = false,
     val reviewOpen: Boolean = false,
     // Only a fresh authenticated owner-only revision snapshot may set this.
     // An old first-100/management row alone never authorizes v2 editing.
@@ -60,11 +62,30 @@ data class GuidedWorkerCategoryEdit(
     ): GuidedWorkerCategoryEdit =
         if (source != null && generation != null && generation == accountGeneration &&
             category in currentApprovedRows && category.id != source.categoryId)
-            copy(destination = category, reviewOpen = false)
-        else copy(destination = null, reviewOpen = false)
+            copy(destination = category, scopeReviewOpen = false, reviewOpen = false)
+        else copy(destination = null, scopeReviewOpen = false, reviewOpen = false)
+
+    /** A separate scope review must precede final review; recheck the
+     * current approved Category page rather than trusting an old label.
+     */
+    fun reviewScope(
+        generation: Long?, currentApprovedRows: List<PublicCategory>,
+        currentOwnerRows: List<OwnListing>,
+    ): GuidedWorkerCategoryEdit {
+        val old = source
+        val next = destination
+        return copy(
+            scopeReviewOpen = old != null && next != null &&
+                generation != null && generation == accountGeneration &&
+                old in currentOwnerRows && next in currentApprovedRows &&
+                old.categoryId != next.id &&
+                currentOwnerRows.none { it.id != old.id && it.categoryId == next.id },
+            reviewOpen = false,
+        )
+    }
 
     fun review(generation: Long?): GuidedWorkerCategoryEdit =
-        copy(reviewOpen = source != null && destination != null &&
+        copy(reviewOpen = scopeReviewOpen && source != null && destination != null &&
             generation != null && generation == accountGeneration)
 
     /** Returns no command for a stale/foreign owner listing, unsourced Category,
@@ -76,14 +97,16 @@ data class GuidedWorkerCategoryEdit(
     ): CategoryEditCommand? {
         val old = source ?: return null
         val next = destination ?: return null
-        if (!reviewOpen || generation == null || generation != accountGeneration ||
+        if (!scopeReviewOpen || !reviewOpen || generation == null ||
+            generation != accountGeneration ||
             old !in currentOwnerRows || next !in currentApprovedRows ||
-            old.categoryId == next.id) return null
+            old.categoryId == next.id ||
+            currentOwnerRows.any { it.id != old.id && it.categoryId == next.id }) return null
         return CategoryEditCommand(old.id,old.categoryId,next.id)
     }
 
     fun invalidateCategory(): GuidedWorkerCategoryEdit =
-        copy(destination = null, reviewOpen = false)
+        copy(destination = null, scopeReviewOpen = false, reviewOpen = false)
 
     fun cancelReview(): GuidedWorkerCategoryEdit = copy(reviewOpen = false)
 

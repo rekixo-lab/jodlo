@@ -11,6 +11,8 @@ package com.rekixo.jodlo.core.network
 data class GuidedWorkerServiceActions(
     val selectedCategory: PublicCategory? = null,
     private val selectedAccountGeneration: Long? = null,
+    /** Explicit disclosure step: existing Category/reference ONLY. */
+    val publishScopeReviewOpen: Boolean = false,
     val publishReviewOpen: Boolean = false,
     val pendingUnpublishId: String? = null,
     private val unpublishAccountGeneration: Long? = null,
@@ -28,13 +30,31 @@ data class GuidedWorkerServiceActions(
         if (accountGeneration != null && chosen in currentRows) copy(
             selectedCategory = chosen,
             selectedAccountGeneration = accountGeneration,
+            publishScopeReviewOpen = false,
             publishReviewOpen = false,
         ) else clearPublication()
 
-    /** A separate deliberate review step before any owner POST is possible. */
+    /** Step 2: disclose exactly the Category-only public scope.
+     * This is not approval to collect or publish any Worker personal fields.
+     * A stale Category page or account epoch cannot reach final review.
+     */
+    fun reviewPublicationScope(
+        accountGeneration: Long?, currentRows: List<PublicCategory>,
+        currentOwnedRows: List<OwnListing> = emptyList(),
+    ): GuidedWorkerServiceActions =
+        copy(
+            publishScopeReviewOpen = selectedCategory != null &&
+                accountGeneration != null && accountGeneration == selectedAccountGeneration &&
+                selectedCategory in currentRows &&
+                currentOwnedRows.none { it.categoryId == selectedCategory.id },
+            publishReviewOpen = false,
+        )
+
+    /** Step 3: a distinct final review before any owner POST is possible. */
     fun reviewPublication(accountGeneration: Long?): GuidedWorkerServiceActions =
-        copy(publishReviewOpen = selectedCategory != null &&
-            accountGeneration != null && accountGeneration == selectedAccountGeneration)
+        copy(publishReviewOpen = publishScopeReviewOpen &&
+            selectedCategory != null && accountGeneration != null &&
+            accountGeneration == selectedAccountGeneration)
 
     fun cancelPublicationReview(): GuidedWorkerServiceActions =
         copy(publishReviewOpen = false)
@@ -44,15 +64,19 @@ data class GuidedWorkerServiceActions(
      */
     fun categoryConfirmedForPublish(
         accountGeneration: Long?, currentRows: List<PublicCategory>,
+        currentOwnedRows: List<OwnListing> = emptyList(),
     ): String? =
         selectedCategory?.takeIf {
-            publishReviewOpen && accountGeneration != null &&
-                accountGeneration == selectedAccountGeneration && it in currentRows
+            publishScopeReviewOpen && publishReviewOpen &&
+                accountGeneration != null &&
+                accountGeneration == selectedAccountGeneration &&
+                it in currentRows &&
+                currentOwnedRows.none { own -> own.categoryId == it.id }
         }?.id
 
     fun clearPublication(): GuidedWorkerServiceActions =
         copy(selectedCategory = null, selectedAccountGeneration = null,
-            publishReviewOpen = false)
+            publishScopeReviewOpen = false, publishReviewOpen = false)
 
     /** Unpublish is a distinct destructive action: reviewing a current owner
      * row never implies permission to remove a different row or account.

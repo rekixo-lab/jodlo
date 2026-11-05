@@ -766,11 +766,24 @@ private fun guidedWorkerReviewRequiresSameAccountAndCurrentCatalog() {
     check(chosen.selectedCategory==plumber && !chosen.publishReviewOpen)
     check(chosen.categoryConfirmedForPublish(marker,liveRows)==null)
     check(h.worker.publishCalls.get()==0)
-    val approved=chosen.reviewPublication(marker)
+    // No one-step shortcut: disclosure must be reviewed first.
+    check(!chosen.reviewPublication(marker).publishReviewOpen)
+    val scope=chosen.reviewPublicationScope(marker,liveRows)
+    check(scope.publishScopeReviewOpen && !scope.publishReviewOpen)
+    check(!chosen.reviewPublicationScope(marker,listOf(carpenter)).publishScopeReviewOpen)
+    check(!chosen.reviewPublicationScope(marker+1,liveRows).publishScopeReviewOpen)
+    val approved=scope.reviewPublication(marker)
     check(approved.publishReviewOpen)
     check(approved.categoryConfirmedForPublish(marker,liveRows)=="plumber")
     check(approved.categoryConfirmedForPublish(marker,listOf(carpenter))==null)
     check(approved.categoryConfirmedForPublish(null,liveRows)==null)
+    // Known duplicate in a loaded owner page blocks the client. The server
+    // remains authoritative for listings beyond the loaded page.
+    val duplicate=OwnListing(DASH_OWN_ID,"plumber",true)
+    check(approved.categoryConfirmedForPublish(marker,liveRows,listOf(duplicate))==null)
+    check(!chosen.reviewPublicationScope(marker,liveRows,listOf(duplicate))
+        .publishScopeReviewOpen)
+    check(approved.categoryConfirmedForPublish(marker,liveRows,emptyList())=="plumber")
     check(approved.reviewPublication(marker+1).categoryConfirmedForPublish(marker+1,liveRows)==null)
     check(approved.cancelPublicationReview().categoryConfirmedForPublish(marker,liveRows)==null)
     check(approved.chooseCategory(carpenter,liveRows,marker)
@@ -838,9 +851,19 @@ private fun guidedCategoryEditRequiresSameCurrentAccountAndApprovedRows() {
     val chosen=editing.chooseDestination(carpenter,listOf(carpenter,electrician),marker)
     check(chosen.destination==carpenter && !chosen.reviewOpen)
     check(chosen.confirmed(listOf(first),listOf(carpenter),marker)==null)
-    val reviewed=chosen.review(marker)
+    check(!chosen.review(marker).reviewOpen)
+    check(!chosen.reviewScope(marker,listOf(electrician),listOf(first)).scopeReviewOpen)
+    check(!chosen.reviewScope(marker+1,listOf(carpenter),listOf(first))
+        .scopeReviewOpen)
+    // The other Service already occupies 'carpenter'; only a current row
+    // without that duplicate may enter final review. The server checks all.
+    check(!chosen.reviewScope(marker,listOf(carpenter),listOf(first,other))
+        .scopeReviewOpen)
+    val reviewed=chosen.reviewScope(marker,listOf(carpenter),listOf(first))
+        .review(marker)
     check(reviewed.confirmed(listOf(first),listOf(carpenter),marker)==
         CategoryEditCommand(DASH_OWN_ID,"plumber","carpenter"))
+    check(reviewed.confirmed(listOf(first,other),listOf(carpenter),marker)==null)
     check(reviewed.confirmed(listOf(other),listOf(carpenter),marker)==null)
     check(reviewed.confirmed(listOf(first),listOf(electrician),marker)==null)
     check(reviewed.confirmed(listOf(first.copy(categoryId="carpenter")),

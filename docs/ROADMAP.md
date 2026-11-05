@@ -1,3 +1,9 @@
+## 2026-11-05 — Worker Category-only multi-stage guided editor (software PR; CI required)
+
+The existing bilingual native Worker Create/Edit Category path now has **Select → Scope disclosure → Final review/explicit confirmation**, backed by tested Kotlin step gates. A duplicate Category already present in loaded private owner rows is blocked in the UI; the backend still checks *all* owner Services and the editor never claims exhaustive visibility from partial pages. Current review explains exactly what is and is not public; no unapproved Worker name, rates, photos, area, phone, identity/verification data, new API, D1 migration or accidental publication is added. The original revision-safe edit, private uncertainty recovery, publication and moderation checks remain binding. [Behavior and test contract](WORKER_GUIDED_DISCLOSURE_REVIEW_2026-11-05.md).
+
+**Still OPEN:** useful full Worker Service fields/public Worker card depend on separate consent/moderation/privacy decisions; Catalog human approval, live providers and deployment, phone testing and release readiness are not advanced. See [#235](https://github.com/rekixo-lab/jodlo/issues/235).
+
 ## 2026-11-05 — Worker uncertain-write exact owner recovery (source; CI verification required)
 
 A lost edit/pause/resume reply now has one deliberate owner-only single-Service status GET and bilingual Android observation, rather than merely an opaque page-scan prompt. Generic 404, changed Category/status, offline and account replacement are all **not proof** of whether the earlier write committed. The explicit one-page scan remains available, especially for lost Publish responses without a trusted Listing ID. No automatic write retry, public Worker detail, data migration, production deploy or physical-phone testing. [Engineering/test contract](WORKER_UNCERTAIN_EXACT_RECOVERY_2026-11-05.md). Full P1 Worker service editing remains open under [#235](https://github.com/rekixo-lab/jodlo/issues/235).
