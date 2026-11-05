@@ -44,7 +44,11 @@ import kotlinx.coroutines.withContext
  * The user chooses whether to save to local or cloud storage in the system UI.
  */
 @Composable
-internal fun AccountDashboard(activity: ComponentActivity, session: InMemorySessionCoordinator?) {
+internal fun AccountDashboard(
+    activity: ComponentActivity,
+    session: InMemorySessionCoordinator?,
+    openHelp: () -> Unit,
+) {
     val scope = rememberCoroutineScope()
     var login by remember(session) {
         mutableStateOf(session?.snapshot() ?: LoginState.SignedOut)
@@ -188,6 +192,9 @@ internal fun AccountDashboard(activity: ComponentActivity, session: InMemorySess
     ) {
         Text(stringResource(R.string.account_heading),
             style = MaterialTheme.typography.headlineSmall)
+        JodloTextAction(onClick = openHelp) {
+            Text(stringResource(R.string.help_account_action))
+        }
         if (session == null) {
             Text(stringResource(R.string.no_api_origin),
                 color = MaterialTheme.colorScheme.error)
