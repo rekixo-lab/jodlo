@@ -47,6 +47,17 @@ interface AllPublicListingFeedRepository {
                           after: String? = null): ApiOutcome<PublicListingPage>
 }
 
+/** Opt-in public-only approved Category Service details: exact one Listing
+ * with its CURRENT approved bilingual name, no Worker fields. This is NOT
+ * a verified profile, rate, phone, location, presence or call permission.
+ */
+interface PublicApprovedServiceDetailRepository {
+    fun approvedServiceDetail(
+        listingId: String, expectedCategoryId: String,
+        language: Language,
+    ): ApiOutcome<PublicApprovedServiceDetail>
+}
+
 /** One fresh public Listing GET for explicit user navigation. The same
  * category as the tapped row must be returned or the client rejects it.
  * This is visibility, NEVER consent to contact a Worker.
@@ -130,8 +141,8 @@ internal fun browseCursorAdvances(after: String?, next: String): Boolean {
 
 class RemoteCatalogRepository(private val sender: RequestSender) :
     CatalogRepository, PublicListingPageRepository, CatalogSearchCursorRepository,
-    PublicListingDetailRepository, ApprovedCategoryNamesRepository,
-    AllPublicListingFeedRepository {
+    PublicListingDetailRepository, PublicApprovedServiceDetailRepository,
+    ApprovedCategoryNamesRepository, AllPublicListingFeedRepository {
     override fun approvedNames(
         ids: List<String>, language: Language,
     ): ApiOutcome<List<PublicCategory>> {
@@ -206,6 +217,20 @@ class RemoteCatalogRepository(private val sender: RequestSender) :
                         (page.listings.size == limit &&
                             page.listings.last().id == page.nextCursor &&
                             page.nextCursor != after))
+            }
+    }
+
+    override fun approvedServiceDetail(
+        listingId: String, expectedCategoryId: String,
+        language: Language,
+    ): ApiOutcome<PublicApprovedServiceDetail> {
+        val call = JodloRoutes.approvedServiceDetail(listingId, language)
+        return performOnce(call, sender::send, JodloReplyDecoder::approvedServiceDetail)
+            .validated { detail ->
+                detail.language == language &&
+                    detail.listing.id == listingId &&
+                    detail.listing.categoryId == expectedCategoryId &&
+                    detail.category.id == expectedCategoryId
             }
     }
 
