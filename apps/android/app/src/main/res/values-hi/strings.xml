@@ -238,4 +238,11 @@
     <string name="worker_revision_changed">सर्वर पर इस Service में बदलाव हो चुका है। पुरानी समीक्षा रद्द की गई है। वर्तमान स्थिति देखकर नए सिरे से शुरू करें।</string>
     <string name="worker_revision_failed">edit revision की पुष्टि नहीं हो सकी। API पुराना या अनुपलब्ध हो सकता है। कोई edit नहीं भेजा गया; सुरक्षित revision editing पुराने तरीके पर अपने आप वापस नहीं जाएगी।</string>
     <string name="worker_edit_revision_notice">इस edit के लिए ताज़ा निजी revision और सर्वर conflict जाँच ज़रूरी है। समीक्षा के बाद Service बदले तो edit रुक जाएगा। अनिश्चित परिणाम पर अपने आप दोबारा बदलाव न करें।</string>
+
+    <!-- No-personal-data public Service cards; exact check is only a past-time observation. -->
+    <string name="service_card_category_not_confirmed">स्वीकृत श्रेणी का नाम अभी जाँचा नहीं जा सका</string>
+    <string name="service_card_approved_category_notice">यह जानकारी सार्वजनिक स्वीकृत श्रेणी की है, Worker के लिखे हुए प्रोफ़ाइल की नहीं।</string>
+    <string name="service_card_checked_time_only">पिछली सटीक जाँच के समय यह सेवा सार्वजनिक थी। उसके बाद स्थिति बदल सकती है।</string>
+    <string name="service_card_must_recheck">यह केवल सेवा का संदर्भ है। अभी सार्वजनिक है या नहीं, जानने के लिए इसे खोलकर जाँचें।</string>
+    <string name="service_card_no_worker_claims">Worker की सत्यापित पहचान, रेटिंग, कीमत, पता, संपर्क या कॉल उपलब्धता की जानकारी नहीं दी गई है।</string>
 </resources>
