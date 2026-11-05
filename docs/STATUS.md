@@ -1,3 +1,9 @@
+## 2026-11-05 — Worker Category editing now uses versioned CAS (source PR, checks pending)
+
+An opt-in, owner-private `revision` GET and one atomic v2 Category PUT are now wired from **native Worker selection → fresh owner revision → review → guarded confirmation**. New local-only migration 0011 adds one default-0 private integer and trigger for actual Category/status/moderation updates; even an old client A→B→A leaves a newer revision and cannot satisfy the v2 expected version. Old owner/public DTOs and original routes remain separate and wire-compatible, while the updated Android editor never falls back to an unversioned PUT on an old server or unknown network result. [Full contract, negative tests and deployment/consent limits](WORKER_REVISION_CAS_2026-11-05.md).
+
+**Not live or release-ready:** exact-head/merged-main CI to verify; no real D1 0011 migration, deployment, public Worker field approval, media/rates/area, provider calls, emails, Catalog auto-activation or repeated physical-phone testing. Full P1 service editing and public-card backlog remain OPEN (#235).
+
 ## 2026-11-05 — Worker-selected exact owner Service refresh (source-only)
 
 The Worker Dashboard now includes a manual, authenticated **one-selected-Service exact status** read using the existing `GET /api/v1/me/listings?id=...&view=management`. Unlike the first 100 owner rows or paginated scan, it checks precisely the requested owned Listing, even beyond 100. The four existing safe private fields (`id,categoryId,visible,publicationStatus`) are shared with Management pages, and a changed/absent row invalidates the UI's old selection/review. Any old-API/network/foreign-owner failure stays unconfirmed, not a public Worker status or proof an uncertain write committed. No new public profile, payment, GPS, phone, moderation verdict, migration or remote write.
