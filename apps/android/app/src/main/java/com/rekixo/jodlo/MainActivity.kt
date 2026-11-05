@@ -866,6 +866,9 @@ private fun GuestDiscovery(
                     if (card != null) item {
                         SafeServiceCard(card)
                     }
+                    if (card?.evidence == CustomerServiceCardEvidence.PUBLIC_WHEN_CHECKED) {
+                        item { SafePublicProfileFacts() }
+                    }
                     if (detail != null && card == null) item {
                         Text(stringResource(R.string.request_failed),
                             color = MaterialTheme.colorScheme.error)
