@@ -842,5 +842,66 @@ fun main() {
     check(SavedServiceReview.start(savedBatch).checkedCount==0)
     check(SavedPublicServices.decode(firstSnapshot)==savedBatch)
 
+    // Worker customer-preview status MUST come from the SAME anonymous
+    // approved Service Detail that Customer gets, not the owner's cached
+    // published/visible flags. No unreviewed Worker summary or phone exists.
+    val workerRow=OwnListing(LISTING_ID,"plumber",true,OwnPublicationStatus.PUBLISHED)
+    val approvedHi=PublicApprovedServiceDetail(
+        Language.HI,PublicListing(LISTING_ID,"plumber"),
+        PublicCategory("plumber","plumber","प्लंबर"))
+    val approvedEn=PublicApprovedServiceDetail(
+        Language.EN,PublicListing(LISTING_ID,"plumber"),
+        PublicCategory("plumber","plumber","Plumber"))
+    val emptyPreview=WorkerCustomerServicePreview.unchecked()
+    check(emptyPreview.phase==WorkerCustomerServicePreviewPhase.UNCHECKED)
+    check(emptyPreview.approvedCategoryName==null)
+    val customerHi=WorkerCustomerServicePreview.fromPublicRead(
+        workerRow,Language.HI,ApiOutcome.Ok(approvedHi))
+    val customerEn=WorkerCustomerServicePreview.fromPublicRead(
+        workerRow,Language.EN,ApiOutcome.Ok(approvedEn))
+    check(customerHi.phase==WorkerCustomerServicePreviewPhase.PUBLIC_WHEN_CHECKED)
+    check(customerHi.approvedCategoryName=="प्लंबर")
+    check(customerEn.phase==WorkerCustomerServicePreviewPhase.PUBLIC_WHEN_CHECKED)
+    check(customerEn.approvedCategoryName=="Plumber")
+    // A stale owner-visible result must NOT be used as a public proof,
+    // even when the owner publication flag itself is published.
+    check(emptyPreview.phase!=WorkerCustomerServicePreviewPhase.PUBLIC_WHEN_CHECKED)
+    for((language,detail) in listOf(
+        Language.EN to approvedHi,
+        Language.HI to approvedEn,
+        Language.HI to approvedHi.copy(
+            listing=approvedHi.listing.copy(id="22222222-2222-4222-8222-222222222222")),
+        Language.HI to approvedHi.copy(
+            listing=approvedHi.listing.copy(categoryId="carpenter")),
+        Language.HI to approvedHi.copy(
+            category=approvedHi.category.copy(id="carpenter")),
+        Language.HI to approvedHi.copy(
+            category=approvedHi.category.copy(name=" ")),
+    )){
+        val preview=WorkerCustomerServicePreview.fromPublicRead(
+            workerRow,language,ApiOutcome.Ok(detail))
+        check(preview.phase==WorkerCustomerServicePreviewPhase.CANNOT_CONFIRM)
+        check(preview.approvedCategoryName==null)
+    }
+    val hiddenCustomer=WorkerCustomerServicePreview.fromPublicRead(
+        workerRow,Language.HI,ApiOutcome.Failed(FailureKind.NOT_FOUND,false))
+    check(hiddenCustomer.phase==WorkerCustomerServicePreviewPhase.NOT_PUBLIC_WHEN_CHECKED)
+    check(hiddenCustomer.approvedCategoryName==null)
+    for(kind in listOf(FailureKind.OFFLINE_OR_TIMEOUT,FailureKind.BAD_RESPONSE,
+        FailureKind.SERVICE_UNAVAILABLE,FailureKind.UNAUTHORIZED,FailureKind.FORBIDDEN,
+        FailureKind.RATE_LIMITED,FailureKind.CONFLICT,FailureKind.BAD_INPUT)){
+        val failed=WorkerCustomerServicePreview.fromPublicRead(
+            workerRow,Language.HI,ApiOutcome.Failed(kind,false))
+        check(failed.phase==WorkerCustomerServicePreviewPhase.CANNOT_CONFIRM)
+        check(failed.approvedCategoryName==null)
+    }
+    // Even a stale PRIVATE 'paused' status is not the authority for a live
+    // public read; public eligibility is ALWAYS decided independently.
+    val privateOwnerRow=workerRow.copy(
+        visible=false,publicationStatus=OwnPublicationStatus.UNPUBLISHED)
+    check(WorkerCustomerServicePreview.fromPublicRead(
+        privateOwnerRow,Language.HI,ApiOutcome.Failed(FailureKind.NOT_FOUND,false)).phase==
+        WorkerCustomerServicePreviewPhase.NOT_PUBLIC_WHEN_CHECKED)
+
     println("JODLO repositories: typed browse/search, explicit worker publishing, mismatched response rejection and no auto-retry and public Listing pagination OK")
 }
