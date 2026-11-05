@@ -232,4 +232,10 @@
     <string name="worker_exact_changed">पहले की सूची के बाद इस सेवा में बदलाव हुआ है। पुरानी edit/review प्रक्रिया साफ़ कर दी गई है; नया बदलाव करने से पहले वर्तमान श्रेणी और स्थिति देखें।</string>
     <string name="worker_exact_missing">यह सेवा अब इस खाते में उपलब्ध नहीं है। पुराना चुनाव हटा दिया गया; कोई बदलाव नहीं किया गया।</string>
     <string name="worker_exact_failed">चुनी हुई सेवा की पुष्टि नहीं हुई। सर्वर ऑफ़लाइन या पुराने API वाला हो सकता है। कोई बदलाव नहीं किया गया; मौजूदा श्रेणी संपादन में सर्वर के conflict checks लागू रहेंगे।</string>
+
+    <!-- Exact owner revision editing; no newly approved profile fields. -->
+    <string name="worker_revision_ready">निजी Service revision की ताज़ा पुष्टि हो गई है। अब स्वीकृत नई श्रेणी चुनकर समीक्षा करें। यदि दूसरे डिवाइस से बदलाव हुआ है, तो सर्वर पुराने edit को रोकेगा।</string>
+    <string name="worker_revision_changed">सर्वर पर इस Service में बदलाव हो चुका है। पुरानी समीक्षा रद्द की गई है। वर्तमान स्थिति देखकर नए सिरे से शुरू करें।</string>
+    <string name="worker_revision_failed">edit revision की पुष्टि नहीं हो सकी। API पुराना या अनुपलब्ध हो सकता है। कोई edit नहीं भेजा गया; सुरक्षित revision editing पुराने तरीके पर अपने आप वापस नहीं जाएगी।</string>
+    <string name="worker_edit_revision_notice">इस edit के लिए ताज़ा निजी revision और सर्वर conflict जाँच ज़रूरी है। समीक्षा के बाद Service बदले तो edit रुक जाएगा। अनिश्चित परिणाम पर अपने आप दोबारा बदलाव न करें।</string>
 </resources>
