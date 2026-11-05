@@ -75,6 +75,12 @@ const RESUME_OWN_LISTING_JSON =
 const EDIT_CATEGORY_JSON =
   /^\s*\{\s*"listingId"\s*:\s*"[A-Za-z0-9_-]{8,128}"\s*,\s*"expectedCategoryId"\s*:\s*"[A-Za-z0-9_-]{1,64}"\s*,\s*"nextCategoryId"\s*:\s*"[A-Za-z0-9_-]{1,64}"\s*\}\s*$/;
 
+/** Only canonical four-field opt-in edit. Duplicate/escaped aliases,
+ * quoted numbers, 01, signs, decimals, objects and hidden metadata denied.
+ */
+const EDIT_CATEGORY_VERSIONED_JSON =
+  /^\s*\{\s*"listingId"\s*:\s*"[A-Za-z0-9_-]{8,128}"\s*,\s*"expectedCategoryId"\s*:\s*"[A-Za-z0-9_-]{1,64}"\s*,\s*"nextCategoryId"\s*:\s*"[A-Za-z0-9_-]{1,64}"\s*,\s*"expectedRevision"\s*:\s*(?:0|[1-9][0-9]{0,9})\s*\}\s*$/;
+
 const ONE_STRING_FIELD_JSON =
   /^\s*\{\s*"(?:[^"\\\x00-\x1f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"\s*:\s*"(?:[^"\\\x00-\x1f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"\s*\}\s*$/;
 
@@ -83,7 +89,7 @@ const ONE_STRING_FIELD_JSON =
  * A malicious/unproductive source cannot accumulate unlimited empty chunks.
  */
 async function readBoundedObject(request: Request, maxBytes: number,
-  format: "single" | "edit-category" | "resume-own" = "single"):
+  format: "single" | "edit-category" | "edit-versioned" | "resume-own" = "single"):
   Promise<Record<string, unknown> | null> {
   const type = request.headers.get("Content-Type") ?? "";
   if (!/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(type)) return null;
@@ -122,7 +128,9 @@ async function readBoundedObject(request: Request, maxBytes: number,
       ? ONE_STRING_FIELD_JSON.test(source)
       : format === "edit-category"
         ? EDIT_CATEGORY_JSON.test(source)
-        : RESUME_OWN_LISTING_JSON.test(source))) return null;
+        : format === "edit-versioned"
+          ? EDIT_CATEGORY_VERSIONED_JSON.test(source)
+          : RESUME_OWN_LISTING_JSON.test(source))) return null;
     const parsed: unknown = JSON.parse(source);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
     return parsed as Record<string, unknown>;
@@ -164,6 +172,26 @@ export async function readCategoryEditBody(request: Request): Promise<CategoryEd
     expectedCategoryId: obj.expectedCategoryId,
     nextCategoryId: obj.nextCategoryId,
   };
+}
+
+export type VersionedCategoryEditBody = CategoryEditBody & Readonly<{
+  expectedRevision:number;
+}>;
+export async function readVersionedCategoryEditBody(
+  request:Request,
+):Promise<VersionedCategoryEditBody|null> {
+  const obj=await readBoundedObject(request,512,"edit-versioned");
+  if(!obj||Object.keys(obj).length!==4||
+      typeof obj.listingId!=="string"||
+      typeof obj.expectedCategoryId!=="string"||
+      typeof obj.nextCategoryId!=="string"||
+      typeof obj.expectedRevision!=="number"||
+      !Number.isSafeInteger(obj.expectedRevision)||
+      obj.expectedRevision<0||obj.expectedRevision>=2147483647)return null;
+  return {listingId:obj.listingId,
+    expectedCategoryId:obj.expectedCategoryId,
+    nextCategoryId:obj.nextCategoryId,
+    expectedRevision:obj.expectedRevision};
 }
 
 /** Canonical, two-identifier owner resume request. It cannot insert a new

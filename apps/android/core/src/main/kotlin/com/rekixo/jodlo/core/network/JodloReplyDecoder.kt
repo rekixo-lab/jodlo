@@ -35,6 +35,12 @@ data class OwnListing(
     val id: String, val categoryId: String, val visible: Boolean,
     val publicationStatus: OwnPublicationStatus? = null,
 )
+/** Only an exact authenticated OWNER revision read can supply this value.
+ * Not a public Worker field, login generation or proof of live visibility.
+ */
+data class VersionedOwnListing(val row: OwnListing, val revision: Long)
+data class VersionedCategoryEditReceipt(val listing: PublicListing, val revision: Long)
+
 /** Separate opt-in PRIVATE owner page. No worker account or moderation fields. */
 data class OwnListingPage(val listings: List<OwnListing>, val nextCursor: String?)
 /** Public Search keyset page (not a Category approval, alias or choice).
@@ -457,6 +463,41 @@ object JodloReplyDecoder {
         decode(reply) { data ->
             data.keysOnly(setOf("listing"))
             managedOwnRow(data.required("listing"))
+        }
+
+    private fun readRevision(element: JsonElement): Long {
+        val raw = element.jsonPrimitive
+        if (raw.isString || !Regex("(?:0|[1-9][0-9]{0,9})").matches(raw.content)) bad()
+        val value = raw.longOrNull ?: bad()
+        if (value !in 0..2147483647L) bad()
+        return value
+    }
+
+    /** V2 PRIVATE one-row owner status. Older four-field DTOs are rejected
+     * here; the original parsers keep their unchanged exact allowlists.
+     */
+    fun exactVersionedOwnListing(reply: TransportReply): ApiOutcome<VersionedOwnListing> =
+        decode(reply) { data ->
+            data.keysOnly(setOf("listing"))
+            val raw = data.required("listing").obj()
+            raw.keysOnly(setOf("id","categoryId","visible","publicationStatus","revision"))
+            val revision = readRevision(raw.required("revision"))
+            val row = managedOwnRow(JsonObject(raw.filterKeys { it != "revision" }))
+            VersionedOwnListing(row,revision)
+        }
+
+    /** A positive v2 CAS response confirms one specific write only. The
+     * client never assumes this is a fresh snapshot after a second-device
+     * mutation; another read is necessary before a later edit.
+     */
+    fun versionedEditReceipt(reply: TransportReply): ApiOutcome<VersionedCategoryEditReceipt> =
+        decode(reply) { data ->
+            data.keysOnly(setOf("listing"))
+            val raw = data.required("listing").obj()
+            raw.keysOnly(setOf("id","categoryId","revision"))
+            val revision=readRevision(raw.required("revision"))
+            val listing=listing(JsonObject(raw.filterKeys { it != "revision" }))
+            VersionedCategoryEditReceipt(listing,revision)
         }
 
     /** Explicit MANAGEMENT owner page: the extra status is required here

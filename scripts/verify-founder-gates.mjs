@@ -228,6 +228,37 @@ export async function auditFounderGates(root = rootDefault) {
   }else if(hasHierarchyRoute || hierarchyTables.some(t=>tables.includes(t))) {
     errors.push("Hierarchy route/tables without reviewed forward migration");
   }
+  // 0011 is one tightly scoped Worker-listing revision, not permission for a
+  // new public profile, personal field, or other live schema migration.
+  // Keep baseline synthetic fixture without 0011 valid; if it is introduced,
+  // the versioned read+CAS route and the safe trigger are both mandatory.
+  const hasServiceRevision=migrations.includes("0011_worker_listing_revision.sql");
+  const hasRevisionRoute=router!==null &&
+    router.includes('mode==="revision"') &&
+    router.includes('params.get("revision")');
+  if(hasServiceRevision) {
+    const sql=await required(root,
+      "infra/migrations/0011_worker_listing_revision.sql",errors);
+    if(!hasRevisionRoute)
+      errors.push("Worker revision migration needs exact private GET and CAS PUT");
+    if(sql!==null) {
+      const stripped=sql.replace(/--[^\n]*/g,"");
+      if(!/ALTER\s+TABLE\s+worker_listings\s+ADD\s+COLUMN\s+revision\s+INTEGER\s+NOT\s+NULL\s+DEFAULT\s+0\s+CHECK\s*\(\s*revision\s+BETWEEN\s+0\s+AND\s+2147483647\s*\)/i.test(stripped))
+        errors.push("Worker revision must be only bounded default-zero column");
+      if(!/CREATE\s+TRIGGER\s+worker_listing_bump_revision\s+AFTER\s+UPDATE\s+OF\s+category_id\s*,\s*status\s*,\s*moderation_status\s+ON\s+worker_listings/i.test(stripped)||
+        !/UPDATE\s+worker_listings\s+SET\s+revision\s*=\s*revision\s*\+\s*1\s+WHERE\s+id\s*=\s*NEW\.id/i.test(stripped)||
+        !/OLD\.category_id\s+IS\s+NOT\s+NEW\.category_id/i.test(stripped)||
+        !/OLD\.status\s+IS\s+NOT\s+NEW\.status/i.test(stripped)||
+        !/OLD\.moderation_status\s+IS\s+NOT\s+NEW\.moderation_status/i.test(stripped))
+        errors.push("Worker version trigger must bump all actual old-route changes");
+      if(/\b(?:INSERT\s+INTO|DROP\s+TABLE|DELETE\s+FROM)\b/i.test(stripped)||
+        /\b(?:phone|gps|address|rate|price|email|identity|verified|description|biography|media|contact)\b/i.test(stripped))
+        errors.push("Worker revision migration may not seed or add personal/public fields");
+    }
+  }else if(hasRevisionRoute) {
+    errors.push("Worker versioned route must have forward revision migration");
+  }
+
   // GitHub can execute ANY YAML workflow here; checking checks.yml alone is not enough.
   let workflowFiles=[];
   try {

@@ -250,6 +250,33 @@ object JodloRoutes {
             "/api/v1/me/listings?id=${enc(listingId)}&view=management", token)
     }
 
+    /** Strict opt-in owner-only revision snapshot, never a public profile or
+     * worker identity. Older servers fail explicitly rather than downgrading.
+     */
+    fun exactVersionedOwnListing(token: String, listingId: String): ApiCall {
+        requireListingId(listingId)
+        return ApiCall.getOwned(
+            "/api/v1/me/listings?id=${enc(listingId)}&view=revision", token)
+    }
+
+    /** Fresh owner revision must come from this authenticated session; no
+     * arbitrary account ID or client-generated revision can bypass server CAS.
+     * Old unversioned Category editing route remains wire-compatible.
+     */
+    fun editListingCategoryVersioned(
+        token: String, listingId: String,
+        expectedCategoryId: String, nextCategoryId: String,
+        expectedRevision: Long,
+    ): ApiCall {
+        requireListingId(listingId)
+        requireCategoryId(expectedCategoryId)
+        requireCategoryId(nextCategoryId)
+        require(expectedCategoryId != nextCategoryId)
+        require(expectedRevision in 0..2147483646L) { "Invalid Service revision" }
+        return ApiCall.put("/api/v1/me/listings?revision=1", token,
+            """{"listingId":"$listingId","expectedCategoryId":"$expectedCategoryId","nextCategoryId":"$nextCategoryId","expectedRevision":$expectedRevision}""")
+    }
+
     fun workerDraft(token: String): ApiCall =
         ApiCall.getOwned("/api/v1/me/worker-profile", token)
     fun optInWorker(token: String): ApiCall =

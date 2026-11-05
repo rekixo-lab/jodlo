@@ -14,6 +14,103 @@ private fun requireRejected(label: String, call: () -> Unit) =
     check(runCatching(call).isFailure) { "Expected rejection: $label" }
 
 fun main() {
+    val versionedGet = JodloRoutes.exactVersionedOwnListing(TOKEN, LISTING_ID)
+    check(versionedGet.method == HttpMethod.GET)
+    check(versionedGet.resource ==
+        "/api/v1/me/listings?id=$LISTING_ID&view=revision")
+    check(versionedGet.headers()["Authorization"] == "Bearer $TOKEN")
+    check(versionedGet.bodyUtf8() == null)
+    check(!versionedGet.toString().contains(TOKEN))
+    val versionedPut = JodloRoutes.editListingCategoryVersioned(
+        TOKEN, LISTING_ID, "plumber", "carpenter", 7)
+    check(versionedPut.method == HttpMethod.PUT)
+    check(versionedPut.resource == "/api/v1/me/listings?revision=1")
+    check(versionedPut.bodyUtf8()!!.decodeToString() ==
+        """{"listingId":"$LISTING_ID","expectedCategoryId":"plumber","nextCategoryId":"carpenter","expectedRevision":7}""")
+    check(!versionedPut.toString().contains(TOKEN))
+    for (rev in listOf(-1L,2147483647L,Long.MAX_VALUE)) {
+        requireRejected("versioned edit revision bounds") {
+            JodloRoutes.editListingCategoryVersioned(
+                TOKEN,LISTING_ID,"plumber","carpenter",rev)
+        }
+    }
+    requireRejected("versioned edit never same Category") {
+        JodloRoutes.editListingCategoryVersioned(
+            TOKEN,LISTING_ID,"plumber","plumber",2)
+    }
+    requireRejected("versioned owner exact ID") {
+        JodloRoutes.exactVersionedOwnListing(TOKEN, "../private")
+    }
+    val approvedOwn=OwnListing(LISTING_ID,"plumber",true,
+        OwnPublicationStatus.PUBLISHED)
+    val currentSnapshot=VersionedOwnListing(approvedOwn,2L)
+    val privateVersioned:VersionedOwnListingRepository =
+        RemoteWorkerRepository(RequestSender { call ->
+            if (call.method==HttpMethod.GET) {
+                check(call.resource==versionedGet.resource)
+                ok("""{"listing":{"id":"$LISTING_ID","categoryId":"plumber","visible":true,"publicationStatus":"published","revision":2}}""")
+            } else {
+                check(call.resource=="/api/v1/me/listings?revision=1")
+                ok("""{"listing":{"id":"$LISTING_ID","categoryId":"carpenter","revision":3}}""")
+            }
+        })
+    check(privateVersioned.exactVersionedOwnListing(TOKEN,LISTING_ID) ==
+        ApiOutcome.Ok(currentSnapshot))
+    check(privateVersioned.editCategoryVersioned(
+        TOKEN,LISTING_ID,"plumber","carpenter",2) ==
+        ApiOutcome.Ok(VersionedCategoryEditReceipt(
+            PublicListing(LISTING_ID,"carpenter"),3)))
+    val privateBadRows=listOf(
+        """{"listing":{"id":"$LISTING_ID","categoryId":"plumber","visible":true,"publicationStatus":"published"}}""",
+        """{"listing":{"id":"$LISTING_ID","categoryId":"plumber","visible":true,"publicationStatus":"published","revision":"2"}}""",
+        """{"listing":{"id":"$LISTING_ID","categoryId":"plumber","visible":true,"publicationStatus":"published","revision":-1}}""",
+        """{"listing":{"id":"$LISTING_ID","categoryId":"plumber","visible":true,"publicationStatus":"published","revision":2,"owner":"secret"}}""",
+        """{"listing":{"id":"$LISTING_ID","categoryId":"plumber","visible":false,"publicationStatus":"invalid","revision":2}}""",
+        """{"listing":{"id":"$LISTING_ID","categoryId":"plumber","visible":true,"publicationStatus":"unpublished","revision":2}}""",
+        """{"listing":{"id":"other-listing","categoryId":"plumber","visible":true,"publicationStatus":"published","revision":2}}""",
+    )
+    for (body in privateBadRows) {
+        val hostile:VersionedOwnListingRepository=
+            RemoteWorkerRepository(RequestSender { ok(body) })
+        check(hostile.exactVersionedOwnListing(TOKEN,LISTING_ID)==bad())
+    }
+    for (badReceipt in listOf(
+        """{"listing":{"id":"$LISTING_ID","categoryId":"carpenter"}}""",
+        """{"listing":{"id":"$LISTING_ID","categoryId":"carpenter","revision":2}}""",
+        """{"listing":{"id":"$LISTING_ID","categoryId":"carpenter","revision":3,"workerId":"secret"}}""",
+        """{"listing":{"id":"$LISTING_ID","categoryId":"carpenter","revision":"3"}}""",
+    )) {
+        val forged:VersionedOwnListingRepository =
+            RemoteWorkerRepository(RequestSender { ok(badReceipt) })
+        check(forged.editCategoryVersioned(
+            TOKEN,LISTING_ID,"plumber","carpenter",2)==bad())
+    }
+    val destination=PublicCategory("carpenter","carpenter","Carpenter")
+    val guidedVersion=GuidedWorkerCategoryEdit().beginVersioned(
+        currentSnapshot,listOf(approvedOwn),101L)
+        .chooseDestination(destination,listOf(destination),101L).review(101L)
+    check(guidedVersion.confirmedVersioned(
+        listOf(approvedOwn),listOf(destination),101L) ==
+        VersionedCategoryEditCommand(
+            LISTING_ID,"plumber","carpenter",2L))
+    check(guidedVersion.confirmedVersioned(
+        emptyList(),listOf(destination),101L)==null)
+    check(guidedVersion.confirmedVersioned(
+        listOf(approvedOwn),listOf(destination),102L)==null)
+    check(guidedVersion.confirmedVersioned(
+        listOf(approvedOwn),emptyList(),101L)==null)
+    check(GuidedWorkerCategoryEdit().begin(
+        approvedOwn,listOf(approvedOwn),101L)
+        .chooseDestination(destination,listOf(destination),101L).review(101L)
+        .confirmedVersioned(listOf(approvedOwn),listOf(destination),101L)==null)
+    val oldRevisionApi:VersionedOwnListingRepository =
+        RemoteWorkerRepository(RequestSender {
+            TransportReply(400,
+                """{"ok":false,"error":{"code":"INVALID_QUERY","message":"Old API"}}""")
+        })
+    check(oldRevisionApi.exactVersionedOwnListing(TOKEN,LISTING_ID)==
+        bad(FailureKind.BAD_INPUT))
+
     // Exact owner service read supplements old 100-cap/paged management.
     // One authenticated GET, no actor/account identity in the URL, no write.
     val ownExactRoute = JodloRoutes.exactManagedOwnListing(TOKEN, LISTING_ID)

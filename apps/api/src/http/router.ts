@@ -8,9 +8,9 @@ import { ownAccountOverview, exportOwnAccountData } from "../modules/identity/ac
 import { validGoogleClientId, verifyGoogleIdToken } from "../modules/identity/google.ts";
 import { resolveGoogleAccount } from "../modules/identity/google-accounts.ts";
 import { issueSession, makeSessionVerifier, revokeAllSessions, revokeSession, SESSION_TTL_SECONDS } from "../modules/identity/sessions.ts";
-import { hasEmptyBody, readGoogleLoginBody, readServiceListingBody, readCategoryEditBody, readResumeOwnListingBody } from "./body.ts";
+import { hasEmptyBody, readGoogleLoginBody, readServiceListingBody, readCategoryEditBody, readVersionedCategoryEditBody, readResumeOwnListingBody } from "./body.ts";
 import { validCategoryId } from "../modules/shared/identifiers.ts";
-import { publishListing, myListings, pageMyListings, pageManagedOwnListings, exactManagedOwnListing, parseOwnListingsPage, publicListings, pagePublicListings, publicListingDetail, publicApprovedServiceDetail, pageAllPublicListings, unpublishListing, editOwnListingCategory, resumeOwnListing } from "../modules/workers/listings.ts";
+import { publishListing, myListings, pageMyListings, pageManagedOwnListings, exactManagedOwnListing, exactVersionedOwnListing, parseOwnListingsPage, publicListings, pagePublicListings, publicListingDetail, publicApprovedServiceDetail, pageAllPublicListings, unpublishListing, editOwnListingCategory, editOwnListingCategoryVersioned, resumeOwnListing } from "../modules/workers/listings.ts";
 import {
   allowGoogleAccountLogin, allowLoginBurst,
   LOGIN_BURST_RETRY_SECONDS, ACCOUNT_LOGIN_RETRY_SECONDS,
@@ -370,16 +370,20 @@ export async function handleRequest(
         // a broader page or accept owner/identity IDs from the caller.
         if(url.searchParams.has("id")) {
           const params=url.searchParams;
+          const mode=params.get("view");
           if(params.size!==2 || params.getAll("id").length!==1 ||
               params.getAll("view").length!==1 ||
-              params.get("view")!=="management" ||
+              (mode!=="management"&&mode!=="revision") ||
               !validOpaqueId(params.get("id")) ||
               !(await hasEmptyBody(request))) {
             return json({ok:false,error:{
               code:"INVALID_QUERY",message:"Invalid selected listing query"}},400);
           }
-          const selected=await exactManagedOwnListing(
-            env.DB,actor.accountId,params.get("id")!);
+          const selected=mode==="revision"
+            ? await exactVersionedOwnListing(
+                env.DB,actor.accountId,params.get("id")!)
+            : await exactManagedOwnListing(
+                env.DB,actor.accountId,params.get("id")!);
           if(!selected)return json({ok:false,error:{
             code:"NOT_FOUND",message:"Listing not found"}},404);
           return json({ok:true,data:{listing:selected}});
@@ -430,8 +434,30 @@ export async function handleRequest(
         // Current worker+account, approved active destination, unique owner
         // category, moderation and expected previous Category are checked in
         // ONE atomic D1 UPDATE. A stale/foreign/duplicate row is one conflict.
-        if(url.search) return json({ok:false,error:{
-          code:"INVALID_QUERY",message:"Unexpected query"}},400);
+        // Revision v2 is an explicit separate wire mode. It may only run
+        // after forward migration 0011; absence is fail-closed 503 and
+        // must NOT fall back to the old Category-only PUT.
+        if(url.search) {
+          const params=url.searchParams;
+          if(params.size!==1 || params.getAll("revision").length!==1 ||
+              params.get("revision")!=="1")
+            return json({ok:false,error:{
+              code:"INVALID_QUERY",message:"Unexpected query"}},400);
+          const edit=await readVersionedCategoryEditBody(request);
+          if(!edit||!validOpaqueId(edit.listingId)||
+              !validCategoryId(edit.expectedCategoryId)||
+              !validCategoryId(edit.nextCategoryId)||
+              edit.expectedCategoryId===edit.nextCategoryId)
+            return json({ok:false,error:{
+              code:"INVALID_QUERY",message:"Invalid revision edit"}},400);
+          const changed=await editOwnListingCategoryVersioned(
+            env.DB,actor.accountId,edit.listingId,
+            edit.expectedCategoryId,edit.nextCategoryId,
+            edit.expectedRevision);
+          if(!changed)return json({ok:false,error:{
+            code:"CONFLICT",message:"Listing changed or unavailable"}},409);
+          return json({ok:true,data:{listing:changed}});
+        }
         const edit=await readCategoryEditBody(request);
         if(!edit||!validOpaqueId(edit.listingId)||
             !validCategoryId(edit.expectedCategoryId)||

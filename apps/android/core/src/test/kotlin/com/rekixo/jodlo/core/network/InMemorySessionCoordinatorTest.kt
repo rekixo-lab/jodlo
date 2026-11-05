@@ -394,7 +394,91 @@ private fun testExactSelectedServiceReadSessionIsolation() {
             FailureKind.SERVICE_UNAVAILABLE))
 }
 
+private fun testRevisionSnapshotAndSingleFlightCas() {
+    val fake=FakeWorkers()
+    val row=OwnListing(LISTING_ID,"plumber",true,OwnPublicationStatus.PUBLISHED)
+    var readCount=0
+    var editCount=0
+    var readReplacesSession=false
+    var readStartsWorkerWrite=false
+    var failEdit=false
+    lateinit var session: InMemorySessionCoordinator
+    val versioned=object: WorkerRepository by fake, VersionedOwnListingRepository {
+        override fun exactVersionedOwnListing(
+            token:String,listingId:String,
+        ):ApiOutcome<VersionedOwnListing> {
+            check(token==TOKEN_ONE||token==TOKEN_TWO)
+            check(listingId==LISTING_ID)
+            readCount++
+            if (readReplacesSession) {
+                check(session.acceptIssuedSession(issued(TOKEN_TWO)) is ApiOutcome.Ok)
+            }
+            if (readStartsWorkerWrite) {
+                check(session.optIn()==SessionResult.Success(WorkerState.DRAFT))
+            }
+            return ApiOutcome.Ok(VersionedOwnListing(row,7))
+        }
+        override fun editCategoryVersioned(
+            token:String,listingId:String,expectedCategoryId:String,
+            nextCategoryId:String,expectedRevision:Long,
+        ):ApiOutcome<VersionedCategoryEditReceipt> {
+            editCount++
+            check(token==TOKEN_ONE||token==TOKEN_TWO)
+            check(listingId==LISTING_ID && expectedCategoryId=="plumber" &&
+                nextCategoryId=="carpenter" && expectedRevision==7L)
+            return if (failEdit)
+                ApiOutcome.Failed(FailureKind.OFFLINE_OR_TIMEOUT, retryable=false)
+            else ApiOutcome.Ok(VersionedCategoryEditReceipt(
+                PublicListing(LISTING_ID,"carpenter"),8))
+        }
+    }
+    session=InMemorySessionCoordinator(versioned,
+        RequestSender { error(503,"SERVICE_UNAVAILABLE") }) { 0L }
+    check(session.exactVersionedOwnListing(LISTING_ID)==
+        SessionResult.Failed(SessionFailure.SIGNED_OUT))
+    check(readCount==0)
+    check(session.acceptIssuedSession(issued()) is ApiOutcome.Ok)
+    check(session.exactVersionedOwnListing(LISTING_ID)==
+        SessionResult.Success(VersionedOwnListing(row,7)))
+    check(session.editListingCategoryVersioned(
+        LISTING_ID,"plumber","carpenter",7)==
+        SessionResult.Failed(SessionFailure.OPT_IN_REQUIRED))
+    check(session.optIn()==SessionResult.Success(WorkerState.DRAFT))
+    val writeScope=HeadlessWorkerWriteScope(session)
+    check(writeScope.editCategoryVersioned(
+        LISTING_ID,"plumber","carpenter",7)==WorkerWriteCompletion.APPLIED)
+    check(writeScope.snapshot().state is WorkerWriteState.Confirmed)
+    check(editCount==1)
+    failEdit=true
+    check(writeScope.editCategoryVersioned(
+        LISTING_ID,"plumber","carpenter",7)==WorkerWriteCompletion.APPLIED)
+    check(writeScope.snapshot().state is WorkerWriteState.NeedsReview)
+    check(writeScope.editCategoryVersioned(
+        LISTING_ID,"plumber","carpenter",7)==WorkerWriteCompletion.BLOCKED)
+    check(editCount==2)
+    check(writeScope.acknowledgeUncertainty())
+    // Read is an observation, never proof that an uncertain PUT committed.
+    check(session.exactVersionedOwnListing(LISTING_ID)==
+        SessionResult.Success(VersionedOwnListing(row,7)))
+    readReplacesSession=true
+    check(session.exactVersionedOwnListing(LISTING_ID)==
+        SessionResult.Failed(SessionFailure.REPLACED))
+    readReplacesSession=false
+    readStartsWorkerWrite=true
+    check(session.exactVersionedOwnListing(LISTING_ID)==
+        SessionResult.Failed(SessionFailure.STALE_RESULT))
+    readStartsWorkerWrite=false
+    check(session.exactVersionedOwnListing(LISTING_ID)==
+        SessionResult.Success(VersionedOwnListing(row,7)))
+    check(runCatching {
+        session.editListingCategoryVersioned(
+            LISTING_ID,"plumber","carpenter",-1)
+    }.isFailure)
+    check(session.snapshot()==LoginState.SignedIn(WorkerState.DRAFT))
+}
+
 fun main() {
+    testRevisionSnapshotAndSingleFlightCas()
     testExactSelectedServiceReadSessionIsolation()
     testOldProfileCannotUndoOptIn()
     testConcurrentMutationsRejected()

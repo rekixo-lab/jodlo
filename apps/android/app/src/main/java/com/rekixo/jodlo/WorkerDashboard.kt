@@ -391,6 +391,70 @@ internal fun WorkerDashboard(
     }
 
 
+    /** Explicit revision-bound edit preparation. Exactly one owner GET,
+     * never a write or implicit retry. Older deployed API cannot supply a
+     * revision: fail closed instead of silently using old Category-only CAS.
+     */
+    fun beginVersionedCategoryEdit() {
+        val active = session ?: return
+        val original = ownListings.firstOrNull { it.id == selectedListing } ?: return
+        val actor = active.accountExportSessionMarker() ?: return
+        if (busy || uncertain ||
+            (active.snapshot() as? LoginState.SignedIn)?.worker != WorkerState.DRAFT) return
+        val requestRevision=++exactObservationRevision
+        categoryEdit = categoryEdit.reset()
+        guided = guided.clearPublication().cancelResume()
+        previewRevision++
+        publicPreview = WorkerCustomerServicePreview.unchecked()
+        exactObserved = null
+        busy=true
+        message=0
+        scope.launch {
+            val snapshot:SessionResult<com.rekixo.jodlo.core.network.VersionedOwnListing> =
+                try {
+                    withContext(Dispatchers.IO) {
+                        active.exactVersionedOwnListing(original.id)
+                    }
+                } catch (cancelled:kotlin.coroutines.cancellation.CancellationException) {
+                    throw cancelled
+                } catch (_:Exception) {
+                    SessionResult.Failed(SessionFailure.REMOTE_FAILURE, FailureKind.BAD_RESPONSE)
+                }
+            busy=false
+            if (requestRevision != exactObservationRevision ||
+                active.accountExportSessionMarker() != actor ||
+                (active.snapshot() as? LoginState.SignedIn)?.worker != WorkerState.DRAFT ||
+                selectedListing != original.id ||
+                ownListings.firstOrNull { it.id == original.id } != original ||
+                writes?.snapshot()?.state is WorkerWriteState.NeedsReview) return@launch
+            when(snapshot) {
+                is SessionResult.Success -> {
+                    val row=snapshot.value.row
+                    if(row.id!=original.id) {
+                        message=R.string.worker_revision_failed
+                    } else if(row!=original) {
+                        // Another device may have changed Category/status.
+                        // Update only the selected local row and REQUIRE the
+                        // Worker to begin a NEW review from the fresh state.
+                        ownListings=ownListings.map { if(it.id==row.id) row else it }
+                        message=R.string.worker_revision_changed
+                    } else {
+                        categoryEdit=categoryEdit.beginVersioned(
+                            snapshot.value,ownListings,actor)
+                        message=R.string.worker_revision_ready
+                    }
+                }
+                is SessionResult.Failed -> {
+                    if(snapshot.networkKind==FailureKind.NOT_FOUND) {
+                        ownListings=ownListings.filterNot { it.id==original.id }
+                        selectedListing=null
+                        message=R.string.worker_exact_missing
+                    } else message=R.string.worker_revision_failed
+                }
+            }
+        }
+    }
+
     /** One user-requested authenticated status read of EXACTLY the selected
      * owner Service. Replaces a stale local row only after session/selection
      * checks. Never calls a mutation or assumes a previous write committed.
@@ -733,11 +797,7 @@ internal fun WorkerDashboard(
                                             val row = ownListings.firstOrNull {
                                                 it.id == selectedListing
                                             } ?: return@JodloTextAction
-                                            categoryEdit = categoryEdit.begin(
-                                                row, ownListings,
-                                                session?.accountExportSessionMarker(),
-                                            )
-                                            guided = guided.clearPublication().cancelResume()
+                                            beginVersionedCategoryEdit()
                                         },
                                         enabled = canWrite,
                                     ) { Text(stringResource(R.string.worker_edit_category)) }
@@ -953,6 +1013,8 @@ internal fun WorkerDashboard(
                                         nameForOwnCategory(categoryEdit.source!!.categoryId)
                                             ?: categoryEdit.source!!.categoryId))
                                     Text(stringResource(R.string.worker_edit_description))
+                                    Text(stringResource(R.string.worker_edit_revision_notice),
+                                        style=MaterialTheme.typography.bodySmall)
                                     val next = categoryEdit.destination
                                     if (next == null) {
                                         Text(stringResource(R.string.worker_edit_choose_category))
@@ -976,18 +1038,19 @@ internal fun WorkerDashboard(
                                             Text(stringResource(R.string.guided_post_back))
                                         }
                                         JodloButton(onClick = {
-                                            val command = categoryEdit.confirmed(
+                                            val command = categoryEdit.confirmedVersioned(
                                                 ownListings, categoryRows,
                                                 session?.accountExportSessionMarker(),
                                             ) ?: return@JodloButton
                                             mutate {
-                                                writes.editCategory(
+                                                writes.editCategoryVersioned(
                                                     command.listingId,
                                                     command.expectedCategoryId,
                                                     command.nextCategoryId,
+                                                    command.expectedRevision,
                                                 )
                                             }
-                                        }, enabled = canWrite && categoryEdit.confirmed(
+                                        }, enabled = canWrite && categoryEdit.confirmedVersioned(
                                             ownListings, categoryRows,
                                             session?.accountExportSessionMarker(),
                                         ) != null) {
