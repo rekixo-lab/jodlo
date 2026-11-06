@@ -4,11 +4,12 @@ import { browsePublicCategories, parseCatalogBrowse, parseCatalogSearch, searchP
 import { healthData } from "../modules/system/health.ts";
 import { parseHierarchy, readApprovedHierarchy } from "../modules/catalog/hierarchy.ts";
 import { optInAsWorker, ownWorkerDraft } from "../modules/workers/profile.ts";
+import { readOwnWorkerAgoraCallPreference, setOwnWorkerAgoraCallPreference } from "../modules/workers/agora-call-preference.ts";
 import { ownAccountOverview, exportOwnAccountData } from "../modules/identity/account-self-service.ts";
 import { validGoogleClientId, verifyGoogleIdToken } from "../modules/identity/google.ts";
 import { resolveGoogleAccount } from "../modules/identity/google-accounts.ts";
 import { issueSession, makeSessionVerifier, revokeAllSessions, revokeSession, SESSION_TTL_SECONDS } from "../modules/identity/sessions.ts";
-import { hasEmptyBody, readGoogleLoginBody, readServiceListingBody, readCategoryEditBody, readVersionedCategoryEditBody, readResumeOwnListingBody } from "./body.ts";
+import { hasEmptyBody, readGoogleLoginBody, readServiceListingBody, readCategoryEditBody, readVersionedCategoryEditBody, readResumeOwnListingBody, readCallPreferenceBody } from "./body.ts";
 import { validCategoryId } from "../modules/shared/identifiers.ts";
 import { publishListing, myListings, pageMyListings, pageManagedOwnListings, exactManagedOwnListing, exactVersionedOwnListing, parseOwnListingsPage, publicListings, pagePublicListings, publicListingDetail, publicApprovedServiceDetail, pageAllPublicListings, unpublishListing, editOwnListingCategory, editOwnListingCategoryVersioned, resumeOwnListing } from "../modules/workers/listings.ts";
 import {
@@ -263,6 +264,45 @@ export async function handleRequest(
     } catch {
       // Fail closed; never reflect SQL errors or credential/provider details.
       return json({ ok: false, error: { code: "SERVICE_UNAVAILABLE", message: "Identity unavailable" } }, 503);
+    }
+  }
+  // ADR-0014: private preference for FUTURE Agora audio only. D1 owner CAS,
+  // not an RTC token, dialer, presence check, notification or public profile.
+  if (url.pathname === "/api/v1/me/agora-call-preference") {
+    if (request.method !== "GET" && request.method !== "PUT") {
+      return json({ok:false,error:{code:"METHOD_NOT_ALLOWED",message:"Method not allowed"}},
+        405,{Allow:"GET, PUT"});
+    }
+    if (url.search) return json({ok:false,error:{
+      code:"INVALID_QUERY",message:"Unexpected query"}},400);
+    if (!env.DB) return json({ok:false,error:{
+      code:"SERVICE_UNAVAILABLE",message:"Preference unavailable"}},503);
+    const token=bearerToken(request);
+    if (!token) return json({ok:false,error:{
+      code:"UNAUTHORIZED",message:"Authentication required"}},401);
+    try {
+      const actor=await (env.AUTH??makeSessionVerifier(env.DB)).verify(token);
+      if (!actor||!validOpaqueId(actor.accountId)) return json({ok:false,error:{
+        code:"UNAUTHORIZED",message:"Authentication required"}},401);
+      if (request.method==="GET") {
+        if (!(await hasEmptyBody(request))) return json({ok:false,error:{
+          code:"INVALID_QUERY",message:"Unexpected input"}},400);
+        const preference=await readOwnWorkerAgoraCallPreference(env.DB,token);
+        if (!preference) return json({ok:false,error:{
+          code:"FORBIDDEN",message:"Worker preference unavailable"}},403);
+        return json({ok:true,data:{preference}});
+      }
+      const input=await readCallPreferenceBody(request);
+      if (!input) return json({ok:false,error:{
+        code:"INVALID_QUERY",message:"Invalid preference input"}},400);
+      const changed=await setOwnWorkerAgoraCallPreference(
+        env.DB,token,input.enabled,input.expectedRevision);
+      if (changed.kind!=="updated") return json({ok:false,error:{
+        code:"CONFLICT",message:"Preference changed or unavailable"}},409);
+      return json({ok:true,data:{preference:changed.preference}});
+    } catch {
+      return json({ok:false,error:{
+        code:"SERVICE_UNAVAILABLE",message:"Preference unavailable"}},503);
     }
   }
   if (url.pathname === "/api/v1/listings") {

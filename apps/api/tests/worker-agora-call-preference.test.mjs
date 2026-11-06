@@ -274,7 +274,7 @@ test("no public preference/call endpoint, phone, channel or call-history schema"
   const f=await fixture();
   try{
     for(const path of [
-      "/api/v1/me/agora-call-preference", "/api/v1/calls",
+      "/api/v1/calls",
       "/api/v1/rtc/token", "/api/v1/signaling",
     ]){
       const res=await worker.fetch(new Request("https://jodlo.rekixo.com"+path,{

@@ -78,6 +78,10 @@ const EDIT_CATEGORY_JSON =
 /** Only canonical four-field opt-in edit. Duplicate/escaped aliases,
  * quoted numbers, 01, signs, decimals, objects and hidden metadata denied.
  */
+/** Canonical owner-only preference: no duplicate or escaped keys or extra fields. */
+const CALL_PREFERENCE_JSON =
+  /^\s*\{\s*"enabled"\s*:\s*(?:true|false)\s*,\s*"expectedRevision"\s*:\s*(?:0|[1-9][0-9]{0,9})\s*\}\s*$/;
+
 const EDIT_CATEGORY_VERSIONED_JSON =
   /^\s*\{\s*"listingId"\s*:\s*"[A-Za-z0-9_-]{8,128}"\s*,\s*"expectedCategoryId"\s*:\s*"[A-Za-z0-9_-]{1,64}"\s*,\s*"nextCategoryId"\s*:\s*"[A-Za-z0-9_-]{1,64}"\s*,\s*"expectedRevision"\s*:\s*(?:0|[1-9][0-9]{0,9})\s*\}\s*$/;
 
@@ -89,7 +93,7 @@ const ONE_STRING_FIELD_JSON =
  * A malicious/unproductive source cannot accumulate unlimited empty chunks.
  */
 async function readBoundedObject(request: Request, maxBytes: number,
-  format: "single" | "edit-category" | "edit-versioned" | "resume-own" = "single"):
+  format: "single" | "edit-category" | "edit-versioned" | "resume-own" | "call-preference" = "single"):
   Promise<Record<string, unknown> | null> {
   const type = request.headers.get("Content-Type") ?? "";
   if (!/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(type)) return null;
@@ -130,7 +134,9 @@ async function readBoundedObject(request: Request, maxBytes: number,
         ? EDIT_CATEGORY_JSON.test(source)
         : format === "edit-versioned"
           ? EDIT_CATEGORY_VERSIONED_JSON.test(source)
-          : RESUME_OWN_LISTING_JSON.test(source))) return null;
+          : format === "call-preference"
+            ? CALL_PREFERENCE_JSON.test(source)
+            : RESUME_OWN_LISTING_JSON.test(source))) return null;
     const parsed: unknown = JSON.parse(source);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
     return parsed as Record<string, unknown>;
@@ -209,4 +215,17 @@ export async function readResumeOwnListingBody(
       typeof obj.listingId!=="string"||
       typeof obj.expectedCategoryId!=="string")return null;
   return {listingId:obj.listingId,expectedCategoryId:obj.expectedCategoryId};
+}
+
+
+/** Worker-only future audio-call consent; never a live call authorization. */
+export async function readCallPreferenceBody(request: Request):
+  Promise<Readonly<{enabled:boolean;expectedRevision:number}>|null> {
+  const obj=await readBoundedObject(request,128,"call-preference");
+  if(!obj||Object.keys(obj).length!==2||
+      typeof obj.enabled!=="boolean"||
+      typeof obj.expectedRevision!=="number"||
+      !Number.isSafeInteger(obj.expectedRevision)||
+      obj.expectedRevision<0||obj.expectedRevision>=2147483647)return null;
+  return {enabled:obj.enabled,expectedRevision:obj.expectedRevision};
 }
