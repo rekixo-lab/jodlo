@@ -32,6 +32,27 @@ fun main() {
         LocalPublicServiceBackup(SavedPublicServices.empty().toggle(ref),
             HiddenPublicServices.empty()))
     check(savedOverflow.saved.block==LocalMergeBlock.SAVED_CAPACITY)
+    val storedLong=(0 until 45).fold(HiddenPublicServices.empty()) { acc,i ->
+        acc.hide(("long_hidden_"+i.toString().padStart(3,'0')).padEnd(128,'x'))
+    }
+    val incomingLong=(45 until 90).fold(HiddenPublicServices.empty()) { acc,i ->
+        acc.hide(("long_hidden_"+i.toString().padStart(3,'0')).padEnd(128,'x'))
+    }
+    check(storedLong.ids.size==45 && incomingLong.ids.size==45)
+    check(storedLong.mergeFrom(incomingLong)==null)
+    val longReview=LocalBackupMergeImpact.inspect(SavedPublicServices.empty(),storedLong,
+        LocalPublicServiceBackup(SavedPublicServices.empty(),incomingLong))
+    check(longReview.hidden.block==LocalMergeBlock.HIDDEN_STORAGE_BYTES)
+    var bounded=storedLong
+    for(i in 45 until 100) {
+        val key=("long_hidden_"+i.toString().padStart(3,'0')).padEnd(128,'x')
+        val next=bounded.hide(key)
+        if (next==bounded) break
+        bounded=next
+    }
+    check(bounded.encode().toByteArray(Charsets.UTF_8).size<=10240)
+    check(HiddenPublicServices.decode(bounded.encode())==bounded)
+    check(bounded.ids.size<100)
     val filledHidden=(0 until HiddenPublicServices.MAX_ENTRIES).fold(
         HiddenPublicServices.empty()) { acc,i -> acc.hide(id(200+i)) }
     val hiddenOverflow=LocalBackupMergeImpact.inspect(currentSaved,filledHidden,

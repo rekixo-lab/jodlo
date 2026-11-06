@@ -226,6 +226,10 @@ internal fun LocalDataTransferDashboard(
                             Text(stringResource(R.string.local_backup_hidden_limit),
                                 color=MaterialTheme.colorScheme.error,
                                 style=MaterialTheme.typography.bodySmall)
+                        if (impact.hidden.block == LocalMergeBlock.HIDDEN_STORAGE_BYTES)
+                            Text(stringResource(R.string.local_backup_hidden_bytes),
+                                color=MaterialTheme.colorScheme.error,
+                                style=MaterialTheme.typography.bodySmall)
                         impact.hiddenSavedIfBothMerged?.let { hiddenSavedCount ->
                             if (hiddenSavedCount > 0)
                                 Text(stringResource(R.string.local_backup_saved_still_hidden,

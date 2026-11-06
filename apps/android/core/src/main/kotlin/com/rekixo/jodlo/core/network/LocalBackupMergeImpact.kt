@@ -7,7 +7,7 @@ package com.rekixo.jodlo.core.network
  * device state on tap; an earlier impact cannot authorize a stale merge.
  */
 enum class LocalMergeBlock {
-    NONE, SAVED_CATEGORY_CONFLICT, SAVED_CAPACITY, HIDDEN_CAPACITY,
+    NONE, SAVED_CATEGORY_CONFLICT, SAVED_CAPACITY, HIDDEN_CAPACITY, HIDDEN_STORAGE_BYTES,
 }
 
 data class LocalCollectionImpact(
@@ -49,8 +49,14 @@ data class LocalBackupMergeImpact(
             val alreadyHidden = incoming.hidden.ids.count { it in knownHidden }
             val newHidden = incoming.hidden.ids.size - alreadyHidden
             val hiddenTotal = currentHidden.ids.size + newHidden
-            val hiddenBlock = if (hiddenTotal > HiddenPublicServices.MAX_ENTRIES)
-                LocalMergeBlock.HIDDEN_CAPACITY else LocalMergeBlock.NONE
+            val hiddenCandidate = currentHidden.mergeFrom(incoming.hidden)
+            val hiddenBlock = when {
+                hiddenTotal > HiddenPublicServices.MAX_ENTRIES ->
+                    LocalMergeBlock.HIDDEN_CAPACITY
+                hiddenCandidate == null ->
+                    LocalMergeBlock.HIDDEN_STORAGE_BYTES
+                else -> LocalMergeBlock.NONE
+            }
             val sharedCount = if (savedBlock == LocalMergeBlock.NONE &&
                 hiddenBlock == LocalMergeBlock.NONE) {
                 val mergedSaved = currentSaved.mergeFrom(incoming.saved)
