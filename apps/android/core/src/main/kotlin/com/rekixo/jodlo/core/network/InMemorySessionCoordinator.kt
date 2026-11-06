@@ -328,6 +328,45 @@ class InMemorySessionCoordinator(
         update = { reply, _ -> outcome(reply) },
     )
 
+    /** Manual private worker preference read, no public consent projection. */
+    fun ownCallPreference(
+        cancellation: CancellationSignal? = null,
+    ): SessionResult<WorkerCallPreference> = withSession(
+        call = { token -> performOnce(JodloRoutes.workerCallPreference(token),
+            authSender::send, JodloReplyDecoder::workerCallPreference) },
+        needsWorker = true,
+        consistentRead = true,
+        cancellation = cancellation,
+        update = { reply, _ -> outcome(reply) },
+    )
+
+    /** One no-retry CAS write; unknown outcome must be re-read before resubmission. */
+    fun changeOwnCallPreference(
+        enabled: Boolean, expectedRevision: Int,
+        cancellation: CancellationSignal? = null,
+    ): SessionResult<WorkerCallPreference> {
+        require(expectedRevision in 0 until 2147483647) { "Invalid consent revision" }
+        return withSession(
+            call = { token ->
+                val response=performOnce(
+                    JodloRoutes.changeWorkerCallPreference(token, enabled, expectedRevision),
+                    authSender::send, JodloReplyDecoder::workerCallPreference)
+                if (response is ApiOutcome.Ok &&
+                    (response.value.enabled != enabled ||
+                     response.value.revision != expectedRevision + 1))
+                    ApiOutcome.Failed(FailureKind.BAD_RESPONSE, false)
+                else response
+            },
+            needsWorker = true,
+            mutation = true,
+            cancellation = cancellation,
+            update = { reply, current ->
+                current.workerRevision += 1
+                outcome(reply)
+            },
+        )
+    }
+
     fun myListings(cancellation: CancellationSignal? = null): SessionResult<List<OwnListing>> = withSession(
         call = { workers.myListings(it) },
         cancellation = cancellation,

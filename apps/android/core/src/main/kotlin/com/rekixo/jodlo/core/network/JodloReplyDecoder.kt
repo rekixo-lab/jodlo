@@ -52,6 +52,7 @@ data class CatalogSearchCursorPage(
 )
 
 /** The backend never returns a verified role from worker opt-in. */
+data class WorkerCallPreference(val enabled: Boolean, val revision: Int)
 data class WorkerDraft(val status: String)
 
 /** Own-only account overview. No account ID, Google subject, bearer or PII. */
@@ -657,6 +658,18 @@ object JodloReplyDecoder {
             (allDevices && data.required("allDevices").bool() != true)) bad()
         true
     }
+    /** Strict private DTO: no contact, caller, identity or RTC token fields. */
+    fun workerCallPreference(reply: TransportReply): ApiOutcome<WorkerCallPreference> =
+        decode(reply) { data ->
+            data.keysOnly(setOf("preference"))
+            val preference=data.required("preference").obj()
+            preference.keysOnly(setOf("enabled","revision"))
+            val enabled=preference.required("enabled").bool()
+            val revision=preference.required("revision").number()
+            if (revision !in 0..2147483647 || (revision==0 && enabled)) bad()
+            WorkerCallPreference(enabled,revision)
+        }
+
     fun workerDraft(reply: TransportReply): ApiOutcome<WorkerDraft> = decode(reply) { data ->
         data.keysOnly(setOf("profile"))
         val profile = data.required("profile").obj()

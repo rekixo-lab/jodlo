@@ -477,7 +477,45 @@ private fun testRevisionSnapshotAndSingleFlightCas() {
     check(session.snapshot()==LoginState.SignedIn(WorkerState.DRAFT))
 }
 
+private fun testPrivateWorkerCallPreferenceSessionFence() {
+    val workers=FakeWorkers()
+    workers.lookup=ApiOutcome.Ok(WorkerDraft("draft"))
+    var writes=0
+    var stale=false
+    lateinit var coordinator:InMemorySessionCoordinator
+    val sender=RequestSender { call ->
+        check(call.resource=="/api/v1/me/agora-call-preference")
+        check(call.headers()["Authorization"]=="Bearer $TOKEN_ONE")
+        if (call.method==HttpMethod.GET) {
+            TransportReply(200,"""{"ok":true,"data":{"preference":{"enabled":false,"revision":0}}}""")
+        } else {
+            writes++
+            check(call.method==HttpMethod.PUT)
+            check(call.bodyUtf8()!!.decodeToString()==
+                """{"enabled":true,"expectedRevision":0}""")
+            if(stale) coordinator.acceptIssuedSession(issued(TOKEN_TWO))
+            TransportReply(200,"""{"ok":true,"data":{"preference":{"enabled":true,"revision":1}}}""")
+        }
+    }
+    coordinator=InMemorySessionCoordinator(workers,sender)
+    check(coordinator.ownCallPreference()==SessionResult.Failed(SessionFailure.SIGNED_OUT))
+    check(coordinator.acceptIssuedSession(issued()) is ApiOutcome.Ok)
+    check(coordinator.ownCallPreference()==SessionResult.Failed(SessionFailure.OPT_IN_REQUIRED))
+    check(coordinator.checkWorker()==SessionResult.Success(WorkerState.DRAFT))
+    check(coordinator.ownCallPreference()==
+        SessionResult.Success(WorkerCallPreference(false,0)))
+    check(coordinator.changeOwnCallPreference(true,0)==
+        SessionResult.Success(WorkerCallPreference(true,1)))
+    check(writes==1)
+    stale=true
+    check(coordinator.changeOwnCallPreference(true,0)==
+        SessionResult.Failed(SessionFailure.REPLACED))
+    check(writes==2)
+    check(coordinator.snapshot()==LoginState.SignedIn(WorkerState.UNKNOWN))
+}
+
 fun main() {
+    testPrivateWorkerCallPreferenceSessionFence()
     testRevisionSnapshotAndSingleFlightCas()
     testExactSelectedServiceReadSessionIsolation()
     testOldProfileCannotUndoOptIn()

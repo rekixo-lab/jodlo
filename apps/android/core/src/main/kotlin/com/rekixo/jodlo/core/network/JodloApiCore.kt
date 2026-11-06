@@ -215,6 +215,18 @@ object JodloRoutes {
     fun accountDataExport(token: String): ApiCall =
         ApiCall.getOwned("/api/v1/me/data-export", token)
 
+    /** Worker-only consent for future Agora audio; no call or push provider. */
+    fun workerCallPreference(token: String): ApiCall =
+        ApiCall.getOwned("/api/v1/me/agora-call-preference", token)
+
+    fun changeWorkerCallPreference(
+        token: String, enabled: Boolean, expectedRevision: Int,
+    ): ApiCall {
+        require(expectedRevision in 0 until 2147483647) { "Invalid consent revision" }
+        return ApiCall.put("/api/v1/me/agora-call-preference", token,
+            """{"enabled":$enabled,"expectedRevision":$expectedRevision}""")
+    }
+
     fun myListings(token: String): ApiCall = ApiCall.getOwned("/api/v1/me/listings", token)
     /** Owner-only, opt-in keyset continuation: limit 1..25, opaque listing ID.
      * Never place a bearer or personal identifiers in URL/query.

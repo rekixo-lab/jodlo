@@ -16,6 +16,22 @@ private const val carpenter = """{"id":"carpenter","slug":"carpenter","name":"рд
 private const val listing = """{"id":"11111111-1111-4111-8111-111111111111","categoryId":"plumber"}"""
 
 fun main() {
+    val defaultVoice=envelope("""{"preference":{"enabled":false,"revision":0}}""")
+    eq(JodloReplyDecoder.workerCallPreference(TransportReply(200,defaultVoice)),
+        ApiOutcome.Ok(WorkerCallPreference(false,0)))
+    eq(JodloReplyDecoder.workerCallPreference(TransportReply(200,
+        envelope("""{"preference":{"enabled":true,"revision":2}}"""))),
+        ApiOutcome.Ok(WorkerCallPreference(true,2)))
+    for (badConsent in listOf(
+        """{"preference":{"enabled":true,"revision":0}}""",
+        """{"preference":{"enabled":"true","revision":1}}""",
+        """{"preference":{"enabled":1,"revision":1}}""",
+        """{"preference":{"enabled":false,"revision":-1}}""",
+        """{"preference":{"enabled":true,"revision":2147483648}}""",
+        """{"preference":{"enabled":false,"revision":1,"phone":"secret"}}""",
+        """{"preference":{"enabled":false,"enabled":true,"revision":1}}""",
+        """{"preference":{"enabled":false,"revision":1},"accountId":"secret"}""",
+    )) rejects(envelope(badConsent),parse=JodloReplyDecoder::workerCallPreference)
     // Strict JSON DTOs must not silently resolve duplicate object fields:
     // some JSON parsers map later keys over earlier ones. Detect duplicates
     // recursively, even when a key is escaped on the wire.

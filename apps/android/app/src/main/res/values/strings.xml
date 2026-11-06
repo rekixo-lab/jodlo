@@ -351,4 +351,16 @@
     <string name="service_card_checked_time_only">This exact service was public at the time of its latest check. It may change afterward.</string>
     <string name="service_card_must_recheck">This is only a service reference. Open it to check whether it is public now.</string>
     <string name="service_card_no_worker_claims">No verified Worker identity, rating, price, address, contact or calling availability is provided.</string>
+    <string name="worker_call_preference_heading">Future Internet voice-call permission</string>
+    <string name="worker_call_preference_notice">This is your separate private permission for future Agora audio calls. It starts OFF. Changing it does not make calling available, display a phone number or start a call. Actual calling and incoming notifications are not live.</string>
+    <string name="worker_call_preference_refresh">Check current private call permission</string>
+    <string name="worker_call_preference_on">Future-call permission is ON. Actual calls are not available.</string>
+    <string name="worker_call_preference_off">Future-call permission is OFF. Actual calls are not available.</string>
+    <string name="worker_call_preference_review_on">Review enabling future-call permission</string>
+    <string name="worker_call_preference_review_off">Review disabling future-call permission</string>
+    <string name="worker_call_preference_confirm_on_notice">Only after confirmation will the private future-call opt-in be saved. This cannot contact anyone or enable calling today.</string>
+    <string name="worker_call_preference_confirm_off_notice">Confirm turning this private permission OFF. Actual calling is not available in this version.</string>
+    <string name="worker_call_preference_confirm">Confirm private call permission change</string>
+    <string name="worker_call_preference_unconfirmed">The preference could not be confirmed. It may have changed; read the current status before trying again.</string>
+    <string name="worker_call_preference_saved">The server confirmed the private permission change. Actual calling remains unavailable.</string>
 </resources>

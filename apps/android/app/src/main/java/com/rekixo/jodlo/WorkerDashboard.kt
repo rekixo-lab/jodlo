@@ -78,6 +78,9 @@ internal fun WorkerDashboard(
     val scope = rememberCoroutineScope()
     var login by remember(session) { mutableStateOf(session?.snapshot() ?: LoginState.SignedOut) }
     var busy by remember(session) { mutableStateOf(false) }
+    var callPreference by remember(session) { mutableStateOf<com.rekixo.jodlo.core.network.WorkerCallPreference?>(null) }
+    var callPreferenceReview by remember(session) { mutableStateOf<Boolean?>(null) }
+    var callPreferenceGeneration by remember(session) { mutableIntStateOf(0) }
     var message by remember(session) { mutableIntStateOf(0) }
     var ownListings by remember(session) { mutableStateOf<List<OwnListing>>(emptyList()) }
     var ownerCursor by remember(session) { mutableStateOf<String?>(null) }
@@ -212,6 +215,9 @@ internal fun WorkerDashboard(
         login = session?.snapshot() ?: LoginState.SignedOut
         writeState = writes?.snapshot()?.state ?: WorkerWriteState.Idle
         if (login is LoginState.SignedOut) {
+            callPreferenceGeneration++
+            callPreference = null
+            callPreferenceReview = null
             ownListings = emptyList()
             ownerCursor = null
             clearApprovedNames()
@@ -223,6 +229,68 @@ internal fun WorkerDashboard(
             guided = guided.reset()
             categoryEdit = categoryEdit.reset()
             clearCategoryResults()
+        }
+    }
+
+    fun loadCallPreference() {
+        val active=session ?: return
+        val marker=active.accountExportSessionMarker() ?: return
+        if (busy || uncertain ||
+            (active.snapshot() as? LoginState.SignedIn)?.worker != WorkerState.DRAFT) return
+        val generation=++callPreferenceGeneration
+        callPreference=null
+        callPreferenceReview=null
+        busy=true
+        message=0
+        scope.launch {
+            val result=try {
+                withContext(Dispatchers.IO) { active.ownCallPreference() }
+            } catch (_: Exception) { null }
+            if (callPreferenceGeneration!=generation ||
+                active.accountExportSessionMarker()!=marker) {
+                busy=false
+                updateSession()
+                return@launch
+            }
+            busy=false
+            updateSession()
+            if (result is SessionResult.Success) callPreference=result.value
+            else message=R.string.worker_call_preference_unconfirmed
+        }
+    }
+
+    fun confirmCallPreference() {
+        val active=session ?: return
+        val current=callPreference ?: return
+        val enabled=callPreferenceReview ?: return
+        val marker=active.accountExportSessionMarker() ?: return
+        if (busy || uncertain || enabled==current.enabled ||
+            (active.snapshot() as? LoginState.SignedIn)?.worker != WorkerState.DRAFT) return
+        val generation=++callPreferenceGeneration
+        callPreference=null // Uncertain response never counts as an observed consent.
+        callPreferenceReview=null
+        busy=true
+        message=0
+        scope.launch {
+            val result=try {
+                withContext(Dispatchers.IO) {
+                    active.changeOwnCallPreference(enabled,current.revision)
+                }
+            } catch (_: Exception) { null }
+            if (callPreferenceGeneration!=generation ||
+                active.accountExportSessionMarker()!=marker) {
+                busy=false
+                updateSession()
+                return@launch
+            }
+            busy=false
+            updateSession()
+            if (result is SessionResult.Success) {
+                callPreference=result.value
+                message=R.string.worker_call_preference_saved
+            } else {
+                message=R.string.worker_call_preference_unconfirmed
+            }
         }
     }
 
@@ -601,6 +669,9 @@ internal fun WorkerDashboard(
                         onClick = {
                             if (busy) return@JodloTextAction
                             // Clear PRIVATE screen state before requesting remote logout.
+                            callPreferenceGeneration++
+                            callPreference = null
+                            callPreferenceReview = null
                             ownListings = emptyList()
                             ownerCursor = null
                             guided = guided.reset()
@@ -631,6 +702,51 @@ internal fun WorkerDashboard(
                 }
                 WorkerState.DRAFT -> {
                     item { Text(stringResource(R.string.worker_draft_status)) }
+                    item {
+                        // Never infer consent from publication or cached Account summary.
+                        JodloCard(modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(JodloSizes.CardPadding),
+                                verticalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
+                                Text(stringResource(R.string.worker_call_preference_heading),
+                                    style = MaterialTheme.typography.titleMedium)
+                                Text(stringResource(R.string.worker_call_preference_notice),
+                                    style = MaterialTheme.typography.bodySmall)
+                                JodloTextAction(onClick = ::loadCallPreference,
+                                    enabled = !busy && !uncertain) {
+                                    Text(stringResource(R.string.worker_call_preference_refresh))
+                                }
+                                val preference=callPreference
+                                if (preference!=null) {
+                                    Text(stringResource(if(preference.enabled)
+                                        R.string.worker_call_preference_on
+                                        else R.string.worker_call_preference_off))
+                                    if (callPreferenceReview==null) {
+                                        JodloButton(onClick = {
+                                            callPreferenceReview=!preference.enabled
+                                        }, enabled = !busy && !uncertain) {
+                                            Text(stringResource(if(preference.enabled)
+                                                R.string.worker_call_preference_review_off
+                                                else R.string.worker_call_preference_review_on))
+                                        }
+                                    } else {
+                                        Text(stringResource(if(callPreferenceReview==true)
+                                            R.string.worker_call_preference_confirm_on_notice
+                                            else R.string.worker_call_preference_confirm_off_notice),
+                                            style=MaterialTheme.typography.bodySmall)
+                                        JodloButton(onClick = ::confirmCallPreference,
+                                            enabled = !busy && !uncertain) {
+                                            Text(stringResource(R.string.worker_call_preference_confirm))
+                                        }
+                                        JodloTextAction(onClick = {
+                                            callPreferenceReview=null
+                                        }, enabled = !busy) {
+                                            Text(stringResource(R.string.worker_edit_cancel))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                     if (uncertain) {
                         item {
                             val review = writeState as WorkerWriteState.NeedsReview

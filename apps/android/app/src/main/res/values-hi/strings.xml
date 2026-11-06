@@ -351,4 +351,16 @@
     <string name="service_card_checked_time_only">पिछली सटीक जाँच के समय यह सेवा सार्वजनिक थी। उसके बाद स्थिति बदल सकती है।</string>
     <string name="service_card_must_recheck">यह केवल सेवा का संदर्भ है। अभी सार्वजनिक है या नहीं, जानने के लिए इसे खोलकर जाँचें।</string>
     <string name="service_card_no_worker_claims">Worker की सत्यापित पहचान, रेटिंग, कीमत, पता, संपर्क या कॉल उपलब्धता की जानकारी नहीं दी गई है।</string>
+    <string name="worker_call_preference_heading">भविष्य की इंटरनेट वॉइस कॉल की निजी अनुमति</string>
+    <string name="worker_call_preference_notice">यह भविष्य की Agora ऑडियो कॉल के लिए अलग निजी सहमति है। शुरुआत में बंद रहती है। इसे बदलने से अभी कॉल नहीं चलती, फोन नंबर नहीं दिखता और किसी को कॉल नहीं जाती। वास्तविक कॉल और incoming सूचना अभी उपलब्ध नहीं हैं।</string>
+    <string name="worker_call_preference_refresh">मेरी वर्तमान कॉल अनुमति जाँचें</string>
+    <string name="worker_call_preference_on">भविष्य की कॉल अनुमति चालू है। असली कॉल अभी उपलब्ध नहीं है।</string>
+    <string name="worker_call_preference_off">भविष्य की कॉल अनुमति बंद है। असली कॉल अभी उपलब्ध नहीं है।</string>
+    <string name="worker_call_preference_review_on">भविष्य की कॉल अनुमति चालू करने की समीक्षा</string>
+    <string name="worker_call_preference_review_off">भविष्य की कॉल अनुमति बंद करने की समीक्षा</string>
+    <string name="worker_call_preference_confirm_on_notice">पुष्टि के बाद ही भविष्य की कॉल के लिए आपकी निजी अनुमति सहेजी जाएगी। इससे अभी कोई कॉल नहीं जाएगी और असली कॉल चालू नहीं होगी।</string>
+    <string name="worker_call_preference_confirm_off_notice">निजी कॉल अनुमति बंद करने की पुष्टि करें। इस संस्करण में असली कॉल अभी उपलब्ध नहीं हैं।</string>
+    <string name="worker_call_preference_confirm">निजी कॉल अनुमति का बदलाव पक्का करें</string>
+    <string name="worker_call_preference_unconfirmed">निजी अनुमति की पुष्टि नहीं हुई। बदलाव हो भी सकता है; दोबारा कोशिश से पहले वर्तमान स्थिति जाँचें।</string>
+    <string name="worker_call_preference_saved">सर्वर ने निजी अनुमति बदलने की पुष्टि की। असली कॉल अभी उपलब्ध नहीं है।</string>
 </resources>

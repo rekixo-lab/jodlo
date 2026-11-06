@@ -14,6 +14,22 @@ private fun requireRejected(label: String, call: () -> Unit) =
     check(runCatching(call).isFailure) { "Expected rejection: $label" }
 
 fun main() {
+    val readVoice=JodloRoutes.workerCallPreference(TOKEN)
+    check(readVoice.method==HttpMethod.GET &&
+        readVoice.resource=="/api/v1/me/agora-call-preference" &&
+        readVoice.headers()["Authorization"]=="Bearer $TOKEN" &&
+        readVoice.bodyUtf8()==null)
+    val writeVoice=JodloRoutes.changeWorkerCallPreference(TOKEN,true,0)
+    check(writeVoice.method==HttpMethod.PUT &&
+        writeVoice.resource=="/api/v1/me/agora-call-preference")
+    check(writeVoice.bodyUtf8()!!.decodeToString()==
+        """{"enabled":true,"expectedRevision":0}""")
+    check(!writeVoice.toString().contains(TOKEN))
+    for (revision in listOf(-1,2147483647,Int.MIN_VALUE)) {
+        requireRejected("invalid private voice revision") {
+            JodloRoutes.changeWorkerCallPreference(TOKEN,false,revision)
+        }
+    }
     verifyCustomerServiceCards()
     val versionedGet = JodloRoutes.exactVersionedOwnListing(TOKEN, LISTING_ID)
     check(versionedGet.method == HttpMethod.GET)
