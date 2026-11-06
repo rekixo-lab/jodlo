@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.rekixo.jodlo.core.network.ApiOutcome
 import com.rekixo.jodlo.core.network.ApprovedCategoryNameSnapshot
+import com.rekixo.jodlo.core.network.LocalPublicReferenceFinder
 import com.rekixo.jodlo.core.network.Language
 import com.rekixo.jodlo.core.network.PublicCategory
 import com.rekixo.jodlo.core.network.FailureKind
@@ -39,6 +40,7 @@ import com.rekixo.jodlo.ui.theme.JodloButton
 import com.rekixo.jodlo.ui.theme.JodloChip
 import com.rekixo.jodlo.ui.theme.JodloCard
 import com.rekixo.jodlo.ui.theme.JodloSizes
+import com.rekixo.jodlo.ui.theme.JodloSearchField
 import com.rekixo.jodlo.ui.theme.JodloTextAction
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -62,6 +64,9 @@ internal fun SavedServicesDashboard(
     // explicit review/Category-name HTTP reads until the user unhides it.
     val saved = savedOriginal.withoutHidden(hidden)
     val scope=rememberCoroutineScope()
+    // Ephemeral local find/sort state is never part of backup or any API request.
+    var localQuery by remember { mutableStateOf("") }
+    var oldestFirst by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<PublicListing?>(null) }
     var verified by remember { mutableStateOf<PublicApprovedServiceDetail?>(null) }
     var failure by remember { mutableStateOf<FailureKind?>(null) }
@@ -83,6 +88,9 @@ internal fun SavedServicesDashboard(
     var categoryNamesFailed by remember { mutableStateOf(false) }
     var categoryNamesRevision by remember { mutableIntStateOf(0) }
     val currentCategoryIds = saved.entries.map { it.categoryId }.distinct()
+    val displayed = LocalPublicReferenceFinder.saved(
+        saved.entries, localQuery, oldestFirst,
+    ) { id -> categoryNames?.approvedName(id, categoryLanguage, currentCategoryIds) }
 
     LaunchedEffect(categoryLanguage, saved.entries, repository) {
         categoryNamesRevision++
@@ -254,6 +262,28 @@ internal fun SavedServicesDashboard(
                         color=MaterialTheme.colorScheme.error)
                 }
             }
+            if (saved.entries.isNotEmpty()) item {
+                JodloSearchField(
+                    value=localQuery,
+                    onValueChange={ if (it.length<=64) localQuery=it },
+                    label={ Text(stringResource(R.string.local_saved_find)) },
+                    modifier=Modifier.fillMaxWidth(),
+                )
+                Row(horizontalArrangement=Arrangement.spacedBy(JodloSizes.SmallGap)) {
+                    JodloChip(selected=!oldestFirst, onClick={oldestFirst=false},
+                        label={Text(stringResource(R.string.local_newest_first))})
+                    JodloChip(selected=oldestFirst, onClick={oldestFirst=true},
+                        label={Text(stringResource(R.string.local_oldest_first))})
+                }
+                Text(stringResource(R.string.local_saved_filter_notice),
+                    style=MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.local_filter_count,displayed.size,saved.entries.size),
+                    style=MaterialTheme.typography.bodySmall)
+                if (displayed.isEmpty()) {
+                    Text(stringResource(R.string.local_filter_empty),
+                        style=MaterialTheme.typography.bodySmall)
+                }
+            }
             if (savedOriginal.entries.size > saved.entries.size) item {
                 Text(stringResource(R.string.hidden_saved_filtered,
                     savedOriginal.entries.size - saved.entries.size),
@@ -294,7 +324,7 @@ internal fun SavedServicesDashboard(
                     }
                 }
             }
-            items(saved.entries,key={ "saved-${it.id}" }) { row ->
+            items(displayed,key={ "saved-${it.id}" }) { row ->
                 JodloCard(
                     onClick={ if (repository!=null && !busy && !reviewBusy) inspect(row) },
                     modifier=Modifier.fillMaxWidth(),
