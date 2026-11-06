@@ -758,22 +758,26 @@ internal fun WorkerDashboard(
                                     label={Text(stringResource(R.string.worker_own_find))},
                                     modifier=Modifier.fillMaxWidth(),
                                 )
-                                Row(horizontalArrangement=Arrangement.spacedBy(JodloSizes.SmallGap)) {
+                                // Keep full-width touch targets: Hindi status labels
+                                // must not be clipped by a narrow two-chip row.
+                                Column(verticalArrangement=Arrangement.spacedBy(JodloSizes.SmallGap)) {
                                     JodloChip(selected=ownListGroup==OwnServiceLocalGroup.ALL,
                                         onClick={ownListGroup=OwnServiceLocalGroup.ALL},
+                                        modifier=Modifier.fillMaxWidth(),
                                         label={Text(stringResource(R.string.worker_own_all))})
                                     JodloChip(
                                         selected=ownListGroup==OwnServiceLocalGroup.OWNER_READ_VISIBLE,
                                         onClick={ownListGroup=OwnServiceLocalGroup.OWNER_READ_VISIBLE},
+                                        modifier=Modifier.fillMaxWidth(),
                                         label={Text(stringResource(R.string.worker_own_owner_visible))})
-                                }
-                                Row(horizontalArrangement=Arrangement.spacedBy(JodloSizes.SmallGap)) {
                                     JodloChip(selected=ownListGroup==OwnServiceLocalGroup.PAUSED,
                                         onClick={ownListGroup=OwnServiceLocalGroup.PAUSED},
+                                        modifier=Modifier.fillMaxWidth(),
                                         label={Text(stringResource(R.string.worker_own_paused))})
                                     JodloChip(
                                         selected=ownListGroup==OwnServiceLocalGroup.PUBLISHED_NOT_VISIBLE,
                                         onClick={ownListGroup=OwnServiceLocalGroup.PUBLISHED_NOT_VISIBLE},
+                                        modifier=Modifier.fillMaxWidth(),
                                         label={Text(stringResource(R.string.worker_own_published_hidden))})
                                 }
                                 Text(stringResource(R.string.worker_own_local_count,
