@@ -1,0 +1,11 @@
+# Account UI private owner epoch fence — source-only 6 November 2026
+
+The old native Account screen held an OwnAccountOverview without an account generation. A private GET response around a replacement Google login or Worker mutation should not ever render as the new owner. Kotlin Core already rejects most stale replies; the UI now independently enforces owner identity and write-revision equality at both acceptance and presentation.
+
+- AccountPrivateReadMarker is a non-secret in-memory pair of session generation and local Worker-write revision. An expired/logout/replaced account returns no old marker; an in-flight Worker mutation also returns none. It contains no bearer, account ID, phone, Google subject, location or contact claim.
+- AccountPrivateSummary.confirmed accepts only a validated owner summary with exactly the same requested and current marker. forCurrent returns nothing after a replacement account or write.
+- Native Account manual overview refresh clears cached values before the read and checks marker again on completion. The private card is drawn only if its captured marker matches the current live marker. Activity ON_RESUME rechecks local session after document picker/background return and discards stale summary and pending export, without HTTP polling.
+- The existing user-initiated D1 export still needs the user's selected Android document destination. The captured marker now also checks for Worker mutations between requested export and file picking. It does not authorize account deletion or provider-side erasure.
+- Hindi/English feedback explains stale-account reset; no new API route, migration, provider, persistence, email, production deploy, contact or calls.
+
+Verification: existing Kotlin coordinator suite checks two signed-in account generations, failed replies, Writer opt-in/mutation in-flight and complete recheck, and non-private toString. Existing Node Help guard tests actual Android/Core wiring and two locales. Require exact-head PR Foundation and Android JDK17/21 success, then independent merged-main CI. One final physical-device pass remains deferred under issue #235.

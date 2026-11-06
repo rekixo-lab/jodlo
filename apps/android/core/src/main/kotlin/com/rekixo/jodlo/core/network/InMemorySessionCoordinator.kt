@@ -97,6 +97,16 @@ class InMemorySessionCoordinator(
         readableActive()?.let { generation }
     }
 
+    /** Private Account presentation/export fence. An attempted Worker write
+     * changes writeRevision even if the reply is lost or cancelled. Return
+     * nothing while an authenticated mutation is in flight. No secret or ID.
+     */
+    fun accountPrivateReadMarker(): AccountPrivateReadMarker? = synchronized(lock) {
+        val owner = readableActive() ?: return@synchronized null
+        if (owner.mutationInFlight) null
+        else AccountPrivateReadMarker(generation, owner.writeRevision)
+    }
+
     /** Non-secret fingerprint: a private read may be stale after ANY worker
      * mutation begins, even if the POST/DELETE response is lost or cancelled.
      * Never expose an account ID or bearer via this fingerprint.
