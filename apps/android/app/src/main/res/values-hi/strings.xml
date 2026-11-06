@@ -351,4 +351,12 @@
     <string name="service_card_checked_time_only">पिछली सटीक जाँच के समय यह सेवा सार्वजनिक थी। उसके बाद स्थिति बदल सकती है।</string>
     <string name="service_card_must_recheck">यह केवल सेवा का संदर्भ है। अभी सार्वजनिक है या नहीं, जानने के लिए इसे खोलकर जाँचें।</string>
     <string name="service_card_no_worker_claims">Worker की सत्यापित पहचान, रेटिंग, कीमत, पता, संपर्क या कॉल उपलब्धता की जानकारी नहीं दी गई है।</string>
+    <string name="local_saved_find">इस फ़ोन पर सहेजी हुई सेवाएँ खोजें</string>
+    <string name="local_hidden_find">इस फ़ोन पर छिपाई गई सेवा खोजें</string>
+    <string name="local_newest_first">नई पहले</string>
+    <string name="local_oldest_first">पुरानी पहले</string>
+    <string name="local_filter_count">%2$d में से %1$d दिख रही हैं</string>
+    <string name="local_filter_empty">इस फ़ोन की सूची में मेल नहीं मिला। सहेजा डेटा नहीं बदला।</string>
+    <string name="local_saved_filter_notice">यह खोज केवल इसी फ़ोन पर दिखने वाली सेवाओं की है। स्वयं जाँचे गए स्वीकृत श्रेणी नामों से भी खोज सकते हैं। सभी सेवाओं की सार्वजनिक-स्थिति जाँच इससे नहीं बदलती और सर्वर पर कोई बदलाव नहीं होता।</string>
+    <string name="local_hidden_filter_notice">यह खोज केवल इस फ़ोन के छिपे सेवा संदर्भों की है। इससे कोई सेवा अपने-आप वापस नहीं आती, मिटती नहीं, या वर्कर ब्लॉक या रिपोर्ट नहीं होता।</string>
 </resources>

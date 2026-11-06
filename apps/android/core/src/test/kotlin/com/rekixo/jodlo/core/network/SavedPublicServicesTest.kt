@@ -3,6 +3,27 @@ package com.rekixo.jodlo.core.network
 private fun id(i: Int) = "saved_listing_${i.toString().padStart(3, '0')}"
 
 fun main() {
+    // Manual device-local find/sort may search an ephemeral approved label,
+    // but never turn a Saved reference into a live Worker, call or public proof.
+    val onlyLocal = listOf(
+        PublicListing("saved_listing_001","plumber"),
+        PublicListing("saved_listing_002","electrician"),
+        PublicListing("saved_listing_003","plumber"),
+    )
+    val sourceSnapshot=onlyLocal.toList()
+    check(LocalPublicReferenceFinder.saved(onlyLocal,"plumber").map{it.id}==
+        listOf("saved_listing_001","saved_listing_003"))
+    check(LocalPublicReferenceFinder.saved(onlyLocal,"  पाइप  ",
+        approvedName={ if(it=="plumber") "पाइप मरम्मत" else null }).map{it.id}==
+        listOf("saved_listing_001","saved_listing_003"))
+    check(LocalPublicReferenceFinder.saved(onlyLocal,"ELECTRICIAN").map{it.id}==
+        listOf("saved_listing_002"))
+    check(LocalPublicReferenceFinder.saved(onlyLocal,"",oldestFirst=true)==
+        sourceSnapshot.asReversed())
+    check(LocalPublicReferenceFinder.saved(onlyLocal,"not-a-category").isEmpty())
+    check(LocalPublicReferenceFinder.saved(onlyLocal,"x".repeat(65)).isEmpty())
+    check(LocalPublicReferenceFinder.saved(onlyLocal,"plumber\n").isEmpty())
+    check(onlyLocal==sourceSnapshot)
     val empty = SavedPublicServices.empty()
     check(empty.entries.isEmpty() && empty.encode().isEmpty())
     check(SavedPublicServices.decode(null) == empty)

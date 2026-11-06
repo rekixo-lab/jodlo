@@ -3,6 +3,14 @@ package com.rekixo.jodlo.core.network
 private fun id(i: Int) = "hidden_listing_${i.toString().padStart(3, '0')}"
 
 fun main() {
+    val localIds=listOf("hidden_listing_003","hidden_listing_002","hidden_listing_001")
+    check(LocalPublicReferenceFinder.hidden(localIds,"listing_00")==localIds)
+    check(LocalPublicReferenceFinder.hidden(localIds,"003")==listOf(localIds[0]))
+    check(LocalPublicReferenceFinder.hidden(localIds,"",oldestFirst=true)==
+        localIds.asReversed())
+    check(LocalPublicReferenceFinder.hidden(localIds,"missing").isEmpty())
+    check(LocalPublicReferenceFinder.hidden(localIds,"x".repeat(65)).isEmpty())
+    check(localIds.size==3) // Never deletes or restores the actual Hidden store.
     val empty = HiddenPublicServices.empty()
     check(empty.ids.isEmpty() && empty.encode().isEmpty())
     check(HiddenPublicServices.decode(null) == empty)

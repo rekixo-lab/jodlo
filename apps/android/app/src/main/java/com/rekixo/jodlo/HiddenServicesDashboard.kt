@@ -20,9 +20,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.rekixo.jodlo.core.network.HiddenPublicServices
+import com.rekixo.jodlo.core.network.LocalPublicReferenceFinder
 import com.rekixo.jodlo.ui.theme.JodloButton
 import com.rekixo.jodlo.ui.theme.JodloCard
 import com.rekixo.jodlo.ui.theme.JodloSizes
+import com.rekixo.jodlo.ui.theme.JodloSearchField
+import com.rekixo.jodlo.ui.theme.JodloChip
 import com.rekixo.jodlo.ui.theme.JodloTextAction
 
 /** Explicit device-only hide/unhide management, NEVER server block/report.
@@ -35,6 +38,9 @@ internal fun HiddenServicesDashboard(
     onClear: () -> Boolean,
     onHome: () -> Unit,
 ) {
+    var localQuery by remember { mutableStateOf("") }
+    var oldestFirst by remember { mutableStateOf(false) }
+    val displayed = LocalPublicReferenceFinder.hidden(hidden.ids, localQuery, oldestFirst)
     var confirmClear by remember { mutableStateOf(false) }
     var notice by remember { mutableIntStateOf(0) }
     BackHandler(onBack = onHome)
@@ -55,7 +61,28 @@ internal fun HiddenServicesDashboard(
         if (hidden.ids.isEmpty()) {
             item { Text(stringResource(R.string.hidden_empty)) }
         } else {
-            items(hidden.ids, key = { "local-hidden-" + it }) { id ->
+            item {
+                JodloSearchField(
+                    value=localQuery,
+                    onValueChange={ if(it.length<=64) localQuery=it },
+                    label={Text(stringResource(R.string.local_hidden_find))},
+                    modifier=Modifier.fillMaxWidth(),
+                )
+                Row(horizontalArrangement=Arrangement.spacedBy(JodloSizes.SmallGap)) {
+                    JodloChip(selected=!oldestFirst, onClick={oldestFirst=false},
+                        label={Text(stringResource(R.string.local_newest_first))})
+                    JodloChip(selected=oldestFirst, onClick={oldestFirst=true},
+                        label={Text(stringResource(R.string.local_oldest_first))})
+                }
+                Text(stringResource(R.string.local_hidden_filter_notice),
+                    style=MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.local_filter_count,displayed.size,hidden.ids.size),
+                    style=MaterialTheme.typography.bodySmall)
+                if(displayed.isEmpty())
+                    Text(stringResource(R.string.local_filter_empty),
+                        style=MaterialTheme.typography.bodySmall)
+            }
+            items(displayed, key = { "local-hidden-" + it }) { id ->
                 JodloCard(modifier = Modifier.fillMaxWidth()) {
                     Column(
                         modifier = Modifier.padding(JodloSizes.CardPadding),
