@@ -12,8 +12,10 @@ import java.util.Locale
 object LocalPublicReferenceFinder {
     private const val MAX_QUERY_CODEPOINTS = 64
 
-    private fun normalized(text: String): String? {
-        if (text.codePointCount(0, text.length) > MAX_QUERY_CODEPOINTS ||
+    private fun normalized(text: String, isQuery: Boolean = false): String? {
+        // Only user input is limited to 64 code points. Existing valid IDs may
+        // be 128 characters and already-approved Category labels up to 160.
+        if ((isQuery && text.codePointCount(0, text.length) > MAX_QUERY_CODEPOINTS) ||
             text.any { Character.isISOControl(it) }) return null
         return Normalizer.normalize(text.trim(), Normalizer.Form.NFC)
             .lowercase(Locale.ROOT)
@@ -25,7 +27,7 @@ object LocalPublicReferenceFinder {
         oldestFirst: Boolean = false,
         approvedName: (String) -> String? = { null },
     ): List<PublicListing> {
-        val needle = normalized(query) ?: return emptyList()
+        val needle = normalized(query, isQuery = true) ?: return emptyList()
         val matches = if (needle.isEmpty()) entries else entries.filter { row ->
             val category = normalized(row.categoryId).orEmpty()
             val name = approvedName(row.categoryId)?.let(::normalized).orEmpty()
@@ -38,7 +40,7 @@ object LocalPublicReferenceFinder {
     fun hidden(
         ids: List<String>, query: String, oldestFirst: Boolean = false,
     ): List<String> {
-        val needle = normalized(query) ?: return emptyList()
+        val needle = normalized(query, isQuery = true) ?: return emptyList()
         val matches = if (needle.isEmpty()) ids else ids.filter {
             needle in normalized(it).orEmpty()
         }
