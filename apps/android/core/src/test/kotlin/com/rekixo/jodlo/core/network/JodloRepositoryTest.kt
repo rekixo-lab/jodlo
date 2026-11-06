@@ -14,6 +14,37 @@ private fun requireRejected(label: String, call: () -> Unit) =
     check(runCatching(call).isFailure) { "Expected rejection: $label" }
 
 fun main() {
+    // Entire private owner list is filtered in memory, not on the server.
+    // A "visible" row is only the LAST OWNER projection, not a fresh public fact.
+    val loaded=listOf(
+        OwnListing("owner_service_001","plumber",true,OwnPublicationStatus.PUBLISHED),
+        OwnListing("owner_service_002","electrician",false,OwnPublicationStatus.PUBLISHED),
+        OwnListing("owner_service_003","plumber",false,OwnPublicationStatus.UNPUBLISHED),
+        OwnListing("owner_service_004","mechanic",false,null),
+    )
+    val frozen=loaded.toList()
+    check(OwnServiceLocalFilter.apply(loaded,"").size==4)
+    check(OwnServiceLocalFilter.apply(loaded,"",
+        OwnServiceLocalGroup.OWNER_READ_VISIBLE)==listOf(loaded[0]))
+    check(OwnServiceLocalFilter.apply(loaded,"",
+        OwnServiceLocalGroup.PUBLISHED_NOT_VISIBLE)==listOf(loaded[1]))
+    check(OwnServiceLocalFilter.apply(loaded,"",
+        OwnServiceLocalGroup.PAUSED)==listOf(loaded[2]))
+    check(OwnServiceLocalFilter.apply(loaded,"PLUMBER").map{it.id}==
+        listOf("owner_service_001","owner_service_003"))
+    check(OwnServiceLocalFilter.apply(loaded,"  पाइप  ",
+        approvedName={if(it=="plumber")"पाइप मरम्मत" else null}).size==2)
+    check(OwnServiceLocalFilter.apply(loaded,"पाइप",
+        group=OwnServiceLocalGroup.PAUSED,
+        approvedName={if(it=="plumber")"पाइप मरम्मत" else null})==
+        listOf(loaded[2]))
+    check(OwnServiceLocalFilter.apply(loaded,"owner_service_002")==listOf(loaded[1]))
+    check(OwnServiceLocalFilter.apply(loaded,"not-matched").isEmpty())
+    check(OwnServiceLocalFilter.apply(loaded,"x".repeat(65)).isEmpty())
+    check(OwnServiceLocalFilter.apply(loaded,"plumber\n").isEmpty())
+    check(OwnServiceLocalFilter.apply(loaded,"end",
+        approvedName={"x".repeat(100)+"END"}).size==4)
+    check(loaded==frozen)
     verifyCustomerServiceCards()
     val versionedGet = JodloRoutes.exactVersionedOwnListing(TOKEN, LISTING_ID)
     check(versionedGet.method == HttpMethod.GET)
