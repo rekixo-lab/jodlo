@@ -28,8 +28,13 @@ data class LocalPublicServiceBackup(
             if (text.isBlank() || text.toByteArray(Charsets.UTF_8).size > MAX_BYTES)
                 return null
             val root = runCatching {
-                Json.parseToJsonElement(text)
-            }.getOrNull() as? JsonObject ?: return null
+                val parsed = Json.parseToJsonElement(text)
+                // Kotlin JSON object maps may silently keep the last value.
+                // Reject every duplicate key, including escaped aliases, in
+                // root and nested saved objects before trusting ANY field.
+                if (hasDuplicateJsonObjectKeys(text, Json)) null
+                else parsed as? JsonObject
+            }.getOrNull() ?: return null
             if (root.keys != setOf("format", "version", "saved", "hidden")) return null
             val format = root["format"] as? JsonPrimitive ?: return null
             val version = root["version"] as? JsonPrimitive ?: return null

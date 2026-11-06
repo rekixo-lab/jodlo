@@ -368,4 +368,10 @@
     <string name="worker_own_local_scope">These filters affect only the displayed owner list. The server may change visibility later; the eligible filter does not verify a public Customer view or calling. Already selected service management stays separate.</string>
     <string name="worker_own_load_more_scope">Additional Services are not loaded yet. Load the next page to include them in the local filter.</string>
     <string name="worker_own_local_empty">No matching loaded services. This does not delete or unpublish any Service.</string>
+    <string name="local_backup_saved_impact">Saved in this file: %1$d already on this phone, %2$d additional. Successful merge would total %3$d (limit 50).</string>
+    <string name="local_backup_hidden_impact">Hidden in this file: %1$d already on this phone, %2$d additional. Successful merge would total %3$d (limit 100).</string>
+    <string name="local_backup_saved_conflict">Saved merge blocked: an existing ID has a different Category. It will not be overwritten.</string>
+    <string name="local_backup_saved_limit">Saved merge blocked: its result would exceed the 50-reference limit.</string>
+    <string name="local_backup_hidden_limit">Hidden merge blocked: its result would exceed the 100-reference limit.</string>
+    <string name="local_backup_saved_still_hidden">If you merge both lists, %1$d Saved references will still be hidden locally. They are not deleted and their public status remains unchecked.</string>
 </resources>

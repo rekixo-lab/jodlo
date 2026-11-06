@@ -3,6 +3,41 @@ package com.rekixo.jodlo.core.network
 private fun id(i: Int) = "hidden_listing_${i.toString().padStart(3, '0')}"
 
 fun main() {
+    // Backup inspection has no I/O or mutation and never infers public status.
+    val ref = PublicListing(id(11),"plumber")
+    val extra = PublicListing(id(12),"electrician")
+    val currentSaved = SavedPublicServices.empty().toggle(ref)
+    val currentHidden = HiddenPublicServices.empty().hide(id(11))
+    val incoming = LocalPublicServiceBackup(
+        SavedPublicServices.empty().toggle(extra).toggle(ref),
+        HiddenPublicServices.empty().hide(id(12)).hide(id(11)),
+    )
+    val impact=LocalBackupMergeImpact.inspect(currentSaved,currentHidden,incoming)
+    check(impact.saved==LocalCollectionImpact(1,1,2,LocalMergeBlock.NONE))
+    check(impact.hidden==LocalCollectionImpact(1,1,2,LocalMergeBlock.NONE))
+    check(impact.hiddenSavedIfBothMerged==2)
+    check(currentSaved.entries.size==1 && currentHidden.ids.size==1)
+
+    val conflict = LocalBackupMergeImpact.inspect(currentSaved,currentHidden,
+        LocalPublicServiceBackup(
+            SavedPublicServices.empty().toggle(PublicListing(id(11),"carpenter")),
+            HiddenPublicServices.empty()))
+    check(conflict.saved.block==LocalMergeBlock.SAVED_CATEGORY_CONFLICT)
+    check(conflict.hidden.canMerge && conflict.hiddenSavedIfBothMerged==null)
+    val filledSaved=(0 until SavedPublicServices.MAX_ENTRIES).fold(
+        SavedPublicServices.empty()) { acc,i ->
+        acc.toggle(PublicListing(id(100+i),"plumber"))
+    }
+    val savedOverflow=LocalBackupMergeImpact.inspect(filledSaved,currentHidden,
+        LocalPublicServiceBackup(SavedPublicServices.empty().toggle(ref),
+            HiddenPublicServices.empty()))
+    check(savedOverflow.saved.block==LocalMergeBlock.SAVED_CAPACITY)
+    val filledHidden=(0 until HiddenPublicServices.MAX_ENTRIES).fold(
+        HiddenPublicServices.empty()) { acc,i -> acc.hide(id(200+i)) }
+    val hiddenOverflow=LocalBackupMergeImpact.inspect(currentSaved,filledHidden,
+        LocalPublicServiceBackup(SavedPublicServices.empty(),
+            HiddenPublicServices.empty().hide(id(500))))
+    check(hiddenOverflow.hidden.block==LocalMergeBlock.HIDDEN_CAPACITY)
     val localIds=listOf("hidden_listing_003","hidden_listing_002","hidden_listing_001")
     check(LocalPublicReferenceFinder.hidden(localIds,"listing_00")==localIds)
     check(LocalPublicReferenceFinder.hidden(localIds,"003")==listOf(localIds[0]))
@@ -109,6 +144,22 @@ fun main() {
     for (bad in wrong) check(LocalPublicServiceBackup.decode(bad) == null) {
         "Forged or malformed public reference backup was accepted"
     }
+    // JSON map parsers may silently use the last duplicate. Fail closed at
+    // root and nested object levels, including escaped property-key aliases.
+    val canonical=LocalPublicServiceBackup(saved,two).encode()
+    for(bad in listOf(
+        canonical.replace("\"version\":1", "\"version\":1,\"version\":1"),
+        canonical.replace("\"version\":1", "\"version\":1,\"\\u0076ersion\":1"),
+        canonical.replace("\"format\":", "\"format\":\"wrong\",\"format\":"),
+        canonical.replace("\"id\":", "\"id\":\"another-id\",\"id\":"),
+        canonical.replace("\"categoryId\":",
+            "\"categoryId\":\"other\",\"\\u0063ategoryId\":"),
+    )) check(LocalPublicServiceBackup.decode(bad)==null) {
+        "Ambiguous duplicate backup JSON accepted"
+    }
+    check(LocalPublicServiceBackup.decode(canonical)==
+        LocalPublicServiceBackup(saved,two))
+
     // If the user explicitly chooses cloud storage, that is the SYSTEM
     // document picker's action, never a network operation in this model.
     // No RequestSender, bearer, Google subject, location, provider or side

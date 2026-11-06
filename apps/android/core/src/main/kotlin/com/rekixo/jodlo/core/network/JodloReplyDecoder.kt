@@ -124,15 +124,16 @@ fun <T> performOnce(call: ApiCall, send: (ApiCall) -> TransportReply,
  * and nested error/session/listing payloads. Decode escaped key names with
  * the SAME JSON parser: "id" and "\u0069d" are the same property.
  *
- * Responses are already capped at 65,536 UTF-8 bytes before this runs.
- * This is a response-integrity check, not verification of server/TLS identity.
+ * Both network replies and user-selected JSON files must be strictly parsed
+ * and size-capped BEFORE calling this shared duplicate-key scanner.
+ * This is an integrity check, not verification of server/TLS identity.
  */
 private data class JsonKeyFrame(
     val keys: MutableSet<String>?,
     var expectsKey: Boolean = false,
 )
 
-private fun hasDuplicateReplyObjectKeys(source: String, parser: Json): Boolean {
+internal fun hasDuplicateJsonObjectKeys(source: String, parser: Json): Boolean {
     val stack = java.util.ArrayDeque<JsonKeyFrame>()
     var i = 0
     while (i < source.length) {
@@ -259,7 +260,7 @@ object JodloReplyDecoder {
             val parsed = json.parseToJsonElement(reply.body)
             // JSON object maps can discard an earlier value of a repeated key.
             // Reject ambiguous root, nested, escaped and array-object fields.
-            if (hasDuplicateReplyObjectKeys(reply.body, json)) bad()
+            if (hasDuplicateJsonObjectKeys(reply.body, json)) bad()
             val root = parsed.obj()
             val ok = root.required("ok").bool()
             if (reply.status == 200 && ok) {
