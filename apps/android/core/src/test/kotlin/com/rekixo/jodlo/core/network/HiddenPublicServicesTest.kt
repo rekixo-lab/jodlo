@@ -18,12 +18,12 @@ fun main() {
     check(impact.hiddenSavedIfBothMerged==2)
     check(currentSaved.entries.size==1 && currentHidden.ids.size==1)
 
-    val conflict = LocalBackupMergeImpact.inspect(currentSaved,currentHidden,
+    val previewConflict = LocalBackupMergeImpact.inspect(currentSaved,currentHidden,
         LocalPublicServiceBackup(
             SavedPublicServices.empty().toggle(PublicListing(id(11),"carpenter")),
             HiddenPublicServices.empty()))
-    check(conflict.saved.block==LocalMergeBlock.SAVED_CATEGORY_CONFLICT)
-    check(conflict.hidden.canMerge && conflict.hiddenSavedIfBothMerged==null)
+    check(previewConflict.saved.block==LocalMergeBlock.SAVED_CATEGORY_CONFLICT)
+    check(previewConflict.hidden.canMerge && previewConflict.hiddenSavedIfBothMerged==null)
     val filledSaved=(0 until SavedPublicServices.MAX_ENTRIES).fold(
         SavedPublicServices.empty()) { acc,i ->
         acc.toggle(PublicListing(id(100+i),"plumber"))
