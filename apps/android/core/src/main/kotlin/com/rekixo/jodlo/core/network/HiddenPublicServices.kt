@@ -36,14 +36,20 @@ data class HiddenPublicServices private constructor(val ids: List<String>) {
     /** Same listing ID remains locally hidden even if its Category changes. */
     fun hide(id: String): HiddenPublicServices =
         if (!valid(id) || contains(id) || ids.size >= MAX_ENTRIES) this
-        else HiddenPublicServices(listOf(id) + ids)
+        else {
+            val next=HiddenPublicServices(listOf(id) + ids)
+            if (next.encode().toByteArray(Charsets.UTF_8).size <= MAX_BYTES) next else this
+        }
 
     /** Non-destructive, bounded import; hidden IDs never leave this phone. */
     fun mergeFrom(incoming: HiddenPublicServices): HiddenPublicServices? {
         val known = ids.toSet()
         val additional = incoming.ids.filterNot { it in known }
         if (ids.size + additional.size > MAX_ENTRIES) return null
-        return HiddenPublicServices(ids + additional)
+        val merged = HiddenPublicServices(ids + additional)
+        // 100 individually valid 128-byte IDs can exceed the 10KiB
+        // legacy preference format. Never commit an undecodable result.
+        return merged.takeIf { it.encode().toByteArray(Charsets.UTF_8).size <= MAX_BYTES }
     }
 
     fun unhide(id: String): HiddenPublicServices =

@@ -24,6 +24,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.rekixo.jodlo.core.network.HiddenPublicServices
 import com.rekixo.jodlo.core.network.LocalPublicServiceBackup
+import com.rekixo.jodlo.core.network.LocalBackupMergeImpact
+import com.rekixo.jodlo.core.network.LocalMergeBlock
 import com.rekixo.jodlo.core.network.SavedPublicServices
 import com.rekixo.jodlo.ui.theme.JodloButton
 import com.rekixo.jodlo.ui.theme.JodloCard
@@ -200,6 +202,42 @@ internal fun LocalDataTransferDashboard(
                             result.saved.entries.size, result.hidden.ids.size))
                         Text(stringResource(R.string.local_backup_merge_notice),
                             style = MaterialTheme.typography.bodySmall)
+                        val impact = LocalBackupMergeImpact.inspect(saved,hidden,result)
+                        Text(stringResource(R.string.local_backup_saved_impact,
+                            impact.saved.alreadyHere,impact.saved.additional,
+                            impact.saved.wouldTotal),
+                            style = MaterialTheme.typography.bodySmall)
+                        Text(stringResource(R.string.local_backup_hidden_impact,
+                            impact.hidden.alreadyHere,impact.hidden.additional,
+                            impact.hidden.wouldTotal),
+                            style = MaterialTheme.typography.bodySmall)
+                        when(impact.saved.block) {
+                            LocalMergeBlock.SAVED_CATEGORY_CONFLICT ->
+                                Text(stringResource(R.string.local_backup_saved_conflict),
+                                    color=MaterialTheme.colorScheme.error,
+                                    style=MaterialTheme.typography.bodySmall)
+                            LocalMergeBlock.SAVED_CAPACITY ->
+                                Text(stringResource(R.string.local_backup_saved_limit),
+                                    color=MaterialTheme.colorScheme.error,
+                                    style=MaterialTheme.typography.bodySmall)
+                            else -> Unit
+                        }
+                        if (impact.hidden.block == LocalMergeBlock.HIDDEN_CAPACITY)
+                            Text(stringResource(R.string.local_backup_hidden_limit),
+                                color=MaterialTheme.colorScheme.error,
+                                style=MaterialTheme.typography.bodySmall)
+                        if (impact.hidden.block == LocalMergeBlock.HIDDEN_STORAGE_BYTES)
+                            Text(stringResource(R.string.local_backup_hidden_bytes),
+                                color=MaterialTheme.colorScheme.error,
+                                style=MaterialTheme.typography.bodySmall)
+                        impact.hiddenSavedIfBothMerged?.let { hiddenSavedCount ->
+                            if (hiddenSavedCount > 0)
+                                Text(stringResource(R.string.local_backup_saved_still_hidden,
+                                    hiddenSavedCount),
+                                    style=MaterialTheme.typography.bodySmall)
+                        }
+                        // The actual merge is still re-evaluated in each click
+                        // handler against CURRENT saved/hidden lists.
                         val mergedSaved = saved.mergeFrom(result.saved)
                         val mergedHidden = hidden.mergeFrom(result.hidden)
                         JodloButton(onClick = ::applySaved, enabled = !busy &&

@@ -368,4 +368,11 @@
     <string name="worker_own_local_scope">फ़िल्टर केवल इस स्क्रीन की निजी सूची बदलते हैं। सर्वर बाद में स्थिति बदल सकता है। पात्र फ़िल्टर ग्राहक की वास्तविक सार्वजनिक जाँच या कॉल की अनुमति नहीं है। पहले चुनी गई सेवा का प्रबंधन अलग रहता है।</string>
     <string name="worker_own_load_more_scope">कुछ सेवाएँ अभी लोड नहीं हैं। उन्हें खोज में लाने के लिए अगला पृष्ठ लोड करें।</string>
     <string name="worker_own_local_empty">लोड की गई सेवाओं में मेल नहीं मिला। कोई सेवा मिटाई या बंद नहीं की गई।</string>
+    <string name="local_backup_saved_impact">फ़ाइल में Saved: %1$d इस फ़ोन पर पहले से हैं, %2$d नए हैं। सफल Merge पर कुल %3$d होंगे (सीमा 50)।</string>
+    <string name="local_backup_hidden_impact">फ़ाइल में Hidden: %1$d इस फ़ोन पर पहले से हैं, %2$d नए हैं। सफल Merge पर कुल %3$d होंगे (सीमा 100)।</string>
+    <string name="local_backup_saved_conflict">Saved Merge रुका: किसी पुरानी पहचान की श्रेणी अलग है। उसे बदला नहीं जाएगा।</string>
+    <string name="local_backup_saved_limit">Saved Merge रुका: कुल पहचानें 50 की सीमा पार कर देंगी।</string>
+    <string name="local_backup_hidden_limit">Hidden Merge रुका: कुल पहचानें 100 की सीमा पार कर देंगी।</string>
+    <string name="local_backup_saved_still_hidden">दोनों सूचियाँ जोड़ने के बाद भी %1$d Saved पहचानें इस फ़ोन पर छिपी रहेंगी। वे मिटेंगी नहीं और उनकी वर्तमान सार्वजनिक स्थिति जाँची नहीं गई है।</string>
+    <string name="local_backup_hidden_bytes">Hidden Merge रुका: लंबी सेवा पहचानें इस फ़ोन की निजी स्टोरेज 10 KiB सीमा पार कर देंगी। पहले छिपाई गई पहचानें नहीं बदलेंगी।</string>
 </resources>

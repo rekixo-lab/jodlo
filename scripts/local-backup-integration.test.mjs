@@ -17,6 +17,14 @@ const hi = read("apps/android/app/src/main/res/values-hi/strings.xml");
 
 test("Portable file accepts only bounded, versioned, opaque public references", () => {
   assert.match(core, /MAX_BYTES = 32_768/);
+  assert.match(core, /hasDuplicateJsonObjectKeys\(text, Json\)/);
+  assert.match(read("apps/android/core/src/main/kotlin/com/rekixo/jodlo/core/network/JodloReplyDecoder.kt"),
+    /internal fun hasDuplicateJsonObjectKeys/);
+  const impact = read("apps/android/core/src/main/kotlin/com/rekixo/jodlo/core/network/LocalBackupMergeImpact.kt");
+  assert.match(impact, /SAVED_CATEGORY_CONFLICT/);
+  assert.match(impact, /SAVED_CAPACITY/);
+  assert.match(impact, /HIDDEN_CAPACITY/);
+  assert.doesNotMatch(impact, /RequestSender\s*\(|HttpMethod\.|http:\/\/|https:\/\//);
   assert.match(core, /root\.keys != setOf\("format", "version", "saved", "hidden"\)/);
   assert.match(core, /obj\.keys != setOf\("id", "categoryId"\)/);
   assert.match(core, /saved\.entries\.size != savedArray\.size/);
@@ -43,6 +51,8 @@ test("Storage Access Framework is user-driven, strict UTF8 and bounded before pa
 
 test("Import requires independent explicit Saved and Hidden merge and durable commit", () => {
   assert.match(ui, /preview = result/);
+  assert.match(ui, /LocalBackupMergeImpact\.inspect\(saved,hidden,result\)/);
+  assert.match(ui, /impact\.hiddenSavedIfBothMerged/);
   assert.match(ui, /saved\.mergeFrom\(incoming\.saved\)/);
   assert.match(ui, /hidden\.mergeFrom\(incoming\.hidden\)/);
   assert.match(ui, /onClick = ::applySaved/);
@@ -60,6 +70,9 @@ test("Import requires independent explicit Saved and Hidden merge and durable co
 
 test("Both languages explain privacy, merge conflicts and no automatic syncing", () => {
   const keys = [
+    "local_backup_saved_impact", "local_backup_hidden_impact",
+    "local_backup_saved_conflict", "local_backup_saved_limit",
+    "local_backup_hidden_limit", "local_backup_saved_still_hidden",
     "local_backup_tab", "local_backup_heading", "local_backup_privacy",
     "local_backup_current", "local_backup_export_heading",
     "local_backup_export_notice", "local_backup_export_action",
