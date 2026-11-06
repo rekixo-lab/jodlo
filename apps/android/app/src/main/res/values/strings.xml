@@ -359,4 +359,13 @@
     <string name="local_filter_empty">No local match. Your saved data has not changed.</string>
     <string name="local_saved_filter_notice">Find and order only the displayed bookmarks on this device. Approved Category names may be searched after you explicitly check them. This does not filter the full public-status review or change anything on the server.</string>
     <string name="local_hidden_filter_notice">Find and order only local hidden IDs. This does not unhide, remove, block or report a Worker.</string>
+    <string name="worker_own_find">Find in loaded My Services</string>
+    <string name="worker_own_all">All loaded</string>
+    <string name="worker_own_owner_visible">Eligible (owner read)</string>
+    <string name="worker_own_paused">Paused</string>
+    <string name="worker_own_published_hidden">Published, not visible</string>
+    <string name="worker_own_local_count">Showing %1$d of %2$d loaded services</string>
+    <string name="worker_own_local_scope">These filters affect only the displayed owner list. The server may change visibility later; the eligible filter does not verify a public Customer view or calling. Already selected service management stays separate.</string>
+    <string name="worker_own_load_more_scope">Additional Services are not loaded yet. Load the next page to include them in the local filter.</string>
+    <string name="worker_own_local_empty">No matching loaded services. This does not delete or unpublish any Service.</string>
 </resources>

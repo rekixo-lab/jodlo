@@ -33,6 +33,8 @@ import com.rekixo.jodlo.core.network.InMemorySessionCoordinator
 import com.rekixo.jodlo.core.network.Language
 import com.rekixo.jodlo.core.network.LoginState
 import com.rekixo.jodlo.core.network.OwnListing
+import com.rekixo.jodlo.core.network.OwnServiceLocalFilter
+import com.rekixo.jodlo.core.network.OwnServiceLocalGroup
 import com.rekixo.jodlo.core.network.OwnPublicationStatus
 import com.rekixo.jodlo.core.network.PublicCategory
 import com.rekixo.jodlo.core.network.RemoteCatalogRepository
@@ -80,6 +82,9 @@ internal fun WorkerDashboard(
     var busy by remember(session) { mutableStateOf(false) }
     var message by remember(session) { mutableIntStateOf(0) }
     var ownListings by remember(session) { mutableStateOf<List<OwnListing>>(emptyList()) }
+    // Loaded owner-row view only; no owner IDs, query or filter sent to API.
+    var ownListQuery by remember(session) { mutableStateOf("") }
+    var ownListGroup by remember(session) { mutableStateOf(OwnServiceLocalGroup.ALL) }
     var ownerCursor by remember(session) { mutableStateOf<String?>(null) }
     var categoryRows by remember(session) { mutableStateOf<List<PublicCategory>>(emptyList()) }
     var categoryCursor by remember(session) { mutableStateOf<String?>(null) }
@@ -212,6 +217,8 @@ internal fun WorkerDashboard(
         login = session?.snapshot() ?: LoginState.SignedOut
         writeState = writes?.snapshot()?.state ?: WorkerWriteState.Idle
         if (login is LoginState.SignedOut) {
+            ownListQuery = ""
+            ownListGroup = OwnServiceLocalGroup.ALL
             ownListings = emptyList()
             ownerCursor = null
             clearApprovedNames()
@@ -729,6 +736,12 @@ internal fun WorkerDashboard(
                             }
                         }
                     } else {
+                        // A status filter is a snapshot of loaded PRIVATE owner
+                        // rows only. It must not hide the selected management
+                        // controls nor imply current Customer public visibility.
+                        val localOwn = OwnServiceLocalFilter.apply(
+                            ownListings, ownListQuery, ownListGroup,
+                        ) { categoryId -> nameForOwnCategory(categoryId) }
                         item {
                             Text(stringResource(R.string.worker_my_listings), style = MaterialTheme.typography.titleMedium)
                             Text(stringResource(R.string.worker_management_private_notice),
@@ -737,6 +750,43 @@ internal fun WorkerDashboard(
                                 Text(stringResource(R.string.worker_refresh_listings))
                             }
                             if (ownListings.isNotEmpty()) {
+                                JodloSearchField(
+                                    value=ownListQuery,
+                                    onValueChange={
+                                        if (it.codePointCount(0,it.length)<=64) ownListQuery=it
+                                    },
+                                    label={Text(stringResource(R.string.worker_own_find))},
+                                    modifier=Modifier.fillMaxWidth(),
+                                )
+                                Row(horizontalArrangement=Arrangement.spacedBy(JodloSizes.SmallGap)) {
+                                    JodloChip(selected=ownListGroup==OwnServiceLocalGroup.ALL,
+                                        onClick={ownListGroup=OwnServiceLocalGroup.ALL},
+                                        label={Text(stringResource(R.string.worker_own_all))})
+                                    JodloChip(
+                                        selected=ownListGroup==OwnServiceLocalGroup.OWNER_READ_VISIBLE,
+                                        onClick={ownListGroup=OwnServiceLocalGroup.OWNER_READ_VISIBLE},
+                                        label={Text(stringResource(R.string.worker_own_owner_visible))})
+                                }
+                                Row(horizontalArrangement=Arrangement.spacedBy(JodloSizes.SmallGap)) {
+                                    JodloChip(selected=ownListGroup==OwnServiceLocalGroup.PAUSED,
+                                        onClick={ownListGroup=OwnServiceLocalGroup.PAUSED},
+                                        label={Text(stringResource(R.string.worker_own_paused))})
+                                    JodloChip(
+                                        selected=ownListGroup==OwnServiceLocalGroup.PUBLISHED_NOT_VISIBLE,
+                                        onClick={ownListGroup=OwnServiceLocalGroup.PUBLISHED_NOT_VISIBLE},
+                                        label={Text(stringResource(R.string.worker_own_published_hidden))})
+                                }
+                                Text(stringResource(R.string.worker_own_local_count,
+                                    localOwn.size,ownListings.size),
+                                    style=MaterialTheme.typography.bodySmall)
+                                Text(stringResource(R.string.worker_own_local_scope),
+                                    style=MaterialTheme.typography.bodySmall)
+                                if(ownerCursor!=null)
+                                    Text(stringResource(R.string.worker_own_load_more_scope),
+                                        style=MaterialTheme.typography.bodySmall)
+                                if(localOwn.isEmpty())
+                                    Text(stringResource(R.string.worker_own_local_empty),
+                                        style=MaterialTheme.typography.bodySmall)
                                 JodloTextAction(onClick = { loadApprovedNames() },
                                     enabled = !busy && !namesBusy) {
                                     Text(stringResource(R.string.category_label_lookup_action))
@@ -754,7 +804,7 @@ internal fun WorkerDashboard(
                                     color=MaterialTheme.colorScheme.error)
                             }
                         }
-                        items(ownListings, key = { "own-" + it.id }) { listing ->
+                        items(localOwn, key = { "own-" + it.id }) { listing ->
                             JodloCard(
                                 onClick = {
                                     if (!busy) {
