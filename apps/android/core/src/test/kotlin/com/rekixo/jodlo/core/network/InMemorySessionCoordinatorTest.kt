@@ -477,7 +477,53 @@ private fun testRevisionSnapshotAndSingleFlightCas() {
     check(session.snapshot()==LoginState.SignedIn(WorkerState.DRAFT))
 }
 
+private fun testOwnerAccountPrivatePresentationFence() {
+    val worker = FakeWorkers()
+    val coordinator=InMemorySessionCoordinator(worker,
+        RequestSender { error(503, "SERVICE_UNAVAILABLE") }) { 1_000L }
+    val ownerSummary=OwnAccountOverview(
+        "2026-11-04T00:00:00.000Z",false,null,0,0,0,1,false)
+    val success=SessionResult.Success(ownerSummary)
+    check(coordinator.accountPrivateReadMarker()==null)
+    check(AccountPrivateSummary.confirmed(null,null,success)==null)
+    check(coordinator.acceptIssuedSession(issued()) is ApiOutcome.Ok)
+    val ownerOne=coordinator.accountPrivateReadMarker()!!
+    val bound=AccountPrivateSummary.confirmed(ownerOne,ownerOne,success)!!
+    check(bound.forCurrent(ownerOne)==ownerSummary)
+    check(bound.forCurrent(null)==null)
+    check(!bound.toString().contains("2026-11-04"))
+    check(AccountPrivateSummary.confirmed(ownerOne,null,success)==null)
+    check(AccountPrivateSummary.confirmed(ownerOne,ownerOne,
+        SessionResult.Failed(SessionFailure.REMOTE_FAILURE))==null)
+    // Same public SignedIn shape, different owner: old data is not visible.
+    check(coordinator.acceptIssuedSession(issued(TOKEN_TWO)) is ApiOutcome.Ok)
+    val ownerTwo=coordinator.accountPrivateReadMarker()!!
+    check(ownerTwo!=ownerOne)
+    check(bound.forCurrent(ownerTwo)==null)
+    check(AccountPrivateSummary.confirmed(ownerOne,ownerTwo,success)==null)
+    // Worker writes invalidate an owner's previously observed facts.
+    check(coordinator.checkWorker()==SessionResult.Success(WorkerState.NO_DRAFT))
+    check(coordinator.optIn()==SessionResult.Success(WorkerState.DRAFT))
+    val afterOptIn=coordinator.accountPrivateReadMarker()!!
+    check(afterOptIn!=ownerTwo)
+    check(bound.forCurrent(afterOptIn)==null)
+    var sawBlockedDuringWrite=false
+    worker.beforePosting={
+        sawBlockedDuringWrite=true
+        check(coordinator.accountPrivateReadMarker()==null)
+        check(bound.forCurrent(coordinator.accountPrivateReadMarker())==null)
+    }
+    check(coordinator.publishExplicitCategory("plumber") is SessionResult.Success)
+    check(sawBlockedDuringWrite)
+    val afterPublish=coordinator.accountPrivateReadMarker()!!
+    check(afterPublish!=afterOptIn)
+    check(AccountPrivateSummary.confirmed(afterOptIn,afterPublish,success)==null)
+    check(coordinator.acceptIssuedSession(issued()) is ApiOutcome.Ok)
+    check(coordinator.accountPrivateReadMarker()!=afterPublish)
+}
+
 fun main() {
+    testOwnerAccountPrivatePresentationFence()
     testRevisionSnapshotAndSingleFlightCas()
     testExactSelectedServiceReadSessionIsolation()
     testOldProfileCannotUndoOptIn()

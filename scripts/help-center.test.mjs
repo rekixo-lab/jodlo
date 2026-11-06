@@ -90,3 +90,23 @@ test("Native Help routes to existing controls and localizations are complete", (
   assert.match(account, /JodloTextAction\(onClick = openHelp\)/);
   assert.doesNotMatch(screen, /Http|Repository|ContentResolver|SharedPreferences|ACTION_SEND|email|Uri\.|rememberSaveable/);
 });
+
+
+test("Account private summary and explicit file export use current owner/write epochs", () => {
+  const session = read("apps/android/core/src/main/kotlin/com/rekixo/jodlo/core/network/InMemorySessionCoordinator.kt");
+  const fence = read("apps/android/core/src/main/kotlin/com/rekixo/jodlo/core/network/AccountPrivateSummaryFence.kt");
+  assert.match(session, /fun accountPrivateReadMarker\(\): AccountPrivateReadMarker\?/);
+  assert.match(session, /if \(owner\.mutationInFlight\) null/);
+  assert.match(session, /AccountPrivateReadMarker\(generation, owner\.writeRevision\)/);
+  assert.match(fence, /requestedAt != current/);
+  assert.match(fence, /result !is SessionResult\.Success/);
+  assert.match(fence, /if \(markerNow == marker\) overview else null/);
+  assert.match(account, /AccountPrivateSummary\.confirmed\(requestedAt, current, result\)/);
+  assert.match(account, /overview\?\.forCurrent\(currentMarker\)/);
+  assert.match(account, /session\?\.accountPrivateReadMarker\(\) != marker/);
+  assert.match(account, /current == captured/);
+  assert.match(account, /Lifecycle\.Event\.ON_RESUME/);
+  assert.match(account, /pendingExport = null/);
+  assert.doesNotMatch(account, /rememberSaveable|Log\.|println\(|SharedPreferences|ACTION_SEND/);
+  for (const xml of [en, hi]) assert.match(xml, /name="account_session_changed"/);
+});

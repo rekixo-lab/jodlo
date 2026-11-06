@@ -375,4 +375,5 @@
     <string name="local_backup_hidden_limit">Hidden merge blocked: its result would exceed the 100-reference limit.</string>
     <string name="local_backup_saved_still_hidden">If you merge both lists, %1$d Saved references will still be hidden locally. They are not deleted and their public status remains unchecked.</string>
     <string name="local_backup_hidden_bytes">Hidden merge blocked: long reference IDs would exceed this phone’s 10 KiB private storage format. Existing Hidden references are unchanged.</string>
+    <string name="account_session_changed">The account session or Worker data changed. Older private information was cleared. Refresh the current account before exporting.</string>
 </resources>
