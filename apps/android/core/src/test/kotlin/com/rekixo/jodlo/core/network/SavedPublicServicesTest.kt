@@ -21,6 +21,12 @@ fun main() {
     check(LocalPublicReferenceFinder.saved(onlyLocal,"",oldestFirst=true)==
         sourceSnapshot.asReversed())
     check(LocalPublicReferenceFinder.saved(onlyLocal,"not-a-category").isEmpty())
+    // Public opaque IDs and approved labels may exceed the USER query limit.
+    val longId = "l".repeat(90) + "end"
+    check(LocalPublicReferenceFinder.saved(
+        listOf(PublicListing(longId,"plumber")),"end").single().id == longId)
+    check(LocalPublicReferenceFinder.saved(onlyLocal,"lastword",
+        approvedName={ "x".repeat(75) + "LastWord" }).size == onlyLocal.size)
     check(LocalPublicReferenceFinder.saved(onlyLocal,"x".repeat(65)).isEmpty())
     check(LocalPublicReferenceFinder.saved(onlyLocal,"plumber\n").isEmpty())
     check(onlyLocal==sourceSnapshot)
