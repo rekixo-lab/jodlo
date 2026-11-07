@@ -1,3 +1,17 @@
+## 2026-11-08 — Private call dispatch reservation
+
+The 2026-11-05 Worker software checkpoints remain recorded below. The latest independently verified baseline is in [Current State](CURRENT_STATE.md).
+
+**Done.** The server can claim one pending ring slot per receiver across listings. The claim checks the caller session, receiver reachability input, invitation deadline, the exact Worker consent revision, current listing visibility, the availability preference and both block directions. A slot expires with its invitation's ring deadline.
+
+**Evidence.** Local tests reject mismatched reachability, a different caller session, a late block, a held listing and an invitation from an earlier consent revision. They also verify that a second claim cannot use a busy slot and that a new invitation can replace an expired slot.
+
+**Pending.** A trusted reachability source, provider delivery and real-time call transitions are required before live use. The current slot covers pending rings. Accepted and connected calls still need a durable occupancy lifecycle.
+
+**Manual.** The production presence source, concurrency policy and provider onboarding remain pending. See [Manual Actions](MANUAL_ACTIONS.md).
+
+**Next action.** Connect trusted reachability and delivery acknowledgments to the private dispatch path.
+
 ## 2026-11-08 — Private invitation preparation and retry handling
 
 **Done.** The server resolves the caller from a current session and the recipient from the listing. One D1 batch creates a private invitation and reserves all three quota counters. It rechecks listing eligibility, explicit call consent, availability preference and bilateral blocks at write time. An identical retry returns the original invitation during the five-minute retry window without increasing any counter.

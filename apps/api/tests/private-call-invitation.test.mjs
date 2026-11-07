@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { issueSession } from "../src/modules/identity/sessions.ts";
+import { claimPrivateCallDispatch } from "../src/modules/interactions/private-call-dispatch.ts";
 import { preparePrivateCallInvitation, purgeExpiredPrivateInvitations } from "../src/modules/interactions/private-call-invitation.ts";
 import { openLocalDatabase } from "./helpers/local-db.mjs";
 
@@ -69,8 +70,48 @@ test("private invitation commits with quota, deduplicates retries and rolls back
     assert.equal((await prepare("first-attempt-key")).kind, "replay");
     assert.equal(rows(), 8);
     assert.deepEqual(counters(), [8, 8, 8]);
-    await purgeExpiredPrivateInvitations(adapter, now + 300_000);
+
+    const staleId = concurrent[0].invitationId;
+    const [freshId, otherFreshId] = db.prepare(
+      "SELECT id FROM private_call_invitations WHERE consent_revision=2 ORDER BY id LIMIT 2",
+    ).all().map(row => row.id);
+    const claim = (id, reachable = receiver, time = now, token = accessToken) =>
+      claimPrivateCallDispatch(adapter, token, id, reachable, time);
+    assert.equal(await claim(staleId), null, "consent OFF then ON invalidates old invitations");
+    assert.equal(await claim(freshId, null), null, "availability alone is not reachability");
+    assert.equal(await claim(freshId, caller), null);
+    const {accessToken:receiverToken} = await issueSession(adapter, receiver);
+    assert.equal(await claim(freshId, receiver, now, receiverToken), null);
+    for (const [blocker, blocked] of [[caller, receiver], [receiver, caller]]) {
+      db.prepare("INSERT INTO agora_account_blocks(blocker_account_id,blocked_account_id) VALUES(?,?)")
+        .run(blocker, blocked);
+      assert.equal(await claim(freshId), null, "a new block denies dispatch in either direction");
+      db.exec("DELETE FROM agora_account_blocks");
+    }
+    db.exec("UPDATE worker_listings SET report_hold=1");
+    assert.equal(await claim(freshId), null);
+    db.exec("UPDATE worker_listings SET report_hold=0");
+    const claims = await Promise.all([claim(freshId), claim(otherFreshId)]);
+    const granted = claims.filter(Boolean);
+    assert.equal(granted.length, 1);
+    assert.deepEqual(granted[0], {
+      invitationId:granted[0].invitationId, ringDeadlineMs:now + 90_000,
+    });
+    assert.equal(await claim(granted[0].invitationId), null, "duplicate claim cannot dispatch");
+    assert.equal(await claim(freshId, receiver, now + 90_000), null);
+    assert.deepEqual(counters(), [8, 8, 8], "dispatch does not reserve quota again");
+
+    db.exec("INSERT INTO accounts(id) VALUES ('second-caller')");
+    const {accessToken:secondToken} = await issueSession(adapter, "second-caller");
+    const next = await preparePrivateCallInvitation(adapter, secondToken, alternate,
+      "second-caller-attempt", now + 90_000);
+    assert.equal(next.kind, "created");
+    assert.deepEqual(await claim(next.invitationId, receiver, now + 90_000, secondToken), {
+      invitationId:next.invitationId, ringDeadlineMs:now + 180_000,
+    });
+    await purgeExpiredPrivateInvitations(adapter, now + 390_000);
     assert.equal(rows(), 0);
+    assert.equal(db.prepare("SELECT count(*) AS count FROM private_call_dispatch_slots").get().count, 0);
   } finally {
     db.close();
   }
