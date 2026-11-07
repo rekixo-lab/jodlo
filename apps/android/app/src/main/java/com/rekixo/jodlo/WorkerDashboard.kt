@@ -14,6 +14,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -22,8 +24,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.unit.dp
 import com.rekixo.jodlo.core.network.ApiOutcome
+import com.rekixo.jodlo.core.network.AccountPrivateReadMarker
 import com.rekixo.jodlo.core.network.ApprovedCategoryNameSnapshot
 import com.rekixo.jodlo.core.network.FailureKind
 import com.rekixo.jodlo.core.network.GuidedWorkerServiceActions
@@ -33,6 +38,7 @@ import com.rekixo.jodlo.core.network.InMemorySessionCoordinator
 import com.rekixo.jodlo.core.network.Language
 import com.rekixo.jodlo.core.network.LoginState
 import com.rekixo.jodlo.core.network.OwnListing
+import com.rekixo.jodlo.core.network.WorkerOwnerUiFence
 import com.rekixo.jodlo.core.network.OwnServiceLocalFilter
 import com.rekixo.jodlo.core.network.OwnServiceLocalGroup
 import com.rekixo.jodlo.core.network.OwnPublicationStatus
@@ -81,7 +87,19 @@ internal fun WorkerDashboard(
     var login by remember(session) { mutableStateOf(session?.snapshot() ?: LoginState.SignedOut) }
     var busy by remember(session) { mutableStateOf(false) }
     var message by remember(session) { mutableIntStateOf(0) }
+    // Owner rows are strictly scoped to the session AND write revision at
+    // their last verified private read. Other owners must never inherit them.
     var ownListings by remember(session) { mutableStateOf<List<OwnListing>>(emptyList()) }
+    var ownerRowsMarker by remember(session) {
+        mutableStateOf<AccountPrivateReadMarker?>(null)
+    }
+    var observedAccountEpoch by remember(session) {
+        mutableStateOf(session?.accountExportSessionMarker())
+    }
+    val currentOwnerMarker = session?.accountPrivateReadMarker()
+    val displayedOwnListings = WorkerOwnerUiFence.visibleRows(
+        ownerRowsMarker, currentOwnerMarker, ownListings,
+    )
     // Loaded owner-row view only; no owner IDs, query or filter sent to API.
     var ownListQuery by remember(session) { mutableStateOf("") }
     var ownListGroup by remember(session) { mutableStateOf(OwnServiceLocalGroup.ALL) }
@@ -108,11 +126,13 @@ internal fun WorkerDashboard(
     var approvedNames by remember(session) {
         mutableStateOf<ApprovedCategoryNameSnapshot?>(null)
     }
-    var approvedNamesMarker by remember(session) { mutableStateOf<Long?>(null) }
+    var approvedNamesMarker by remember(session) {
+        mutableStateOf<AccountPrivateReadMarker?>(null)
+    }
     var namesBusy by remember(session) { mutableStateOf(false) }
     var namesFailed by remember(session) { mutableStateOf(false) }
     var namesRevision by remember(session) { mutableIntStateOf(0) }
-    val ownerCategoryIds = ownListings.map { it.categoryId }.distinct()
+    val ownerCategoryIds = displayedOwnListings.map { it.categoryId }.distinct()
         .take(ApprovedCategoryNameSnapshot.MAX_IDS)
 
     var publicPreview by remember(session) {
@@ -120,7 +140,7 @@ internal fun WorkerDashboard(
     }
     var previewRevision by remember(session) { mutableIntStateOf(0) }
 
-    LaunchedEffect(ownListings, categoryLanguage, session) {
+    LaunchedEffect(displayedOwnListings, ownerRowsMarker, categoryLanguage, session) {
         namesRevision++
         approvedNames = null
         approvedNamesMarker = null
@@ -136,7 +156,10 @@ internal fun WorkerDashboard(
 
     val signedIn = login as? LoginState.SignedIn
     val uncertain = writeState is WorkerWriteState.NeedsReview
-    val canWrite = signedIn?.worker == WorkerState.DRAFT && !busy && !uncertain
+    val accountEpochCurrent = observedAccountEpoch == session?.accountExportSessionMarker()
+    val canWrite = signedIn?.worker == WorkerState.DRAFT &&
+        (session?.snapshot() as? LoginState.SignedIn)?.worker == WorkerState.DRAFT &&
+        accountEpochCurrent && !busy && !uncertain
 
     fun clearExactObservation() {
         exactObservationRevision++
@@ -153,7 +176,7 @@ internal fun WorkerDashboard(
 
     fun loadApprovedNames() {
         val reader=catalog ?: return
-        val accountMarker=session?.accountExportSessionMarker() ?: return
+        val accountMarker=session?.accountPrivateReadMarker() ?: return
         val ids=ownerCategoryIds
         if(ids.isEmpty() || namesBusy || busy || uncertain) return
         val lang=categoryLanguage
@@ -181,7 +204,7 @@ internal fun WorkerDashboard(
                 }
             }
             if(namesRevision!=generation ||
-                session?.accountExportSessionMarker()!=accountMarker) return@launch
+                session?.accountPrivateReadMarker()!=accountMarker) return@launch
             namesBusy=false
             when(result) {
                 is ApiOutcome.Failed -> namesFailed=true
@@ -195,7 +218,8 @@ internal fun WorkerDashboard(
     }
 
     fun nameForOwnCategory(categoryId:String): String? =
-        if(approvedNamesMarker==session?.accountExportSessionMarker())
+        if(approvedNamesMarker!=null &&
+            approvedNamesMarker==session?.accountPrivateReadMarker())
             approvedNames?.approvedName(categoryId,categoryLanguage,ownerCategoryIds)
         else null
 
@@ -214,23 +238,40 @@ internal fun WorkerDashboard(
     }
 
     fun updateSession() {
+        val nextEpoch=session?.accountExportSessionMarker()
+        val changedActor=nextEpoch!=observedAccountEpoch
+        observedAccountEpoch=nextEpoch
         login = session?.snapshot() ?: LoginState.SignedOut
         writeState = writes?.snapshot()?.state ?: WorkerWriteState.Idle
-        if (login is LoginState.SignedOut) {
+        val staleOwnerRows=ownerRowsMarker!=null &&
+            ownerRowsMarker!=session?.accountPrivateReadMarker()
+        if (changedActor || login is LoginState.SignedOut || staleOwnerRows) {
             ownListQuery = ""
             ownListGroup = OwnServiceLocalGroup.ALL
             ownListings = emptyList()
+            ownerRowsMarker = null
             ownerCursor = null
             clearApprovedNames()
             clearExactObservation()
             selectedListing = null
-            clearExactObservation()
             previewRevision++
             publicPreview = WorkerCustomerServicePreview.unchecked()
             guided = guided.reset()
             categoryEdit = categoryEdit.reset()
             clearCategoryResults()
         }
+    }
+
+    // Account changes on another screen, document-picker return or an
+    // expired in-memory session cannot leave stale Worker data displayed.
+    // ON_RESUME is local only; no background poll, HTTP or auto-write.
+    val onResume by rememberUpdatedState(newValue = { updateSession() })
+    DisposableEffect(activity, session) {
+        val observer=LifecycleEventObserver { _, event ->
+            if(event==Lifecycle.Event.ON_RESUME) onResume()
+        }
+        activity.lifecycle.addObserver(observer)
+        onDispose { activity.lifecycle.removeObserver(observer) }
     }
 
     fun checkedAction(action: () -> SessionResult<*>, successMessage: Int = 0) {
@@ -251,8 +292,16 @@ internal fun WorkerDashboard(
     }
 
     fun loadOwnPage(after: String? = null) {
-        if (session == null || busy || uncertain ||
+        if (session == null || busy || uncertain || !accountEpochCurrent ||
             (session.snapshot() as? LoginState.SignedIn)?.worker != WorkerState.DRAFT) return
+        val accountMarker = session.accountPrivateReadMarker() ?: return
+        if (after!=null && (after!=ownerCursor || ownerRowsMarker!=accountMarker)) return
+        if (after==null) {
+            ownListings=emptyList()
+            ownerRowsMarker=null
+            ownerCursor=null
+            selectedListing=null
+        }
         busy = true
         message = 0
         previewRevision++
@@ -261,19 +310,19 @@ internal fun WorkerDashboard(
         clearApprovedNames()
         guided = guided.cancelUnpublish().cancelResume()
         categoryEdit = categoryEdit.reset()
-        val accountMarker = session.accountExportSessionMarker()
         scope.launch {
             val reply = try {
                 withContext(Dispatchers.IO) { session.pageManagedOwnListings(20, after) }
             } catch (_: Exception) { null }
             busy = false
             updateSession()
-            if (accountMarker == null ||
-                session.accountExportSessionMarker() != accountMarker) return@launch
+            if (session.accountPrivateReadMarker() != accountMarker ||
+                observedAccountEpoch != accountMarker.sessionGeneration) return@launch
             when (reply) {
                 is SessionResult.Success -> {
                     ownListings = if (after == null) reply.value.listings
-                        else (ownListings + reply.value.listings).distinctBy { it.id }
+                        else (displayedOwnListings + reply.value.listings).distinctBy { it.id }
+                    ownerRowsMarker=accountMarker
                     ownerCursor = reply.value.nextCursor
                     if(selectedListing != null &&
                         ownListings.none { it.id == selectedListing }) {
@@ -304,7 +353,7 @@ internal fun WorkerDashboard(
             return
         }
         val language = categoryLanguage
-        val accountMarker = session?.accountExportSessionMarker()
+        val accountMarker = session?.accountPrivateReadMarker() ?: return
         val pageGeneration = ++categoryPageGeneration
         invalidCategoryQuery = false
         busy = true
@@ -340,8 +389,7 @@ internal fun WorkerDashboard(
             } catch (_: Exception) { null }
             busy = false
             if (pageGeneration != categoryPageGeneration ||
-                accountMarker == null ||
-                session?.accountExportSessionMarker() != accountMarker) return@launch
+                session?.accountPrivateReadMarker() != accountMarker) return@launch
             categoryLoaded = true
             if (page == null) {
                 categoryFailed = true
@@ -366,6 +414,7 @@ internal fun WorkerDashboard(
             }
             updateSession()
             ownListings = emptyList()
+            ownerRowsMarker = null
             ownerCursor = null
             clearApprovedNames()
             selectedListing = null
@@ -379,11 +428,15 @@ internal fun WorkerDashboard(
             // An uncertain POST/DELETE is never retried or marked committed.
             if (writeState is WorkerWriteState.Confirmed &&
                 login is LoginState.SignedIn && session != null) {
+                val freshMarker=session.accountPrivateReadMarker()
                 val fresh = try {
                     withContext(Dispatchers.IO) { session.pageManagedOwnListings(20) }
                 } catch (_: Exception) { null }
-                if (fresh is SessionResult.Success) {
+                if (fresh is SessionResult.Success && freshMarker!=null &&
+                    freshMarker==session.accountPrivateReadMarker() &&
+                    observedAccountEpoch==freshMarker.sessionGeneration) {
                     ownListings = fresh.value.listings
+                    ownerRowsMarker = freshMarker
                     ownerCursor = fresh.value.nextCursor
                 }
             }
@@ -407,8 +460,10 @@ internal fun WorkerDashboard(
      */
     fun beginVersionedCategoryEdit() {
         val active = session ?: return
-        val original = ownListings.firstOrNull { it.id == selectedListing } ?: return
+        val original = displayedOwnListings.firstOrNull { it.id == selectedListing } ?: return
         val actor = active.accountExportSessionMarker() ?: return
+        val readMarker = active.accountPrivateReadMarker() ?: return
+        if(ownerRowsMarker != readMarker) return
         if (busy || uncertain ||
             (active.snapshot() as? LoginState.SignedIn)?.worker != WorkerState.DRAFT) return
         val requestRevision=++exactObservationRevision
@@ -433,6 +488,8 @@ internal fun WorkerDashboard(
             busy=false
             if (requestRevision != exactObservationRevision ||
                 active.accountExportSessionMarker() != actor ||
+                active.accountPrivateReadMarker()!=readMarker ||
+                ownerRowsMarker!=readMarker ||
                 (active.snapshot() as? LoginState.SignedIn)?.worker != WorkerState.DRAFT ||
                 selectedListing != original.id ||
                 ownListings.firstOrNull { it.id == original.id } != original ||
@@ -473,8 +530,9 @@ internal fun WorkerDashboard(
      */
     fun refreshSelectedService() {
         val liveSession = session ?: return
-        val chosen = ownListings.firstOrNull { it.id == selectedListing } ?: return
-        val actor = liveSession.accountExportSessionMarker() ?: return
+        val chosen = displayedOwnListings.firstOrNull { it.id == selectedListing } ?: return
+        val actor = liveSession.accountPrivateReadMarker() ?: return
+        if(ownerRowsMarker != actor) return
         if (busy || uncertain ||
             (liveSession.snapshot() as? LoginState.SignedIn)?.worker != WorkerState.DRAFT) return
         val callRevision = ++exactObservationRevision
@@ -497,7 +555,8 @@ internal fun WorkerDashboard(
             }
             busy = false
             if (exactObservationRevision != callRevision ||
-                liveSession.accountExportSessionMarker() != actor ||
+                liveSession.accountPrivateReadMarker() != actor ||
+                ownerRowsMarker!=actor ||
                 (liveSession.snapshot() as? LoginState.SignedIn)?.worker != WorkerState.DRAFT ||
                 selectedListing != chosen.id ||
                 ownListings.firstOrNull { it.id == chosen.id } != chosen ||
@@ -531,9 +590,10 @@ internal fun WorkerDashboard(
      * can never certify an older public view.
      */
     fun checkPublicPreview() {
-        val chosen=ownListings.firstOrNull { it.id==selectedListing } ?: return
+        val chosen=displayedOwnListings.firstOrNull { it.id==selectedListing } ?: return
         val activeSession=session ?: return
-        val actor=activeSession.accountExportSessionMarker() ?: return
+        val actor=activeSession.accountPrivateReadMarker() ?: return
+        if(ownerRowsMarker!=actor) return
         val reader=catalog ?: return
         if(busy || uncertain ||
             (activeSession.snapshot() as? LoginState.SignedIn)?.worker!=WorkerState.DRAFT) return
@@ -555,7 +615,8 @@ internal fun WorkerDashboard(
                 }
             busy=false
             if(generation!=previewRevision ||
-                activeSession.accountExportSessionMarker()!=actor ||
+                activeSession.accountPrivateReadMarker()!=actor ||
+                ownerRowsMarker!=actor ||
                 (activeSession.snapshot() as? LoginState.SignedIn)?.worker!=WorkerState.DRAFT ||
                 selectedListing!=chosen.id || categoryLanguage!=lang ||
                 ownListings.firstOrNull{it.id==chosen.id}!=chosen) return@launch
@@ -572,7 +633,8 @@ internal fun WorkerDashboard(
         }
         if (session == null || writes == null || catalog == null) {
             item { Text(stringResource(R.string.no_api_origin), color = MaterialTheme.colorScheme.error) }
-        } else if (login is LoginState.SignedOut) {
+        } else if (login is LoginState.SignedOut ||
+            session.snapshot() is LoginState.SignedOut) {
             item { Text(stringResource(R.string.worker_login_explainer)) }
             if (BuildConfig.GOOGLE_WEB_CLIENT_ID.isBlank()) {
                 item { Text(stringResource(R.string.google_setup_required)) }
@@ -599,6 +661,14 @@ internal fun WorkerDashboard(
                     }, enabled = !busy) {
                         Text(stringResource(R.string.google_sign_in))
                     }
+                }
+            }
+        } else if (!accountEpochCurrent) {
+            item {
+                Text(stringResource(R.string.worker_private_session_changed),
+                    color=MaterialTheme.colorScheme.error)
+                JodloTextAction(onClick={updateSession()},enabled=!busy) {
+                    Text(stringResource(R.string.worker_refresh_account_session))
                 }
             }
         } else {
@@ -660,10 +730,13 @@ internal fun WorkerDashboard(
                                 is WorkerExactObservation.Current -> {
                                     Text(stringResource(R.string.worker_uncertain_exact_category,
                                         exact.categoryId))
-                                    Text(stringResource(if(exact.publicationStatus ==
-                                        OwnPublicationStatus.PUBLISHED)
-                                        R.string.worker_management_published
-                                        else R.string.worker_management_paused))
+                                    Text(stringResource(when(exact.publicationStatus) {
+                                        OwnPublicationStatus.PUBLISHED ->
+                                            R.string.worker_management_published
+                                        OwnPublicationStatus.UNPUBLISHED ->
+                                            R.string.worker_management_paused
+                                        null -> R.string.worker_management_unknown
+                                    }))
                                     Text(stringResource(if(exact.visible)
                                         R.string.worker_visible else R.string.worker_not_visible))
                                 }
@@ -740,7 +813,7 @@ internal fun WorkerDashboard(
                         // rows only. It must not hide the selected management
                         // controls nor imply current Customer public visibility.
                         val localOwn = OwnServiceLocalFilter.apply(
-                            ownListings, ownListQuery, ownListGroup,
+                            displayedOwnListings, ownListQuery, ownListGroup,
                         ) { categoryId -> nameForOwnCategory(categoryId) }
                         item {
                             Text(stringResource(R.string.worker_my_listings), style = MaterialTheme.typography.titleMedium)
@@ -749,7 +822,7 @@ internal fun WorkerDashboard(
                             JodloTextAction(onClick = { loadOwnPage() }, enabled = !busy) {
                                 Text(stringResource(R.string.worker_refresh_listings))
                             }
-                            if (ownListings.isNotEmpty()) {
+                            if (displayedOwnListings.isNotEmpty()) {
                                 JodloSearchField(
                                     value=ownListQuery,
                                     onValueChange={
@@ -781,7 +854,7 @@ internal fun WorkerDashboard(
                                         label={Text(stringResource(R.string.worker_own_published_hidden))})
                                 }
                                 Text(stringResource(R.string.worker_own_local_count,
-                                    localOwn.size,ownListings.size),
+                                    localOwn.size,displayedOwnListings.size),
                                     style=MaterialTheme.typography.bodySmall)
                                 Text(stringResource(R.string.worker_own_local_scope),
                                     style=MaterialTheme.typography.bodySmall)
@@ -798,7 +871,7 @@ internal fun WorkerDashboard(
                                 Text(stringResource(R.string.category_label_lookup_privacy),
                                     style = MaterialTheme.typography.bodySmall)
                                 if (ownerCategoryIds.size <
-                                    ownListings.map { it.categoryId }.distinct().size) {
+                                    displayedOwnListings.map { it.categoryId }.distinct().size) {
                                     Text(stringResource(R.string.category_label_lookup_limited),
                                         style = MaterialTheme.typography.bodySmall)
                                 }
@@ -829,10 +902,13 @@ internal fun WorkerDashboard(
                                         style=MaterialTheme.typography.titleMedium)
                                     Text(stringResource(R.string.listing_reference, listing.id))
                                     Text(stringResource(R.string.worker_listing_category, listing.categoryId))
-                                    Text(stringResource(if (listing.publicationStatus ==
-                                        OwnPublicationStatus.UNPUBLISHED)
-                                        R.string.worker_management_paused
-                                        else R.string.worker_management_published))
+                                    Text(stringResource(when(listing.publicationStatus) {
+                                        OwnPublicationStatus.PUBLISHED ->
+                                            R.string.worker_management_published
+                                        OwnPublicationStatus.UNPUBLISHED ->
+                                            R.string.worker_management_paused
+                                        null -> R.string.worker_management_unknown
+                                    }))
                                     Text(stringResource(if (listing.visible)
                                         R.string.worker_visible else R.string.worker_not_visible))
                                     if (listing.publicationStatus == OwnPublicationStatus.PUBLISHED &&
@@ -850,7 +926,9 @@ internal fun WorkerDashboard(
                                 Text(stringResource(R.string.worker_load_more))
                             }
                         }
-                        if (selectedListing != null) item {
+                        if (selectedListing != null && displayedOwnListings.any {
+                            it.id == selectedListing
+                        }) item {
                             JodloCard(modifier = Modifier.fillMaxWidth()) {
                                 Column(Modifier.padding(JodloSizes.CardPadding),
                                     verticalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
@@ -903,7 +981,7 @@ internal fun WorkerDashboard(
                                                 style=MaterialTheme.typography.titleMedium)
                                             Text(stringResource(
                                                 R.string.worker_customer_preview_approved_label))
-                                            val row=ownListings.firstOrNull{it.id==selectedListing}
+                                            val row=displayedOwnListings.firstOrNull{it.id==selectedListing}
                                             if(row!=null){
                                                 Text(stringResource(R.string.listing_reference,row.id))
                                                 Text(stringResource(R.string.worker_listing_category,row.categoryId))
@@ -923,7 +1001,7 @@ internal fun WorkerDashboard(
                                     }
                                     JodloTextAction(
                                         onClick = {
-                                            val row = ownListings.firstOrNull {
+                                            val row = displayedOwnListings.firstOrNull {
                                                 it.id == selectedListing
                                             } ?: return@JodloTextAction
                                             beginVersionedCategoryEdit()
@@ -937,7 +1015,7 @@ internal fun WorkerDashboard(
                                     // Reactivation is never inferred here:
                                     // only an exact paused CAS on the server
                                     // can succeed.
-                                    val currentOwnRow = ownListings.firstOrNull {
+                                    val currentOwnRow = displayedOwnListings.firstOrNull {
                                         it.id == selectedListing
                                     }
                                     if (currentOwnRow?.publicationStatus == OwnPublicationStatus.PUBLISHED) {
@@ -945,7 +1023,7 @@ internal fun WorkerDashboard(
                                             JodloTextAction(
                                                 onClick = {
                                                     guided = guided.cancelResume().reviewUnpublish(
-                                                        currentOwnRow, ownListings,
+                                                        currentOwnRow, displayedOwnListings,
                                                         session?.accountExportSessionMarker(),
                                                     )
                                                 }, enabled = canWrite,
@@ -965,13 +1043,13 @@ internal fun WorkerDashboard(
                                                 JodloButton(onClick = {
                                                     val id = guided.unpublishConfirmed(
                                                         session?.accountExportSessionMarker(),
-                                                        ownListings,
+                                                        displayedOwnListings,
                                                     ) ?: return@JodloButton
                                                     mutate { writes.unpublish(id) }
                                                 }, enabled = canWrite &&
                                                     guided.unpublishConfirmed(
                                                         session?.accountExportSessionMarker(),
-                                                        ownListings,
+                                                        displayedOwnListings,
                                                     ) != null) {
                                                     Text(stringResource(R.string.worker_unpublish_selected))
                                                 }
@@ -981,7 +1059,7 @@ internal fun WorkerDashboard(
                                         if (guided.pendingResume?.id != currentOwnRow.id) {
                                             JodloTextAction(onClick = {
                                                 guided = guided.cancelUnpublish().beginResume(
-                                                    currentOwnRow, ownListings,
+                                                    currentOwnRow, displayedOwnListings,
                                                     session?.accountExportSessionMarker(),
                                                 )
                                                 categoryEdit = categoryEdit.reset()
@@ -1008,7 +1086,7 @@ internal fun WorkerDashboard(
                                                 JodloButton(onClick = {
                                                     val command = guided.resumeConfirmed(
                                                         session?.accountExportSessionMarker(),
-                                                        ownListings,
+                                                        displayedOwnListings,
                                                     ) ?: return@JodloButton
                                                     mutate { writes.resumeOwnListing(
                                                         command.listingId,
@@ -1017,7 +1095,7 @@ internal fun WorkerDashboard(
                                                 }, enabled = canWrite &&
                                                     guided.resumeConfirmed(
                                                         session?.accountExportSessionMarker(),
-                                                        ownListings,
+                                                        displayedOwnListings,
                                                     ) != null) {
                                                     Text(stringResource(R.string.worker_resume_confirm))
                                                 }
@@ -1150,7 +1228,7 @@ internal fun WorkerDashboard(
                                             style = MaterialTheme.typography.titleSmall)
                                         Text(stringResource(R.string.worker_edit_choose_category))
                                     } else {
-                                        val alreadyOwned = ownListings.any {
+                                        val alreadyOwned = displayedOwnListings.any {
                                             it.id != categoryEdit.source?.id &&
                                                 it.categoryId == next.id
                                         }
@@ -1169,7 +1247,7 @@ internal fun WorkerDashboard(
                                                 JodloButton(onClick = {
                                                     categoryEdit = categoryEdit.reviewScope(
                                                         session?.accountExportSessionMarker(),
-                                                        categoryRows, ownListings)
+                                                        categoryRows, displayedOwnListings)
                                                 }, enabled = canWrite && !alreadyOwned) {
                                                     Text(stringResource(
                                                         R.string.worker_editor_review_scope))
@@ -1213,7 +1291,7 @@ internal fun WorkerDashboard(
                                                 }
                                                 JodloButton(onClick = {
                                                     val command = categoryEdit.confirmedVersioned(
-                                                        ownListings, categoryRows,
+                                                        displayedOwnListings, categoryRows,
                                                         session?.accountExportSessionMarker(),
                                                     ) ?: return@JodloButton
                                                     mutate {
@@ -1226,7 +1304,7 @@ internal fun WorkerDashboard(
                                                     }
                                                 }, enabled = canWrite &&
                                                     !alreadyOwned && categoryEdit.confirmedVersioned(
-                                                        ownListings, categoryRows,
+                                                        displayedOwnListings, categoryRows,
                                                         session?.accountExportSessionMarker(),
                                                     ) != null) {
                                                     Text(stringResource(
@@ -1251,7 +1329,7 @@ internal fun WorkerDashboard(
                                     Text(stringResource(R.string.worker_editor_step_choose),
                                         style = MaterialTheme.typography.titleMedium)
                                     Text(chosen.name, style = MaterialTheme.typography.titleMedium)
-                                    val knownDuplicate = ownListings.any {
+                                    val knownDuplicate = displayedOwnListings.any {
                                         it.categoryId == chosen.id
                                     }
                                     if (knownDuplicate) {
@@ -1266,7 +1344,7 @@ internal fun WorkerDashboard(
                                             JodloButton(onClick = {
                                                 guided = guided.reviewPublicationScope(
                                                     session?.accountExportSessionMarker(),
-                                                    categoryRows, ownListings)
+                                                    categoryRows, displayedOwnListings)
                                             }, enabled = canWrite && !knownDuplicate) {
                                                 Text(stringResource(
                                                     R.string.worker_editor_review_scope))
@@ -1305,13 +1383,13 @@ internal fun WorkerDashboard(
                                                 JodloButton(onClick = {
                                                     val id = guided.categoryConfirmedForPublish(
                                                         session?.accountExportSessionMarker(),
-                                                        categoryRows, ownListings,
+                                                        categoryRows, displayedOwnListings,
                                                     ) ?: return@JodloButton
                                                     mutate { writes.publishExplicitCategory(id) }
                                                 }, enabled = canWrite && !knownDuplicate &&
                                                     guided.categoryConfirmedForPublish(
                                                         session?.accountExportSessionMarker(),
-                                                        categoryRows, ownListings,
+                                                        categoryRows, displayedOwnListings,
                                                     ) != null) {
                                                     Text(stringResource(R.string.worker_publish_selected))
                                                 }

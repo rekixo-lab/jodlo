@@ -376,4 +376,7 @@
     <string name="local_backup_saved_still_hidden">दोनों सूचियाँ जोड़ने के बाद भी %1$d Saved पहचानें इस फ़ोन पर छिपी रहेंगी। वे मिटेंगी नहीं और उनकी वर्तमान सार्वजनिक स्थिति जाँची नहीं गई है।</string>
     <string name="local_backup_hidden_bytes">Hidden Merge रुका: लंबी सेवा पहचानें इस फ़ोन की निजी स्टोरेज 10 KiB सीमा पार कर देंगी। पहले छिपाई गई पहचानें नहीं बदलेंगी।</string>
     <string name="account_session_changed">खाते का सत्र या Worker डेटा बदल गया है। पुरानी निजी जानकारी सिर्फ इस स्क्रीन से हटाई गई है; खाते का डेटा नहीं मिटाया गया। Export से पहले वर्तमान खाते की जानकारी दोबारा जाँचें।</string>
+    <string name="worker_management_unknown">प्रकाशन स्थिति की पुष्टि नहीं हुई। सेवा प्रबंधन से पहले मेरी सेवाएँ फिर जाँचें।</string>
+    <string name="worker_private_session_changed">खाता या Worker डेटा बदल गया है। पुरानी निजी सेवा सूची अब नहीं दिखाई जा रही; कोई डेटा मिटाया नहीं गया।</string>
+    <string name="worker_refresh_account_session">वर्तमान खाते की स्थिति फिर जाँचें</string>
 </resources>
