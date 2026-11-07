@@ -5,7 +5,7 @@ import { sessionHash, validSessionToken } from "../identity/sessions.ts";
  * ADR-0014: the founder approved a distinct, revocable worker opt-in for
  * Agora Internet VOICE calls. No worker is callable by merely publishing.
  * This is a private preference, not online presence, incoming push consent,
- * a public endpoint, telephony, a call log or an RTC token grant.
+ * telephony, a call log or an RTC token grant.
  */
 export type WorkerAgoraCallPreference = Readonly<{
   enabled: boolean;
@@ -83,7 +83,7 @@ export async function readOwnWorkerAgoraCallPreference(
  * Callers must supply the EXACT current revision obtained from their own
  * authenticated read. After a successful toggle, previous versions fail.
  * A rejected write never returns a worker/account identifier or raw token.
- * This does NOT enable a real call/route/Agora SDK.
+ * This preference alone does not enable an Agora call.
  */
 export async function setOwnWorkerAgoraCallPreference(
   db: D1Database,

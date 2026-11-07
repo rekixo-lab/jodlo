@@ -91,6 +91,11 @@ data class CatalogSearchCursorPage(
 /** The backend never returns a verified role from worker opt-in. */
 data class WorkerDraft(val status: String)
 
+data class OwnCallPreference(val enabled: Boolean, val revision: Long)
+
+data class OwnContactBlock(val id: String, val categoryName: String?)
+data class OwnContactBlocks(val items: List<OwnContactBlock>, val nextCursor: String?)
+
 /** Own-only account overview. No account ID, Google subject, bearer or PII. */
 data class OwnAccountOverview(
     val createdAt: String,
@@ -682,6 +687,25 @@ object JodloReplyDecoder {
         data.required("blocked").bool()
     }
 
+    fun contactBlocks(reply: TransportReply): ApiOutcome<OwnContactBlocks> = decode(reply) { data ->
+        data.keysOnly(setOf("items", "nextCursor"))
+        val idPattern = Regex("[a-f0-9]{32}")
+        val raw = data.required("items") as? JsonArray ?: bad()
+        if (raw.size > 20) bad()
+        val items = raw.map { element ->
+            val row = element as? JsonObject ?: bad()
+            row.keysOnly(setOf("id", "categoryName"))
+            val id = row.required("id").str()
+            val name = row.optionalString("categoryName")
+            if (!idPattern.matches(id) || (name != null && (name.isBlank() || name.length > 240))) bad()
+            OwnContactBlock(id, name)
+        }
+        if (items.zipWithNext().any { (left, right) -> left.id >= right.id }) bad()
+        val nextCursor = data.optionalString("nextCursor")
+        if (nextCursor != null && (items.size != 20 || nextCursor != items.last().id)) bad()
+        OwnContactBlocks(items, nextCursor)
+    }
+
     fun accountErasureChallenge(reply: TransportReply): ApiOutcome<AccountErasureChallenge> =
         decode(reply) { data ->
             data.keysOnly(setOf("challenge", "nonce"))
@@ -697,6 +721,14 @@ object JodloReplyDecoder {
         data.keysOnly(setOf("erased"))
         if (!data.required("erased").bool()) bad()
         true
+    }
+
+    fun callPreference(reply: TransportReply): ApiOutcome<OwnCallPreference> = decode(reply) { data ->
+        data.keysOnly(setOf("enabled", "revision"))
+        val enabled = data.required("enabled").bool()
+        val revision = readRevision(data.required("revision"))
+        if (enabled && revision == 0L) bad()
+        OwnCallPreference(enabled, revision)
     }
 
     fun accountOverview(reply: TransportReply): ApiOutcome<OwnAccountOverview> =

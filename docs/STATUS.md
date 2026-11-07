@@ -1,3 +1,15 @@
+## 2026-11-08 — Private call preference and blocked contacts
+
+**Done.** A signed-in Worker can check and change the incoming-call preference from Account. New Workers start with it off, and a change based on an older revision is rejected. Account also lists a user's outgoing blocks and lets them remove a block even after the original listing is unpublished. Migration 0016 gives existing and new blocks private references, so removing an earlier block cannot remove a later block of the same contact.
+
+**Evidence.** Local API tests cover authentication, ownership, preference revisions, unpublished listings and stale block removal. All 69 API test files, the Android debug build, headless Kotlin checks, TypeScript, founder and design checks, and the Worker dry run passed locally.
+
+**Pending.** GitHub CI and physical-device acceptance remain pending. Applying migration 0016 and releasing these changes are still pending. Live Agora ringing, call history, FCM registration and billing require additional work.
+
+**Manual.** The founder selected 90 days for call history retention on 2026-11-08. Call admission and provider onboarding remain pending. See [Manual Actions](MANUAL_ACTIONS.md).
+
+**Next action.** Review the Account controls and run GitHub CI. Connect authenticated call admission to durable server state once the call data and admission policy are settled.
+
 ## 2026-11-05 — Unified Customer public Service cards (source-only; PR CI pending)
 
 Customer Browse, anonymous all-Service Feed and on-device Saved now share a bilingual **public Category / Listing reference** card. The headless evidence model distinguishes a stale/page/saved **reference** from a fresh same-ID, same-Category, same-language exact public Service detail **public when checked** result. Only the latter allows Save on configured HTTPS; neither implies Worker verification, rate, address or call availability. A wrong/stale detail cannot be promoted to a checked card. [Contract, tests and future field-level policy proposal](PUBLIC_SERVICE_CARDS_SAFE_SLICE_2026-11-05.md).

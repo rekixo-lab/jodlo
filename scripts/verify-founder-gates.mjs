@@ -19,7 +19,8 @@ const allowedRoutes = new Set([
   // This is NOT permission for public profile, account deletion, block or contact APIs.
   "/api/v1/me/overview", "/api/v1/me/data-export",
   // The authorized erasure route stays disabled without its release secret.
-  "/api/v1/me/account-erasure", "/api/v1/me/contact-block",
+  "/api/v1/me/account-erasure", "/api/v1/me/contact-block", "/api/v1/me/contact-blocks",
+  "/api/v1/me/call-preference",
   "/api/v1/me/service-area", "/api/v1/me/service-details", "/api/v1/moderation/service-details",
   "/api/v1/me/service-photo", "/api/v1/moderation/service-photo", "/api/v1/listings/photo",
   "/api/v1/me/service-report", "/api/v1/me/service-appeal", "/api/v1/moderation/service-cases",
@@ -93,7 +94,9 @@ export async function auditFounderGates(root = rootDefault) {
     if(!allowedRoutes.has(route)) errors.push("Unapproved API route: " + route + " (M-005/M-003)");
   for(const route of allowedRoutes)
     if(route!=="/api/v1/catalog/hierarchy" && route!=="/api/v1/me/account-erasure" &&
-       route!=="/api/v1/me/contact-block" && route!=="/api/v1/me/service-area" && route!=="/api/v1/me/service-details" &&
+       route!=="/api/v1/me/contact-block" && route!=="/api/v1/me/contact-blocks" &&
+       route!=="/api/v1/me/call-preference" &&
+       route!=="/api/v1/me/service-area" && route!=="/api/v1/me/service-details" &&
        route!=="/api/v1/moderation/service-details" && route!=="/api/v1/me/service-photo" &&
        route!=="/api/v1/moderation/service-photo" && route!=="/api/v1/listings/photo" &&
        route!=="/api/v1/me/service-report" && route!=="/api/v1/me/service-appeal" &&
@@ -196,7 +199,10 @@ export async function auditFounderGates(root = rootDefault) {
     if(/\b(?:ALTER|DROP)\s+TABLE\s+worker_agora_call_preferences\b/i.test(content))
       errors.push("Unauthorized Agora preference schema mutation: "+name);
     for(const table of Object.keys(AGORA_SAFETY_SCHEMA)) {
-      if(new RegExp("\\b(?:ALTER|DROP)\\s+TABLE\\s+"+table+"\\b","i").test(content))
+      const mutations = name === "0016_contact_block_management.sql" && table === "agora_account_blocks"
+        ? content.replace(/^ALTER TABLE agora_account_blocks ADD COLUMN management_id TEXT;$/m, "")
+        : content;
+      if(new RegExp("\\b(?:ALTER|DROP)\\s+TABLE\\s+"+table+"\\b","i").test(mutations))
         errors.push("Unauthorized private Agora safety schema mutation: "+table);
     }
     if(/\b(?:ALTER|DROP)\s+TABLE\s+notification_delivery_dead_letters\b/i.test(content))
@@ -243,6 +249,8 @@ export async function auditFounderGates(root = rootDefault) {
   // Keep baseline synthetic fixture without 0011 valid; if it is introduced,
   // the versioned read+CAS route and the safe trigger are both mandatory.
   const hasServiceCases = migrations.includes("0015_service_reports_and_appeals.sql");
+  if (migrations.includes("0016_contact_block_management.sql") !== routes.includes("/api/v1/me/contact-blocks"))
+    errors.push("Private contact block management requires both its route and migration");
   if (hasServiceCases !== routes.includes("/api/v1/me/service-report") ||
       hasServiceCases !== routes.includes("/api/v1/me/service-appeal") ||
       hasServiceCases !== routes.includes("/api/v1/moderation/service-cases") ||

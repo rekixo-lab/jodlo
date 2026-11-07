@@ -34,7 +34,7 @@ async function fixture() {
       if (body) headers["Content-Type"] = "application/json";
       const response = await worker.fetch(new Request("https://jodlo.test/api/v1/" + path, {
         method, headers, body: body && JSON.stringify(body),
-      }), {DB: adapter, SERVICE_MODERATION_KEY: moderationKey});
+      }), {DB: adapter, SERVICE_MODERATION_KEY: moderationKey, CONTACT_BLOCKS_ENABLED: "1"});
       const payload = await response.json();
       return {status: response.status, data: payload.data, error: payload.error};
     }
@@ -44,6 +44,59 @@ async function fixture() {
     throw error;
   }
 }
+
+test("worker call preference starts off, checks ownership and rejects stale changes", async () => {
+  const f = await fixture();
+  try {
+    const path = "me/call-preference";
+    const owner = {bearer:f.ownerToken};
+    const customer = {bearer:f.customerToken};
+    const post = {method:"POST", ...owner};
+    assert.equal((await f.send(path)).status, 401);
+    assert.equal((await f.send(path, customer)).status, 404);
+    assert.deepEqual((await f.send(path, owner)).data, {enabled:false, revision:0});
+    assert.equal((await f.send(path + "?enabled=1&enabled=0&revision=0", post)).status, 400);
+    assert.equal((await f.send(path + "?enabled=1&revision=0", {method:"POST", ...customer})).status, 409);
+    assert.deepEqual((await f.send(path + "?enabled=1&revision=0", post)).data,
+      {enabled:true, revision:1});
+    assert.equal((await f.send(path + "?enabled=0&revision=0", post)).status, 409);
+    assert.deepEqual((await f.send(path + "?enabled=0&revision=1", post)).data,
+      {enabled:false, revision:2});
+    assert.deepEqual((await f.send(path, owner)).data, {enabled:false, revision:2});
+  } finally {
+    f.db.close();
+  }
+});
+
+test("blocked contacts are private and a stale removal cannot undo a new block", async () => {
+  const f = await fixture();
+  try {
+    const list = "me/contact-blocks?lang=en";
+    const block = "me/contact-block?listingId=" + f.service.id;
+    const customer = {bearer:f.customerToken};
+    const owner = {bearer:f.ownerToken};
+    assert.equal((await f.send(list)).status, 401);
+    assert.deepEqual((await f.send(list, customer)).data, {items:[], nextCursor:null});
+    assert.equal((await f.send(block, {method:"POST", ...customer})).status, 200);
+    const [first] = (await f.send(list, customer)).data.items;
+    assert.match(first.id, /^[a-f0-9]{32}$/);
+    assert.deepEqual(first, {id:first.id, categoryName:"Repair"});
+    assert.deepEqual((await f.send(list, owner)).data.items, []);
+    const remove = "me/contact-blocks?id=" + first.id;
+    assert.equal((await f.send(remove, {method:"DELETE", ...owner})).status, 404);
+    assert.equal((await f.send(remove, {method:"DELETE", ...customer})).status, 200);
+    assert.equal((await f.send(block, {method:"POST", ...customer})).status, 200);
+    const [second] = (await f.send(list, customer)).data.items;
+    assert.notEqual(first.id, second.id);
+    assert.equal((await f.send(remove, {method:"DELETE", ...customer})).status, 404);
+    f.db.prepare("UPDATE worker_listings SET status='unpublished' WHERE id=?").run(f.service.id);
+    assert.deepEqual((await f.send(list, customer)).data.items, [{id:second.id,categoryName:null}]);
+    assert.equal((await f.send("me/contact-blocks?id=" + second.id,
+      {method:"DELETE", ...customer})).status, 200);
+  } finally {
+    f.db.close();
+  }
+});
 
 test("city consent, private profile review, and reviewed photo reach only eligible public detail", async () => {
   const f = await fixture();

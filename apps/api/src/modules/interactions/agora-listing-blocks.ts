@@ -59,3 +59,37 @@ export async function changeOwnAgoraListingBlock(
     .bind(await sessionHash(bearer), Math.floor(Date.now() / 1000), listingId).run();
   return meta.changes === 1;
 }
+
+export function validBlockManagementId(value: unknown): value is string {
+  return typeof value === "string" && /^[a-f0-9]{32}$/.test(value);
+}
+
+const MANAGED_BLOCK_PAGE_SIZE = 20;
+
+export async function readOwnContactBlocks(db: D1Database, bearer: string, after: string, language: "en" | "hi") {
+  if (!validSessionToken(bearer) || (after !== "" && !validBlockManagementId(after))) return null;
+  const {results} = await db.prepare(
+    "SELECT b.management_id AS id, (SELECT CASE WHEN ?='hi' THEN COALESCE(c.name_hi,c.name_en) ELSE c.name_en END " +
+    "FROM worker_listings AS wl " +
+    "JOIN accounts AS a ON a.id=wl.worker_account_id " +
+    "JOIN worker_profiles AS wp ON wp.account_id=a.id JOIN categories AS c ON c.id=wl.category_id " +
+    "WHERE wl.worker_account_id=b.blocked_account_id AND " + PUBLIC_LISTING_ELIGIBILITY +
+    " ORDER BY wl.id LIMIT 1) AS categoryName " +
+    "FROM (" + CURRENT_ACTOR + ") AS actor " +
+    "LEFT JOIN agora_account_blocks AS b ON b.blocker_account_id=actor.id AND b.management_id>? " +
+    "ORDER BY b.management_id LIMIT ?",
+  ).bind(language, await sessionHash(bearer), Math.floor(Date.now() / 1000), after, MANAGED_BLOCK_PAGE_SIZE + 1)
+    .all<{id: string | null; categoryName: string | null}>();
+  if (!results.length) return null;
+  const items = results.filter((row): row is {id: string; categoryName: string | null} =>
+    validBlockManagementId(row.id)).slice(0, MANAGED_BLOCK_PAGE_SIZE);
+  return {items, nextCursor: results.length > MANAGED_BLOCK_PAGE_SIZE ? items.at(-1)?.id ?? null : null};
+}
+
+export async function removeOwnContactBlock(db: D1Database, bearer: string, id: string): Promise<boolean> {
+  if (!validSessionToken(bearer) || !validBlockManagementId(id)) return false;
+  const {meta} = await db.prepare(
+    "DELETE FROM agora_account_blocks WHERE blocker_account_id=(" + CURRENT_ACTOR + ") AND management_id=?",
+  ).bind(await sessionHash(bearer), Math.floor(Date.now() / 1000), id).run();
+  return meta.changes === 1;
+}

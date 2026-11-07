@@ -31,12 +31,15 @@ import com.rekixo.jodlo.core.network.AccountPrivateReadMarker
 import com.rekixo.jodlo.core.network.AccountPrivateSummary
 import com.rekixo.jodlo.core.network.LoginState
 import com.rekixo.jodlo.core.network.OwnAccountDataExport
+import com.rekixo.jodlo.core.network.OwnCallPreference
 import com.rekixo.jodlo.core.network.SessionResult
+import com.rekixo.jodlo.core.network.WorkerState
 import com.rekixo.jodlo.ui.theme.JodloButton
 import com.rekixo.jodlo.ui.theme.JodloCard
 import com.rekixo.jodlo.ui.theme.JodloSizes
 import com.rekixo.jodlo.ui.theme.JodloTextAction
 import java.nio.charset.StandardCharsets
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -328,12 +331,14 @@ internal fun AccountDashboard(
                         Text(stringResource(R.string.account_published_services, data.publishedServices))
                         Text(stringResource(R.string.account_visible_services, data.visibleServices))
                         Text(stringResource(R.string.account_active_sessions, data.activeSessions))
-                        Text(stringResource(if (data.receivesCalls)
-                            R.string.account_voice_opted_in else R.string.account_voice_opted_out),
-                            style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
+            if (session != null && ((login as? LoginState.SignedIn)?.worker == WorkerState.DRAFT ||
+                    confirmedOverview?.workerEnabled == true)) {
+                CallPreferenceControls(session, busy, ::refresh)
+            }
+            if (session != null) ContactBlockList(session, busy)
             Text(stringResource(R.string.account_export_privacy_notice),
                 style = MaterialTheme.typography.bodySmall)
             JodloButton(onClick = ::saveOwnData,
@@ -366,4 +371,67 @@ internal fun AccountDashboard(
         if (notice != 0) Text(stringResource(notice),
             style = MaterialTheme.typography.bodySmall)
     }
+}
+
+@Composable
+private fun CallPreferenceControls(
+    session: InMemorySessionCoordinator,
+    accountBusy: Boolean,
+    onChanged: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var checked by remember(session) {
+        mutableStateOf<Pair<AccountPrivateReadMarker, OwnCallPreference>?>(null)
+    }
+    var busy by remember(session) { mutableStateOf(false) }
+    var failed by remember(session) { mutableStateOf(false) }
+    val owner = session.accountPrivateReadMarker()
+    val preference = checked?.takeIf { it.first == owner }?.second
+
+    fun request(change: OwnCallPreference?) {
+        val captured = session.accountPrivateReadMarker() ?: return
+        if (busy || accountBusy || (change != null && checked != (captured to change))) return
+        checked = null
+        failed = false
+        busy = true
+        scope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    if (change == null) session.callPreference(captured)
+                    else session.changeCallPreference(captured, change)
+                }
+                val expected = if (change == null) captured
+                    else captured.copy(writeRevision = captured.writeRevision + 1)
+                if (result is SessionResult.Success && session.accountPrivateReadMarker() == expected) {
+                    checked = expected to result.value
+                    if (change != null) onChanged()
+                } else {
+                    failed = true
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                failed = true
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    val canRequest = owner != null && !busy && !accountBusy
+    if (preference != null) {
+        Text(stringResource(if (preference.enabled) R.string.account_voice_opted_in
+            else R.string.account_voice_opted_out), style = MaterialTheme.typography.bodySmall)
+        JodloButton(onClick = { request(preference) },
+            enabled = canRequest && preference.revision < 2147483647L) {
+            Text(stringResource(if (preference.enabled) R.string.account_voice_disable
+                else R.string.account_voice_enable))
+        }
+    } else {
+        JodloTextAction(onClick = { request(null) }, enabled = canRequest) {
+            Text(stringResource(R.string.account_voice_check))
+        }
+    }
+    if (failed) Text(stringResource(R.string.account_voice_failed),
+        color = MaterialTheme.colorScheme.error)
 }

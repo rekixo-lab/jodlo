@@ -8,7 +8,8 @@ import { clearOwnServiceDetails, parseServiceDetails, pendingServiceDetails, rea
 import { appealServiceCase, decideServiceCase, ownReportStatus, ownServiceAppealCase, reportService, serviceCaseEvidence, serviceCaseQueue, validAppealReason, validCaseDecision, validReportReason } from "../modules/moderation/service-cases.ts";
 import { changeOwnServiceArea, readOwnServiceArea, validServiceCity } from "../modules/workers/service-area.ts";
 import { optInAsWorker, ownWorkerDraft } from "../modules/workers/profile.ts";
-import { readOwnAgoraListingBlock, changeOwnAgoraListingBlock } from "../modules/interactions/agora-listing-blocks.ts";
+import { readOwnWorkerAgoraCallPreference, setOwnWorkerAgoraCallPreference } from "../modules/workers/agora-call-preference.ts";
+import { readOwnAgoraListingBlock, changeOwnAgoraListingBlock, readOwnContactBlocks, removeOwnContactBlock, validBlockManagementId } from "../modules/interactions/agora-listing-blocks.ts";
 import { prepareAccountErasure, eraseOwnD1Account } from "../modules/identity/account-erasure.ts";
 import { ownAccountOverview, exportOwnAccountData } from "../modules/identity/account-self-service.ts";
 import { validGoogleClientId, verifyGoogleIdToken } from "../modules/identity/google.ts";
@@ -213,6 +214,46 @@ export async function handleRequest(
   // The Finworkar account/dashboard behavior is reconstructed with JODLO's
   // own active-account D1 records. Both routes are private, read-only and
   // require a current server-issued session; neither accepts a client owner ID.
+  if (url.pathname === "/api/v1/me/contact-blocks") {
+    if (env.CONTACT_BLOCKS_ENABLED !== "1") {
+      return json({ok:false,error:{code:"NOT_FOUND",message:"Endpoint not found"}},404);
+    }
+    const method = request.method;
+    if (method !== "GET" && method !== "DELETE") {
+      return json({ok:false,error:{code:"METHOD_NOT_ALLOWED",message:"Method not allowed"}},405,
+        {Allow:"GET, DELETE"});
+    }
+    const params = url.searchParams;
+    const id = params.get("id");
+    const after = params.get("after");
+    const language = params.get("lang");
+    const validQuery = method === "GET"
+      ? (language === "en" || language === "hi") && params.size === (after === null ? 1 : 2)
+        && (after === null || validBlockManagementId(after))
+      : params.size === 1 && validBlockManagementId(id);
+    if (!validQuery || !(await hasEmptyBody(request))) {
+      return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid contact block input"}},400);
+    }
+    const token = bearerToken(request);
+    if (!validSessionToken(token)) {
+      return json({ok:false,error:{code:"UNAUTHORIZED",message:"Authentication required"}},401);
+    }
+    if (!env.DB) {
+      return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Contact safety unavailable"}},503);
+    }
+    try {
+      if (method === "GET") {
+        const page = await readOwnContactBlocks(env.DB, token, after ?? "", language === "hi" ? "hi" : "en");
+        return page ? json({ok:true,data:page})
+          : json({ok:false,error:{code:"UNAUTHORIZED",message:"Authentication required"}},401);
+      }
+      const removed = await removeOwnContactBlock(env.DB, token, id!);
+      return removed ? json({ok:true,data:{blocked:false}})
+        : json({ok:false,error:{code:"NOT_FOUND",message:"Contact block unavailable"}},404);
+    } catch {
+      return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Contact safety unavailable"}},503);
+    }
+  }
   if (url.pathname === "/api/v1/me/contact-block") {
     if (env.CONTACT_BLOCKS_ENABLED !== "1") {
       return json({ok:false,error:{code:"NOT_FOUND",message:"Endpoint not found"}},404);
@@ -594,6 +635,38 @@ export async function handleRequest(
     } catch {
       return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Service area unavailable"}},503);
     }
+  }
+  if (url.pathname === "/api/v1/me/call-preference") {
+    const method = request.method;
+    if (method !== "GET" && method !== "POST") {
+      return json({ok:false,error:{code:"METHOD_NOT_ALLOWED",message:"Method not allowed"}},405,
+        {Allow:"GET, POST"});
+    }
+    const params = url.searchParams;
+    const enabled = params.get("enabled");
+    const revision = params.get("revision");
+    const validQuery = method === "GET" ? !url.search :
+      params.size === 2 && (enabled === "0" || enabled === "1") &&
+      revision !== null && /^(?:0|[1-9][0-9]{0,9})$/.test(revision) &&
+      Number(revision) < 2147483647;
+    if (!validQuery || !(await hasEmptyBody(request))) {
+      return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid call preference input"}},400);
+    }
+    const token = bearerToken(request);
+    if (!validSessionToken(token)) {
+      return json({ok:false,error:{code:"UNAUTHORIZED",message:"Authentication required"}},401);
+    }
+    if (!env.DB) {
+      return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Call preference unavailable"}},503);
+    }
+    if (method === "GET") {
+      const preference = await readOwnWorkerAgoraCallPreference(env.DB, token);
+      return preference ? json({ok:true,data:preference})
+        : json({ok:false,error:{code:"NOT_FOUND",message:"Call preference unavailable"}},404);
+    }
+    const result = await setOwnWorkerAgoraCallPreference(env.DB, token, enabled === "1", Number(revision));
+    return result.kind === "updated" ? json({ok:true,data:result.preference})
+      : json({ok:false,error:{code:"CONFLICT",message:"Call preference changed or unavailable"}},409);
   }
   if (url.pathname === "/api/v1/me/worker-profile") {
     const allowed = "GET, POST";

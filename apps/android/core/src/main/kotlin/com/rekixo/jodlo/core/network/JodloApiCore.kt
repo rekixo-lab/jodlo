@@ -319,6 +319,20 @@ object JodloRoutes {
         return if (blocked) ApiCall.post(path, token) else ApiCall.delete(path, token)
     }
 
+    private val CONTACT_BLOCK_ID = Regex("[a-f0-9]{32}")
+
+    fun contactBlocks(token: String, language: Language, after: String?): ApiCall {
+        require(after == null || CONTACT_BLOCK_ID.matches(after))
+        val path = "/api/v1/me/contact-blocks?lang=${language.code}" +
+            (if (after == null) "" else "&after=$after")
+        return ApiCall.getOwned(path, token)
+    }
+
+    fun removeContactBlock(token: String, id: String): ApiCall {
+        require(CONTACT_BLOCK_ID.matches(id))
+        return ApiCall.delete("/api/v1/me/contact-blocks?id=$id", token)
+    }
+
     private const val ACCOUNT_ERASURE = "/api/v1/me/account-erasure"
     private val COMPACT_JWT = Regex("[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+")
 
@@ -334,6 +348,15 @@ object JodloRoutes {
     /** Private, current-account overview; no owner ID in path, query or body. */
     fun accountOverview(token: String): ApiCall =
         ApiCall.getOwned("/api/v1/me/overview", token)
+
+    fun callPreference(token: String): ApiCall =
+        ApiCall.getOwned("/api/v1/me/call-preference", token)
+
+    fun changeCallPreference(token: String, enabled: Boolean, revision: Long): ApiCall {
+        require(revision in 0 until 2147483647L)
+        val value = if (enabled) 1 else 0
+        return ApiCall.post("/api/v1/me/call-preference?enabled=$value&revision=$revision", token)
+    }
 
     /** Explicit owner data portability; carries bearer in header only.
      * The API response is private, and no export is fetched before a user action.

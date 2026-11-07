@@ -159,8 +159,10 @@ test("two-way block privacy: only the caller/worker may set their OWN direction"
     assert.equal(Object.isFrozen(facts),true);
     const rows=f.db.prepare("SELECT * FROM agora_account_blocks").all();
     assert.deepEqual(rows.map(x=>Object.keys(x).sort()),[
-      ["blocked_account_id","blocker_account_id"],
+      ["blocked_account_id","blocker_account_id","management_id"],
     ]);
+    assert.match(rows[0].management_id,/^[a-f0-9]{32}$/);
+    assert.equal(Object.hasOwn(facts,"managementId"),false);
     assert.equal(rows[0].blocker_account_id,OTHER);
     assert.equal(rows[0].blocked_account_id,CALLER);
     assert.deepEqual(await f.block(f.worker,WORKER),DENIED);

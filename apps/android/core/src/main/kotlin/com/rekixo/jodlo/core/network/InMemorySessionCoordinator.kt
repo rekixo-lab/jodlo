@@ -460,6 +460,30 @@ class InMemorySessionCoordinator(
         mutation = true, expectedOwner = owner,
     )
 
+    fun contactBlocks(
+        owner: AccountPrivateReadMarker, language: Language, after: String?,
+    ): SessionResult<OwnContactBlocks> = withSession(
+        call = { token -> performOnce(JodloRoutes.contactBlocks(token, language, after),
+            authSender::send, JodloReplyDecoder::contactBlocks) },
+        update = { reply, _ ->
+            if (reply is ApiOutcome.Ok && after != null && reply.value.items.any { it.id <= after })
+                SessionResult.Failed(SessionFailure.REMOTE_FAILURE, FailureKind.BAD_RESPONSE)
+            else outcome(reply)
+        },
+        consistentRead = true, expectedOwner = owner,
+    )
+
+    fun removeContactBlock(owner: AccountPrivateReadMarker, id: String): SessionResult<Boolean> = withSession(
+        call = { token -> performOnce(JodloRoutes.removeContactBlock(token, id),
+            authSender::send, JodloReplyDecoder::contactBlock) },
+        update = { reply, _ ->
+            if (reply is ApiOutcome.Ok && reply.value)
+                SessionResult.Failed(SessionFailure.REMOTE_FAILURE, FailureKind.BAD_RESPONSE)
+            else outcome(reply)
+        },
+        mutation = true, expectedOwner = owner,
+    )
+
     fun prepareAccountErasure(owner: AccountPrivateReadMarker): SessionResult<AccountErasureChallenge> =
         withSession(
             call = { token ->
@@ -488,6 +512,28 @@ class InMemorySessionCoordinator(
      * A response overtaken by logout, account replacement or a Worker write
      * cannot be accepted in the UI.
      */
+    fun callPreference(owner: AccountPrivateReadMarker): SessionResult<OwnCallPreference> = withSession(
+        call = { token -> performOnce(JodloRoutes.callPreference(token), authSender::send,
+            JodloReplyDecoder::callPreference) },
+        update = { reply, _ -> outcome(reply) },
+        consistentRead = true, expectedOwner = owner,
+    )
+
+    fun changeCallPreference(
+        owner: AccountPrivateReadMarker, preference: OwnCallPreference,
+    ): SessionResult<OwnCallPreference> = withSession(
+        call = { token -> performOnce(
+            JodloRoutes.changeCallPreference(token, !preference.enabled, preference.revision),
+            authSender::send, JodloReplyDecoder::callPreference) },
+        update = { reply, _ ->
+            if (reply is ApiOutcome.Ok &&
+                (reply.value.enabled == preference.enabled || reply.value.revision != preference.revision + 1))
+                SessionResult.Failed(SessionFailure.REMOTE_FAILURE, FailureKind.BAD_RESPONSE)
+            else outcome(reply)
+        },
+        mutation = true, expectedOwner = owner,
+    )
+
     fun accountOverview(
         cancellation: CancellationSignal? = null,
     ): SessionResult<OwnAccountOverview> = withSession(
