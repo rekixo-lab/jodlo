@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.CircularProgressIndicator
@@ -58,6 +59,7 @@ import com.rekixo.jodlo.core.network.SavedPublicServices
 import com.rekixo.jodlo.core.network.HiddenPublicServices
 import com.rekixo.jodlo.core.network.asRequestSender
 import com.rekixo.jodlo.ui.theme.JodloPalette
+import com.rekixo.jodlo.ui.theme.JodloBrandHeading
 import com.rekixo.jodlo.ui.theme.JodloTheme
 import com.rekixo.jodlo.ui.theme.JodloButton
 import com.rekixo.jodlo.ui.theme.JodloTextAction
@@ -188,7 +190,11 @@ private fun JodloApp(activity: ComponentActivity) {
     var homeCategory by remember { mutableStateOf<HomeCategorySelection?>(null) }
     var section by rememberSaveable { mutableStateOf("home") }
     var discoveryCity by remember { mutableStateOf<NearbyPilotCity?>(null) }
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    Column(
+        Modifier.fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .safeDrawingPadding(),
+    ) {
         Row(
             Modifier.fillMaxWidth()
                 .horizontalScroll(rememberScrollState())
@@ -768,10 +774,7 @@ private fun GuestDiscovery(
             verticalArrangement = Arrangement.spacedBy(JodloSizes.Gap),
         ) {
             item {
-                Text(
-                    stringResource(R.string.app_name),
-                    style = MaterialTheme.typography.headlineLarge,
-                )
+                JodloBrandHeading(stringResource(R.string.app_name))
             }
             item {
                 Text(
