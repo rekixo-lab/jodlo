@@ -1,3 +1,15 @@
+## 2026-11-08 — Atomic call attempt counters
+
+**Done.** The internal reservation writes all three five-minute quota counters in one database statement. If any scope is at its limit, or either account is inactive, the statement changes no counters. Expired counters can be removed by the Worker cleanup schedule.
+
+**Evidence.** SQLite tests exercised the directed pair, caller and receiver caps, an expired window, the cleanup handler and account deletion.
+
+**Pending.** Live call admission still needs an authoritative invitation transaction that deduplicates retries and checks eligibility. The new migration is for local verification until the call-data policy and production release are ready.
+
+**Manual.** The approved quota values and remaining provider and privacy choices are in [Manual Actions](MANUAL_ACTIONS.md).
+
+**Next action.** Connect the reservation to durable invitation creation before dispatching a call.
+
 ## 2026-11-08 — Call history retention and private read
 
 **Done.** The server has a private call-summary table and a read endpoint behind the call-history release switch. Reads exclude records at the 90-day boundary. A scheduled Worker handler removes expired rows in bounded batches, and account deletion cascades to that account's summaries.

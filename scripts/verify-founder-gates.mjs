@@ -28,6 +28,7 @@ const allowedRoutes = new Set([
 ]);
 const allowedTables = new Set([
   "call_history",
+  "call_attempt_windows",
   "categories",
   // No auto-seed, no public data until human-reviewed Group/Family/mapping approval.
   "catalog_groups", "catalog_families", "catalog_family_categories",
@@ -136,6 +137,8 @@ export async function auditFounderGates(root = rootDefault) {
       if(!allowedTables.has(table)) errors.push("Unapproved D1 table: "+table+" ("+name+")");
       if(table==="call_history" && name!=="0017_private_call_history.sql")
         errors.push("Private call history table is only allowed in its reviewed migration");
+      if(table==="call_attempt_windows" && name!=="0018_call_attempt_windows.sql")
+        errors.push("Private call attempt windows are only allowed in their reviewed migration");
       if(table==="notification_delivery_receipts" && name!==RECEIPT_MIGRATION)
         errors.push("Notification receipt table must use its reviewed migration: "+name);
       if(table==="notification_delivery_dead_letters" && name!==DEAD_LETTER_MIGRATION)
@@ -222,7 +225,8 @@ export async function auditFounderGates(root = rootDefault) {
   const hierarchyTables=["catalog_groups","catalog_families",
     "catalog_family_categories"];
   for(const table of allowedTables)
-    if(table!=="call_history" && !hierarchyTables.includes(table) && !tables.includes(table))
+    if(table!=="call_history" && table!=="call_attempt_windows" &&
+       !hierarchyTables.includes(table) && !tables.includes(table))
       errors.push("Expected D1 table missing: "+table);
   const hasHierarchy=migrations.includes("0010_approved_catalog_hierarchy.sql");
   const hasHierarchyRoute=routes.includes("/api/v1/catalog/hierarchy");
@@ -258,6 +262,8 @@ export async function auditFounderGates(root = rootDefault) {
   if (migrations.includes("0017_private_call_history.sql") !== routes.includes("/api/v1/me/call-history") ||
       tables.includes("call_history") !== routes.includes("/api/v1/me/call-history"))
     errors.push("Private call history requires its route, table and migration");
+  if (migrations.includes("0018_call_attempt_windows.sql") !== tables.includes("call_attempt_windows"))
+    errors.push("Private call attempt windows require their table and migration");
   if (hasServiceCases !== routes.includes("/api/v1/me/service-report") ||
       hasServiceCases !== routes.includes("/api/v1/me/service-appeal") ||
       hasServiceCases !== routes.includes("/api/v1/moderation/service-cases") ||
