@@ -882,7 +882,39 @@ private fun guidedCategoryEditRequiresSameCurrentAccountAndApprovedRows() {
         h.session.accountExportSessionMarker())==null)
     check(reviewed.reset().source==null)
 }
+private fun privateWorkerOwnerUiRowsRejectStaleAccountOrWrite() {
+    val h=DashboardHarness()
+    val rows=listOf(DASH_OWN_ROW)
+    check(WorkerOwnerUiFence.visibleRows(null,null,rows).isEmpty())
+    h.signIn()
+    val first=h.session.accountPrivateReadMarker()!!
+    check(WorkerOwnerUiFence.visibleRows(first,first,rows)==rows)
+    check(WorkerOwnerUiFence.visibleRows(first,null,rows).isEmpty())
+    h.signIn(DASH_TOKEN_B)
+    val second=h.session.accountPrivateReadMarker()!!
+    check(first!=second)
+    check(WorkerOwnerUiFence.visibleRows(first,second,rows).isEmpty())
+    h.optIn()
+    val afterOptIn=h.session.accountPrivateReadMarker()!!
+    check(second!=afterOptIn)
+    check(WorkerOwnerUiFence.visibleRows(second,afterOptIn,rows).isEmpty())
+    var blockedDuringWrite=false
+    h.worker.beforePublish={
+        blockedDuringWrite=true
+        check(h.session.accountPrivateReadMarker()==null)
+        check(WorkerOwnerUiFence.visibleRows(afterOptIn,
+            h.session.accountPrivateReadMarker(),rows).isEmpty())
+    }
+    check(h.session.publishExplicitCategory("plumber") is SessionResult.Success)
+    check(blockedDuringWrite)
+    val afterWrite=h.session.accountPrivateReadMarker()!!
+    check(afterWrite!=afterOptIn)
+    check(WorkerOwnerUiFence.visibleRows(afterOptIn,afterWrite,rows).isEmpty())
+    check(WorkerOwnerUiFence.visibleRows(afterWrite,afterWrite,rows)==rows)
+}
+
 fun main() {
+    privateWorkerOwnerUiRowsRejectStaleAccountOrWrite()
     guidedCategoryEditRequiresSameCurrentAccountAndApprovedRows()
     guidedWorkerReviewRequiresSameAccountAndCurrentCatalog()
     guidedUnpublishRequiresExplicitCurrentOwnedRowAndConfirmation()

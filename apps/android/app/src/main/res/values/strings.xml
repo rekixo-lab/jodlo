@@ -376,4 +376,7 @@
     <string name="local_backup_saved_still_hidden">If you merge both lists, %1$d Saved references will still be hidden locally. They are not deleted and their public status remains unchecked.</string>
     <string name="local_backup_hidden_bytes">Hidden merge blocked: long reference IDs would exceed this phone’s 10 KiB private storage format. Existing Hidden references are unchanged.</string>
     <string name="account_session_changed">The account session or Worker data changed. The earlier private summary was hidden from this screen; no account data was deleted. Refresh the current account before exporting.</string>
+    <string name="worker_management_unknown">Publication status: not confirmed. Refresh My Services before managing it.</string>
+    <string name="worker_private_session_changed">Your account or Worker data changed. An older private Service list is hidden; nothing was deleted.</string>
+    <string name="worker_refresh_account_session">Refresh current account view</string>
 </resources>
