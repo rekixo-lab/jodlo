@@ -12,6 +12,8 @@ export function validGoogleClientId(value: unknown): value is string {
     /^[a-zA-Z0-9_-]{10,120}\.apps\.googleusercontent\.com$/.test(value);
 }
 
+export const ACCOUNT_ERASURE_NONCE = /^jodlo_erase_[0-9a-f-]{36}$/;
+
 /** Returns ONLY Google's stable subject; never trusts email/name/unsigned payload.
  * Production uses Google's rotating JWKS, tests use locally generated RSA keys.
  */
@@ -20,6 +22,7 @@ export async function verifyGoogleIdToken(
   audience: string,
   keys: JWTVerifyGetKey = GOOGLE_KEYS,
   approvedAndroidClientId?: string,
+  erasureNonce?: string,
 ): Promise<string | null> {
   if (!validGoogleClientId(audience) || idToken.length > 4096 ||
       !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(idToken)) return null;
@@ -29,7 +32,7 @@ export async function verifyGoogleIdToken(
       audience,
       issuer: ["accounts.google.com", "https://accounts.google.com"],
       clockTolerance: "5s",
-      maxTokenAge: "1h",
+      maxTokenAge: erasureNonce === undefined ? "1h" : "5m",
       requiredClaims: ["sub", "iat", "exp"],
     });
     // jose confirms the audience CONTAINS this client, but OIDC also requires
@@ -44,6 +47,11 @@ export async function verifyGoogleIdToken(
       approvedAndroidClientId !== audience && payload.azp === approvedAndroidClientId;
     if (!solelyForClient || (payload.azp !== undefined &&
         payload.azp !== audience && !trustedAndroid)) return null;
+    if (erasureNonce !== undefined) {
+      if (!ACCOUNT_ERASURE_NONCE.test(erasureNonce) || payload.nonce !== erasureNonce) return null;
+    } else if (typeof payload.nonce === "string" && ACCOUNT_ERASURE_NONCE.test(payload.nonce)) {
+      return null;
+    }
     if (typeof payload.sub !== "string" || !/^[0-9]{6,255}$/.test(payload.sub)) return null;
     return payload.sub;
   } catch (error) {

@@ -1,3 +1,19 @@
+## 0015 Service reports and appeals
+
+Adds private report cases and an independent report hold on each service. A staff decision can place a hold and an accepted appeal can remove it. Other moderation, publication, account and category restrictions continue to apply independently. Account erasure removes the reporter's account link and cascades cases owned through deleted listings.
+
+## 0014 Reviewed service photos
+
+Adds one optional normalized JPEG per service, with up to 42 KiB of image data. D1 stores the photo beside its review revision so approval, replacement, removal and account erasure use the same database. Customer detail exposes the availability flag and loads image bytes only on request. Category changes invalidate approval. Account export contains photo status and the owner can save each JPEG separately.
+
+## 0013 Reviewed service profiles
+
+Adds per-listing public-facing profile drafts with an optional experience and estimated visit rate. A draft starts pending, becomes public only after moderator approval, and returns to review when edited. Category changes invalidate prior approval. Removing a profile clears its text and rate while keeping a revision fence. Account erasure cascades through the owning listing to this table.
+
+## 0012 Worker service city
+
+Adds a nullable city to existing Services and a partial index for public city searches. Existing rows remain unset. The Worker must explicitly save Bilaspur or Raipur to make the Service discoverable in that city and can clear the city later. Owner writes compare the current listing revision. This schema stores neither GPS nor an address.
+
 ## Migration 0011 — Worker Service revision & ABA-safe Category edit (2026-11-05, local CI only)
 
 `0011_worker_listing_revision.sql` adds one private `worker_listings.revision` bounded nonnegative integer defaulted to 0 and a nonrecursive `AFTER UPDATE OF category_id,status,moderation_status` trigger that advances it on actual field changes, **including original v1 APIs**. Opt-in authenticated private `view=revision` owner read and `PUT ?revision=1` compare-and-swap require exact revision, expected Category and current owner/moderation/active destination checks. This addresses stale ABA Category edits without adding worker personally identifying details, text/price/location, public fields, user rows, verification claims or any new service approval. Legacy Customer and owner DTOs are unchanged. [Full contract](../../docs/WORKER_REVISION_CAS_2026-11-05.md).

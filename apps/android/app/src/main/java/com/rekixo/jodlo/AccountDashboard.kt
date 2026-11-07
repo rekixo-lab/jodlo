@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.rekixo.jodlo.core.network.FailureKind
 import com.rekixo.jodlo.core.network.InMemorySessionCoordinator
 import com.rekixo.jodlo.core.network.AccountPrivateReadMarker
 import com.rekixo.jodlo.core.network.AccountPrivateSummary
@@ -65,6 +66,7 @@ internal fun AccountDashboard(
     }
     var busy by remember(session) { mutableStateOf(false) }
     var notice by remember(session) { mutableStateOf(0) }
+    var erasureReview by remember(session) { mutableStateOf<AccountPrivateReadMarker?>(null) }
     // Memory-only and never saveable: the payload contains account IDs and
     // Google subject, unlike public Catalog/listing projections.
     var pendingExport by remember(session) { mutableStateOf<OwnAccountDataExport?>(null) }
@@ -81,6 +83,7 @@ internal fun AccountDashboard(
             overview = null
             pendingExport = null
             exportMarker = null
+            erasureReview = null
             notice = R.string.account_session_changed
         }
         login = session?.snapshot() ?: LoginState.SignedOut
@@ -188,7 +191,7 @@ internal fun AccountDashboard(
         exportMarker = null
         scope.launch {
             val result = try {
-                withContext(Dispatchers.IO) { session.accountDataExport() }
+                withContext(Dispatchers.IO) { session.accountDataExport(version = 3) }
             } catch (_: Exception) { null }
             val current = session.accountPrivateReadMarker()
             login = session.snapshot()
@@ -224,6 +227,57 @@ internal fun AccountDashboard(
             busy = false
             notice = if (result is SessionResult.Success)
                 R.string.account_logged_out_all else R.string.account_logged_out_uncertain
+        }
+    }
+
+    fun eraseConfirmedAccount() {
+        val currentSession = session ?: return
+        val owner = erasureReview ?: return
+        if (busy || owner != currentSession.accountPrivateReadMarker()) return
+        erasureReview = null
+        overview = null
+        pendingExport = null
+        exportMarker = null
+        busy = true
+        notice = 0
+        scope.launch {
+            var requestAttempted = false
+            try {
+                val prepared = withContext(Dispatchers.IO) { currentSession.prepareAccountErasure(owner) }
+                notice = when (prepared) {
+                    is SessionResult.Failed ->
+                        if (prepared.networkKind == FailureKind.NOT_FOUND) R.string.account_erase_unavailable
+                        else R.string.account_erase_failed
+                    is SessionResult.Success -> {
+                        val challenge = prepared.value
+                        val proof = obtainGoogleIdToken(activity, BuildConfig.GOOGLE_WEB_CLIENT_ID, challenge.nonce)
+                        if (proof == null || currentSession.accountPrivateReadMarker() != owner) {
+                            R.string.account_erase_cancelled
+                        } else {
+                            requestAttempted = true
+                            when (val result = withContext(Dispatchers.IO) {
+                                currentSession.eraseAccount(owner, challenge, proof)
+                            }) {
+                                is SessionResult.Success -> R.string.account_erase_done
+                                is SessionResult.Failed -> when (result.networkKind) {
+                                    FailureKind.CONFLICT, FailureKind.BAD_INPUT, FailureKind.NOT_FOUND ->
+                                        R.string.account_erase_failed
+                                    else -> R.string.account_erase_uncertain
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (cancelled: kotlin.coroutines.cancellation.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                notice = if (requestAttempted) R.string.account_erase_uncertain
+                    else R.string.account_erase_cancelled
+            } finally {
+                login = currentSession.snapshot()
+                observedMarker = currentSession.accountPrivateReadMarker()
+                busy = false
+            }
         }
     }
 
@@ -289,6 +343,23 @@ internal fun AccountDashboard(
             JodloButton(onClick = ::logoutEverywhere,
                 enabled = !busy && currentMarker != null) {
                 Text(stringResource(R.string.account_logout_all))
+            }
+            if (BuildConfig.GOOGLE_WEB_CLIENT_ID.isNotBlank()) {
+                if (currentMarker != null && erasureReview == currentMarker) {
+                    Text(stringResource(R.string.account_erase_scope),
+                        color = MaterialTheme.colorScheme.error)
+                    JodloTextAction(onClick = { erasureReview = null }, enabled = !busy) {
+                        Text(stringResource(R.string.guided_post_back))
+                    }
+                    JodloButton(onClick = ::eraseConfirmedAccount, enabled = !busy) {
+                        Text(stringResource(R.string.account_erase_confirm))
+                    }
+                } else {
+                    JodloTextAction(onClick = { erasureReview = currentMarker },
+                        enabled = !busy && currentMarker != null) {
+                        Text(stringResource(R.string.account_erase_action))
+                    }
+                }
             }
         }
         if (busy) CircularProgressIndicator()

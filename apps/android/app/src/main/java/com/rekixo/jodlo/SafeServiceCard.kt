@@ -23,6 +23,7 @@ import com.rekixo.jodlo.ui.theme.JodloSizes
 internal fun SafeServiceCardContents(
     card: CustomerServiceCard,
     modifier: Modifier = Modifier.padding(JodloSizes.CardPadding),
+    compact: Boolean = false,
 ) {
     Column(
         modifier = modifier,
@@ -33,10 +34,12 @@ internal fun SafeServiceCardContents(
                 ?: stringResource(R.string.service_card_category_not_confirmed),
             style = MaterialTheme.typography.titleMedium,
         )
-        Text(
-            stringResource(R.string.service_card_approved_category_notice),
-            style = MaterialTheme.typography.bodySmall,
-        )
+        if (!compact) {
+            Text(
+                stringResource(R.string.service_card_approved_category_notice),
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
         Text(
             stringResource(R.string.listing_reference, card.listing.id),
             style = MaterialTheme.typography.bodySmall,
@@ -49,10 +52,12 @@ internal fun SafeServiceCardContents(
             ),
             style = MaterialTheme.typography.bodySmall,
         )
-        Text(
-            stringResource(R.string.service_card_no_worker_claims),
-            style = MaterialTheme.typography.bodySmall,
-        )
+        if (!compact && card.profile == null) {
+            Text(
+                stringResource(R.string.service_card_no_worker_claims),
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
     }
 }
 
@@ -66,6 +71,6 @@ internal fun SafeServiceCard(
     onClick: (() -> Unit)? = null,
 ) {
     JodloCard(modifier = modifier, onClick = onClick) {
-        SafeServiceCardContents(card)
+        SafeServiceCardContents(card, compact = onClick != null)
     }
 }

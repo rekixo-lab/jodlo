@@ -8,9 +8,12 @@ import com.rekixo.jodlo.core.network.HiddenPublicServices
  * The Android manifest disables system auto-backup for app-private data.
  */
 internal class DeviceHiddenServices(context: Context) {
-    private val prefs = context.applicationContext.getSharedPreferences(
-        "jodlo_guest_hidden_services_v1", Context.MODE_PRIVATE,
-    )
+    private val appContext = context.applicationContext
+    private val prefs by lazy {
+        appContext.getSharedPreferences(
+            "jodlo_guest_hidden_services_v1", Context.MODE_PRIVATE,
+        )
+    }
     private val key = "hidden_public_listing_ids"
 
     fun read(): HiddenPublicServices = try {

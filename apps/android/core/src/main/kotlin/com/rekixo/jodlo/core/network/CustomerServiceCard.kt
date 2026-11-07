@@ -1,7 +1,7 @@
 package com.rekixo.jodlo.core.network
 
 /** Strictly public Customer-facing display data for ONE Service. No owner
- * identity, profile, area, phone, rates, verification or contact permission.
+ * contact details, legal identity, verification badge or contact permission.
  * In particular, a public listing/page/saved bookmark is NOT a fresh check.
  */
 enum class CustomerServiceCardEvidence {
@@ -15,6 +15,9 @@ class CustomerServiceCard private constructor(
     val listing: PublicListing,
     val approvedCategoryName: String?,
     val evidence: CustomerServiceCardEvidence,
+    val profile: ServiceProfile? = null,
+    val city: NearbyPilotCity? = null,
+    val hasPhoto: Boolean = false,
 ) {
     companion object {
         /** A name from a prior approved public lookup is only display text.
@@ -44,7 +47,7 @@ class CustomerServiceCard private constructor(
                 detail.category.name.isBlank()) return null
             return CustomerServiceCard(
                 selected, detail.category.name,
-                CustomerServiceCardEvidence.PUBLIC_WHEN_CHECKED,
+                CustomerServiceCardEvidence.PUBLIC_WHEN_CHECKED, detail.profile, detail.city, detail.hasPhoto,
             )
         }
     }

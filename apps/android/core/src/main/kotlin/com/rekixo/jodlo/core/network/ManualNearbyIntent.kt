@@ -8,7 +8,9 @@ package com.rekixo.jodlo.core.network
  * selected city cannot authorize a nearby query or a local-results claim.
  * In particular, never filter a city-less public feed and label it nearby.
  */
-enum class NearbyPilotCity { BILASPUR, RAIPUR }
+enum class NearbyPilotCity(val wire: String) {
+    BILASPUR("bilaspur"), RAIPUR("raipur");
+}
 
 enum class NearbyEvidence {
     NO_CITY_SELECTED,

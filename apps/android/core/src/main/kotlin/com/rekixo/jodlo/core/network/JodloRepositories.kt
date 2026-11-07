@@ -106,6 +106,15 @@ interface VersionedOwnListingRepository {
     ): ApiOutcome<VersionedCategoryEditReceipt>
 }
 
+interface OwnListingCreationRepository {
+    fun createListing(session: String, categoryId: String): ApiOutcome<PublicListing>
+    fun exactManagedOwnListingByCategory(session: String, categoryId: String): ApiOutcome<OwnListing>
+}
+
+interface VersionedOwnPublicationRepository {
+    fun changePublication(session: String, review: VersionedOwnListing): ApiOutcome<PublicListing>
+}
+
 /** Private owner-only resume of one EXISTING, previously-unpublished Listing.
  * Unlike generic publish, this cannot insert or resurrect a hidden Listing.
  * It does not read private moderation reasons or create a public profile.
@@ -251,24 +260,71 @@ class RemoteCatalogRepository(private val sender: RequestSender) :
     override fun allPublicListings(limit: Int, after: String?): ApiOutcome<PublicListingPage> {
         val call = JodloRoutes.publicAllListingPage(limit, after)
         return performOnce(call, sender::send, JodloReplyDecoder::publicListingPage)
-            .validated { page ->
-                page.listings.size <= limit &&
-                    (after == null || page.listings.none { it.id == after }) &&
-                    (page.nextCursor == null ||
-                        (page.listings.size == limit &&
-                            page.listings.last().id == page.nextCursor &&
-                            page.nextCursor != after))
-            }
+            .validated { it.matchesPublicFeedRequest(limit, after) }
     }
+
+    fun localizedPublicListings(
+        language: Language, limit: Int = 20, after: String? = null, categoryId: String? = null,
+        city: NearbyPilotCity? = null,
+    ): ApiOutcome<LocalizedPublicListingPage> {
+        val call = JodloRoutes.publicAllListingPage(limit, after, language, categoryId, city)
+        val result = performOnce(call, sender::send, JodloReplyDecoder::localizedPublicListingPage)
+            .validated { reply ->
+                reply.language == language && reply.city == city &&
+                    reply.page.matchesPublicFeedRequest(limit, after) &&
+                    (categoryId == null || reply.page.listings.all { it.categoryId == categoryId })
+            }
+
+        // Older deployments reject the localized feed mode. Preserve their
+        // original feed and approved label lookup during the rollout.
+        if (city != null || result !is ApiOutcome.Failed || result.kind != FailureKind.BAD_INPUT) return result
+        val legacy = if (categoryId == null) allPublicListings(limit, after)
+            else pageListings(categoryId, limit, after)
+        return when (legacy) {
+            is ApiOutcome.Failed -> legacy
+            is ApiOutcome.Ok -> {
+                val ids = legacy.value.listings.map { it.categoryId }.distinct()
+                val names = if (ids.isEmpty()) emptyMap() else when (val labels = approvedNames(ids, language)) {
+                    is ApiOutcome.Ok -> labels.value.associate { it.id to it.name }
+                    is ApiOutcome.Failed -> emptyMap()
+                }
+                ApiOutcome.Ok(LocalizedPublicListingPage(legacy.value, language, names))
+            }
+        }
+    }
+
+    private fun PublicListingPage.matchesPublicFeedRequest(limit: Int, after: String?): Boolean =
+        listings.size <= limit && listings.none { it.id == after } &&
+            (nextCursor == null || (listings.size == limit && listings.last().id == nextCursor))
 
     override fun approvedServiceDetail(
         listingId: String, expectedCategoryId: String,
         language: Language,
+    ): ApiOutcome<PublicApprovedServiceDetail> =
+        readServiceDetail(listingId, expectedCategoryId, language, city = null, includeProfile = false)
+
+    fun publicServicePhoto(listing: PublicListing, city: NearbyPilotCity?): ApiOutcome<ServicePhoto> =
+        performOnce(JodloRoutes.publicServicePhoto(listing.id, listing.categoryId, city),
+            sender::send, JodloReplyDecoder::publicServicePhoto)
+
+    fun reviewedServiceDetail(
+        listingId: String, expectedCategoryId: String, language: Language, city: NearbyPilotCity? = null,
+    ): ApiOutcome<PublicApprovedServiceDetail> =
+        readServiceDetail(listingId, expectedCategoryId, language, city, includeProfile = true)
+
+    private fun readServiceDetail(
+        listingId: String, expectedCategoryId: String, language: Language, city: NearbyPilotCity?,
+        includeProfile: Boolean,
     ): ApiOutcome<PublicApprovedServiceDetail> {
-        val call = JodloRoutes.approvedServiceDetail(listingId, language)
-        return performOnce(call, sender::send, JodloReplyDecoder::approvedServiceDetail)
-            .validated { detail ->
-                detail.language == language &&
+        val call = JodloRoutes.approvedServiceDetail(listingId, language, city, includeProfile)
+        val result = performOnce(call, sender::send, JodloReplyDecoder::approvedServiceDetail)
+        val compatible = if (includeProfile && result is ApiOutcome.Failed && result.kind == FailureKind.BAD_INPUT)
+            performOnce(JodloRoutes.approvedServiceDetail(listingId, language, city),
+                sender::send, JodloReplyDecoder::approvedServiceDetail)
+        else result
+        return compatible.validated { detail ->
+                detail.language == language && detail.city == city &&
+                    (includeProfile || (detail.profile == null && !detail.hasPhoto)) &&
                     detail.listing.id == listingId &&
                     detail.listing.categoryId == expectedCategoryId &&
                     detail.category.id == expectedCategoryId
@@ -310,7 +366,8 @@ class RemoteCatalogRepository(private val sender: RequestSender) :
 class RemoteWorkerRepository(private val sender: RequestSender) :
     WorkerRepository, OwnListingPageRepository, ManagedOwnListingPageRepository,
     OwnListingCategoryEditRepository, OwnListingResumeRepository,
-    ExactManagedOwnListingRepository, VersionedOwnListingRepository {
+    ExactManagedOwnListingRepository, VersionedOwnListingRepository,
+    VersionedOwnPublicationRepository, OwnListingCreationRepository {
     override fun myDraft(session: String): ApiOutcome<WorkerDraft> =
         performOnce(JodloRoutes.workerDraft(session), sender::send, JodloReplyDecoder::workerDraft)
 
@@ -389,6 +446,21 @@ class RemoteWorkerRepository(private val sender: RequestSender) :
         return performOnce(call, sender::send, JodloReplyDecoder::published)
             .validated { listing -> listing.categoryId == confirmedCategoryId }
     }
+
+    override fun exactManagedOwnListingByCategory(session: String, categoryId: String): ApiOutcome<OwnListing> =
+        performOnce(JodloRoutes.exactManagedOwnListingByCategory(session, categoryId),
+            sender::send, JodloReplyDecoder::exactManagedOwnListing)
+            .validated { it.categoryId == categoryId }
+
+    override fun createListing(session: String, categoryId: String): ApiOutcome<PublicListing> =
+        performOnce(JodloRoutes.createOwnListing(session, categoryId),
+            sender::send, JodloReplyDecoder::published)
+            .validated { it.categoryId == categoryId }
+
+    override fun changePublication(session: String, review: VersionedOwnListing): ApiOutcome<PublicListing> =
+        performOnce(JodloRoutes.changeOwnListingPublication(session, review),
+            sender::send, JodloReplyDecoder::published)
+            .validated { it.id == review.row.id && it.categoryId == review.row.categoryId }
 
     override fun resume(session: String, listingId: String,
                         expectedCategoryId: String): ApiOutcome<PublicListing> {

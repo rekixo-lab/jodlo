@@ -18,12 +18,17 @@ const allowedRoutes = new Set([
   // Actual auth/SQL isolation and field redaction are tested separately.
   // This is NOT permission for public profile, account deletion, block or contact APIs.
   "/api/v1/me/overview", "/api/v1/me/data-export",
+  // The authorized erasure route stays disabled without its release secret.
+  "/api/v1/me/account-erasure", "/api/v1/me/contact-block",
+  "/api/v1/me/service-area", "/api/v1/me/service-details", "/api/v1/moderation/service-details",
+  "/api/v1/me/service-photo", "/api/v1/moderation/service-photo", "/api/v1/listings/photo",
+  "/api/v1/me/service-report", "/api/v1/me/service-appeal", "/api/v1/moderation/service-cases",
 ]);
 const allowedTables = new Set([
   "categories",
   // No auto-seed, no public data until human-reviewed Group/Family/mapping approval.
   "catalog_groups", "catalog_families", "catalog_family_categories",
-  "accounts", "worker_profiles", "google_identities", "auth_sessions", "worker_listings",
+  "accounts", "worker_profiles", "google_identities", "auth_sessions", "worker_listings", "worker_service_details", "worker_service_photos", "service_report_cases",
   // Exactly one newly engineered, non-recipient delivery receipt; never a
   // blanket permission for contact, notification preference or token storage.
   "notification_delivery_receipts",
@@ -87,7 +92,12 @@ export async function auditFounderGates(root = rootDefault) {
   for(const route of new Set(routes))
     if(!allowedRoutes.has(route)) errors.push("Unapproved API route: " + route + " (M-005/M-003)");
   for(const route of allowedRoutes)
-    if(route!=="/api/v1/catalog/hierarchy" && !routes.includes(route))
+    if(route!=="/api/v1/catalog/hierarchy" && route!=="/api/v1/me/account-erasure" &&
+       route!=="/api/v1/me/contact-block" && route!=="/api/v1/me/service-area" && route!=="/api/v1/me/service-details" &&
+       route!=="/api/v1/moderation/service-details" && route!=="/api/v1/me/service-photo" &&
+       route!=="/api/v1/moderation/service-photo" && route!=="/api/v1/listings/photo" &&
+       route!=="/api/v1/me/service-report" && route!=="/api/v1/me/service-appeal" &&
+       route!=="/api/v1/moderation/service-cases" && !routes.includes(route))
       errors.push("Previously approved API route missing: " + route);
   if(catalog !== null &&
      !/export\s+type\s+CatalogLanguage\s*=\s*["']en["']\s*\|\s*["']hi["']\s*;/.test(catalog))
@@ -232,6 +242,26 @@ export async function auditFounderGates(root = rootDefault) {
   // new public profile, personal field, or other live schema migration.
   // Keep baseline synthetic fixture without 0011 valid; if it is introduced,
   // the versioned read+CAS route and the safe trigger are both mandatory.
+  const hasServiceCases = migrations.includes("0015_service_reports_and_appeals.sql");
+  if (hasServiceCases !== routes.includes("/api/v1/me/service-report") ||
+      hasServiceCases !== routes.includes("/api/v1/me/service-appeal") ||
+      hasServiceCases !== routes.includes("/api/v1/moderation/service-cases") ||
+      hasServiceCases !== tables.includes("service_report_cases"))
+    errors.push("Service reports and appeals require their migration and scoped routes");
+  const hasServicePhotos = migrations.includes("0014_reviewed_service_photos.sql");
+  if (hasServicePhotos !== routes.includes("/api/v1/me/service-photo") ||
+      hasServicePhotos !== routes.includes("/api/v1/moderation/service-photo") ||
+      hasServicePhotos !== routes.includes("/api/v1/listings/photo") ||
+      hasServicePhotos !== tables.includes("worker_service_photos"))
+    errors.push("Reviewed service photos require their migration and scoped routes");
+  const hasServiceDetails = migrations.includes("0013_reviewed_service_profiles.sql");
+  if (hasServiceDetails !== routes.includes("/api/v1/me/service-details") ||
+      hasServiceDetails !== routes.includes("/api/v1/moderation/service-details") ||
+      hasServiceDetails !== tables.includes("worker_service_details"))
+    errors.push("Reviewed service profiles require their migration and both scoped routes");
+  const hasServiceCity = migrations.includes("0012_worker_service_city.sql");
+  if (hasServiceCity !== routes.includes("/api/v1/me/service-area"))
+    errors.push("Service city migration and private owner route must be present together");
   const hasServiceRevision=migrations.includes("0011_worker_listing_revision.sql");
   const hasRevisionRoute=router!==null &&
     router.includes('mode==="revision"') &&

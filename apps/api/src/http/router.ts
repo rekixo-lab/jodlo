@@ -3,14 +3,20 @@ import { validOpaqueId } from "../modules/shared/identifiers.ts";
 import { browsePublicCategories, parseCatalogBrowse, parseCatalogSearch, searchPublicCategories, parsePublicCategoryLabels, resolveApprovedCategoryLabels } from "../modules/catalog/catalog.ts";
 import { healthData } from "../modules/system/health.ts";
 import { parseHierarchy, readApprovedHierarchy } from "../modules/catalog/hierarchy.ts";
+import { clearServicePhoto, ownServicePhoto, pendingServicePhotos, publicServicePhoto, reviewServicePhoto, servicePhotoForReview, submitServicePhoto, validServicePhoto } from "../modules/workers/service-photos.ts";
+import { clearOwnServiceDetails, parseServiceDetails, pendingServiceDetails, readOwnServiceDetails, reviewServiceDetails, submitOwnServiceDetails } from "../modules/workers/service-details.ts";
+import { appealServiceCase, decideServiceCase, ownReportStatus, ownServiceAppealCase, reportService, serviceCaseEvidence, serviceCaseQueue, validAppealReason, validCaseDecision, validReportReason } from "../modules/moderation/service-cases.ts";
+import { changeOwnServiceArea, readOwnServiceArea, validServiceCity } from "../modules/workers/service-area.ts";
 import { optInAsWorker, ownWorkerDraft } from "../modules/workers/profile.ts";
+import { readOwnAgoraListingBlock, changeOwnAgoraListingBlock } from "../modules/interactions/agora-listing-blocks.ts";
+import { prepareAccountErasure, eraseOwnD1Account } from "../modules/identity/account-erasure.ts";
 import { ownAccountOverview, exportOwnAccountData } from "../modules/identity/account-self-service.ts";
 import { validGoogleClientId, verifyGoogleIdToken } from "../modules/identity/google.ts";
 import { resolveGoogleAccount } from "../modules/identity/google-accounts.ts";
-import { issueSession, makeSessionVerifier, revokeAllSessions, revokeSession, SESSION_TTL_SECONDS } from "../modules/identity/sessions.ts";
-import { hasEmptyBody, readGoogleLoginBody, readServiceListingBody, readCategoryEditBody, readVersionedCategoryEditBody, readResumeOwnListingBody } from "./body.ts";
+import { issueSession, makeSessionVerifier, validSessionToken, revokeAllSessions, revokeSession, SESSION_TTL_SECONDS } from "../modules/identity/sessions.ts";
+import { hasEmptyBody, readGoogleLoginBody, readServiceListingBody, readCategoryEditBody, readVersionedCategoryEditBody, readResumeOwnListingBody, readPublicationRevisionBody, readAccountErasureBody, readServiceCityBody, readServiceDetailsBody, readServicePhotoBody, readServiceCaseReason } from "./body.ts";
 import { validCategoryId } from "../modules/shared/identifiers.ts";
-import { publishListing, myListings, pageMyListings, pageManagedOwnListings, exactManagedOwnListing, exactVersionedOwnListing, parseOwnListingsPage, publicListings, pagePublicListings, publicListingDetail, publicApprovedServiceDetail, pageAllPublicListings, unpublishListing, editOwnListingCategory, editOwnListingCategoryVersioned, resumeOwnListing } from "../modules/workers/listings.ts";
+import { publishListing, myListings, pageMyListings, pageManagedOwnListings, exactManagedOwnListing, exactManagedOwnListingByCategory, exactVersionedOwnListing, parseOwnListingsPage, publicListings, pagePublicListings, publicListingDetail, publicApprovedServiceDetail, pageAllPublicListings, unpublishListing, editOwnListingCategory, editOwnListingCategoryVersioned, resumeOwnListing, changeOwnListingPublication, createOwnListing } from "../modules/workers/listings.ts";
 import {
   allowGoogleAccountLogin, allowLoginBurst,
   LOGIN_BURST_RETRY_SECONDS, ACCOUNT_LOGIN_RETRY_SECONDS,
@@ -40,6 +46,14 @@ function bearerToken(request: Request): string | null {
   const header = request.headers.get("Authorization");
   const match = header?.match(/^Bearer ([A-Za-z0-9_-]{1,2048})$/);
   return match?.[1] ?? null;
+}
+
+/** Moderation key is a separate server-only credential, never a JODLO bearer. */
+function authorizedServiceModerator(token: string | null, key: string | undefined): boolean {
+  if (!key || !/^[a-f0-9]{64}$/.test(key) || !token || !/^[a-f0-9]{64}$/.test(token)) return false;
+  let difference = 0;
+  for (let i = 0; i < key.length; i++) difference |= key.charCodeAt(i) ^ token.charCodeAt(i);
+  return difference === 0;
 }
 
 function getOnly(request: Request): Response | null {
@@ -199,11 +213,82 @@ export async function handleRequest(
   // The Finworkar account/dashboard behavior is reconstructed with JODLO's
   // own active-account D1 records. Both routes are private, read-only and
   // require a current server-issued session; neither accepts a client owner ID.
+  if (url.pathname === "/api/v1/me/contact-block") {
+    if (env.CONTACT_BLOCKS_ENABLED !== "1") {
+      return json({ok:false,error:{code:"NOT_FOUND",message:"Endpoint not found"}},404);
+    }
+    const method = request.method;
+    if (method !== "GET" && method !== "POST" && method !== "DELETE") {
+      return json({ok:false,error:{code:"METHOD_NOT_ALLOWED",message:"Method not allowed"}},405,
+        {Allow:"GET, POST, DELETE"});
+    }
+    const listingId = url.searchParams.get("listingId");
+    if (url.searchParams.size !== 1 || !validOpaqueId(listingId) || !(await hasEmptyBody(request))) {
+      return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid listing input"}},400);
+    }
+    const token = bearerToken(request);
+    if (!validSessionToken(token)) {
+      return json({ok:false,error:{code:"UNAUTHORIZED",message:"Authentication required"}},401);
+    }
+    if (!env.DB) return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Contact safety unavailable"}},503);
+    try {
+      if (method === "GET") {
+        const blocked = await readOwnAgoraListingBlock(env.DB, token, listingId);
+        return blocked === null
+          ? json({ok:false,error:{code:"NOT_FOUND",message:"Listing unavailable"}},404)
+          : json({ok:true,data:{blocked}});
+      }
+      const blocked = method === "POST";
+      const changed = await changeOwnAgoraListingBlock(env.DB, token, listingId, blocked);
+      return changed ? json({ok:true,data:{blocked}})
+        : json({ok:false,error:{code:"CONFLICT",message:"Contact block changed or unavailable"}},409);
+    } catch {
+      return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Contact safety unavailable"}},503);
+    }
+  }
+  if (url.pathname === "/api/v1/me/account-erasure") {
+    const key = env.ACCOUNT_ERASURE_RELEASE_KEY;
+    const audience = env.GOOGLE_CLIENT_ID;
+    if (!key || !/^[a-fA-F0-9]{64}$/.test(key) || !validGoogleClientId(audience)) {
+      return json({ok:false,error:{code:"NOT_FOUND",message:"Endpoint not found"}},404);
+    }
+    if (request.method !== "POST" && request.method !== "PUT") {
+      return json({ok:false,error:{code:"METHOD_NOT_ALLOWED",message:"Method not allowed"}},405,
+        {Allow:"POST, PUT"});
+    }
+    if (url.search) return json({ok:false,error:{code:"INVALID_QUERY",message:"Unexpected input"}},400);
+    const token = bearerToken(request);
+    if (!token) return json({ok:false,error:{code:"UNAUTHORIZED",message:"Authentication required"}},401);
+    if (!env.DB) return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Account unavailable"}},503);
+    const signingKey = Uint8Array.from(key.match(/../g)!, byte => Number.parseInt(byte, 16));
+    try {
+      if (request.method === "POST") {
+        if (!(await hasEmptyBody(request))) {
+          return json({ok:false,error:{code:"INVALID_QUERY",message:"Unexpected input"}},400);
+        }
+        const data = await prepareAccountErasure(env.DB, token, signingKey);
+        return data ? json({ok:true,data})
+          : json({ok:false,error:{code:"UNAUTHORIZED",message:"Authentication required"}},401);
+      }
+      const input = await readAccountErasureBody(request);
+      if (!input) return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid confirmation"}},400);
+      const erased = await eraseOwnD1Account(env.DB, token, input.challenge, input.googleProof, {
+        signingKey, googleAudience: audience, androidClientId: env.GOOGLE_ANDROID_CLIENT_ID,
+      });
+      return erased ? json({ok:true,data:{erased:true}})
+        : json({ok:false,error:{code:"CONFLICT",message:"Account erasure could not be confirmed"}},409);
+    } catch {
+      return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Account unavailable"}},503);
+    }
+  }
   if (url.pathname === "/api/v1/me/overview" ||
       url.pathname === "/api/v1/me/data-export") {
     const methodError = getOnly(request);
     if (methodError) return methodError;
-    if (url.search || !(await hasEmptyBody(request))) {
+    const requestedVersion = url.searchParams.get("version");
+    const version = url.pathname.endsWith("/data-export") && url.searchParams.size === 1 &&
+      (requestedVersion === "2" || requestedVersion === "3") ? Number(requestedVersion) : 1;
+    if ((url.search && version === 1) || !(await hasEmptyBody(request))) {
       return json({ ok: false, error: { code: "INVALID_QUERY", message: "Unexpected input" } }, 400);
     }
     if (!env.DB) {
@@ -214,19 +299,300 @@ export async function handleRequest(
       return json({ ok: false, error: { code: "UNAUTHORIZED", message: "Authentication required" } }, 401);
     }
     try {
-      const actor = await (env.AUTH ?? makeSessionVerifier(env.DB)).verify(token);
-      if (!actor || !validOpaqueId(actor.accountId)) {
-        return json({ ok: false, error: { code: "UNAUTHORIZED", message: "Authentication required" } }, 401);
-      }
       const data = url.pathname.endsWith("/overview")
-        ? await ownAccountOverview(env.DB, actor.accountId)
-        : await exportOwnAccountData(env.DB, actor.accountId);
+        ? await ownAccountOverview(env.DB, token)
+        : await exportOwnAccountData(env.DB, token, version);
       if (!data) {
         return json({ ok: false, error: { code: "UNAUTHORIZED", message: "Authentication required" } }, 401);
       }
       return json({ ok: true, data });
     } catch {
       return json({ ok: false, error: { code: "SERVICE_UNAVAILABLE", message: "Account unavailable" } }, 503);
+    }
+  }
+  if (url.pathname === "/api/v1/me/service-report" ||
+      url.pathname === "/api/v1/me/service-appeal") {
+    if (!/^[a-f0-9]{64}$/.test(env.SERVICE_MODERATION_KEY ?? "")) {
+      return json({ok:false,error:{code:"NOT_FOUND",message:"Endpoint not found"}},404);
+    }
+    const token = bearerToken(request);
+    if (!validSessionToken(token)) {
+      return json({ok:false,error:{code:"UNAUTHORIZED",message:"Authentication required"}},401);
+    }
+    if (!env.DB) return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Case unavailable"}},503);
+    const appeal = url.pathname.endsWith("/service-appeal");
+    const params = url.searchParams;
+    try {
+      if (request.method === "GET") {
+        const listingId = params.get("listingId");
+        if (params.size !== 1 || !validOpaqueId(listingId) || !(await hasEmptyBody(request))) {
+          return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid listing input"}},400);
+        }
+        const data = appeal
+          ? await ownServiceAppealCase(env.DB, token, listingId)
+          : await ownReportStatus(env.DB, token, listingId);
+        return data ? json({ok:true,data})
+          : json({ok:false,error:{code:"NOT_FOUND",message:"Case unavailable"}},404);
+      }
+      if (request.method !== "POST") {
+        return json({ok:false,error:{code:"METHOD_NOT_ALLOWED",message:"Method not allowed"}},405,
+          {Allow:"GET, POST"});
+      }
+      const reason = await readServiceCaseReason(request);
+      if (appeal) {
+        const id = params.get("id"), revision = params.get("revision");
+        if (params.size !== 2 || !validOpaqueId(id) || revision === null ||
+            !/^[1-9][0-9]{0,9}$/.test(revision) || !validAppealReason(reason)) {
+          return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid appeal"}},400);
+        }
+        const data = await appealServiceCase(env.DB, token, id, Number(revision), reason);
+        return data ? json({ok:true,data})
+          : json({ok:false,error:{code:"CONFLICT",message:"Case changed or unavailable"}},409);
+      }
+      const listingId = params.get("listingId");
+      if (params.size !== 1 || !validOpaqueId(listingId) || !validReportReason(reason)) {
+        return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid report"}},400);
+      }
+      const data = await reportService(env.DB, token, listingId, reason);
+      return data ? json({ok:true,data},201)
+        : json({ok:false,error:{code:"CONFLICT",message:"Report already exists or is unavailable"}},409);
+    } catch {
+      return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Case unavailable"}},503);
+    }
+  }
+  if (url.pathname === "/api/v1/moderation/service-cases") {
+    if (!authorizedServiceModerator(bearerToken(request), env.SERVICE_MODERATION_KEY)) {
+      return json({ok:false,error:{code:"NOT_FOUND",message:"Endpoint not found"}},404);
+    }
+    if (!env.DB) return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Review unavailable"}},503);
+    const params = url.searchParams;
+    if (!(await hasEmptyBody(request))) {
+      return json({ok:false,error:{code:"INVALID_QUERY",message:"Unexpected input"}},400);
+    }
+    try {
+      if (request.method === "GET") {
+        const id = params.get("id");
+        if (validOpaqueId(id) && (params.size === 1 || params.size === 2 && params.get("photo") === "1") &&
+            params.getAll("id").length === 1) {
+          const data = await serviceCaseEvidence(env.DB, id, params.has("photo"));
+          return data ? json({ok:true,data})
+            : json({ok:false,error:{code:"NOT_FOUND",message:"Case evidence unavailable"}},404);
+        }
+        const queue = params.get("queue"), after = params.get("after");
+        if ((queue !== "pending" && queue !== "appealed") ||
+            !(after === null ? params.size === 1 : params.size === 2 && validOpaqueId(after))) {
+          return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid review page"}},400);
+        }
+        return json({ok:true,data:await serviceCaseQueue(env.DB, queue, after)});
+      }
+      if (request.method !== "PUT") {
+        return json({ok:false,error:{code:"METHOD_NOT_ALLOWED",message:"Method not allowed"}},405,
+          {Allow:"GET, PUT"});
+      }
+      const id = params.get("id"), revision = params.get("revision"), decision = params.get("decision");
+      if (!validOpaqueId(id) || revision === null || !/^[1-9][0-9]{0,9}$/.test(revision) ||
+          !validCaseDecision(decision)) {
+        return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid review decision"}},400);
+      }
+      const evidenceFields = ["listingRevision", "profileRevision", "photoRevision"]
+        .map(name => params.get(name));
+      const needsEvidence = decision === "upheld" || decision === "restored";
+      if (needsEvidence ? params.size !== 6 ||
+          evidenceFields.some(value => value === null || !/^(?:0|[1-9][0-9]{0,9})$/.test(value))
+          : params.size !== 3) {
+        return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid evidence revisions"}},400);
+      }
+      const [listing, profile, photo] = evidenceFields.map(Number);
+      const updated = await decideServiceCase(env.DB, id, Number(revision), decision,
+        needsEvidence ? {listing, profile, photo} : null);
+      return updated ? json({ok:true,data:{status:decision}})
+        : json({ok:false,error:{code:"CONFLICT",message:"Review no longer current"}},409);
+    } catch {
+      return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Review unavailable"}},503);
+    }
+  }
+  if (url.pathname === "/api/v1/moderation/service-details" ||
+      url.pathname === "/api/v1/moderation/service-photo") {
+    const photo = url.pathname.endsWith("/service-photo");
+    if (!authorizedServiceModerator(bearerToken(request), env.SERVICE_MODERATION_KEY)) {
+      return json({ok:false,error:{code:"NOT_FOUND",message:"Endpoint not found"}},404);
+    }
+    if (!env.DB) return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Review unavailable"}},503);
+    const params = url.searchParams;
+    try {
+      if (request.method === "GET") {
+        const id = params.get("id");
+        if (photo && validOpaqueId(id) && params.size === 1 && await hasEmptyBody(request)) {
+          const item = await servicePhotoForReview(env.DB, id);
+          return item ? json({ok:true,data:item})
+            : json({ok:false,error:{code:"NOT_FOUND",message:"Photo unavailable"}},404);
+        }
+        const after = params.get("after");
+        if (!(params.size === 0 || params.size === 1 && validOpaqueId(after)) ||
+            !(await hasEmptyBody(request))) {
+          return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid review page"}},400);
+        }
+        return json({ok:true,data:photo
+          ? await pendingServicePhotos(env.DB, after)
+          : await pendingServiceDetails(env.DB, after)});
+      }
+      if (request.method !== "PUT") {
+        return json({ok:false,error:{code:"METHOD_NOT_ALLOWED",message:"Method not allowed"}},405,
+          {Allow:"GET, PUT"});
+      }
+      const id = params.get("id"), revision = params.get("revision"), decision = params.get("decision");
+      if (params.size !== 3 || !validOpaqueId(id) || revision === null ||
+          !/^[1-9][0-9]{0,9}$/.test(revision) || (decision !== "approved" && decision !== "rejected") ||
+          !(await hasEmptyBody(request))) {
+        return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid review decision"}},400);
+      }
+      const updated = photo
+        ? await reviewServicePhoto(env.DB, id, Number(revision), decision)
+        : await reviewServiceDetails(env.DB, id, Number(revision), decision);
+      return updated ? json({ok:true,data:{status:decision}})
+        : json({ok:false,error:{code:"CONFLICT",message:"Review no longer current"}},409);
+    } catch {
+      return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Review unavailable"}},503);
+    }
+  }
+  if (url.pathname === "/api/v1/me/service-photo") {
+    const method = request.method;
+    if (method !== "GET" && method !== "PUT" && method !== "DELETE") {
+      return json({ok:false,error:{code:"METHOD_NOT_ALLOWED",message:"Method not allowed"}},405,
+        {Allow:"GET, PUT, DELETE"});
+    }
+    const params = url.searchParams;
+    const id = params.get("id"), revision = params.get("revision");
+    const download = params.get("download") === "1";
+    if (!validOpaqueId(id) || params.getAll("id").length !== 1 ||
+        (method === "GET" ? params.size !== (download ? 2 : 1) :
+          params.size !== 2 || revision === null || !/^(?:0|[1-9][0-9]{0,9})$/.test(revision))) {
+      return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid service photo query"}},400);
+    }
+    const token = bearerToken(request);
+    if (!validSessionToken(token)) {
+      return json({ok:false,error:{code:"UNAUTHORIZED",message:"Authentication required"}},401);
+    }
+    if (!env.DB) return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Service photo unavailable"}},503);
+    try {
+      if (method !== "PUT" && !(await hasEmptyBody(request))) {
+        return json({ok:false,error:{code:"INVALID_QUERY",message:"Unexpected input"}},400);
+      }
+      if (method === "GET") {
+        const data = await ownServicePhoto(env.DB, token, id, download);
+        return data ? json({ok:true,data})
+          : json({ok:false,error:{code:"NOT_FOUND",message:"Service unavailable"}},404);
+      }
+      const jpeg = method === "PUT" ? await readServicePhotoBody(request) : null;
+      if (method === "PUT" && !validServicePhoto(jpeg)) {
+        return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid service photo"}},400);
+      }
+      const data = jpeg === null ? await clearServicePhoto(env.DB, token, id, Number(revision))
+        : await submitServicePhoto(env.DB, token, id, Number(revision), jpeg);
+      return data ? json({ok:true,data})
+        : json({ok:false,error:{code:"CONFLICT",message:"Service photo changed"}},409);
+    } catch {
+      return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Service photo unavailable"}},503);
+    }
+  }
+  if (url.pathname === "/api/v1/listings/photo") {
+    const methodError = getOnly(request);
+    if (methodError) return methodError;
+    const params = url.searchParams;
+    const id = params.get("id"), categoryId = params.get("categoryId"), city = params.get("city");
+    if (!validOpaqueId(id) || !validCategoryId(categoryId) ||
+        params.getAll("id").length !== 1 || params.getAll("categoryId").length !== 1 ||
+        !(city === null ? params.size === 2 : params.size === 3 && validServiceCity(city)) ||
+        !(await hasEmptyBody(request))) {
+      return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid service photo query"}},400);
+    }
+    if (!env.DB) return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Service photo unavailable"}},503);
+    try {
+      const data = await publicServicePhoto(env.DB, id, categoryId, validServiceCity(city) ? city : null);
+      return data ? json({ok:true,data})
+        : json({ok:false,error:{code:"NOT_FOUND",message:"Photo unavailable"}},404);
+    } catch {
+      return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Service photo unavailable"}},503);
+    }
+  }
+  if (url.pathname === "/api/v1/me/service-details") {
+    const method = request.method;
+    if (method !== "GET" && method !== "PUT" && method !== "DELETE") {
+      return json({ok:false,error:{code:"METHOD_NOT_ALLOWED",message:"Method not allowed"}},405,
+        {Allow:"GET, PUT, DELETE"});
+    }
+    const id = url.searchParams.get("id"), revision = url.searchParams.get("revision");
+    if (!validOpaqueId(id) || url.searchParams.getAll("id").length !== 1 ||
+        (method === "GET" ? url.searchParams.size !== 1 :
+          url.searchParams.size !== 2 || revision === null || !/^(?:0|[1-9][0-9]{0,9})$/.test(revision))) {
+      return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid service details query"}},400);
+    }
+    const token = bearerToken(request);
+    if (!validSessionToken(token)) {
+      return json({ok:false,error:{code:"UNAUTHORIZED",message:"Authentication required"}},401);
+    }
+    if (!env.DB) return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Service details unavailable"}},503);
+    try {
+      if (method !== "PUT" && !(await hasEmptyBody(request))) {
+        return json({ok:false,error:{code:"INVALID_QUERY",message:"Unexpected input"}},400);
+      }
+      if (method === "GET") {
+        const data = await readOwnServiceDetails(env.DB, token, id);
+        return data ? json({ok:true,data})
+          : json({ok:false,error:{code:"NOT_FOUND",message:"Service unavailable"}},404);
+      }
+      const expected = Number(revision);
+      if (method === "DELETE") {
+        const removed = await clearOwnServiceDetails(env.DB, token, id, expected);
+        return removed ? json({ok:true,data:{details:null,revision:expected+1}})
+          : json({ok:false,error:{code:"CONFLICT",message:"Service details changed"}},409);
+      }
+      const input = await readServiceDetailsBody(request);
+      const details = input && parseServiceDetails(input);
+      if (!details) return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid service details"}},400);
+      const saved = await submitOwnServiceDetails(env.DB, token, id, details, expected);
+      return saved ? json({ok:true,data:{details:saved,revision:saved.revision}})
+        : json({ok:false,error:{code:"CONFLICT",message:"Service details changed"}},409);
+    } catch {
+      return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Service details unavailable"}},503);
+    }
+  }
+  if (url.pathname === "/api/v1/me/service-area") {
+    const method = request.method;
+    if (method !== "GET" && method !== "PUT") {
+      return json({ok:false,error:{code:"METHOD_NOT_ALLOWED",message:"Method not allowed"}},405,
+        {Allow:"GET, PUT"});
+    }
+    const id = url.searchParams.get("id");
+    const revision = url.searchParams.get("revision");
+    if (!validOpaqueId(id) || url.searchParams.getAll("id").length !== 1 ||
+        (method === "GET" ? url.searchParams.size !== 1 :
+          url.searchParams.size !== 2 || revision === null || !/^(?:0|[1-9][0-9]{0,9})$/.test(revision))) {
+      return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid service area query"}},400);
+    }
+    const token = bearerToken(request);
+    if (!validSessionToken(token)) {
+      return json({ok:false,error:{code:"UNAUTHORIZED",message:"Authentication required"}},401);
+    }
+    if (!env.DB) return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Service area unavailable"}},503);
+    try {
+      if (method === "GET") {
+        if (!(await hasEmptyBody(request))) {
+          return json({ok:false,error:{code:"INVALID_QUERY",message:"Unexpected input"}},400);
+        }
+        const data = await readOwnServiceArea(env.DB, token, id);
+        return data ? json({ok:true,data})
+          : json({ok:false,error:{code:"NOT_FOUND",message:"Service unavailable"}},404);
+      }
+      const city = await readServiceCityBody(request);
+      if (city !== "none" && !validServiceCity(city)) {
+        return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid service city"}},400);
+      }
+      const data = await changeOwnServiceArea(env.DB, token, id, city === "none" ? null : city, Number(revision));
+      return data ? json({ok:true,data})
+        : json({ok:false,error:{code:"CONFLICT",message:"Service changed or unavailable"}},409);
+    } catch {
+      return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Service area unavailable"}},503);
     }
   }
   if (url.pathname === "/api/v1/me/worker-profile") {
@@ -276,11 +642,14 @@ export async function handleRequest(
       // Legacy GET ?id=<id> remains exactly its two-field Listing response.
       // The approved Category detail is STRICTLY opt-in, with one requested
       // language and no caller-supplied owner/category/status or extra keys.
-      const view=params.get("view"),lang=params.get("lang");
+      const view=params.get("view"),lang=params.get("lang"),city=params.get("city");
+      const profile=params.get("profile");
       const approvedDetail=view==="service" &&
-        (lang==="hi"||lang==="en") &&
-        params.size===3 && params.getAll("view").length===1 &&
-        params.getAll("lang").length===1;
+        (lang==="hi"||lang==="en") && (city === null || validServiceCity(city)) &&
+        (profile === null || profile === "1") &&
+        params.size === 3 + Number(city !== null) + Number(profile !== null) &&
+        params.getAll("view").length===1 && params.getAll("lang").length===1 &&
+        params.getAll("city").length <= 1 && params.getAll("profile").length <= 1;
       if(params.getAll("id").length!==1||!validOpaqueId(id)||
           !(view===null&&lang===null&&params.size===1 || approvedDetail)||
           !(await hasEmptyBody(request))) {
@@ -289,7 +658,8 @@ export async function handleRequest(
       if(!env.DB)return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Listings unavailable"}},503);
       try {
         if(approvedDetail){
-          const detail=await publicApprovedServiceDetail(env.DB,id!,lang as "hi"|"en");
+          const detail=await publicApprovedServiceDetail(env.DB,id!,lang as "hi"|"en",
+            validServiceCity(city) ? city : undefined, profile === "1");
           if(!detail)return json({ok:false,error:{code:"NOT_FOUND",message:"Listing not found"}},404);
           return json({ok:true,data:detail});
         }
@@ -304,9 +674,13 @@ export async function handleRequest(
     // required-Category endpoint, and no private worker/profile projections.
     // Only one exact mode/limit and one optional CURRENT public cursor.
     if(params.has("feed")) {
-      const limit=params.get("limit"),after=params.get("after");
-      const allowed=new Set(["feed","limit","after"]);
-      let invalid=params.get("feed")!=="all" ||
+      const mode=params.get("feed"),limit=params.get("limit"),after=params.get("after");
+      const lang=params.get("lang"), category=params.get("categoryId"), city=params.get("city");
+      const localized = mode === "service" && (lang === "hi" || lang === "en");
+      const allowed=new Set(["feed","limit","after","lang","categoryId","city"]);
+      let invalid=!(mode === "all" && lang === null || localized) ||
+        (category !== null && (!localized || !validCategoryId(category))) ||
+        (city !== null && (!localized || !validServiceCity(city))) ||
         params.getAll("feed").length!==1 || params.getAll("limit").length!==1 ||
         limit===null || !/^(?:[1-9]|1[0-9]|2[0-5])$/.test(limit) ||
         (after!==null&&!validOpaqueId(after));
@@ -318,7 +692,11 @@ export async function handleRequest(
       if(!env.DB)return json({ok:false,error:{
         code:"SERVICE_UNAVAILABLE",message:"Listings unavailable"}},503);
       try {
-        return json({ok:true,data:await pageAllPublicListings(env.DB,Number(limit),after)});
+        const page = lang === "hi" || lang === "en"
+          ? await pageAllPublicListings(env.DB, Number(limit), after, lang, category ?? undefined,
+              validServiceCity(city) ? city : undefined)
+          : await pageAllPublicListings(env.DB, Number(limit), after);
+        return json({ok:true,data:page});
       } catch {
         return json({ok:false,error:{
           code:"SERVICE_UNAVAILABLE",message:"Listings unavailable"}},503);
@@ -388,6 +766,18 @@ export async function handleRequest(
             code:"NOT_FOUND",message:"Listing not found"}},404);
           return json({ok:true,data:{listing:selected}});
         }
+        if (url.searchParams.has("categoryId")) {
+          const params = url.searchParams;
+          const categoryId = params.get("categoryId");
+          if (params.size !== 2 || params.get("view") !== "management" ||
+              !validCategoryId(categoryId) || !(await hasEmptyBody(request))) {
+            return json({ok:false,error:{
+              code:"INVALID_QUERY",message:"Invalid owner category lookup"}},400);
+          }
+          const listing = await exactManagedOwnListingByCategory(env.DB, actor.accountId, categoryId!);
+          if (!listing) return json({ok:false,error:{code:"NOT_FOUND",message:"Listing not found"}},404);
+          return json({ok:true,data:{listing}});
+        }
         const page=parseOwnListingsPage(url.searchParams);
         if(!page||!(await hasEmptyBody(request)))
           return json({ok:false,error:{code:"INVALID_QUERY",message:"Unexpected input"}},400);
@@ -402,10 +792,11 @@ export async function handleRequest(
         return json({ok:true,data});
       }
       if(request.method==="POST") {
+        const create = url.searchParams.size === 1 && url.searchParams.get("create") === "1";
         // Opt-in reactivation ONLY of a specific previously unpublished own
         // Listing. Unlike regular Publish, never INSERT/UPSERT or create a
         // second row; existing moderation and current approval still apply.
-        if(url.search) {
+        if (url.search && !create) {
           if(url.searchParams.size!==1||
               url.searchParams.getAll("resume").length!==1||
               url.searchParams.get("resume")!=="1")
@@ -425,11 +816,32 @@ export async function handleRequest(
         const categoryId=await readServiceListingBody(request);
         if(!validCategoryId(categoryId))
           return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid listing input"}},400);
-        const listing=await publishListing(env.DB,actor.accountId,categoryId);
-        if(!listing)return json({ok:false,error:{code:"FORBIDDEN",message:"Listing not eligible"}},403);
+        const listing = create
+          ? await createOwnListing(env.DB, actor.accountId, categoryId)
+          : await publishListing(env.DB, actor.accountId, categoryId);
+        if (!listing) {
+          if (create) return json({ok:false,error:{
+            code:"CONFLICT",message:"Service already exists or is unavailable"}},409);
+          return json({ok:false,error:{code:"FORBIDDEN",message:"Listing not eligible"}},403);
+        }
         return json({ok:true,data:{listing}});
       }
       if(request.method==="PUT") {
+        const publication = url.searchParams.get("publication");
+        if (publication !== null) {
+          const input = url.searchParams.size === 1 &&
+              (publication === "pause" || publication === "resume")
+            ? await readPublicationRevisionBody(request) : null;
+          if (!input || (publication !== "pause" && publication !== "resume"))
+            return json({ok:false,error:{
+              code:"INVALID_QUERY",message:"Invalid publication change"}},400);
+          const listing = await changeOwnListingPublication(
+            env.DB, actor.accountId, input.listingId, input.expectedCategoryId,
+            input.expectedRevision, publication);
+          if (!listing) return json({ok:false,error:{
+            code:"CONFLICT",message:"Listing changed or unavailable"}},409);
+          return json({ok:true,data:{listing}});
+        }
         // Category-only edit: no new private fields or client-supplied actor.
         // Current worker+account, approved active destination, unique owner
         // category, moderation and expected previous Category are checked in

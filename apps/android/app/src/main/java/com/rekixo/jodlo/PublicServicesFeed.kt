@@ -2,12 +2,10 @@ package com.rekixo.jodlo
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -23,7 +21,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.rekixo.jodlo.core.network.ApiOutcome
+import com.rekixo.jodlo.core.network.InMemorySessionCoordinator
 import com.rekixo.jodlo.core.network.FailureKind
+import com.rekixo.jodlo.core.network.NearbyPilotCity
 import com.rekixo.jodlo.core.network.Language
 import com.rekixo.jodlo.core.network.CustomerServiceCard
 import com.rekixo.jodlo.core.network.PublicApprovedServiceDetail
@@ -32,7 +32,6 @@ import com.rekixo.jodlo.core.network.RemoteCatalogRepository
 import com.rekixo.jodlo.core.network.SavedPublicServices
 import com.rekixo.jodlo.core.network.HiddenPublicServices
 import com.rekixo.jodlo.ui.theme.JodloButton
-import com.rekixo.jodlo.ui.theme.JodloCard
 import com.rekixo.jodlo.ui.theme.JodloChip
 import com.rekixo.jodlo.ui.theme.JodloSizes
 import com.rekixo.jodlo.ui.theme.JodloTextAction
@@ -55,17 +54,26 @@ internal fun PublicServicesFeed(
     onSaveToggle: (PublicListing) -> Boolean,
     hidden: HiddenPublicServices,
     onHide: (String) -> Boolean,
+    onBrowseCategories: () -> Unit,
+    contactSession: InMemorySessionCoordinator?,
+    city: NearbyPilotCity? = null,
+    onBackToCityPicker: (() -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
     var language by remember { mutableStateOf(Language.HI) }
     var listings by remember { mutableStateOf<List<PublicListing>>(emptyList()) }
     var nextCursor by remember { mutableStateOf<String?>(null) }
     var categoryNames by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var categoryFilter by remember(repository) { mutableStateOf<String?>(null) }
+    var filterNames by remember(repository) {
+        mutableStateOf<Map<String, String>>(emptyMap())
+    }
     var selected by remember { mutableStateOf<PublicListing?>(null) }
     var verified by remember { mutableStateOf<PublicApprovedServiceDetail?>(null) }
     var detailFailure by remember { mutableStateOf<FailureKind?>(null) }
     var failure by remember { mutableStateOf(false) }
     var pageFailure by remember { mutableStateOf(false) }
+    var continuationExpired by remember { mutableStateOf(false) }
     var savingFailure by remember { mutableStateOf(false) }
     var hidingFailure by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
@@ -85,6 +93,7 @@ internal fun PublicServicesFeed(
         if (after != null && after != nextCursor) return
         val current = ++revision
         val lang = language
+        val filter = categoryFilter
         if (after == null) {
             listings = emptyList()
             nextCursor = null
@@ -92,56 +101,42 @@ internal fun PublicServicesFeed(
             failure = false
         }
         pageFailure = false
+        continuationExpired = false
         busy = true
         scope.launch {
             val result = withContext(Dispatchers.IO) {
                 try {
-                    repository.allPublicListings(limit = 20, after = after)
+                    repository.localizedPublicListings(lang, after = after, categoryId = filter, city = city)
                 } catch (cancelled: kotlin.coroutines.cancellation.CancellationException) {
                     throw cancelled
                 } catch (_: Exception) {
                     ApiOutcome.Failed(FailureKind.BAD_RESPONSE, false)
                 }
             }
-            if (current != revision) return@launch
+            if (current != revision || language != lang || categoryFilter != filter) return@launch
             when (result) {
                 is ApiOutcome.Failed -> {
                     busy = false
                     if (after == null) failure = true else pageFailure = true
                 }
                 is ApiOutcome.Ok -> {
-                    val page = result.value
+                    val page = result.value.page
                     val rows = page.listings
-                    val existing = listings.map { it.id }.toSet()
-                    if ((after != null && rows.isEmpty()) ||
-                        rows.map { it.id }.toSet().size != rows.size ||
-                        (after != null && rows.any { it.id in existing })) {
-                        listings = emptyList()
+                    val existing = listings.mapTo(mutableSetOf()) { it.id }
+                    if (after != null && (rows.isEmpty() || rows.any { it.id in existing })) {
+                        // An expired public anchor or a changed page cannot extend
+                        // this view. Keep existing cards as references until refresh.
                         nextCursor = null
-                        categoryNames = emptyMap()
-                        failure = true
+                        continuationExpired = true
                         busy = false
                         return@launch
                     }
                     listings = if (after == null) rows else listings + rows
                     nextCursor = page.nextCursor
-                    // Names come only from the existing explicitly PUBLIC,
-                    // active-Category label endpoint. Failure never changes
-                    // current listing status or invents a label.
-                    val ids = rows.map { it.categoryId }.distinct()
-                    if (ids.isNotEmpty()) {
-                        val names = withContext(Dispatchers.IO) {
-                            try { repository.approvedNames(ids, lang) }
-                            catch (cancelled: kotlin.coroutines.cancellation.CancellationException) {
-                                throw cancelled
-                            } catch (_: Exception) {
-                                ApiOutcome.Failed(FailureKind.BAD_RESPONSE, false)
-                            }
-                        }
-                        if (current != revision) return@launch
-                        if (names is ApiOutcome.Ok) {
-                            categoryNames = categoryNames + names.value.associate { it.id to it.name }
-                        }
+                    categoryNames = categoryNames + result.value.categoryNames
+                    if (filter == null) {
+                        filterNames = (filterNames + result.value.categoryNames).entries
+                            .take(24).associate { it.key to it.value }
                     }
                     busy = false
                 }
@@ -149,7 +144,7 @@ internal fun PublicServicesFeed(
         }
     }
     fun inspect(row: PublicListing) {
-        if (busy || row !in listings) return
+        if (busy || row !in listings || categoryFilter?.let { it != row.categoryId } == true) return
         val current = ++revision
         val lang = language
         selected = row
@@ -160,7 +155,7 @@ internal fun PublicServicesFeed(
         busy = true
         scope.launch {
             val result = withContext(Dispatchers.IO) {
-                try { repository.approvedServiceDetail(row.id, row.categoryId, lang) }
+                try { repository.reviewedServiceDetail(row.id, row.categoryId, lang, city) }
                 catch (cancelled: kotlin.coroutines.cancellation.CancellationException) {
                     throw cancelled
                 } catch (_: Exception) {
@@ -176,15 +171,23 @@ internal fun PublicServicesFeed(
         }
     }
 
-    LaunchedEffect(repository, language) {
-        // Opening this tab, or explicitly changing language, is the consented
-        // read; there is no background polling or location collection.
-        revision++
-        selected = null
-        busy = false
+    fun changeScope(nextLanguage: Language, nextCategory: String?) {
+        if (language == nextLanguage && categoryFilter == nextCategory) return
+        leaveDetail()
+        if (language != nextLanguage) filterNames = emptyMap()
+        language = nextLanguage
+        categoryFilter = nextCategory
         loadPage()
     }
-    BackHandler(enabled = selected != null) { leaveDetail() }
+
+    LaunchedEffect(repository) {
+        leaveDetail()
+        loadPage()
+    }
+    val selectedListing = selected
+    BackHandler(enabled = selectedListing != null || onBackToCityPicker != null) {
+        if (selectedListing != null) leaveDetail() else onBackToCityPicker?.invoke()
+    }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(JodloSizes.ScreenPadding),
@@ -198,15 +201,41 @@ internal fun PublicServicesFeed(
             Text(stringResource(R.string.feed_privacy_notice),
                 style = MaterialTheme.typography.bodySmall)
         }
-        if (selected == null) {
+        if (selectedListing == null) {
+            if (city != null) item {
+                Text(stringResource(R.string.nearby_city_results, stringResource(cityLabel(city))))
+                onBackToCityPicker?.let { back ->
+                    JodloTextAction(onClick = back) { Text(stringResource(R.string.nearby_choose_city)) }
+                }
+            }
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
                     JodloChip(selected = language == Language.HI,
-                        onClick = { language = Language.HI },
+                        onClick = { if (language != Language.HI) changeScope(Language.HI, null) },
                         label = { Text(stringResource(R.string.language_hindi)) })
                     JodloChip(selected = language == Language.EN,
-                        onClick = { language = Language.EN },
+                        onClick = { if (language != Language.EN) changeScope(Language.EN, null) },
                         label = { Text(stringResource(R.string.language_english)) })
+                }
+            }
+            if (filterNames.isNotEmpty()) item {
+                Text(stringResource(R.string.feed_quick_filters),
+                    style = MaterialTheme.typography.titleSmall)
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
+                    item {
+                        JodloChip(selected = categoryFilter == null, enabled = !busy,
+                            onClick = { changeScope(language, null) },
+                            label = { Text(stringResource(R.string.feed_all_categories)) })
+                    }
+                    items(filterNames.entries.toList(), key = { it.key }) { (id, name) ->
+                        JodloChip(selected = categoryFilter == id, enabled = !busy,
+                            onClick = { changeScope(language, id) }, label = { Text(name) })
+                    }
+                }
+            }
+            item {
+                JodloTextAction(onClick = onBrowseCategories) {
+                    Text(stringResource(R.string.home_browse_action))
                 }
             }
             item {
@@ -218,10 +247,15 @@ internal fun PublicServicesFeed(
                 Text(stringResource(R.string.request_failed),
                     color = MaterialTheme.colorScheme.error)
             }
-            val visibleListings = hidden.visible(listings)
+            val visibleListings = hidden.visible(listings).filter {
+                categoryFilter == null || it.categoryId == categoryFilter
+            }
             if (visibleListings.isEmpty() && !busy && !failure) item {
-                Text(stringResource(if (listings.isEmpty()) R.string.feed_empty
-                    else R.string.hidden_page_filtered))
+                Text(stringResource(when {
+                    listings.isNotEmpty() -> R.string.hidden_page_filtered
+                    city != null -> R.string.nearby_city_empty
+                    else -> R.string.feed_empty
+                }))
             }
             items(visibleListings, key = { "all-public-" + it.id }) { listing ->
                 SafeServiceCard(
@@ -233,6 +267,12 @@ internal fun PublicServicesFeed(
             if (nextCursor != null) item {
                 JodloTextAction(onClick = { loadPage(nextCursor) }, enabled = !busy) {
                     Text(stringResource(R.string.customer_more_listings))
+                }
+            }
+            if (continuationExpired) item {
+                Text(stringResource(R.string.feed_continuation_expired))
+                JodloTextAction(onClick = { loadPage() }, enabled = !busy) {
+                    Text(stringResource(R.string.feed_refresh))
                 }
             }
             if (pageFailure) item {
@@ -250,12 +290,10 @@ internal fun PublicServicesFeed(
             }
             // Only exact public Service+Category+language matching this
             // selection can authorize a checked-public card or Save action.
-            val safeCard = selected?.let {
-                CustomerServiceCard.publicWhenChecked(it, language, verified)
-            }
+            val safeCard = CustomerServiceCard.publicWhenChecked(selectedListing, language, verified)
             item {
                 SafeServiceCard(safeCard ?: CustomerServiceCard.reference(
-                    selected!!, categoryNames[selected!!.categoryId]))
+                    selectedListing, categoryNames[selectedListing.categoryId]))
             }
             item {
                 JodloTextAction(
@@ -271,7 +309,10 @@ internal fun PublicServicesFeed(
                     color = MaterialTheme.colorScheme.error)
             }
             if (safeCard != null) {
-                item { SafePublicProfileFacts() }
+                item { SafePublicProfileFacts(safeCard.profile, safeCard.city) }
+                item { ApprovedServicePhoto(repository, safeCard) }
+                item { ContactBlockControls(contactSession, safeCard.listing.id) }
+                item { ReportServiceControls(contactSession, safeCard.listing.id) }
                 item {
                     JodloButton(onClick = {
                         savingFailure = !onSaveToggle(safeCard.listing)
@@ -286,8 +327,11 @@ internal fun PublicServicesFeed(
                 }
             } else {
                 if (detailFailure != null) item {
-                    Text(stringResource(if (detailFailure == FailureKind.NOT_FOUND)
-                        R.string.listing_no_longer_public else R.string.request_failed),
+                    Text(stringResource(when {
+                        detailFailure != FailureKind.NOT_FOUND -> R.string.request_failed
+                        city != null -> R.string.nearby_service_unavailable
+                        else -> R.string.listing_no_longer_public
+                    }),
                         color = MaterialTheme.colorScheme.error)
                 }
                 item {

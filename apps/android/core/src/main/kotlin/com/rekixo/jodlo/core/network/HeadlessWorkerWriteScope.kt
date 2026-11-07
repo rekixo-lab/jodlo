@@ -2,7 +2,7 @@ package com.rekixo.jodlo.core.network
 
 /** No user identity, address, contact, Google proof or bearer is stored here. */
 sealed class WorkerWriteAction {
-    data class Publish(val confirmedCategoryId: String) : WorkerWriteAction()
+    data class Publish(val confirmedCategoryId: String, val createOnly: Boolean = false) : WorkerWriteAction()
     data class Unpublish(val listingId: String) : WorkerWriteAction()
     data class Resume(val listingId: String, val expectedCategoryId: String) : WorkerWriteAction()
     data class EditCategory(
@@ -13,9 +13,10 @@ sealed class WorkerWriteAction {
         val nextCategoryId: String, val expectedRevision: Long,
     ) : WorkerWriteAction()
 
-    /** Publish has no confirmed Listing ID after a lost response; it must
-     * use the deliberately paginated read, never guess an owner's ID.
-     */
+    /** A lost create response is recoverable by category, without guessing an ID. */
+    fun supportsExactRead(): Boolean = this !is Publish || createOnly
+
+    /** A publish attempt has no confirmed Listing ID after a lost response. */
     fun exactTargetId(): String? = when (this) {
         is Publish -> null
         is Unpublish -> listingId
@@ -186,6 +187,13 @@ class HeadlessWorkerWriteScope(private val session: InMemorySessionCoordinator) 
         }
     }
 
+    fun createListing(categoryId: String, owner: AccountPrivateReadMarker): WorkerWriteCompletion {
+        JodloRoutes.requireCategoryId(categoryId)
+        return write(WorkerWriteAction.Publish(categoryId, createOnly = true)) {
+            session.createListing(categoryId, owner, it)
+        }
+    }
+
     fun editCategory(
         listingId: String, expectedCategoryId: String, nextCategoryId: String,
     ): WorkerWriteCompletion {
@@ -206,7 +214,7 @@ class HeadlessWorkerWriteScope(private val session: InMemorySessionCoordinator) 
      */
     fun editCategoryVersioned(
         listingId:String,expectedCategoryId:String,nextCategoryId:String,
-        expectedRevision:Long,
+        expectedRevision:Long, expectedOwner: AccountPrivateReadMarker? = null,
     ): WorkerWriteCompletion {
         JodloRoutes.requireListingId(listingId)
         JodloRoutes.requireCategoryId(expectedCategoryId)
@@ -216,8 +224,18 @@ class HeadlessWorkerWriteScope(private val session: InMemorySessionCoordinator) 
         return write(WorkerWriteAction.VersionedCategoryEdit(
             listingId,expectedCategoryId,nextCategoryId,expectedRevision)) {
             session.editListingCategoryVersioned(
-                listingId,expectedCategoryId,nextCategoryId,expectedRevision,it)
+                listingId,expectedCategoryId,nextCategoryId,expectedRevision,it,expectedOwner)
         }
+    }
+
+    fun changePublication(review: VersionedOwnListing, owner: AccountPrivateReadMarker): WorkerWriteCompletion {
+        val row = review.row
+        val action = when (row.publicationStatus) {
+            OwnPublicationStatus.PUBLISHED -> WorkerWriteAction.Unpublish(row.id)
+            OwnPublicationStatus.UNPUBLISHED -> WorkerWriteAction.Resume(row.id, row.categoryId)
+            null -> return WorkerWriteCompletion.BLOCKED
+        }
+        return write(action) { session.changeListingPublication(review, owner, it) }
     }
 
     /** Explicit two-step owner resume review enters through the SAME
@@ -241,11 +259,10 @@ class HeadlessWorkerWriteScope(private val session: InMemorySessionCoordinator) 
         }
     }
 
-    /** For a failed edit/pause/resume with a known opaque Listing ID, one
-     * explicit owner-authenticated GET avoids scanning arbitrary owner pages.
-     * A fresh Category/status/visibility snapshot, or a generic 404, NEVER
-     * certifies whether the earlier PUT/DELETE committed. Publish cannot
-     * use this method: its lost response has no trusted new Listing ID.
+    /** Read the current owner row after an uncertain change. New Services
+     * have no known ID when the response is lost, but each owner/category
+     * pair is unique. Neither an observed row nor its absence proves the
+     * outcome of the earlier request.
      */
     fun recheckUncertainListingExactly(): WorkerWriteCompletion {
         val ticket = synchronized(lock) {
@@ -253,19 +270,20 @@ class HeadlessWorkerWriteScope(private val session: InMemorySessionCoordinator) 
             if (closed) return@synchronized null
             val prior = state as? WorkerWriteState.NeedsReview
                 ?: return@synchronized null
-            val id = prior.action.exactTargetId() ?: return@synchronized null
-            Pair(ReviewTicket(CancellationSignal(), null), id).also {
-                signal = it.first.signal
+            if (!prior.action.supportsExactRead()) return@synchronized null
+            (CancellationSignal() to prior.action).also {
+                signal = it.first
                 state = WorkerWriteState.Rechecking(prior)
             }
         } ?: return synchronized(lock) {
             if (closed) WorkerWriteCompletion.DISCARDED else WorkerWriteCompletion.BLOCKED
         }
-        val captured = ticket.first.signal
-        val id = ticket.second
+        val (captured, action) = ticket
         val reply: SessionResult<OwnListing> = try {
             if (captured.isCancelled) SessionResult.Failed(SessionFailure.CANCELLED)
-            else session.exactManagedOwnListing(id, captured)
+            else if (action is WorkerWriteAction.Publish)
+                session.exactManagedOwnListingByCategory(action.confirmedCategoryId, captured)
+            else session.exactManagedOwnListing(checkNotNull(action.exactTargetId()), captured)
         } catch (_: Exception) {
             SessionResult.Failed(SessionFailure.REMOTE_FAILURE, FailureKind.BAD_RESPONSE)
         }
@@ -279,7 +297,10 @@ class HeadlessWorkerWriteScope(private val session: InMemorySessionCoordinator) 
                 state = when (reply) {
                     is SessionResult.Success -> {
                         val row = reply.value
-                        if (row.id != id || row.publicationStatus == null)
+                        val matches = if (action is WorkerWriteAction.Publish)
+                            row.categoryId == action.confirmedCategoryId
+                        else row.id == action.exactTargetId()
+                        if (!matches || row.publicationStatus == null)
                             prior.copy(exactObservation = null, observation = null,
                                 readFailure = SessionFailure.REMOTE_FAILURE,
                                 pagedNextCursor = null, pagedPagesChecked = 0,

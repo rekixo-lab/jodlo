@@ -9,16 +9,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import com.rekixo.jodlo.core.network.NearbyPilotCity
+import com.rekixo.jodlo.core.network.ServiceProfile
 import com.rekixo.jodlo.ui.theme.JodloCard
 import com.rekixo.jodlo.ui.theme.JodloSizes
 
-/** Reused only beside a strictly checked public Service detail.
- * The backend has NO approved Worker profile, service-area, price or call
- * availability DTO today. These sentences are disclosures, not null-field
- * data and never an implicit permission to contact a person.
- */
+/** Review covers publication of the supplied text, not the worker's credentials. */
 @Composable
-internal fun SafePublicProfileFacts() {
+internal fun SafePublicProfileFacts(profile: ServiceProfile?, city: NearbyPilotCity?) {
     JodloCard(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(JodloSizes.CardPadding),
@@ -26,12 +24,24 @@ internal fun SafePublicProfileFacts() {
         ) {
             Text(stringResource(R.string.service_profile_heading),
                 style = MaterialTheme.typography.titleMedium)
-            Text(stringResource(R.string.service_profile_identity),
-                style = MaterialTheme.typography.bodySmall)
-            Text(stringResource(R.string.service_profile_area),
-                style = MaterialTheme.typography.bodySmall)
-            Text(stringResource(R.string.service_profile_rates_calls),
-                style = MaterialTheme.typography.bodySmall)
+            if (profile == null) {
+                Text(stringResource(R.string.service_profile_identity),
+                    style = MaterialTheme.typography.bodySmall)
+            } else {
+                Text(profile.displayName, style = MaterialTheme.typography.titleMedium)
+                Text(profile.description)
+                profile.experienceYears?.let {
+                    Text(stringResource(R.string.service_details_experience_public, it))
+                }
+                profile.visitRateInr?.let {
+                    Text(stringResource(R.string.service_details_rate_public, it))
+                }
+                Text(stringResource(R.string.service_details_review_disclaimer),
+                    style = MaterialTheme.typography.bodySmall)
+            }
+            if (city != null) {
+                Text(stringResource(R.string.service_details_city_public, stringResource(cityLabel(city))))
+            }
         }
     }
 }

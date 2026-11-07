@@ -204,6 +204,7 @@ class InMemorySessionCoordinator(
         needsWorker: Boolean,
         mutation: Boolean,
         consistentRead: Boolean,
+        expectedOwner: AccountPrivateReadMarker?,
     ): Pair<Lease?, SessionFailure> = synchronized(lock) {
         val current = active ?: return@synchronized null to SessionFailure.SIGNED_OUT
         if (expired(current)) {
@@ -212,6 +213,9 @@ class InMemorySessionCoordinator(
         }
         if ((mutation || consistentRead) && current.mutationInFlight)
             return@synchronized null to SessionFailure.OPERATION_IN_PROGRESS
+        if (expectedOwner != null &&
+            expectedOwner != AccountPrivateReadMarker(generation, current.writeRevision))
+            return@synchronized null to SessionFailure.STALE_RESULT
         if (needsWorker && current.worker != WorkerState.DRAFT)
             return@synchronized null to SessionFailure.OPT_IN_REQUIRED
         if (mutation) {
@@ -235,11 +239,16 @@ class InMemorySessionCoordinator(
         mutation: Boolean = false,
         consistentRead: Boolean = false,
         cancellation: CancellationSignal? = null,
+        expectedOwner: AccountPrivateReadMarker? = null,
     ): SessionResult<R> {
         if (cancellation?.isCancelled == true)
             return SessionResult.Failed(SessionFailure.CANCELLED)
-        val (captured, absent) = lease(needsWorker, mutation, consistentRead)
-        if (captured == null) return SessionResult.Failed(absent)
+        val (captured, absent) = lease(needsWorker, mutation, consistentRead, expectedOwner)
+        if (captured == null) {
+            return if (expectedOwner != null && absent == SessionFailure.STALE_RESULT)
+                SessionResult.Failed(SessionFailure.REMOTE_FAILURE, FailureKind.CONFLICT)
+            else SessionResult.Failed(absent)
+        }
         try {
             if (cancellation?.isCancelled == true)
                 return SessionResult.Failed(SessionFailure.CANCELLED)
@@ -322,6 +331,159 @@ class InMemorySessionCoordinator(
         }
     )
 
+    fun ownServicePhoto(
+        owner: AccountPrivateReadMarker, listingId: String, download: Boolean = false,
+    ): SessionResult<OwnServicePhoto> = withSession(
+        call = { token -> performOnce(JodloRoutes.ownServicePhoto(token, listingId, download),
+            authSender::send, JodloReplyDecoder::ownServicePhoto) },
+        update = { reply, _ -> outcome(reply) },
+        needsWorker = true, consistentRead = true, expectedOwner = owner,
+    )
+
+    fun changeServicePhoto(
+        owner: AccountPrivateReadMarker, listingId: String, revision: Long, jpeg: String?,
+    ): SessionResult<OwnServicePhoto> = withSession(
+        call = { token -> performOnce(JodloRoutes.changeServicePhoto(token, listingId, revision, jpeg),
+            authSender::send, JodloReplyDecoder::ownServicePhoto) },
+        update = { reply, _ ->
+            val expected = if (jpeg == null) ServicePhotoStatus.CLEARED else ServicePhotoStatus.PENDING
+            if (reply is ApiOutcome.Ok && (reply.value.revision != revision + 1 || reply.value.status != expected))
+                SessionResult.Failed(SessionFailure.REMOTE_FAILURE, FailureKind.BAD_RESPONSE)
+            else outcome(reply)
+        },
+        needsWorker = true, mutation = true, expectedOwner = owner,
+    )
+
+    fun ownServiceDetails(owner: AccountPrivateReadMarker, listingId: String): SessionResult<OwnServiceDetails> =
+        withSession(
+            call = { token -> performOnce(JodloRoutes.ownServiceDetails(token, listingId),
+                authSender::send, JodloReplyDecoder::ownServiceDetails) },
+            update = { reply, _ -> outcome(reply) },
+            needsWorker = true, consistentRead = true, expectedOwner = owner,
+        )
+
+    fun changeServiceDetails(
+        owner: AccountPrivateReadMarker, listingId: String, revision: Long, profile: ServiceProfile?,
+    ): SessionResult<OwnServiceDetails> = withSession(
+        call = { token -> performOnce(JodloRoutes.changeServiceDetails(token, listingId, revision, profile),
+            authSender::send, JodloReplyDecoder::ownServiceDetails) },
+        update = { reply, _ ->
+            if (reply is ApiOutcome.Ok && (reply.value.revision != revision + 1 ||
+                (profile == null && reply.value.profile != null) ||
+                (profile != null && reply.value.status != ServiceProfileStatus.PENDING)))
+                SessionResult.Failed(SessionFailure.REMOTE_FAILURE, FailureKind.BAD_RESPONSE)
+            else outcome(reply)
+        },
+        needsWorker = true, mutation = true, expectedOwner = owner,
+    )
+
+    fun ownServiceArea(owner: AccountPrivateReadMarker, listingId: String): SessionResult<OwnServiceArea> =
+        withSession(
+            call = { token -> performOnce(JodloRoutes.ownServiceArea(token, listingId),
+                authSender::send, JodloReplyDecoder::ownServiceArea) },
+            update = { reply, _ -> outcome(reply) },
+            needsWorker = true, consistentRead = true, expectedOwner = owner,
+        )
+
+    fun changeServiceArea(
+        owner: AccountPrivateReadMarker, listingId: String, city: NearbyPilotCity?, revision: Long,
+    ): SessionResult<OwnServiceArea> = withSession(
+        call = { token -> performOnce(JodloRoutes.changeServiceArea(token, listingId, city, revision),
+            authSender::send, JodloReplyDecoder::ownServiceArea) },
+        update = { reply, _ ->
+            if (reply is ApiOutcome.Ok && (reply.value.city != city || reply.value.revision != revision + 1))
+                SessionResult.Failed(SessionFailure.REMOTE_FAILURE, FailureKind.BAD_RESPONSE)
+            else outcome(reply)
+        },
+        needsWorker = true, mutation = true, expectedOwner = owner,
+    )
+
+    fun serviceReport(
+        owner: AccountPrivateReadMarker, listingId: String, reason: ServiceReportReason? = null,
+    ): SessionResult<Boolean> = withSession(
+        call = { token -> performOnce(JodloRoutes.serviceReport(token, listingId, reason),
+            authSender::send, JodloReplyDecoder::serviceReport) },
+        update = { reply, _ ->
+            if (reason != null && reply is ApiOutcome.Ok && !reply.value)
+                SessionResult.Failed(SessionFailure.REMOTE_FAILURE, FailureKind.BAD_RESPONSE)
+            else outcome(reply)
+        },
+        consistentRead = reason == null, mutation = reason != null, expectedOwner = owner,
+    )
+
+    fun ownServiceAppealCase(owner: AccountPrivateReadMarker, listingId: String): SessionResult<OwnServiceCase?> =
+        withSession(
+            call = { token -> performOnce(JodloRoutes.serviceAppealCase(token, listingId),
+                authSender::send, JodloReplyDecoder::serviceAppealCase) },
+            update = { reply, _ -> outcome(reply) },
+            needsWorker = true, consistentRead = true, expectedOwner = owner,
+        )
+
+    fun appealServiceCase(
+        owner: AccountPrivateReadMarker, case: OwnServiceCase, reason: ServiceAppealReason,
+    ): SessionResult<OwnServiceCase?> = withSession(
+        call = { token -> performOnce(JodloRoutes.appealServiceCase(token, case.id, case.revision, reason),
+            authSender::send, JodloReplyDecoder::serviceAppealCase) },
+        update = { reply, _ ->
+            val updated = if (reply is ApiOutcome.Ok) reply.value else null
+            if (reply is ApiOutcome.Ok && (updated == null || updated.id != case.id ||
+                updated.revision != case.revision + 1 || updated.status != ServiceCaseStatus.APPEALED))
+                SessionResult.Failed(SessionFailure.REMOTE_FAILURE, FailureKind.BAD_RESPONSE)
+            else outcome(reply)
+        },
+        needsWorker = true, mutation = true, expectedOwner = owner,
+    )
+
+    fun contactBlock(
+        owner: AccountPrivateReadMarker, listingId: String,
+    ): SessionResult<Boolean> = withSession(
+        call = { token ->
+            performOnce(JodloRoutes.contactBlock(token, listingId), authSender::send,
+                JodloReplyDecoder::contactBlock)
+        },
+        update = { reply, _ -> outcome(reply) },
+        consistentRead = true, expectedOwner = owner,
+    )
+
+    fun changeContactBlock(
+        owner: AccountPrivateReadMarker, listingId: String, blocked: Boolean,
+    ): SessionResult<Boolean> = withSession(
+        call = { token ->
+            performOnce(JodloRoutes.changeContactBlock(token, listingId, blocked), authSender::send,
+                JodloReplyDecoder::contactBlock)
+        },
+        update = { reply, _ ->
+            if (reply is ApiOutcome.Ok && reply.value != blocked)
+                SessionResult.Failed(SessionFailure.REMOTE_FAILURE, FailureKind.BAD_RESPONSE)
+            else outcome(reply)
+        },
+        mutation = true, expectedOwner = owner,
+    )
+
+    fun prepareAccountErasure(owner: AccountPrivateReadMarker): SessionResult<AccountErasureChallenge> =
+        withSession(
+            call = { token ->
+                performOnce(JodloRoutes.prepareAccountErasure(token), authSender::send,
+                    JodloReplyDecoder::accountErasureChallenge)
+            },
+            update = { reply, _ -> outcome(reply) },
+            consistentRead = true, expectedOwner = owner,
+        )
+
+    fun eraseAccount(
+        owner: AccountPrivateReadMarker, challenge: AccountErasureChallenge, googleProof: String,
+    ): SessionResult<Boolean> = withSession(
+        call = { token ->
+            performOnce(JodloRoutes.eraseAccount(token, challenge.challenge, googleProof),
+                authSender::send, JodloReplyDecoder::accountErased)
+        },
+        update = { reply, _ ->
+            if (reply is ApiOutcome.Ok) forget()
+            outcome(reply)
+        },
+        mutation = true, expectedOwner = owner,
+    )
+
     /** Current session and private read epoch guard an account overview.
      * A response overtaken by logout, account replacement or a Worker write
      * cannot be accepted in the UI.
@@ -351,11 +513,18 @@ class InMemorySessionCoordinator(
      * mutation invalidate a late read through the existing withSession gate.
      */
     fun accountDataExport(
-        cancellation: CancellationSignal? = null,
+        cancellation: CancellationSignal? = null, version: Int = 1,
     ): SessionResult<OwnAccountDataExport> = withSession(
         call = { token ->
-            performOnce(JodloRoutes.accountDataExport(token), authSender::send,
+            var requested = version
+            var result = performOnce(JodloRoutes.accountDataExport(token, requested), authSender::send,
                 JodloReplyDecoder::accountDataExport)
+            while (requested > 1 && result is ApiOutcome.Failed && result.kind == FailureKind.BAD_INPUT) {
+                requested--
+                result = performOnce(JodloRoutes.accountDataExport(token, requested), authSender::send,
+                    JodloReplyDecoder::accountDataExport)
+            }
+            result
         },
         consistentRead = true,
         cancellation = cancellation,
@@ -451,6 +620,7 @@ class InMemorySessionCoordinator(
     fun editListingCategoryVersioned(
         listingId:String,expectedCategoryId:String,nextCategoryId:String,
         expectedRevision:Long,cancellation:CancellationSignal?=null,
+        expectedOwner: AccountPrivateReadMarker? = null,
     ): SessionResult<VersionedCategoryEditReceipt> {
         JodloRoutes.requireListingId(listingId)
         JodloRoutes.requireCategoryId(expectedCategoryId)
@@ -463,7 +633,32 @@ class InMemorySessionCoordinator(
             call={versioned.editCategoryVersioned(it,listingId,
                 expectedCategoryId,nextCategoryId,expectedRevision)},
             update={reply, _ -> outcome(reply)},
-            needsWorker=true,mutation=true,cancellation=cancellation)
+            needsWorker=true,mutation=true,cancellation=cancellation,expectedOwner=expectedOwner)
+    }
+
+    internal fun exactManagedOwnListingByCategory(
+        categoryId: String, cancellation: CancellationSignal,
+    ): SessionResult<OwnListing> {
+        val creation = workers as? OwnListingCreationRepository
+            ?: return SessionResult.Failed(SessionFailure.REMOTE_FAILURE, FailureKind.SERVICE_UNAVAILABLE)
+        return withSession(
+            call = { creation.exactManagedOwnListingByCategory(it, categoryId) },
+            update = { reply, _ -> outcome(reply) },
+            consistentRead = true, cancellation = cancellation,
+        )
+    }
+
+    internal fun createListing(
+        categoryId: String, owner: AccountPrivateReadMarker, cancellation: CancellationSignal,
+    ): SessionResult<PublicListing> {
+        val creation = workers as? OwnListingCreationRepository
+            ?: return SessionResult.Failed(SessionFailure.REMOTE_FAILURE, FailureKind.SERVICE_UNAVAILABLE)
+        return withSession(
+            call = { creation.createListing(it, categoryId) },
+            update = { reply, _ -> outcome(reply) },
+            needsWorker = true, mutation = true, cancellation = cancellation,
+            expectedOwner = owner,
+        )
     }
 
     /** The Category ID must have been explicitly confirmed outside this
@@ -480,6 +675,20 @@ class InMemorySessionCoordinator(
             needsWorker = true,
             mutation = true,
         )
+
+    internal fun changeListingPublication(
+        review: VersionedOwnListing, owner: AccountPrivateReadMarker,
+        cancellation: CancellationSignal,
+    ): SessionResult<PublicListing> {
+        val publication = workers as? VersionedOwnPublicationRepository
+            ?: return SessionResult.Failed(SessionFailure.REMOTE_FAILURE, FailureKind.SERVICE_UNAVAILABLE)
+        return withSession(
+            call = { publication.changePublication(it, review) },
+            update = { reply, _ -> outcome(reply) },
+            needsWorker = true, mutation = true, cancellation = cancellation,
+            expectedOwner = owner,
+        )
+    }
 
     /** Explicit, CAS-protected reactivation of a previously unpublished OWN
      * listing. Session/lifecycle write fencing and worker opt-in are identical

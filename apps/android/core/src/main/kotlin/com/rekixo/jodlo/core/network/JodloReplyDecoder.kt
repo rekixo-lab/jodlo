@@ -14,8 +14,31 @@ import java.nio.charset.StandardCharsets
 import kotlinx.serialization.json.jsonPrimitive
 
 /** Typed DTOs for the CURRENT public API. No worker trust, phone, location or permission fields. */
+enum class ServiceReportReason(val wire: String) {
+    MISLEADING("misleading"), UNSAFE("unsafe"), PRIVACY("privacy"), SPAM("spam"),
+}
+enum class ServiceAppealReason(val wire: String) {
+    CORRECTED("corrected"), MISTAKEN("mistaken"),
+}
+enum class ServiceCaseStatus(val wire: String) {
+    UPHELD("upheld"), APPEALED("appealed"), RESTORED("restored"), APPEAL_DENIED("appeal_denied"),
+}
+data class OwnServiceCase(
+    val id: String, val reason: ServiceReportReason, val status: ServiceCaseStatus, val revision: Long,
+)
+
+class AccountErasureChallenge(val challenge: String, val nonce: String)
+
 data class PublicCategory(val id: String, val slug: String, val name: String)
 data class PublicListing(val id: String, val categoryId: String)
+data class ServiceProfile(
+    val displayName: String, val description: String,
+    val experienceYears: Int?, val visitRateInr: Int?,
+)
+enum class ServiceProfileStatus { PENDING, APPROVED, REJECTED }
+data class OwnServiceDetails(
+    val profile: ServiceProfile?, val status: ServiceProfileStatus?, val revision: Long,
+)
 /** Fresh public-only service information: a listing and its SAME approved
  * Category label in the explicitly requested language. No Worker metadata.
  */
@@ -23,9 +46,23 @@ data class PublicApprovedServiceDetail(
     val language: Language,
     val listing: PublicListing,
     val category: PublicCategory,
+    val city: NearbyPilotCity? = null,
+    val profile: ServiceProfile? = null,
+    val hasPhoto: Boolean = false,
 )
+enum class ServicePhotoStatus { CLEARED, PENDING, APPROVED, REJECTED }
+class ServicePhoto(val jpeg: String)
+class OwnServicePhoto(val status: ServicePhotoStatus, val revision: Long, val photo: ServicePhoto?)
+
 /** Optional public Listing pagination: no owner, timestamp, location or contact. */
 data class PublicListingPage(val listings: List<PublicListing>, val nextCursor: String?)
+data class LocalizedPublicListingPage(
+    val page: PublicListingPage,
+    val language: Language,
+    val categoryNames: Map<String, String>,
+    val city: NearbyPilotCity? = null,
+)
+data class OwnServiceArea(val city: NearbyPilotCity?, val revision: Long)
 /** Private publication intent for authenticated owner Management pages only.
  * Not a Worker moderation reason, public status, approval or contact grant.
  * null means a legacy/read-only reply that cannot authorize management UI.
@@ -218,11 +255,15 @@ object JodloReplyDecoder {
         p.keysOnly(setOf("id", "slug", "name"))
         val id = p.required("id").str()
         val slug = p.required("slug").str()
-        val name = p.required("name").str()
-        if (!categoryId.matches(id) || !categoryId.matches(slug) ||
-            name.isBlank() || name.codePointCount(0, name.length) > 160 ||
-            name.any { Character.isISOControl(it) }) bad()
+        val name = categoryName(p.required("name"))
+        if (!categoryId.matches(id) || !categoryId.matches(slug)) bad()
         return PublicCategory(id, slug, name)
+    }
+    private fun categoryName(input: JsonElement): String {
+        val name = input.str()
+        if (name.isBlank() || name.codePointCount(0, name.length) > 160 ||
+            name.any { Character.isISOControl(it) }) bad()
+        return name
     }
     private fun categories(value: JsonElement, max: Int): List<PublicCategory> {
         val arr = value.arr()
@@ -381,12 +422,14 @@ object JodloReplyDecoder {
      */
     fun approvedServiceDetail(reply: TransportReply): ApiOutcome<PublicApprovedServiceDetail> =
         decode(reply) { data ->
-            data.keysOnly(setOf("language", "listing", "category"))
+            data.keysOnly(setOf("language", "listing", "category"), setOf("city", "profile", "hasPhoto"))
             val lang = language(data.required("language"))
             val current = listing(data.required("listing"))
             val approved = category(data.required("category"))
             if (current.categoryId != approved.id) bad()
-            PublicApprovedServiceDetail(lang, current, approved)
+            PublicApprovedServiceDetail(lang, current, approved, data["city"]?.let(::serviceCity),
+                data["profile"]?.takeUnless { it == JsonNull }?.obj()?.let(::serviceProfile),
+                data["hasPhoto"]?.bool() ?: false)
         }
 
     fun publicListings(reply: TransportReply): ApiOutcome<List<PublicListing>> = decode(reply) { data ->
@@ -398,10 +441,27 @@ object JodloReplyDecoder {
      */
     fun publicListingPage(reply: TransportReply): ApiOutcome<PublicListingPage> = decode(reply) { data ->
         data.keysOnly(setOf("listings", "nextCursor"))
+        listingPage(data)
+    }
+
+    fun localizedPublicListingPage(reply: TransportReply): ApiOutcome<LocalizedPublicListingPage> =
+        decode(reply) { data ->
+            data.keysOnly(setOf("listings", "nextCursor", "language", "categoryNames"), setOf("city"))
+            val page = listingPage(data)
+            val categoryIds = page.listings.mapTo(mutableSetOf()) { it.categoryId }
+            val names = data.required("categoryNames").obj()
+            if (!categoryIds.containsAll(names.keys)) bad()
+            LocalizedPublicListingPage(
+                page, language(data.required("language")), names.mapValues { categoryName(it.value) },
+                data["city"]?.let(::serviceCity),
+            )
+        }
+
+    private fun listingPage(data: JsonObject): PublicListingPage {
         val rows = listings(data.required("listings"), 25)
         val after = data.optionalString("nextCursor")
         if (after != null && !opaqueId.matches(after)) bad()
-        PublicListingPage(rows, after)
+        return PublicListingPage(rows, after)
     }
     fun published(reply: TransportReply): ApiOutcome<PublicListing> = decode(reply) { data ->
         data.keysOnly(setOf("listing"))
@@ -521,6 +581,124 @@ object JodloReplyDecoder {
     /** Only the exact private overview projection is accepted. Refuse any
      * unexpected identity, contact, location, verification or token fields.
      */
+    private fun servicePhoto(value: JsonElement): ServicePhoto {
+        val jpeg = value.str()
+        if (jpeg.length !in 4..57344 || jpeg.length % 4 != 0 ||
+            !Regex("[A-Za-z0-9+/]+={0,2}").matches(jpeg)) bad()
+        return ServicePhoto(jpeg)
+    }
+
+    fun publicServicePhoto(reply: TransportReply): ApiOutcome<ServicePhoto> = decode(reply) { data ->
+        data.keysOnly(setOf("jpeg"))
+        servicePhoto(data.required("jpeg"))
+    }
+
+    fun ownServicePhoto(reply: TransportReply): ApiOutcome<OwnServicePhoto> = decode(reply) { data ->
+        data.keysOnly(setOf("status", "revision"), setOf("jpeg"))
+        val status = when (data.required("status").str()) {
+            "cleared" -> ServicePhotoStatus.CLEARED
+            "pending" -> ServicePhotoStatus.PENDING
+            "approved" -> ServicePhotoStatus.APPROVED
+            "rejected" -> ServicePhotoStatus.REJECTED
+            else -> bad()
+        }
+        val revision = readRevision(data.required("revision"))
+        val photo = data["jpeg"]?.takeUnless { it == JsonNull }?.let(::servicePhoto)
+        if (status == ServicePhotoStatus.CLEARED && photo != null ||
+            status != ServicePhotoStatus.CLEARED && revision < 1) bad()
+        OwnServicePhoto(status, revision, photo)
+    }
+
+    private fun serviceProfile(data: JsonObject): ServiceProfile {
+        data.keysOnly(setOf("displayName", "description", "experienceYears", "visitRateInr"))
+        val name = data.required("displayName").str()
+        val description = data.required("description").str()
+        if (name.codePointCount(0, name.length) !in 2..60 ||
+            description.codePointCount(0, description.length) !in 10..400 ||
+            name.any { Character.isISOControl(it) } ||
+            description.any { Character.isISOControl(it) }) bad()
+        val years = data.required("experienceYears").takeUnless { it == JsonNull }?.number()
+        val rate = data.required("visitRateInr").takeUnless { it == JsonNull }?.number()
+        if (years != null && years !in 0..80 || rate != null && rate !in 1..10_000_000) bad()
+        return ServiceProfile(name, description, years, rate)
+    }
+
+    fun ownServiceDetails(reply: TransportReply): ApiOutcome<OwnServiceDetails> = decode(reply) { data ->
+        data.keysOnly(setOf("details", "revision"))
+        val revision = readRevision(data.required("revision"))
+        val details = data.required("details")
+        if (details == JsonNull) {
+            OwnServiceDetails(null, null, revision)
+        } else {
+            val row = details.obj()
+            val status = when (row.required("status").str()) {
+                "pending" -> ServiceProfileStatus.PENDING
+                "approved" -> ServiceProfileStatus.APPROVED
+                "rejected" -> ServiceProfileStatus.REJECTED
+                else -> bad()
+            }
+            if (revision < 1 || readRevision(row.required("revision")) != revision) bad()
+            OwnServiceDetails(serviceProfile(JsonObject(row - setOf("status", "revision"))), status, revision)
+        }
+    }
+
+    private fun serviceCity(input: JsonElement): NearbyPilotCity {
+        val wire = input.str()
+        return NearbyPilotCity.entries.firstOrNull { it.wire == wire } ?: bad()
+    }
+
+    fun ownServiceArea(reply: TransportReply): ApiOutcome<OwnServiceArea> = decode(reply) { data ->
+        data.keysOnly(setOf("city", "revision"))
+        val city = data.required("city")
+        OwnServiceArea(if (city == JsonNull) null else serviceCity(city),
+            readRevision(data.required("revision")))
+    }
+
+    fun serviceReport(reply: TransportReply): ApiOutcome<Boolean> = decode(reply) { data ->
+        data.keysOnly(setOf("received"))
+        data.required("received").bool()
+    }
+
+    fun serviceAppealCase(reply: TransportReply): ApiOutcome<OwnServiceCase?> = decode(reply) { data ->
+        data.keysOnly(setOf("case"))
+        val entry = data.required("case")
+        if (entry == JsonNull) null else {
+            val row = entry.obj()
+            row.keysOnly(setOf("id", "reason", "status", "revision"))
+            val id = row.required("id").str()
+            val reason = row.required("reason").str()
+            val status = row.required("status").str()
+            val revision = readRevision(row.required("revision"))
+            if (!opaqueId.matches(id) || revision < 1) bad()
+            OwnServiceCase(
+                id, ServiceReportReason.entries.firstOrNull { it.wire == reason } ?: bad(),
+                ServiceCaseStatus.entries.firstOrNull { it.wire == status } ?: bad(), revision,
+            )
+        }
+    }
+
+    fun contactBlock(reply: TransportReply): ApiOutcome<Boolean> = decode(reply) { data ->
+        data.keysOnly(setOf("blocked"))
+        data.required("blocked").bool()
+    }
+
+    fun accountErasureChallenge(reply: TransportReply): ApiOutcome<AccountErasureChallenge> =
+        decode(reply) { data ->
+            data.keysOnly(setOf("challenge", "nonce"))
+            val challenge = data.required("challenge").str()
+            val nonce = data.required("nonce").str()
+            if (challenge.length > 1024 ||
+                !Regex("""[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+""").matches(challenge) ||
+                !Regex("jodlo_erase_[0-9a-f-]{36}").matches(nonce)) bad()
+            AccountErasureChallenge(challenge, nonce)
+        }
+
+    fun accountErased(reply: TransportReply): ApiOutcome<Boolean> = decode(reply) { data ->
+        data.keysOnly(setOf("erased"))
+        if (!data.required("erased").bool()) bad()
+        true
+    }
+
     fun accountOverview(reply: TransportReply): ApiOutcome<OwnAccountOverview> =
         decode(reply) { data ->
             data.keysOnly(setOf(
@@ -554,12 +732,14 @@ object JodloReplyDecoder {
      */
     fun accountDataExport(reply: TransportReply): ApiOutcome<OwnAccountDataExport> =
         decode(reply) { data ->
+            val version = data.required("schemaVersion").number()
+            if (version !in 1..3) bad()
             data.keysOnly(setOf(
                 "schemaVersion", "account", "identity", "services",
                 "callPreferences", "availabilityPreferences", "blocksMade",
                 "abuseCounters", "sessions", "limitations",
-            ))
-            if (data.required("schemaVersion").number() != 1) bad()
+            ) + if (version == 3) setOf("serviceDetails") else emptySet(),
+                if (version == 3) setOf("servicePhotos", "serviceReports", "serviceAppeals") else emptySet())
             val account = data.required("account").obj()
             account.keysOnly(setOf(
                 "accountId", "createdAt", "workerEnabled", "workerSince",
@@ -594,12 +774,41 @@ object JodloReplyDecoder {
                 safeText(row.required("googleSub"))
             }
             rows("services", 1000) { row ->
-                row.keysOnly(setOf("id", "categoryId", "status", "moderationStatus", "createdAt"))
+                val fields = setOf("id", "categoryId", "status", "moderationStatus", "createdAt")
+                row.keysOnly(if (version >= 2) fields + "city" else fields)
+                if (version >= 2 && row.required("city") != JsonNull) serviceCity(row.required("city"))
                 if (!opaqueId.matches(row.required("id").str()) ||
                     !categoryId.matches(row.required("categoryId").str()) ||
                     row.required("status").str() !in setOf("published", "unpublished") ||
                     row.required("moderationStatus").str() !in setOf("allowed", "hidden")) bad()
                 safeText(row.required("createdAt"), 10, 48)
+            }
+            if (version == 3) rows("serviceDetails", 1000) { row ->
+                if (!opaqueId.matches(row.required("listingId").str()) ||
+                    !categoryId.matches(row.required("categoryId").str()) ||
+                    row.required("status").str() !in setOf("pending", "approved", "rejected")) bad()
+                positiveRevision(row.required("revision"))
+                serviceProfile(JsonObject(row - setOf("listingId", "categoryId", "status", "revision")))
+            }
+            if (version == 3 && "servicePhotos" in data) rows("servicePhotos", 1000) { row ->
+                row.keysOnly(setOf("listingId", "status", "revision"))
+                if (!opaqueId.matches(row.required("listingId").str()) ||
+                    row.required("status").str() !in setOf("pending", "approved", "rejected")) bad()
+                positiveRevision(row.required("revision"))
+            }
+            if (version == 3 && "serviceReports" in data) rows("serviceReports", 1000) { row ->
+                row.keysOnly(setOf("listingId", "reason", "receivedAt"))
+                if (!opaqueId.matches(row.required("listingId").str()) ||
+                    ServiceReportReason.entries.none { it.wire == row.required("reason").str() } ||
+                    row.required("receivedAt").longValue() < 0L) bad()
+            }
+            if (version == 3 && "serviceAppeals" in data) rows("serviceAppeals", 1000) { row ->
+                row.keysOnly(setOf("listingId", "reason", "status", "appealReason"))
+                val appeal = row.optionalString("appealReason")
+                if (!opaqueId.matches(row.required("listingId").str()) ||
+                    ServiceReportReason.entries.none { it.wire == row.required("reason").str() } ||
+                    ServiceCaseStatus.entries.none { it.wire == row.required("status").str() } ||
+                    appeal != null && ServiceAppealReason.entries.none { it.wire == appeal }) bad()
             }
             rows("callPreferences", 1) { row ->
                 row.keysOnly(setOf("callsEnabled", "revision"))

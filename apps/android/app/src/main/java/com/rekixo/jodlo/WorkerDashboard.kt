@@ -46,6 +46,7 @@ import com.rekixo.jodlo.core.network.PublicCategory
 import com.rekixo.jodlo.core.network.RemoteCatalogRepository
 import com.rekixo.jodlo.core.network.SessionFailure
 import com.rekixo.jodlo.core.network.SessionResult
+import com.rekixo.jodlo.core.network.VersionedOwnListing
 import com.rekixo.jodlo.core.network.WorkerCustomerServicePreview
 import com.rekixo.jodlo.core.network.WorkerCustomerServicePreviewPhase
 import com.rekixo.jodlo.core.network.WorkerState
@@ -121,6 +122,9 @@ internal fun WorkerDashboard(
     // Not a worker public profile, revision token, or proof of a prior write.
     var exactObserved by remember(session) { mutableStateOf<OwnListing?>(null) }
     var exactObservationRevision by remember(session) { mutableIntStateOf(0) }
+    var publicationReview by remember(session) {
+        mutableStateOf<Pair<AccountPrivateReadMarker, VersionedOwnListing>?>(null)
+    }
     // Public approved Category names are fetched only on an explicit user tap.
     // Keep the private owner/account generation separate from public names.
     var approvedNames by remember(session) {
@@ -164,6 +168,7 @@ internal fun WorkerDashboard(
     fun clearExactObservation() {
         exactObservationRevision++
         exactObserved = null
+        publicationReview = null
     }
 
     fun clearApprovedNames() {
@@ -417,16 +422,18 @@ internal fun WorkerDashboard(
             ownerRowsMarker = null
             ownerCursor = null
             clearApprovedNames()
+            clearExactObservation()
             selectedListing = null
             guided = guided.reset()
             categoryEdit = categoryEdit.reset()
             previewRevision++
             publicPreview = WorkerCustomerServicePreview.unchecked()
 
-            // Only after a CONFIRMED owner write, refresh the current
-            // private Listing list through an existing read-only route.
-            // An uncertain POST/DELETE is never retried or marked committed.
-            if (writeState is WorkerWriteState.Confirmed &&
+            val rejected = writeState as? WorkerWriteState.Rejected
+            val conflict = rejected?.networkKind == FailureKind.CONFLICT
+            // Confirmed changes and definite conflicts can both leave the
+            // previous owner page out of date. Refresh by read only.
+            if ((writeState is WorkerWriteState.Confirmed || conflict) &&
                 login is LoginState.SignedIn && session != null) {
                 val freshMarker=session.accountPrivateReadMarker()
                 val fresh = try {
@@ -444,21 +451,22 @@ internal fun WorkerDashboard(
             message = when (writeState) {
                 is WorkerWriteState.Confirmed -> R.string.worker_write_confirmed
                 is WorkerWriteState.NeedsReview -> R.string.worker_uncertain_write
-                is WorkerWriteState.Rejected -> if (
-                    (writeState as WorkerWriteState.Rejected).networkKind ==
-                    FailureKind.CONFLICT
-                ) R.string.worker_edit_conflict else R.string.worker_operation_failed
+                is WorkerWriteState.Rejected -> if (conflict) {
+                    when (rejected?.action) {
+                        is WorkerWriteAction.Publish -> R.string.worker_create_conflict
+                        is WorkerWriteAction.Resume, is WorkerWriteAction.Unpublish ->
+                            R.string.worker_publication_conflict
+                        else -> R.string.worker_edit_conflict
+                    }
+                } else R.string.worker_operation_failed
                 else -> R.string.worker_operation_failed
             }
         }
     }
 
 
-    /** Explicit revision-bound edit preparation. Exactly one owner GET,
-     * never a write or implicit retry. Older deployed API cannot supply a
-     * revision: fail closed instead of silently using old Category-only CAS.
-     */
-    fun beginVersionedCategoryEdit() {
+    /** Read the selected owner's current revision before opening a review. */
+    fun beginVersionedReview(publication: Boolean = false) {
         val active = session ?: return
         val original = displayedOwnListings.firstOrNull { it.id == selectedListing } ?: return
         val actor = active.accountExportSessionMarker() ?: return
@@ -466,16 +474,18 @@ internal fun WorkerDashboard(
         if(ownerRowsMarker != readMarker) return
         if (busy || uncertain ||
             (active.snapshot() as? LoginState.SignedIn)?.worker != WorkerState.DRAFT) return
-        val requestRevision=++exactObservationRevision
+        clearExactObservation()
+        val requestRevision = exactObservationRevision
         categoryEdit = categoryEdit.reset()
-        guided = guided.clearPublication().cancelResume()
+        guided = guided.clearPublication().cancelUnpublish().cancelResume()
+        val failedMessage = if (publication) R.string.worker_publication_revision_failed
+            else R.string.worker_revision_failed
         previewRevision++
         publicPreview = WorkerCustomerServicePreview.unchecked()
-        exactObserved = null
         busy=true
         message=0
         scope.launch {
-            val snapshot:SessionResult<com.rekixo.jodlo.core.network.VersionedOwnListing> =
+            val snapshot: SessionResult<VersionedOwnListing> =
                 try {
                     withContext(Dispatchers.IO) {
                         active.exactVersionedOwnListing(original.id)
@@ -498,13 +508,24 @@ internal fun WorkerDashboard(
                 is SessionResult.Success -> {
                     val row=snapshot.value.row
                     if(row.id!=original.id) {
-                        message=R.string.worker_revision_failed
+                        message = failedMessage
                     } else if(row!=original) {
                         // Another device may have changed Category/status.
                         // Update only the selected local row and REQUIRE the
                         // Worker to begin a NEW review from the fresh state.
                         ownListings=ownListings.map { if(it.id==row.id) row else it }
                         message=R.string.worker_revision_changed
+                    } else if (publication) {
+                        if (snapshot.value.revision !in 0..2147483646L) {
+                            message = failedMessage
+                        } else {
+                            publicationReview = readMarker to snapshot.value
+                            guided = when (row.publicationStatus) {
+                                OwnPublicationStatus.PUBLISHED -> guided.reviewUnpublish(row, ownListings, actor)
+                                OwnPublicationStatus.UNPUBLISHED -> guided.beginResume(row, ownListings, actor)
+                                null -> guided
+                            }
+                        }
                     } else {
                         categoryEdit=categoryEdit.beginVersioned(
                             snapshot.value,ownListings,actor)
@@ -516,11 +537,17 @@ internal fun WorkerDashboard(
                         ownListings=ownListings.filterNot { it.id==original.id }
                         selectedListing=null
                         message=R.string.worker_exact_missing
-                    } else message=R.string.worker_revision_failed
+                    } else message = failedMessage
                 }
             }
         }
     }
+
+    fun confirmedPublication(row: OwnListing): Pair<AccountPrivateReadMarker, VersionedOwnListing>? =
+        publicationReview?.takeIf { (marker, review) ->
+            canWrite && review.row == row && row.id == selectedListing &&
+                row in displayedOwnListings && marker == session?.accountPrivateReadMarker()
+        }
 
     /** One user-requested authenticated status read of EXACTLY the selected
      * owner Service. Replaces a stale local row only after session/selection
@@ -535,8 +562,8 @@ internal fun WorkerDashboard(
         if(ownerRowsMarker != actor) return
         if (busy || uncertain ||
             (liveSession.snapshot() as? LoginState.SignedIn)?.worker != WorkerState.DRAFT) return
-        val callRevision = ++exactObservationRevision
-        exactObserved = null
+        clearExactObservation()
+        val callRevision = exactObservationRevision
         guided = guided.cancelUnpublish().cancelResume()
         categoryEdit = categoryEdit.reset()
         previewRevision++
@@ -767,7 +794,7 @@ internal fun WorkerDashboard(
                             }
                             Text(stringResource(R.string.worker_recheck_not_proof),
                                 style = MaterialTheme.typography.bodySmall)
-                            if (review.action.exactTargetId() != null) {
+                            if (review.action.supportsExactRead()) {
                                 JodloTextAction(onClick = {
                                     if (busy) return@JodloTextAction
                                     busy = true
@@ -1001,10 +1028,7 @@ internal fun WorkerDashboard(
                                     }
                                     JodloTextAction(
                                         onClick = {
-                                            val row = displayedOwnListings.firstOrNull {
-                                                it.id == selectedListing
-                                            } ?: return@JodloTextAction
-                                            beginVersionedCategoryEdit()
+                                            beginVersionedReview()
                                         },
                                         enabled = canWrite,
                                     ) { Text(stringResource(R.string.worker_edit_category)) }
@@ -1018,14 +1042,29 @@ internal fun WorkerDashboard(
                                     val currentOwnRow = displayedOwnListings.firstOrNull {
                                         it.id == selectedListing
                                     }
+                                    if (currentOwnRow != null) {
+                                        WorkerServiceAreaEditor(session, currentOwnRow.id, enabled = canWrite) { confirmed ->
+                                            loadOwnPage()
+                                            message = if (confirmed) R.string.worker_area_saved else R.string.worker_area_failed
+                                        }
+                                        WorkerServiceDetailsEditor(session, currentOwnRow.id, enabled = canWrite) { notice ->
+                                            loadOwnPage()
+                                            message = notice
+                                        }
+                                        WorkerServicePhotoEditor(activity, session, currentOwnRow.id, enabled = canWrite) { notice ->
+                                            loadOwnPage()
+                                            message = notice
+                                        }
+                                        WorkerServiceAppealControls(session, currentOwnRow.id, enabled = canWrite) { confirmed ->
+                                            loadOwnPage()
+                                            message = if (confirmed) R.string.case_worker_appealed else R.string.case_request_failed
+                                        }
+                                    }
                                     if (currentOwnRow?.publicationStatus == OwnPublicationStatus.PUBLISHED) {
                                         if (guided.pendingUnpublishId != selectedListing) {
                                             JodloTextAction(
                                                 onClick = {
-                                                    guided = guided.cancelResume().reviewUnpublish(
-                                                        currentOwnRow, displayedOwnListings,
-                                                        session?.accountExportSessionMarker(),
-                                                    )
+                                                    beginVersionedReview(publication = true)
                                                 }, enabled = canWrite,
                                             ) {
                                                 Text(stringResource(R.string.guided_unpublish_review))
@@ -1036,21 +1075,17 @@ internal fun WorkerDashboard(
                                             Row(horizontalArrangement = Arrangement.spacedBy(
                                                 JodloSizes.SmallGap)) {
                                                 JodloTextAction(onClick = {
+                                                    publicationReview = null
                                                     guided = guided.cancelUnpublish()
                                                 }, enabled = canWrite) {
                                                     Text(stringResource(R.string.guided_post_back))
                                                 }
                                                 JodloButton(onClick = {
-                                                    val id = guided.unpublishConfirmed(
-                                                        session?.accountExportSessionMarker(),
-                                                        displayedOwnListings,
-                                                    ) ?: return@JodloButton
-                                                    mutate { writes.unpublish(id) }
-                                                }, enabled = canWrite &&
-                                                    guided.unpublishConfirmed(
-                                                        session?.accountExportSessionMarker(),
-                                                        displayedOwnListings,
-                                                    ) != null) {
+                                                    if (guided.pendingUnpublishId != currentOwnRow.id) return@JodloButton
+                                                    val (marker, review) = confirmedPublication(currentOwnRow)
+                                                        ?: return@JodloButton
+                                                    mutate { writes.changePublication(review, marker) }
+                                                }, enabled = confirmedPublication(currentOwnRow) != null) {
                                                     Text(stringResource(R.string.worker_unpublish_selected))
                                                 }
                                             }
@@ -1058,11 +1093,7 @@ internal fun WorkerDashboard(
                                     } else if (currentOwnRow?.publicationStatus == OwnPublicationStatus.UNPUBLISHED) {
                                         if (guided.pendingResume?.id != currentOwnRow.id) {
                                             JodloTextAction(onClick = {
-                                                guided = guided.cancelUnpublish().beginResume(
-                                                    currentOwnRow, displayedOwnListings,
-                                                    session?.accountExportSessionMarker(),
-                                                )
-                                                categoryEdit = categoryEdit.reset()
+                                                beginVersionedReview(publication = true)
                                             }, enabled = canWrite) {
                                                 Text(stringResource(R.string.worker_resume_review_action))
                                             }
@@ -1084,23 +1115,19 @@ internal fun WorkerDashboard(
                                                 Text(stringResource(R.string.worker_resume_final_warning),
                                                     color = MaterialTheme.colorScheme.error)
                                                 JodloButton(onClick = {
-                                                    val command = guided.resumeConfirmed(
-                                                        session?.accountExportSessionMarker(),
-                                                        displayedOwnListings,
-                                                    ) ?: return@JodloButton
-                                                    mutate { writes.resumeOwnListing(
-                                                        command.listingId,
-                                                        command.expectedCategoryId,
-                                                    ) }
-                                                }, enabled = canWrite &&
-                                                    guided.resumeConfirmed(
-                                                        session?.accountExportSessionMarker(),
-                                                        displayedOwnListings,
-                                                    ) != null) {
+                                                    if (guided.resumeConfirmed(
+                                                            session?.accountExportSessionMarker(),
+                                                            displayedOwnListings,
+                                                        ) == null) return@JodloButton
+                                                    val (marker, review) = confirmedPublication(currentOwnRow)
+                                                        ?: return@JodloButton
+                                                    mutate { writes.changePublication(review, marker) }
+                                                }, enabled = confirmedPublication(currentOwnRow) != null) {
                                                     Text(stringResource(R.string.worker_resume_confirm))
                                                 }
                                             }
                                             JodloTextAction(onClick = {
+                                                publicationReview = null
                                                 guided = guided.cancelResume()
                                             }, enabled = !busy) {
                                                 Text(stringResource(R.string.worker_resume_cancel))
@@ -1290,9 +1317,12 @@ internal fun WorkerDashboard(
                                                     Text(stringResource(R.string.guided_post_back))
                                                 }
                                                 JodloButton(onClick = {
+                                                    val owner = session?.accountPrivateReadMarker()
+                                                        ?: return@JodloButton
+                                                    if (owner != ownerRowsMarker) return@JodloButton
                                                     val command = categoryEdit.confirmedVersioned(
                                                         displayedOwnListings, categoryRows,
-                                                        session?.accountExportSessionMarker(),
+                                                        owner.sessionGeneration,
                                                     ) ?: return@JodloButton
                                                     mutate {
                                                         writes.editCategoryVersioned(
@@ -1300,6 +1330,7 @@ internal fun WorkerDashboard(
                                                             command.expectedCategoryId,
                                                             command.nextCategoryId,
                                                             command.expectedRevision,
+                                                            expectedOwner = owner,
                                                         )
                                                     }
                                                 }, enabled = canWrite &&
@@ -1381,11 +1412,12 @@ internal fun WorkerDashboard(
                                                     Text(stringResource(R.string.guided_post_back))
                                                 }
                                                 JodloButton(onClick = {
+                                                    val owner = session?.accountPrivateReadMarker()
+                                                        ?: return@JodloButton
                                                     val id = guided.categoryConfirmedForPublish(
-                                                        session?.accountExportSessionMarker(),
-                                                        categoryRows, displayedOwnListings,
+                                                        owner.sessionGeneration, categoryRows, displayedOwnListings,
                                                     ) ?: return@JodloButton
-                                                    mutate { writes.publishExplicitCategory(id) }
+                                                    mutate { writes.createListing(id, owner) }
                                                 }, enabled = canWrite && !knownDuplicate &&
                                                     guided.categoryConfirmedForPublish(
                                                         session?.accountExportSessionMarker(),
