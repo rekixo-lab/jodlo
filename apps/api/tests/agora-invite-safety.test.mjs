@@ -379,7 +379,7 @@ test("risk verdict does not persist blocks, presence, quota or any user metadata
       "test contract is non-atomic and does NOT claim to consume rate quota");
     const tables=f.db.prepare("SELECT name FROM sqlite_schema WHERE type='table'")
       .all().map(row=>row.name);
-    for(const name of ["call_history","agora_rate_reservations","blocked_accounts",
+    for(const name of ["agora_rate_reservations","blocked_accounts",
       "worker_presence","worker_availability","call_invitations","agora_tokens",
       "agora_channels","rtc_participants","phone_numbers"]){
       assert.equal(tables.includes(name),false,name);
@@ -964,7 +964,7 @@ test("fake D1 row must match owner, active flags and exact revision, without new
     const tables=f.db.prepare(
       "SELECT name FROM sqlite_schema WHERE type='table'"
     ).all().map(row=>row.name);
-    for(const table of ["call_sessions","call_history","agora_tokens","agora_channels"]){
+    for(const table of ["call_sessions","agora_tokens","agora_channels"]){
       assert.equal(tables.includes(table),false);
     }
   }finally{f.close();}

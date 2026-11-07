@@ -398,7 +398,7 @@ test("no public RTC/token/signaling endpoint, call schema, SDK or phone numbers 
     const tables=f.db.prepare("SELECT name FROM sqlite_schema WHERE type='table'")
       .all().map(row=>row.name);
     for(const name of ["agora_tokens","agora_channels","rtc_participants",
-      "call_sessions","call_invitations","call_history","phone_numbers"]) {
+      "call_sessions","call_invitations","phone_numbers"]) {
       assert.equal(tables.includes(name),false);
     }
   }finally{f.close();}

@@ -1,3 +1,15 @@
+## 2026-11-08 — Call history retention and private read
+
+**Done.** The server has a private call-summary table and a read endpoint behind the call-history release switch. Reads exclude records at the 90-day boundary. A scheduled Worker handler removes expired rows in bounded batches, and account deletion cascades to that account's summaries.
+
+**Evidence.** The local SQLite route test covers owner isolation, pagination, the retention boundary, scheduled deletion and account erasure. All 17 migrations applied to disposable local D1 and the Worker bundle dry run passed.
+
+**Pending.** The live call lifecycle must write the summaries before the Account screen can show real history. Production still needs migration 0017 and the hourly Cloudflare Cron Trigger `17 * * * *`.
+
+**Manual.** The 90-day decision is recorded. Call admission and real provider onboarding remain in [Manual Actions](MANUAL_ACTIONS.md).
+
+**Next action.** Connect verified call outcomes to the private history store after the live call admission and provider requirements are resolved.
+
 ## 2026-11-08 — Private call preference and blocked contacts
 
 **Done.** A signed-in Worker can check and change the incoming-call preference from Account. New Workers start with it off, and a change based on an older revision is rejected. Account also lists a user's outgoing blocks and lets them remove a block even after the original listing is unpublished. Migration 0016 gives existing and new blocks private references, so removing an earlier block cannot remove a later block of the same contact.

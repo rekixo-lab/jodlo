@@ -21,11 +21,13 @@ const allowedRoutes = new Set([
   // The authorized erasure route stays disabled without its release secret.
   "/api/v1/me/account-erasure", "/api/v1/me/contact-block", "/api/v1/me/contact-blocks",
   "/api/v1/me/call-preference",
+  "/api/v1/me/call-history",
   "/api/v1/me/service-area", "/api/v1/me/service-details", "/api/v1/moderation/service-details",
   "/api/v1/me/service-photo", "/api/v1/moderation/service-photo", "/api/v1/listings/photo",
   "/api/v1/me/service-report", "/api/v1/me/service-appeal", "/api/v1/moderation/service-cases",
 ]);
 const allowedTables = new Set([
+  "call_history",
   "categories",
   // No auto-seed, no public data until human-reviewed Group/Family/mapping approval.
   "catalog_groups", "catalog_families", "catalog_family_categories",
@@ -95,7 +97,7 @@ export async function auditFounderGates(root = rootDefault) {
   for(const route of allowedRoutes)
     if(route!=="/api/v1/catalog/hierarchy" && route!=="/api/v1/me/account-erasure" &&
        route!=="/api/v1/me/contact-block" && route!=="/api/v1/me/contact-blocks" &&
-       route!=="/api/v1/me/call-preference" &&
+       route!=="/api/v1/me/call-preference" && route!=="/api/v1/me/call-history" &&
        route!=="/api/v1/me/service-area" && route!=="/api/v1/me/service-details" &&
        route!=="/api/v1/moderation/service-details" && route!=="/api/v1/me/service-photo" &&
        route!=="/api/v1/moderation/service-photo" && route!=="/api/v1/listings/photo" &&
@@ -132,6 +134,8 @@ export async function auditFounderGates(root = rootDefault) {
       const table=match[1].toLowerCase();
       tables.push(table);
       if(!allowedTables.has(table)) errors.push("Unapproved D1 table: "+table+" ("+name+")");
+      if(table==="call_history" && name!=="0017_private_call_history.sql")
+        errors.push("Private call history table is only allowed in its reviewed migration");
       if(table==="notification_delivery_receipts" && name!==RECEIPT_MIGRATION)
         errors.push("Notification receipt table must use its reviewed migration: "+name);
       if(table==="notification_delivery_dead_letters" && name!==DEAD_LETTER_MIGRATION)
@@ -218,7 +222,7 @@ export async function auditFounderGates(root = rootDefault) {
   const hierarchyTables=["catalog_groups","catalog_families",
     "catalog_family_categories"];
   for(const table of allowedTables)
-    if(!hierarchyTables.includes(table) && !tables.includes(table))
+    if(table!=="call_history" && !hierarchyTables.includes(table) && !tables.includes(table))
       errors.push("Expected D1 table missing: "+table);
   const hasHierarchy=migrations.includes("0010_approved_catalog_hierarchy.sql");
   const hasHierarchyRoute=routes.includes("/api/v1/catalog/hierarchy");
@@ -251,6 +255,9 @@ export async function auditFounderGates(root = rootDefault) {
   const hasServiceCases = migrations.includes("0015_service_reports_and_appeals.sql");
   if (migrations.includes("0016_contact_block_management.sql") !== routes.includes("/api/v1/me/contact-blocks"))
     errors.push("Private contact block management requires both its route and migration");
+  if (migrations.includes("0017_private_call_history.sql") !== routes.includes("/api/v1/me/call-history") ||
+      tables.includes("call_history") !== routes.includes("/api/v1/me/call-history"))
+    errors.push("Private call history requires its route, table and migration");
   if (hasServiceCases !== routes.includes("/api/v1/me/service-report") ||
       hasServiceCases !== routes.includes("/api/v1/me/service-appeal") ||
       hasServiceCases !== routes.includes("/api/v1/moderation/service-cases") ||

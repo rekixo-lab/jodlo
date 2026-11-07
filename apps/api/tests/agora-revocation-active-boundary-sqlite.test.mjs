@@ -491,7 +491,7 @@ test("fake active/UNSENT tables never appear in production schema or store token
     ).all().map(x => x.name);
     for (const fake of [
       "fake_consent", "fake_calls", "fake_unsent_intents",
-      "agora_call_sessions", "rtc_channels", "call_history",
+      "agora_call_sessions", "rtc_channels",
     ]) assert.equal(tables.includes(fake), false);
   } finally { prod.db.close(); }
   const t = trial();

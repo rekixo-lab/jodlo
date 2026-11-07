@@ -1836,7 +1836,7 @@ test("test-only journal creates no API, production D1 tables, Agora SDK or live 
       "SELECT name FROM sqlite_schema WHERE type='table'").all()
       .map(r=>r.name);
     for(const table of ["synthetic_voice_invites","synthetic_voice_outbox",
-      "call_sessions","agora_channels","worker_presence","call_history"]){
+      "call_sessions","agora_channels","worker_presence"]){
       assert.equal(names.includes(table),false,table);
     }
     for(const path of ["/api/v1/calls","/api/v1/rtc/token",
