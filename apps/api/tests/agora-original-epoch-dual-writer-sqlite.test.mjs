@@ -58,6 +58,7 @@ const MIGRATIONS = [
   "0005_notification_delivery_receipts.sql",
   "0006_notification_dead_letters.sql",
   "0007_worker_agora_call_preferences.sql",
+  "0008_agora_private_safety_state.sql",
 ];
 
 async function createTrial() {
