@@ -29,6 +29,7 @@ const allowedRoutes = new Set([
 const allowedTables = new Set([
   "call_history",
   "call_attempt_windows",
+  "private_call_invitations",
   "categories",
   // No auto-seed, no public data until human-reviewed Group/Family/mapping approval.
   "catalog_groups", "catalog_families", "catalog_family_categories",
@@ -139,6 +140,8 @@ export async function auditFounderGates(root = rootDefault) {
         errors.push("Private call history table is only allowed in its reviewed migration");
       if(table==="call_attempt_windows" && name!=="0018_call_attempt_windows.sql")
         errors.push("Private call attempt windows are only allowed in their reviewed migration");
+      if(table==="private_call_invitations" && name!=="0019_private_call_invitations.sql")
+        errors.push("Private call invitations are only allowed in their reviewed migration");
       if(table==="notification_delivery_receipts" && name!==RECEIPT_MIGRATION)
         errors.push("Notification receipt table must use its reviewed migration: "+name);
       if(table==="notification_delivery_dead_letters" && name!==DEAD_LETTER_MIGRATION)
@@ -225,7 +228,7 @@ export async function auditFounderGates(root = rootDefault) {
   const hierarchyTables=["catalog_groups","catalog_families",
     "catalog_family_categories"];
   for(const table of allowedTables)
-    if(table!=="call_history" && table!=="call_attempt_windows" &&
+    if(table!=="call_history" && table!=="call_attempt_windows" && table!=="private_call_invitations" &&
        !hierarchyTables.includes(table) && !tables.includes(table))
       errors.push("Expected D1 table missing: "+table);
   const hasHierarchy=migrations.includes("0010_approved_catalog_hierarchy.sql");
@@ -264,6 +267,8 @@ export async function auditFounderGates(root = rootDefault) {
     errors.push("Private call history requires its route, table and migration");
   if (migrations.includes("0018_call_attempt_windows.sql") !== tables.includes("call_attempt_windows"))
     errors.push("Private call attempt windows require their table and migration");
+  if (migrations.includes("0019_private_call_invitations.sql") !== tables.includes("private_call_invitations"))
+    errors.push("Private call invitations require their table and migration");
   if (hasServiceCases !== routes.includes("/api/v1/me/service-report") ||
       hasServiceCases !== routes.includes("/api/v1/me/service-appeal") ||
       hasServiceCases !== routes.includes("/api/v1/moderation/service-cases") ||

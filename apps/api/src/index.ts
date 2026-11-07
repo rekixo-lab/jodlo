@@ -2,6 +2,7 @@ import type { Env } from "./data/d1.ts";
 import { handleRequest } from "./http/router.ts";
 import { CALL_HISTORY_CLEANUP_CRON, purgeExpiredCallHistory } from "./modules/interactions/call-history.ts";
 import { purgeExpiredCallAttemptWindows } from "./modules/interactions/call-attempt-windows.ts";
+import { purgeExpiredPrivateInvitations } from "./modules/interactions/private-call-invitation.ts";
 
 /** Cloudflare Worker entrypoint. Production D1 is migrated; production Worker code deployment requires verified owner action. */
 export default {
@@ -13,6 +14,7 @@ export default {
       await Promise.all([
         purgeExpiredCallHistory(env.DB, Math.floor(event.scheduledTime / 1000)),
         purgeExpiredCallAttemptWindows(env.DB, event.scheduledTime),
+        purgeExpiredPrivateInvitations(env.DB, event.scheduledTime),
       ]);
     }
   },

@@ -1,3 +1,15 @@
+## 2026-11-08 — Private invitation preparation and retry handling
+
+**Done.** The server resolves the caller from a current session and the recipient from the listing. One D1 batch creates a private invitation and reserves all three quota counters. It rechecks listing eligibility, explicit call consent, availability preference and bilateral blocks at write time. An identical retry returns the original invitation during the five-minute retry window without increasing any counter.
+
+**Evidence.** Local tests cover duplicate requests, a retry key reused for a different listing, consent changing before the transaction, quota exhaustion, a forced rollback and expired invitation cleanup.
+
+**Pending.** The invitation is private server state. Device presence, busy coordination, push delivery, RTC credentials, call transitions and history writes remain to connect before live use. Production migration 0019 and the invitation retention policy are pending.
+
+**Manual.** See [Manual Actions](MANUAL_ACTIONS.md) for call policy and provider requirements.
+
+**Next action.** Establish trusted presence and reserve a recipient slot before dispatch. Use the recorded consent revision to reject stale invitations.
+
 ## 2026-11-08 — Atomic call attempt counters
 
 **Done.** The internal reservation writes all three five-minute quota counters in one database statement. If any scope is at its limit, or either account is inactive, the statement changes no counters. Expired counters can be removed by the Worker cleanup schedule.
