@@ -1,3 +1,13 @@
+## 2026-11-08 — Private FCM ring transport
+
+**Done.** The internal ring sender resolves the destination through a trusted device lookup and claims the current invitation's dispatch slot just before sending. It sends a high-priority data message scoped to the JODLO Android package, with a TTL bounded by the ring deadline. A provider acceptance and an unconfirmed transport result are distinct.
+
+**Evidence.** A local transport test verifies the FCM request, destination ownership, one send under two concurrent dispatch attempts, and no duplicate send after an uncertain result.
+
+**Pending.** Production needs an authenticated device binding and reachability source, configured Firebase credentials, Android receive and acknowledgment handling, and Agora media integration. See [Manual Actions](MANUAL_ACTIONS.md). The 2026-11-05 Worker checkpoints remain below, with independently verified baseline evidence in [Current State](CURRENT_STATE.md).
+
+**Next action.** Connect the device binding to the private ring sender and acknowledge verified receipt from the intended device.
+
 ## 2026-11-08 — Private call dispatch reservation
 
 The 2026-11-05 Worker software checkpoints remain recorded below. The latest independently verified baseline is in [Current State](CURRENT_STATE.md).

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { issueSession } from "../src/modules/identity/sessions.ts";
 import { claimPrivateCallDispatch } from "../src/modules/interactions/private-call-dispatch.ts";
+import { sendPrivateCallRing } from "../src/modules/interactions/private-call-ring.ts";
 import { preparePrivateCallInvitation, purgeExpiredPrivateInvitations } from "../src/modules/interactions/private-call-invitation.ts";
 import { openLocalDatabase } from "./helpers/local-db.mjs";
 
@@ -109,7 +110,51 @@ test("private invitation commits with quota, deduplicates retries and rolls back
     assert.deepEqual(await claim(next.invitationId, receiver, now + 90_000, secondToken), {
       invitationId:next.invitationId, ringDeadlineMs:now + 180_000,
     });
-    await purgeExpiredPrivateInvitations(adapter, now + 390_000);
+    const ringAt = now + 180_000;
+    const ring = await preparePrivateCallInvitation(adapter, secondToken, alternate,
+      "delivery-attempt-key", ringAt);
+    assert.equal(ring.kind, "created");
+    const requests = [];
+    const deps = {
+      projectId:"jodlo-test",
+      accessToken:async () => "test-access-token",
+      resolveReachableDevice:async () => ({accountId:receiver, registrationToken:"synthetic-device-token"}),
+      request:async (url, init) => {
+        requests.push({url, body:JSON.parse(init.body)});
+        return new Response("{}", {status:200});
+      },
+      now:() => ringAt,
+    };
+    assert.equal(await sendPrivateCallRing(adapter, receiverToken, ring.invitationId, deps), "not_sent");
+    assert.equal(await sendPrivateCallRing(adapter, secondToken, ring.invitationId,
+      {...deps, resolveReachableDevice:async () => null}), "not_sent");
+    const sends = await Promise.all([
+      sendPrivateCallRing(adapter, secondToken, ring.invitationId, deps),
+      sendPrivateCallRing(adapter, secondToken, ring.invitationId, deps),
+    ]);
+    assert.deepEqual(sends.sort(), ["not_sent", "provider_accepted"]);
+    assert.deepEqual(requests, [{
+      url:"https://fcm.googleapis.com/v1/projects/jodlo-test/messages:send",
+      body:{message:{
+        token:"synthetic-device-token",
+        android:{ttl:"90s",priority:"HIGH",restricted_package_name:"com.rekixo.jodlo"},
+        data:{eventId:ring.invitationId,eventType:"call_ring",expiresAtMs:String(ringAt + 90_000)},
+      }},
+    }]);
+
+    const uncertainAt = ringAt + 90_000;
+    const uncertain = await preparePrivateCallInvitation(adapter, secondToken, alternate,
+      "uncertain-attempt-key", uncertainAt);
+    assert.equal(uncertain.kind, "created");
+    const uncertainDeps = {...deps, now:() => uncertainAt, request:async () => {
+      throw new Error("synthetic transport failure");
+    }};
+    assert.equal(await sendPrivateCallRing(adapter, secondToken, uncertain.invitationId,
+      uncertainDeps), "delivery_unconfirmed");
+    assert.equal(await sendPrivateCallRing(adapter, secondToken, uncertain.invitationId,
+      uncertainDeps), "not_sent");
+
+    await purgeExpiredPrivateInvitations(adapter, uncertainAt + 300_000);
     assert.equal(rows(), 0);
     assert.equal(db.prepare("SELECT count(*) AS count FROM private_call_dispatch_slots").get().count, 0);
   } finally {
