@@ -243,8 +243,14 @@ fun main() {
     check(!exported.value.json.contains("\"ok\""))
     check(!exported.toString().contains("private-google-sub-123"))
     check(!exported.value.toString().contains("private-google-sub-123"))
+    val cityExport = ownExportData.replace("\"schemaVersion\":1", "\"schemaVersion\":2")
+    check(JodloReplyDecoder.accountDataExport(TransportReply(200, envelope(cityExport))) is ApiOutcome.Ok)
+    val serviceExport = cityExport.replace("\"schemaVersion\":2", "\"schemaVersion\":3")
+        .replace("\"services\":[]", "\"services\":[],\"serviceDetails\":[],\"servicePhotos\":[],\"serviceReports\":[],\"serviceAppeals\":[]")
+    check(JodloReplyDecoder.accountDataExport(TransportReply(200, envelope(serviceExport))) is ApiOutcome.Ok)
     for (badExport in listOf(
-        ownExportData.replace("\"schemaVersion\":1", "\"schemaVersion\":2"),
+        ownExportData.replace("\"schemaVersion\":1", "\"schemaVersion\":4"),
+        cityExport.replace("\"schemaVersion\":2", "\"schemaVersion\":3"),
         ownExportData.replace("\"googleSub\":", "\"email\":\"private@example.com\",\"googleSub\":"),
         ownExportData.replace("\"createdAt\":1783200000",
             "\"tokenHash\":\"secret\",\"createdAt\":1783200000"),

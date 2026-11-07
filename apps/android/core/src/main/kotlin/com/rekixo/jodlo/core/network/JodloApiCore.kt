@@ -9,6 +9,9 @@ import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
 import java.text.Normalizer
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import javax.net.ssl.HttpsURLConnection
 
 /** Headless, Android-compatible Kotlin protocol; not an APK or approved UI. */
@@ -160,9 +163,13 @@ object JodloRoutes {
     /** Exact, anonymous opt-in approved-category Service information.
      * This request contains NO Worker ID, account, phone, location or bearer.
      */
-    fun approvedServiceDetail(listingId: String, language: Language): ApiCall {
+    fun approvedServiceDetail(
+        listingId: String, language: Language, city: NearbyPilotCity? = null, includeProfile: Boolean = false,
+    ): ApiCall {
         requireListingId(listingId)
-        return ApiCall.get("/api/v1/listings?id=${enc(listingId)}&view=service&lang=${language.code}")
+        val path = "/api/v1/listings?id=${enc(listingId)}&view=service&lang=${language.code}"
+        return ApiCall.get(path + (if (city == null) "" else "&city=${city.wire}") +
+            (if (includeProfile) "&profile=1" else ""))
     }
 
     fun publicListings(categoryId: String): ApiCall {
@@ -182,15 +189,27 @@ object JodloRoutes {
         if (after != null) params += "after=${enc(after)}"
         return ApiCall.get("/api/v1/listings?${params.joinToString("&")}")
     }
-    /** Explicit anonymous all-Category feed. No owner, language, location,
+    /** Explicit anonymous all-Category feed, optionally with approved labels. No owner, location,
      * Worker identity or personal filters; the backend rechecks every row.
      * Cursor is one still-public opaque Listing ID from this exact feed.
      */
-    fun publicAllListingPage(limit: Int = 20, after: String? = null): ApiCall {
+    fun publicAllListingPage(
+        limit: Int = 20, after: String? = null, language: Language? = null,
+        categoryId: String? = null, city: NearbyPilotCity? = null,
+    ): ApiCall {
         require(limit in 1..25) { "Invalid public feed page size" }
+        if (categoryId != null) {
+            require(language != null)
+            requireCategoryId(categoryId)
+        }
+        require(city == null || language != null)
         if (after != null) requireListingId(after)
-        val path = "/api/v1/listings?feed=all&limit=$limit" +
-            (if (after != null) "&after=${enc(after)}" else "")
+        val mode = if (language == null) "all" else "service"
+        val path = "/api/v1/listings?feed=$mode&limit=$limit" +
+            (if (after != null) "&after=${enc(after)}" else "") +
+            (if (language != null) "&lang=${language.code}" else "") +
+            (if (categoryId != null) "&categoryId=${enc(categoryId)}" else "") +
+            (if (city != null) "&city=${city.wire}" else "")
         return ApiCall.get(path)
     }
 
@@ -205,6 +224,113 @@ object JodloRoutes {
     }
     private val GOOGLE_PROOF = Regex("""[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+""")
 
+    private fun servicePhotoPath(listingId: String): String {
+        requireListingId(listingId)
+        return "/api/v1/me/service-photo?id=${enc(listingId)}"
+    }
+
+    fun ownServicePhoto(token: String, listingId: String, download: Boolean = false): ApiCall =
+        ApiCall.getOwned(servicePhotoPath(listingId) + if (download) "&download=1" else "", token)
+
+    fun changeServicePhoto(token: String, listingId: String, revision: Long, jpeg: String?): ApiCall {
+        require(revision in 0..2147483646L)
+        val path = servicePhotoPath(listingId) + "&revision=$revision"
+        if (jpeg == null) return ApiCall.delete(path, token)
+        require(jpeg.length in 4..57344 && jpeg.length % 4 == 0 && Regex("[A-Za-z0-9+/]+={0,2}").matches(jpeg))
+        return ApiCall.put(path, token, """{"jpeg":"$jpeg"}""")
+    }
+
+    fun publicServicePhoto(listingId: String, categoryId: String, city: NearbyPilotCity?): ApiCall {
+        requireListingId(listingId)
+        requireCategoryId(categoryId)
+        val path = "/api/v1/listings/photo?id=${enc(listingId)}&categoryId=${enc(categoryId)}"
+        return ApiCall.get(path + if (city == null) "" else "&city=${city.wire}")
+    }
+
+    private fun serviceDetailsPath(listingId: String): String {
+        requireListingId(listingId)
+        return "/api/v1/me/service-details?id=${enc(listingId)}"
+    }
+
+    fun ownServiceDetails(token: String, listingId: String): ApiCall =
+        ApiCall.getOwned(serviceDetailsPath(listingId), token)
+
+    fun changeServiceDetails(
+        token: String, listingId: String, revision: Long, profile: ServiceProfile?,
+    ): ApiCall {
+        require(revision in 0..2147483646L)
+        val path = serviceDetailsPath(listingId) + "&revision=$revision"
+        if (profile == null) return ApiCall.delete(path, token)
+        val body = buildJsonObject {
+            put("displayName", JsonPrimitive(profile.displayName))
+            put("description", JsonPrimitive(profile.description))
+            put("experienceYears", profile.experienceYears?.let { JsonPrimitive(it) } ?: JsonNull)
+            put("visitRateInr", profile.visitRateInr?.let { JsonPrimitive(it) } ?: JsonNull)
+        }
+        return ApiCall.put(path, token, body.toString())
+    }
+
+    private fun serviceAreaPath(listingId: String): String {
+        requireListingId(listingId)
+        return "/api/v1/me/service-area?id=${enc(listingId)}"
+    }
+
+    fun ownServiceArea(token: String, listingId: String): ApiCall =
+        ApiCall.getOwned(serviceAreaPath(listingId), token)
+
+    fun changeServiceArea(token: String, listingId: String, city: NearbyPilotCity?, revision: Long): ApiCall {
+        require(revision in 0..2147483646L)
+        val value = city?.wire ?: "none"
+        return ApiCall.put(serviceAreaPath(listingId) + "&revision=$revision", token,
+            """{"city":"$value"}""")
+    }
+
+    private fun serviceCaseListingPath(base: String, listingId: String): String {
+        requireListingId(listingId)
+        return "$base?listingId=${enc(listingId)}"
+    }
+
+    fun serviceReport(token: String, listingId: String, reason: ServiceReportReason?): ApiCall {
+        val path = serviceCaseListingPath("/api/v1/me/service-report", listingId)
+        return if (reason == null) ApiCall.getOwned(path, token)
+            else ApiCall.post(path, token, """{"reason":"${reason.wire}"}""")
+    }
+
+    fun serviceAppealCase(token: String, listingId: String): ApiCall =
+        ApiCall.getOwned(serviceCaseListingPath("/api/v1/me/service-appeal", listingId), token)
+
+    fun appealServiceCase(token: String, id: String, revision: Long, reason: ServiceAppealReason): ApiCall {
+        requireListingId(id)
+        require(revision in 1..2147483646L)
+        return ApiCall.post("/api/v1/me/service-appeal?id=${enc(id)}&revision=$revision", token,
+            """{"reason":"${reason.wire}"}""")
+    }
+
+    private fun contactBlockPath(listingId: String): String {
+        requireListingId(listingId)
+        return "/api/v1/me/contact-block?listingId=${enc(listingId)}"
+    }
+
+    fun contactBlock(token: String, listingId: String): ApiCall =
+        ApiCall.getOwned(contactBlockPath(listingId), token)
+
+    fun changeContactBlock(token: String, listingId: String, blocked: Boolean): ApiCall {
+        val path = contactBlockPath(listingId)
+        return if (blocked) ApiCall.post(path, token) else ApiCall.delete(path, token)
+    }
+
+    private const val ACCOUNT_ERASURE = "/api/v1/me/account-erasure"
+    private val COMPACT_JWT = Regex("[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+")
+
+    fun prepareAccountErasure(token: String): ApiCall = ApiCall.post(ACCOUNT_ERASURE, token)
+
+    fun eraseAccount(token: String, challenge: String, googleProof: String): ApiCall {
+        require(challenge.length <= 1024 && COMPACT_JWT.matches(challenge))
+        require(googleProof.length <= 4096 && COMPACT_JWT.matches(googleProof))
+        return ApiCall.put(ACCOUNT_ERASURE, token,
+            """{"challenge":"$challenge","googleProof":"$googleProof"}""")
+    }
+
     /** Private, current-account overview; no owner ID in path, query or body. */
     fun accountOverview(token: String): ApiCall =
         ApiCall.getOwned("/api/v1/me/overview", token)
@@ -212,8 +338,10 @@ object JodloRoutes {
     /** Explicit owner data portability; carries bearer in header only.
      * The API response is private, and no export is fetched before a user action.
      */
-    fun accountDataExport(token: String): ApiCall =
-        ApiCall.getOwned("/api/v1/me/data-export", token)
+    fun accountDataExport(token: String, version: Int = 1): ApiCall {
+        require(version in 1..3)
+        return ApiCall.getOwned("/api/v1/me/data-export" + if (version > 1) "?version=$version" else "", token)
+    }
 
     fun myListings(token: String): ApiCall = ApiCall.getOwned("/api/v1/me/listings", token)
     /** Owner-only, opt-in keyset continuation: limit 1..25, opaque listing ID.
@@ -238,6 +366,11 @@ object JodloRoutes {
         val path = "/api/v1/me/listings?limit=$limit&view=management" +
             (if (after != null) "&after=${enc(after)}" else "")
         return ApiCall.getOwned(path, token)
+    }
+
+    fun exactManagedOwnListingByCategory(token: String, categoryId: String): ApiCall {
+        requireCategoryId(categoryId)
+        return ApiCall.getOwned("/api/v1/me/listings?view=management&categoryId=${enc(categoryId)}", token)
     }
 
     /** Exact current OWNER service, after deliberate selection only.
@@ -288,6 +421,12 @@ object JodloRoutes {
         return ApiCall.post("/api/v1/me/listings", token,
             "{\"categoryId\":\"$categoryId\"}")
     }
+    fun createOwnListing(token: String, categoryId: String): ApiCall {
+        requireCategoryId(categoryId)
+        return ApiCall.post("/api/v1/me/listings?create=1", token,
+            """{"categoryId":"$categoryId"}""")
+    }
+
     /** Exact owner Listing resume, never a new upsert. The current server
      * checks paused status, owner, moderation, active account and Category in
      * one atomic UPDATE before returning the same public two-field DTO.
@@ -300,6 +439,20 @@ object JodloRoutes {
         requireCategoryId(expectedCategoryId)
         return ApiCall.post("/api/v1/me/listings?resume=1", token,
             """{"listingId":"$listingId","expectedCategoryId":"$expectedCategoryId"}""")
+    }
+
+    fun changeOwnListingPublication(token: String, review: VersionedOwnListing): ApiCall {
+        val row = review.row
+        requireListingId(row.id)
+        requireCategoryId(row.categoryId)
+        require(review.revision in 0..2147483646L)
+        val action = when (row.publicationStatus) {
+            OwnPublicationStatus.PUBLISHED -> "pause"
+            OwnPublicationStatus.UNPUBLISHED -> "resume"
+            null -> error("Publication status required")
+        }
+        return ApiCall.put("/api/v1/me/listings?publication=$action", token,
+            """{"listingId":"${row.id}","expectedCategoryId":"${row.categoryId}","expectedRevision":${review.revision}}""")
     }
 
     /** Existing Listing ID is preserved; old Category compare-and-swap.

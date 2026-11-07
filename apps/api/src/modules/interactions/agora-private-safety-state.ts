@@ -186,7 +186,7 @@ export const READ_CALLER_AGORA_PRIVATE_SAFETY_QUERY =
   "AND caller.status='active' AND worker.status='active' " +
   "AND caller.id<>worker.id AND wp.status='draft' " +
   "AND c.is_active=1 AND wl.status='published' " +
-  "AND wl.moderation_status='allowed' LIMIT 1";
+  "AND wl.moderation_status='allowed' AND wl.report_hold=0 LIMIT 1";
 
 export type LocalAgoraSafetyFacts = Readonly<{
   acceptingCalls: boolean;

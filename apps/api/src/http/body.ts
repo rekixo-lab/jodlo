@@ -72,6 +72,9 @@ export async function hasEmptyBody(request: Request): Promise<boolean> {
 const RESUME_OWN_LISTING_JSON =
   /^\s*\{\s*"listingId"\s*:\s*"[A-Za-z0-9_-]{8,128}"\s*,\s*"expectedCategoryId"\s*:\s*"[A-Za-z0-9_-]{1,64}"\s*\}\s*$/;
 
+const PUBLICATION_REVISION_JSON =
+  /^\s*\{\s*"listingId"\s*:\s*"[A-Za-z0-9_-]{8,128}"\s*,\s*"expectedCategoryId"\s*:\s*"[A-Za-z0-9_-]{1,64}"\s*,\s*"expectedRevision"\s*:\s*(?:0|[1-9][0-9]{0,9})\s*\}\s*$/;
+
 const EDIT_CATEGORY_JSON =
   /^\s*\{\s*"listingId"\s*:\s*"[A-Za-z0-9_-]{8,128}"\s*,\s*"expectedCategoryId"\s*:\s*"[A-Za-z0-9_-]{1,64}"\s*,\s*"nextCategoryId"\s*:\s*"[A-Za-z0-9_-]{1,64}"\s*\}\s*$/;
 
@@ -81,6 +84,12 @@ const EDIT_CATEGORY_JSON =
 const EDIT_CATEGORY_VERSIONED_JSON =
   /^\s*\{\s*"listingId"\s*:\s*"[A-Za-z0-9_-]{8,128}"\s*,\s*"expectedCategoryId"\s*:\s*"[A-Za-z0-9_-]{1,64}"\s*,\s*"nextCategoryId"\s*:\s*"[A-Za-z0-9_-]{1,64}"\s*,\s*"expectedRevision"\s*:\s*(?:0|[1-9][0-9]{0,9})\s*\}\s*$/;
 
+const ACCOUNT_ERASURE_JSON =
+  /^\s*\{\s*"challenge"\s*:\s*"[A-Za-z0-9_.-]{1,1024}"\s*,\s*"googleProof"\s*:\s*"[A-Za-z0-9_.-]{1,4096}"\s*\}\s*$/;
+
+const SERVICE_DETAILS_JSON =
+  /^\s*\{\s*"displayName"\s*:\s*"(?:[^"\\\x00-\x1f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"\s*,\s*"description"\s*:\s*"(?:[^"\\\x00-\x1f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"\s*,\s*"experienceYears"\s*:\s*(?:null|0|[1-9][0-9]?)\s*,\s*"visitRateInr"\s*:\s*(?:null|[1-9][0-9]{0,7})\s*\}\s*$/;
+
 const ONE_STRING_FIELD_JSON =
   /^\s*\{\s*"(?:[^"\\\x00-\x1f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"\s*:\s*"(?:[^"\\\x00-\x1f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"\s*\}\s*$/;
 
@@ -89,7 +98,7 @@ const ONE_STRING_FIELD_JSON =
  * A malicious/unproductive source cannot accumulate unlimited empty chunks.
  */
 async function readBoundedObject(request: Request, maxBytes: number,
-  format: "single" | "edit-category" | "edit-versioned" | "resume-own" = "single"):
+  format: "single" | "edit-category" | "edit-versioned" | "resume-own" | "publication-revision" | "account-erasure" | "service-details" = "single"):
   Promise<Record<string, unknown> | null> {
   const type = request.headers.get("Content-Type") ?? "";
   if (!/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(type)) return null;
@@ -130,7 +139,13 @@ async function readBoundedObject(request: Request, maxBytes: number,
         ? EDIT_CATEGORY_JSON.test(source)
         : format === "edit-versioned"
           ? EDIT_CATEGORY_VERSIONED_JSON.test(source)
-          : RESUME_OWN_LISTING_JSON.test(source))) return null;
+          : format === "resume-own"
+            ? RESUME_OWN_LISTING_JSON.test(source)
+            : format === "publication-revision"
+              ? PUBLICATION_REVISION_JSON.test(source)
+              : format === "account-erasure"
+                ? ACCOUNT_ERASURE_JSON.test(source)
+                : SERVICE_DETAILS_JSON.test(source))) return null;
     const parsed: unknown = JSON.parse(source);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
     return parsed as Record<string, unknown>;
@@ -209,4 +224,44 @@ export async function readResumeOwnListingBody(
       typeof obj.listingId!=="string"||
       typeof obj.expectedCategoryId!=="string")return null;
   return {listingId:obj.listingId,expectedCategoryId:obj.expectedCategoryId};
+}
+
+export async function readPublicationRevisionBody(request: Request): Promise<
+  (ResumeOwnListingBody & {expectedRevision: number}) | null
+> {
+  const obj = await readBoundedObject(request, 384, "publication-revision");
+  if (!obj || typeof obj.listingId !== "string" ||
+      typeof obj.expectedCategoryId !== "string" ||
+      typeof obj.expectedRevision !== "number" ||
+      !Number.isSafeInteger(obj.expectedRevision) ||
+      obj.expectedRevision < 0 || obj.expectedRevision >= 2147483647) return null;
+  return {listingId: obj.listingId, expectedCategoryId: obj.expectedCategoryId,
+    expectedRevision: obj.expectedRevision};
+}
+
+export async function readAccountErasureBody(request: Request): Promise<
+  {challenge: string; googleProof: string} | null
+> {
+  const obj = await readBoundedObject(request, 5248, "account-erasure");
+  return obj && typeof obj.challenge === "string" && typeof obj.googleProof === "string"
+    ? {challenge: obj.challenge, googleProof: obj.googleProof} : null;
+}
+
+export async function readServiceCityBody(request: Request): Promise<string | null> {
+  const obj = await readBoundedObject(request, 128);
+  return obj && typeof obj.city === "string" ? obj.city : null;
+}
+
+export function readServiceDetailsBody(request: Request): Promise<Record<string, unknown> | null> {
+  return readBoundedObject(request, 4096, "service-details");
+}
+
+export async function readServicePhotoBody(request: Request): Promise<string | null> {
+  const obj = await readBoundedObject(request, 58000);
+  return obj && typeof obj.jpeg === "string" ? obj.jpeg : null;
+}
+
+export async function readServiceCaseReason(request: Request): Promise<string | null> {
+  const obj = await readBoundedObject(request, 128);
+  return obj && typeof obj.reason === "string" ? obj.reason : null;
 }

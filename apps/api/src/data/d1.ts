@@ -23,6 +23,10 @@ export interface RateLimitBinding {
 }
 
 export interface Env {
+  /** Unset until account-erasure release. Server secret, 32 random bytes as hex. */
+  ACCOUNT_ERASURE_RELEASE_KEY?: string;
+  CONTACT_BLOCKS_ENABLED?: string;
+  SERVICE_MODERATION_KEY?: string;
   DB?: D1Database;
   LOGIN_BURST_LIMITER?: RateLimitBinding;
   ACCOUNT_LOGIN_LIMITER?: RateLimitBinding;

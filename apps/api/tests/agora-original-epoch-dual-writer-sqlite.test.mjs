@@ -54,9 +54,11 @@ const goodPolicy = () => ({
 const MIGRATIONS = [
   "0001_public_catalog.sql", "0002_shared_accounts_worker_drafts.sql",
   "0003_google_identity_sessions.sql", "0004_worker_service_listings.sql",
+  "0011_worker_listing_revision.sql", "0015_service_reports_and_appeals.sql",
   "0005_notification_delivery_receipts.sql",
   "0006_notification_dead_letters.sql",
   "0007_worker_agora_call_preferences.sql",
+  "0008_agora_private_safety_state.sql",
 ];
 
 async function createTrial() {

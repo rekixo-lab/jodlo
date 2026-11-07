@@ -1,3 +1,23 @@
+## Service reports and appeals setup
+
+Apply migration `0015` before deploying code that reads the report hold. The service report and appeal routes accept requests only when the server-only `SERVICE_MODERATION_KEY` is configured. Assign reviewers before enabling intake. Use the authenticated moderation route `/api/v1/moderation/service-cases` to GET `queue=pending` or `queue=appealed`, then GET `id` for current evidence and optionally `photo=1` for the JPEG. Send an empty-body PUT with `id`, `revision`, and `decision`. For `upheld` or `restored` also include the three current evidence revisions from the review response. Reload on conflict. Reporter details do not appear in the queue. The intake caps an account at ten pending reports and accepts one report per service and content revision.
+
+## Service photo review setup
+
+Migration `0014` is required for reviewed public service detail and photo uploads. The existing server-only `SERVICE_MODERATION_KEY` protects `/api/v1/moderation/service-photo`. GET lists pending photo IDs and revisions without bulk image downloads. GET with `id` returns the exact pending JPEG to inspect. Confirm that the photo shows the service and does not contain private details before approving its revision. Use the same empty-body PUT parameters as service profile review. The reviewed image is a compressed service copy and does not carry the original filename or EXIF metadata.
+
+## Service profile review setup
+
+Apply migration `0013` before enabling the Android profile flow against the server. Reviewers use the protected `/api/v1/moderation/service-details` endpoint. It stays unavailable without a separate server-only `SERVICE_MODERATION_KEY` secret containing 32 random bytes as lowercase hex. The GET response contains up to 25 pending profiles. Follow its cursor with `after`. Review the exact description, display name and category for private information and misleading claims. To record the decision, send an empty-body PUT with `id`, `revision` and `decision=approved` or `decision=rejected`. A conflict means the queued revision is stale and requires a fresh read. Do not put the key in Android, URLs or logs.
+
+## Contact block release switch
+
+The signed-in controls on verified public Service details read and change only the user's own outgoing contact block. The server resolves the Worker from the Listing and uses the private relationship table. The route stays disabled unless the Worker environment sets `CONTACT_BLOCKS_ENABLED=1`. Keep it disabled until end-to-end validation and the operational handling for blocked users, appeals and retention are ready.
+
+## Account erasure release switch
+
+The Android Account screen and API support deleting the confirmed account from the active JODLO D1 database. The operation requires a fresh Google proof tied to the current JODLO session. The API stays disabled until the Worker receives an `ACCOUNT_ERASURE_RELEASE_KEY` secret containing 32 random bytes encoded as 64 hex characters. Keep the release secret unset until end-to-end validation and the backup, provider, and support procedures are ready. The active D1 operation leaves backup copies, external providers and device files outside its scope.
+
 ## 2026-11-04 — operator gate for all-Category Services feed (NOT A REMOTE RELEASE)
 
 An opt-in read-only cross-Category Customer feed and the local-only D1 index migration `0009_public_cross_category_feed_index.sql` have been prepared in a feature branch. **No production D1 write, Worker upload, DNS change, Google/OAuth action, email or Finworkar change occurred.** Before a later controlled release, the operator must verify the exact Cloudflare account/Worker/D1/hostname and current deployment SHA; take and verify a restorable backup, review query plan and migration impact, apply the read-only **index schema** upgrade under the approved runbook, deploy only with explicit release/rollback acceptance and test the current full Android APK on a real device. Do not mistake merged GitHub code for deployed code.

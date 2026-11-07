@@ -1,19 +1,23 @@
 import type { D1Database } from "../../data/d1.ts";
 import { validOpaqueId, validCategoryId } from "../shared/identifiers.ts";
+import { parseServiceDetails, type ServiceDetails } from "./service-details.ts";
+import { validServiceCity, type ServiceCity } from "./service-area.ts";
 import { projectVisibleListing } from "../discovery/public-listing.ts";
 
 export type PublicListing = Readonly<{ id: string; categoryId: string }>;
 
-export const PUBLISH_LISTING_QUERY =
+const INSERT_ELIGIBLE_LISTING =
   "INSERT INTO worker_listings(id,worker_account_id,category_id) " +
   "SELECT ?,wp.account_id,c.id FROM worker_profiles AS wp " +
   "JOIN accounts AS a ON a.id=wp.account_id JOIN categories AS c ON c.id=? " +
-  "WHERE wp.account_id=? AND wp.status='draft' AND a.status='active' AND c.is_active=1 " +
+  "WHERE wp.account_id=? AND wp.status='draft' AND a.status='active' AND c.is_active=1 ";
+
+export const PUBLISH_LISTING_QUERY = INSERT_ELIGIBLE_LISTING +
   "ON CONFLICT(worker_account_id,category_id) DO UPDATE SET status='published' " +
-  "WHERE worker_listings.moderation_status='allowed'";
+  "WHERE worker_listings.moderation_status='allowed' AND worker_listings.report_hold=0";
 
 export const OWN_LISTING_QUERY =
-  "SELECT wl.id,wl.category_id AS categoryId,wl.status,wl.moderation_status AS moderation, " +
+  "SELECT wl.id,wl.category_id AS categoryId,wl.status,CASE WHEN wl.report_hold=1 THEN 'hidden' ELSE wl.moderation_status END AS moderation, " +
   "c.is_active AS active FROM worker_listings AS wl " +
   "JOIN accounts AS a ON a.id=wl.worker_account_id JOIN categories AS c ON c.id=wl.category_id " +
   "WHERE wl.worker_account_id=? AND a.status='active' AND wl.category_id=? LIMIT 1";
@@ -21,7 +25,7 @@ export const OWN_LISTING_QUERY =
 /** The same CURRENT DB eligibility controls both public listing rows and
  * the optional category-availability facet. Never count private/hidden items. */
 export const PUBLIC_LISTING_ELIGIBILITY =
-  "wl.status='published' AND wl.moderation_status='allowed' " +
+  "wl.status='published' AND wl.moderation_status='allowed' AND wl.report_hold=0 " +
   "AND a.status='active' AND wp.status='draft' AND c.is_active=1";
 
 export const PUBLIC_LISTINGS_QUERY =
@@ -61,7 +65,7 @@ export const PUBLIC_LISTING_DETAIL_QUERY =
  * and obtains that same approved Category's language-specific name. No
  * Worker profile, phone, location, rate, badge or free-form description.
  */
-export const PUBLIC_APPROVED_SERVICE_DETAIL_QUERY =
+const PUBLIC_APPROVED_SERVICE_DETAIL_SELECT =
   "SELECT wl.id,wl.category_id AS categoryId,wl.worker_account_id AS workerId," +
   " c.id AS approvedCategoryId,c.slug AS categorySlug," +
   " CASE WHEN ?='hi' THEN COALESCE(NULLIF(c.name_hi,''),c.name_en)" +
@@ -69,7 +73,9 @@ export const PUBLIC_APPROVED_SERVICE_DETAIL_QUERY =
   "FROM worker_listings AS wl JOIN accounts AS a ON a.id=wl.worker_account_id " +
   "JOIN worker_profiles AS wp ON wp.account_id=a.id " +
   "JOIN categories AS c ON c.id=wl.category_id " +
-  "WHERE wl.id=? AND " + PUBLIC_LISTING_ELIGIBILITY + " LIMIT 1";
+  "WHERE wl.id=? AND " + PUBLIC_LISTING_ELIGIBILITY;
+export const PUBLIC_APPROVED_SERVICE_DETAIL_QUERY =
+  PUBLIC_APPROVED_SERVICE_DETAIL_SELECT + " LIMIT 1";
 
 /** Cursor eligibility is evaluated inside the SAME SQL statement as the
  * page. Reuse the exact public listing predicate so moderation and account
@@ -91,7 +97,7 @@ export const CONTINUED_PUBLIC_LISTINGS_QUERY =
  */
 const OWN_LISTINGS_SELECT =
   "SELECT wl.id,wl.category_id AS categoryId, " +
-  "CASE WHEN wl.status='published' AND wl.moderation_status='allowed' AND c.is_active=1 " +
+  "CASE WHEN wl.status='published' AND wl.moderation_status='allowed' AND wl.report_hold=0 AND c.is_active=1 " +
   "THEN 1 ELSE 0 END AS visible FROM worker_listings AS wl " +
   "JOIN accounts AS a ON a.id=wl.worker_account_id JOIN categories AS c ON c.id=wl.category_id " +
   "WHERE wl.worker_account_id=? AND a.status='active'";
@@ -140,7 +146,7 @@ export function parseOwnListingsPage(params:URLSearchParams):OwnListingsPageOpti
  */
 const MANAGED_OWN_LISTINGS_SELECT =
   "SELECT wl.id,wl.category_id AS categoryId,wl.status AS publicationStatus, " +
-  "CASE WHEN wl.status='published' AND wl.moderation_status='allowed' AND c.is_active=1 " +
+  "CASE WHEN wl.status='published' AND wl.moderation_status='allowed' AND wl.report_hold=0 AND c.is_active=1 " +
   "AND EXISTS(SELECT 1 FROM worker_profiles AS wp " +
   "WHERE wp.account_id=wl.worker_account_id AND wp.status='draft') " +
   "THEN 1 ELSE 0 END AS visible FROM worker_listings AS wl " +
@@ -164,15 +170,28 @@ export const EXACT_MANAGED_OWN_LISTING_QUERY =
   MANAGED_OWN_LISTINGS_SELECT+" AND wl.id=? LIMIT 1";
 
 export async function exactManagedOwnListing(
-  db:D1Database,actor:string,listingId:string,
-):Promise<{id:string;categoryId:string;visible:boolean;
-  publicationStatus:"published"|"unpublished"}|null> {
-  if(!validOpaqueId(actor)||!validOpaqueId(listingId))return null;
-  const {results}=await db.prepare(EXACT_MANAGED_OWN_LISTING_QUERY)
-    .bind(actor,listingId).all<ManagedOwnListingRow>();
-  const row=results[0];
-  if(!row)return null;
-  if(row.id!==listingId || !validCategoryId(row.categoryId) ||
+  db: D1Database, actor: string, listingId: string,
+) {
+  if (!validOpaqueId(actor) || !validOpaqueId(listingId)) return null;
+  const {results} = await db.prepare(EXACT_MANAGED_OWN_LISTING_QUERY)
+    .bind(actor, listingId).all<ManagedOwnListingRow>();
+  return projectExactOwnerListing(results[0], row => row.id === listingId);
+}
+
+export async function exactManagedOwnListingByCategory(
+  db: D1Database, actor: string, categoryId: string,
+) {
+  if (!validOpaqueId(actor) || !validCategoryId(categoryId)) return null;
+  const {results} = await db.prepare(MANAGED_OWN_LISTINGS_SELECT + " AND wl.category_id=? LIMIT 1")
+    .bind(actor, categoryId).all<ManagedOwnListingRow>();
+  return projectExactOwnerListing(results[0], row => row.categoryId === categoryId);
+}
+
+function projectExactOwnerListing(
+  row: ManagedOwnListingRow | undefined, matches: (row: ManagedOwnListingRow) => boolean,
+) {
+  if (!row) return null;
+  if (!matches(row) || !validOpaqueId(row.id) || !validCategoryId(row.categoryId) ||
     (row.publicationStatus!=="published"&&row.publicationStatus!=="unpublished") ||
     (row.visible!==0&&row.visible!==1) ||
     (row.visible===1&&row.publicationStatus!=="published")) {
@@ -241,6 +260,18 @@ export async function publishListing(db:D1Database,actor:string,categoryId:strin
   const row=results[0];
   if(!row||row.status!=='published'||row.moderation!=='allowed'||row.active!==1)return null;
   return Object.freeze({id:row.id,categoryId:row.categoryId});
+}
+
+/** A reviewed new Service must never resume an existing paused Service. */
+export async function createOwnListing(
+  db: D1Database, actor: string, categoryId: string,
+): Promise<PublicListing | null> {
+  if (!validOpaqueId(actor) || !validCategoryId(categoryId)) return null;
+  const id = crypto.randomUUID();
+  const {meta} = await db.prepare(
+    INSERT_ELIGIBLE_LISTING + "ON CONFLICT(worker_account_id,category_id) DO NOTHING",
+  ).bind(id, categoryId, actor).run();
+  return meta.changes === 1 ? {id, categoryId} : null;
 }
 
 type OwnListingDbRow = {id:string;categoryId:string;visible:number};
@@ -344,29 +375,46 @@ export async function publicListingDetail(
   return publicListingProjections(results)[0]??null;
 }
 
+function validPublicCategoryName(name: unknown): name is string {
+  return typeof name === "string" && name.trim().length > 0 &&
+    Array.from(name).length <= 160 && !/[\u0000-\u001F\u007F-\u009F]/.test(name);
+}
+
 export type PublicApprovedServiceDetail = Readonly<{
   language:"en"|"hi";
   listing:PublicListing;
   category:Readonly<{id:string;slug:string;name:string}>;
+  city?: ServiceCity;
+  profile?: ServiceDetails | null;
+  hasPhoto?: boolean;
 }>;
 
 /** No second query or TOCTOU Category-label lookup. The returned name is
  * exactly current approved Catalog text, never generated from Worker input.
  */
 export async function publicApprovedServiceDetail(
-  db:D1Database,id:string,language:"en"|"hi",
+  db:D1Database,id:string,language:"en"|"hi",city?: ServiceCity,includeProfile=false,
 ):Promise<PublicApprovedServiceDetail|null> {
-  if(!validOpaqueId(id)||(language!=="en"&&language!=="hi"))return null;
-  const {results}=await db.prepare(PUBLIC_APPROVED_SERVICE_DETAIL_QUERY)
-    .bind(language,id).all<PublicListingDbRow&{
-      approvedCategoryId:string;categorySlug:string;categoryName:string;
-    }>();
+  if (!validOpaqueId(id) || (language !== "en" && language !== "hi") ||
+      (city !== undefined && !validServiceCity(city))) return null;
+  const service = city === undefined ? PUBLIC_APPROVED_SERVICE_DETAIL_QUERY
+    : PUBLIC_APPROVED_SERVICE_DETAIL_SELECT + " AND wl.service_city=? LIMIT 1";
+  const query = includeProfile
+    ? "SELECT service.*,d.display_name AS displayName,d.description,d.experience_years AS experienceYears," +
+      "d.visit_rate_inr AS visitRateInr,EXISTS (SELECT 1 FROM worker_service_photos AS p " +
+      "WHERE p.listing_id=service.id AND p.category_id=service.categoryId AND p.review_status='approved') AS hasPhoto " +
+      "FROM (" + service + ") AS service " +
+      "LEFT JOIN worker_service_details AS d ON d.listing_id=service.id " +
+      "AND d.category_id=service.categoryId AND d.review_status='approved'"
+    : service;
+  const {results}=await db.prepare(query)
+    .bind(language,id,...(city === undefined ? [] : [city])).all<PublicListingDbRow&{
+      approvedCategoryId:string;categorySlug:string;categoryName:string;hasPhoto?:number;
+    } & Partial<ServiceDetails>>();
   const row=results[0];
   if(!row||row.categoryId!==row.approvedCategoryId||
       !validCategoryId(row.categorySlug)||
-      typeof row.categoryName!=="string"||!row.categoryName.trim()||
-      Array.from(row.categoryName).length>160||
-      /[\u0000-\u001F\u007F]/.test(row.categoryName))return null;
+      !validPublicCategoryName(row.categoryName))return null;
   const listing=publicListingProjections([row])[0];
   if(!listing)return null;
   return Object.freeze({
@@ -375,6 +423,8 @@ export async function publicApprovedServiceDetail(
     category:Object.freeze({
       id:listing.categoryId,slug:row.categorySlug,name:row.categoryName,
     }),
+    ...(city === undefined ? {} : {city}),
+    ...(includeProfile ? {profile:parseServiceDetails(row),hasPhoto:row.hasPhoto === 1} : {}),
   });
 }
 
@@ -403,8 +453,8 @@ export async function pagePublicListings(
   return {listings,nextCursor:results.length>limit ? listings.at(-1)?.id??null : null};
 }
 
-/** Anonymous all-category feed, STILL the same two-field current-public
- * listing projection. Unlike single-Category paging, this keyset spans trades
+/** Anonymous all-category feed. Listing rows retain the same two-field
+ * public projection, with approved Category labels available on request. Unlike single-Category paging, this keyset spans trades
  * and never uses a client-provided category, owner or timestamp.
  *
  * A cursor is valid only while the exact anchor Listing remains eligible
@@ -412,38 +462,80 @@ export async function pagePublicListings(
  * A listing changed between pages can only disappear, never leak private
  * owner data; no persistent feed snapshots or automatic notifications.
  */
-const ALL_PUBLIC_LISTINGS_SELECT =
-  "SELECT wl.id,wl.category_id AS categoryId,wl.worker_account_id AS workerId " +
-  "FROM worker_listings AS wl JOIN accounts AS a ON a.id=wl.worker_account_id " +
+const PUBLIC_LISTING_COLUMNS =
+  "SELECT wl.id,wl.category_id AS categoryId,wl.worker_account_id AS workerId";
+const ALL_PUBLIC_LISTINGS_FROM =
+  " FROM worker_listings AS wl JOIN accounts AS a ON a.id=wl.worker_account_id " +
   "JOIN worker_profiles AS wp ON wp.account_id=a.id " +
   "JOIN categories AS c ON c.id=wl.category_id " +
   "WHERE " + PUBLIC_LISTING_ELIGIBILITY;
 
-export const PAGED_ALL_PUBLIC_LISTINGS_QUERY =
-  ALL_PUBLIC_LISTINGS_SELECT + " ORDER BY wl.created_at,wl.id LIMIT ?";
-
-export const CONTINUED_ALL_PUBLIC_LISTINGS_QUERY =
-  ALL_PUBLIC_LISTINGS_SELECT +
+const ALL_PUBLIC_LISTINGS_ORDER = " ORDER BY wl.created_at,wl.id LIMIT ?";
+const publicListingContinuation = (scope: string): string =>
   " AND (wl.created_at,wl.id) > (SELECT wl.created_at,wl.id " +
   "FROM worker_listings AS wl JOIN accounts AS a ON a.id=wl.worker_account_id " +
   "JOIN worker_profiles AS wp ON wp.account_id=a.id " +
   "JOIN categories AS c ON c.id=wl.category_id " +
-  "WHERE wl.id=? AND " + PUBLIC_LISTING_ELIGIBILITY + ")" +
-  " ORDER BY wl.created_at,wl.id LIMIT ?";
+  "WHERE wl.id=? AND " + PUBLIC_LISTING_ELIGIBILITY +
+  scope + ")";
 
+export const PAGED_ALL_PUBLIC_LISTINGS_QUERY =
+  PUBLIC_LISTING_COLUMNS + ALL_PUBLIC_LISTINGS_FROM + ALL_PUBLIC_LISTINGS_ORDER;
+
+export const CONTINUED_ALL_PUBLIC_LISTINGS_QUERY =
+  PUBLIC_LISTING_COLUMNS + ALL_PUBLIC_LISTINGS_FROM +
+  publicListingContinuation("") + ALL_PUBLIC_LISTINGS_ORDER;
+
+type PublicFeedLanguage = "en" | "hi";
+type LocalizedPublicListingPage = PublicListingPage & Readonly<{
+  language: PublicFeedLanguage;
+  categoryNames: Record<string, string>;
+  city?: ServiceCity;
+}>;
+
+export function pageAllPublicListings(
+  db: D1Database, limit: number, after: string | null,
+): Promise<PublicListingPage>;
+export function pageAllPublicListings(
+  db: D1Database, limit: number, after: string | null, language: PublicFeedLanguage,
+  categoryId?: string, city?: ServiceCity,
+): Promise<LocalizedPublicListingPage>;
 export async function pageAllPublicListings(
-  db:D1Database,limit:number,after:string|null,
-):Promise<PublicListingPage> {
-  if(!Number.isSafeInteger(limit)||limit<1||limit>25||
-    (after!==null&&!validOpaqueId(after)))throw new Error("Invalid all-public feed");
-  const sql=after===null?PAGED_ALL_PUBLIC_LISTINGS_QUERY:CONTINUED_ALL_PUBLIC_LISTINGS_QUERY;
-  const {results}=await db.prepare(sql).bind(...(after===null?[limit+1]:[after,limit+1]))
-    .all<PublicListingDbRow>();
-  const rows=publicListingProjections(results.slice(0,limit));
-  return {
-    listings:rows,
-    nextCursor:results.length>limit?rows.at(-1)?.id??null:null,
-  };
+  db: D1Database, limit: number, after: string | null, language?: PublicFeedLanguage,
+  categoryId?: string, city?: ServiceCity,
+): Promise<PublicListingPage | LocalizedPublicListingPage> {
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 25 ||
+      (after !== null && !validOpaqueId(after)) ||
+      (categoryId !== undefined && !validCategoryId(categoryId)) ||
+      (city !== undefined && !validServiceCity(city))) {
+    throw new Error("Invalid public feed");
+  }
+  const columns = language === undefined ? PUBLIC_LISTING_COLUMNS :
+    PUBLIC_LISTING_COLUMNS +
+    ", CASE WHEN ?='hi' THEN COALESCE(NULLIF(c.name_hi,''),c.name_en)" +
+    " ELSE c.name_en END AS categoryName";
+  const scope = (categoryId === undefined ? "" : " AND wl.category_id=?") +
+    (city === undefined ? "" : " AND wl.service_city=?");
+  const scopeParams = [categoryId, city].filter((value): value is string => value !== undefined);
+  const sql = columns + ALL_PUBLIC_LISTINGS_FROM + scope +
+    (after === null ? "" : publicListingContinuation(scope)) + ALL_PUBLIC_LISTINGS_ORDER;
+  const params = [...(language === undefined ? [] : [language]), ...scopeParams,
+    ...(after === null ? [] : [after, ...scopeParams]), limit + 1];
+  const {results} = await db.prepare(sql).bind(...params)
+    .all<PublicListingDbRow & {categoryName?: string}>();
+  const selected = results.slice(0, limit);
+  const listings = publicListingProjections(selected);
+  const page = {listings, nextCursor: results.length > limit ? listings.at(-1)?.id ?? null : null};
+  if (language === undefined) return page;
+
+  const visibleCategories = new Set(listings.map(listing => listing.categoryId));
+  const categoryNames: Record<string, string> = Object.create(null);
+  for (const row of selected) {
+    if (visibleCategories.has(row.categoryId) && validPublicCategoryName(row.categoryName)) {
+      categoryNames[row.categoryId] = row.categoryName;
+    }
+  }
+  return {...page, language, categoryNames, ...(city === undefined ? {} : {city})};
 }
 
 /** An owner may reactivate ONLY an already-unpublished Service with the
@@ -455,7 +547,7 @@ export async function pageAllPublicListings(
 export const RESUME_OWN_LISTING_QUERY =
   "UPDATE worker_listings AS wl SET status='published' " +
   "WHERE wl.id=? AND wl.worker_account_id=? AND wl.category_id=? " +
-  "AND wl.status='unpublished' AND wl.moderation_status='allowed' " +
+  "AND wl.status='unpublished' AND wl.moderation_status='allowed' AND wl.report_hold=0 " +
   "AND EXISTS(SELECT 1 FROM worker_profiles AS wp " +
   "JOIN accounts AS a ON a.id=wp.account_id " +
   "WHERE wp.account_id=wl.worker_account_id AND wp.status='draft' AND a.status='active') " +
@@ -477,6 +569,18 @@ export async function unpublishListing(db:D1Database,actor:string,id:string):Pro
   if(!validOpaqueId(actor)||!validOpaqueId(id))return false;
   const {meta}=await db.prepare(UNPUBLISH_LISTING_QUERY).bind(id,actor).run();
   return changedExactlyOneOwnerListing(meta.changes);
+}
+
+/** The migration 0011 revision fences edits and publication changes alike. */
+export async function changeOwnListingPublication(
+  db: D1Database, actor: string, id: string, expectedCategoryId: string,
+  expectedRevision: number, action: "pause" | "resume",
+): Promise<PublicListing | null> {
+  const query = action === "resume"
+    ? RESUME_OWN_LISTING_QUERY + " AND wl.revision=?"
+    : UNPUBLISH_LISTING_QUERY + " AND category_id=? AND revision=?";
+  const {meta} = await db.prepare(query).bind(id, actor, expectedCategoryId, expectedRevision).run();
+  return changedExactlyOneOwnerListing(meta.changes) ? {id, categoryId: expectedCategoryId} : null;
 }
 
 /** Owner-scoped compare-and-swap of an existing Category-only service.

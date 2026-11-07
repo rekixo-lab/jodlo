@@ -32,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.res.stringResource
@@ -44,6 +45,7 @@ import com.rekixo.jodlo.core.network.CustomerSuggestionView
 import com.rekixo.jodlo.core.network.HeadlessWorkerWriteScope
 import com.rekixo.jodlo.core.network.HttpsTransport
 import com.rekixo.jodlo.core.network.InMemorySessionCoordinator
+import com.rekixo.jodlo.core.network.NearbyPilotCity
 import com.rekixo.jodlo.core.network.Language
 import com.rekixo.jodlo.core.network.PublicCategory
 import com.rekixo.jodlo.core.network.CustomerServiceCard
@@ -113,11 +115,20 @@ private fun JodloApp(activity: ComponentActivity) {
     }
     val writes = remember(session) { session?.let(::HeadlessWorkerWriteScope) }
     val savedStore = remember(activity) { DeviceSavedServices(activity.applicationContext) }
-    var savedServices by remember(savedStore) { mutableStateOf(savedStore.read()) }
+    var savedServices by remember(savedStore) { mutableStateOf(SavedPublicServices.empty()) }
     val hiddenStore = remember(activity) {
         DeviceHiddenServices(activity.applicationContext)
     }
-    var hiddenServices by remember(hiddenStore) { mutableStateOf(hiddenStore.read()) }
+    var hiddenServices by remember(hiddenStore) { mutableStateOf(HiddenPublicServices.empty()) }
+    var localServicesReady by remember(savedStore, hiddenStore) { mutableStateOf(false) }
+    LaunchedEffect(savedStore, hiddenStore) {
+        val (saved, hidden) = withContext(Dispatchers.IO) {
+            savedStore.read() to hiddenStore.read()
+        }
+        savedServices = saved
+        hiddenServices = hidden
+        localServicesReady = true
+    }
     /** Explicit local-only hide, no server block/report, no Saved deletion. */
     fun hideService(id: String): Boolean {
         val next = hiddenServices.hide(id)
@@ -176,6 +187,7 @@ private fun JodloApp(activity: ComponentActivity) {
     }
     var homeCategory by remember { mutableStateOf<HomeCategorySelection?>(null) }
     var section by rememberSaveable { mutableStateOf("home") }
+    var discoveryCity by remember { mutableStateOf<NearbyPilotCity?>(null) }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Row(
             Modifier.fillMaxWidth()
@@ -247,6 +259,16 @@ private fun JodloApp(activity: ComponentActivity) {
             }
         }
         Box(Modifier.weight(1f)) {
+            // Do not show or let users change an empty placeholder collection
+            // before its durable contents have been read.
+            val needsLocalServices = when (section) {
+                "customer", "saved", "hidden", "local-data", "feed", "city-feed" -> true
+                else -> false
+            }
+            if (needsLocalServices && !localServicesReady) {
+                CircularProgressIndicator(Modifier.align(Alignment.Center))
+                return@Box
+            }
             when (section) {
                 "home" -> CustomerHome(
                     repository = catalog,
@@ -267,6 +289,8 @@ private fun JodloApp(activity: ComponentActivity) {
                         homeCategory = null
                         section = if (catalog != null) "feed" else "customer"
                     },
+                    onSearchCity = { discoveryCity = it; section = "city-feed" },
+                    canSearch = catalog != null,
                     onHome = { section = "home" },
                 )
                 "hierarchy" -> CustomerHierarchy(
@@ -282,11 +306,11 @@ private fun JodloApp(activity: ComponentActivity) {
                     customerCatalog, liveApiConfigured = sender != null,
                     saved = savedServices, onSaveToggle = ::toggleSaved,
                     hidden = hiddenServices, onHide = ::hideService,
-                    homeCategory = homeCategory,
+                    homeCategory = homeCategory, contactSession = session,
                 )
                 "saved" -> SavedServicesDashboard(
                     catalog, savedServices, ::removeSaved, ::clearSaved,
-                    hiddenServices, ::hideService,
+                    hiddenServices, ::hideService, contactSession = session,
                 )
                 "hidden" -> HiddenServicesDashboard(
                     hiddenServices, ::unhideService, ::clearHidden,
@@ -300,9 +324,24 @@ private fun JodloApp(activity: ComponentActivity) {
                     onApplyHidden = ::applyImportedHidden,
                     onHome = { section = "home" },
                 )
+                "city-feed" -> {
+                    val city = discoveryCity
+                    if (catalog != null && city != null) PublicServicesFeed(
+                        catalog, savedServices, ::toggleSaved, hiddenServices, ::hideService,
+                        onBrowseCategories = { homeCategory = null; section = "customer" },
+                        contactSession = session, city = city,
+                        onBackToCityPicker = { section = "nearby" },
+                    ) else ManualNearbyDiscovery(
+                        onBrowseAll = { section = "customer" },
+                        onSearchCity = { discoveryCity = it; section = "city-feed" },
+                        canSearch = catalog != null, onHome = { section = "home" },
+                    )
+                }
                 "feed" -> if (catalog != null) PublicServicesFeed(
                     catalog, savedServices, ::toggleSaved,
                     hiddenServices, ::hideService,
+                    onBrowseCategories = { homeCategory = null; section = "customer" },
+                    contactSession = session,
                 )
                 "worker" -> WorkerDashboard(activity, session, writes, catalog)
                 "help" -> HelpAndPrivacyDashboard(
@@ -348,6 +387,7 @@ private fun GuestDiscovery(
     hidden: HiddenPublicServices,
     onHide: (String) -> Boolean,
     homeCategory: HomeCategorySelection? = null,
+    contactSession: InMemorySessionCoordinator?,
 ) {
     val scope = rememberCoroutineScope()
     var language by remember { mutableStateOf(homeCategory?.language ?: Language.HI) }
@@ -641,8 +681,8 @@ private fun GuestDiscovery(
         loading = true
         scope.launch {
             val outcome = publicRead {
-                client.approvedServiceDetail(listing.id, listing.categoryId,
-                    expectedLanguage)
+                if (liveApiConfigured) client.reviewedServiceDetail(listing.id, listing.categoryId, expectedLanguage)
+                else client.approvedServiceDetail(listing.id, listing.categoryId, expectedLanguage)
             }
             if (requestRevision != revision) return@launch
             loading = false
@@ -945,7 +985,10 @@ private fun GuestDiscovery(
                         SafeServiceCard(card)
                     }
                     if (card?.evidence == CustomerServiceCardEvidence.PUBLIC_WHEN_CHECKED) {
-                        item { SafePublicProfileFacts() }
+                        item { SafePublicProfileFacts(card.profile, card.city) }
+                        item { ApprovedServicePhoto(repository, card) }
+                        item { ContactBlockControls(contactSession, card.listing.id) }
+                        item { ReportServiceControls(contactSession, card.listing.id) }
                     }
                     if (detail != null && card == null) item {
                         Text(stringResource(R.string.request_failed),

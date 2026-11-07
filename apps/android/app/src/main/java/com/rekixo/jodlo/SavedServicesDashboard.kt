@@ -22,6 +22,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import com.rekixo.jodlo.core.network.InMemorySessionCoordinator
 import com.rekixo.jodlo.core.network.ApiOutcome
 import com.rekixo.jodlo.core.network.ApprovedCategoryNameSnapshot
 import com.rekixo.jodlo.core.network.LocalPublicReferenceFinder
@@ -59,6 +60,7 @@ internal fun SavedServicesDashboard(
     onClear: () -> Boolean,
     hidden: HiddenPublicServices,
     onHide: (String) -> Boolean,
+    contactSession: InMemorySessionCoordinator?,
 ) {
     // A hidden bookmark remains durable but is not displayed or sent to
     // explicit review/Category-name HTTP reads until the user unhides it.
@@ -203,7 +205,7 @@ internal fun SavedServicesDashboard(
         scope.launch {
             val result = withContext(Dispatchers.IO) {
                 try {
-                    client.approvedServiceDetail(row.id,row.categoryId,selectedLanguage)
+                    client.reviewedServiceDetail(row.id,row.categoryId,selectedLanguage)
                 } catch (cancelled: kotlin.coroutines.cancellation.CancellationException) {
                     throw cancelled
                 } catch (_: Exception) {
@@ -337,7 +339,7 @@ internal fun SavedServicesDashboard(
                         // earlier batch saw it publicly visible.
                         SafeServiceCardContents(
                             CustomerServiceCard.reference(row,approvedName),
-                            modifier=Modifier,
+                            modifier=Modifier, compact = true,
                         )
                         val reviewStatus=review.statusFor(saved,row)
                         val reviewLabel=when(reviewStatus) {
@@ -416,7 +418,12 @@ internal fun SavedServicesDashboard(
                     categoryNames?.approvedName(
                         selected!!.categoryId,categoryLanguage,currentCategoryIds)))
             }
-            if (currentCard != null) item { SafePublicProfileFacts() }
+            if (currentCard != null) {
+                item { SafePublicProfileFacts(currentCard.profile, currentCard.city) }
+                item { ApprovedServicePhoto(repository, currentCard) }
+                item { ContactBlockControls(contactSession, currentCard.listing.id) }
+                item { ReportServiceControls(contactSession, currentCard.listing.id) }
+            }
             item {
                 JodloTextAction(onClick={
                     val id=selected?.id ?: return@JodloTextAction

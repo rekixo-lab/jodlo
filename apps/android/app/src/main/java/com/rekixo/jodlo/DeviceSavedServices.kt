@@ -11,9 +11,12 @@ import com.rekixo.jodlo.core.network.SavedPublicServices
  * falsely claiming a bookmark was saved. No debug sample ID is allowed by UI.
  */
 internal class DeviceSavedServices(context: Context) {
-    private val prefs = context.applicationContext.getSharedPreferences(
-        "jodlo_guest_saved_services_v1", Context.MODE_PRIVATE,
-    )
+    private val appContext = context.applicationContext
+    private val prefs by lazy {
+        appContext.getSharedPreferences(
+            "jodlo_guest_saved_services_v1", Context.MODE_PRIVATE,
+        )
+    }
     private val key = "saved_public_listing_references"
 
     fun read(): SavedPublicServices = try {

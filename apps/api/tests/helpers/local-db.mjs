@@ -37,7 +37,7 @@ export function localD1Adapter(db) {
 export function openLocalDatabase() {
   const db = new DatabaseSync(":memory:");
   db.exec("PRAGMA foreign_keys = ON");
-  for (const name of ["0001_public_catalog.sql", "0002_shared_accounts_worker_drafts.sql", "0003_google_identity_sessions.sql", "0004_worker_service_listings.sql", "0005_notification_delivery_receipts.sql", "0006_notification_dead_letters.sql", "0007_worker_agora_call_preferences.sql", "0008_agora_private_safety_state.sql", "0009_public_cross_category_feed_index.sql", "0010_approved_catalog_hierarchy.sql", "0011_worker_listing_revision.sql"]) {
+  for (const name of ["0001_public_catalog.sql", "0002_shared_accounts_worker_drafts.sql", "0003_google_identity_sessions.sql", "0004_worker_service_listings.sql", "0005_notification_delivery_receipts.sql", "0006_notification_dead_letters.sql", "0007_worker_agora_call_preferences.sql", "0008_agora_private_safety_state.sql", "0009_public_cross_category_feed_index.sql", "0010_approved_catalog_hierarchy.sql", "0011_worker_listing_revision.sql", "0012_worker_service_city.sql", "0013_reviewed_service_profiles.sql", "0014_reviewed_service_photos.sql", "0015_service_reports_and_appeals.sql"]) {
     db.exec(readFileSync(new URL("../../../../infra/migrations/" + name, import.meta.url), "utf8"));
   }
   return { db, adapter: localD1Adapter(db) };

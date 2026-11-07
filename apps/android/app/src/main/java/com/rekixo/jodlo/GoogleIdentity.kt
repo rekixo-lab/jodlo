@@ -12,10 +12,17 @@ import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
  * This can be called only after the founder configures a matching WEB OAuth client
  * and a reachable, approved HTTPS JODLO backend.
  */
-internal suspend fun obtainGoogleIdToken(activity: ComponentActivity, serverClientId: String): String? {
+internal suspend fun obtainGoogleIdToken(
+    activity: ComponentActivity, serverClientId: String, erasureNonce: String? = null,
+): String? {
     if (serverClientId.isBlank()) return null
+    val option = GetSignInWithGoogleOption.Builder(serverClientId)
+    if (erasureNonce != null) {
+        if (!Regex("jodlo_erase_[0-9a-f-]{36}").matches(erasureNonce)) return null
+        option.setNonce(erasureNonce)
+    }
     val request = GetCredentialRequest.Builder()
-        .addCredentialOption(GetSignInWithGoogleOption.Builder(serverClientId).build())
+        .addCredentialOption(option.build())
         .build()
     val credential = CredentialManager.create(activity)
         .getCredential(context = activity, request = request).credential

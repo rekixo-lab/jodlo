@@ -24,7 +24,7 @@ const REQUEST_TARGET_SOURCE_QUERY =
   "worker.id AS workerAccountId,worker.status AS workerStatus, " +
   "wl.id AS listingId,wl.worker_account_id AS listingOwnerAccountId, " +
   "wl.category_id AS categoryId,wl.status AS listingStatus, " +
-  "wl.moderation_status AS moderationStatus, " +
+  "CASE WHEN wl.report_hold=1 THEN 'hidden' ELSE wl.moderation_status END AS moderationStatus, " +
   "wp.status AS workerProfileStatus,c.is_active AS categoryActive " +
   "FROM worker_listings AS wl " +
   "JOIN accounts AS worker ON worker.id=wl.worker_account_id " +
@@ -68,7 +68,7 @@ export const READ_SESSION_BOUND_CALL_TARGET_QUERY =
 export const READ_CALLER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY =
   SESSION_BOUND_TARGET_QUERY +
   "AND worker.status='active' AND wp.status='draft' " +
-  "AND wl.status='published' AND wl.moderation_status='allowed' " +
+  "AND wl.status='published' AND wl.moderation_status='allowed' AND wl.report_hold=0 " +
   "AND c.is_active=1 AND requester.id<>worker.id " +
   "AND EXISTS (SELECT 1 FROM worker_agora_call_preferences AS pref " +
   "WHERE pref.account_id=worker.id AND pref.calls_enabled=1) LIMIT 1";
@@ -94,14 +94,20 @@ const CALLER_AGORA_CONSENT_EPOCH_SOURCE =
 export const READ_CALLER_SESSION_BOUND_AGORA_CONSENT_EPOCH_QUERY =
   CALLER_AGORA_CONSENT_EPOCH_SOURCE + " LIMIT 1";
 
+const NO_CURRENT_CONTACT_BLOCK =
+  " AND NOT EXISTS (SELECT 1 FROM agora_account_blocks AS b " +
+  "WHERE (b.blocker_account_id=target.requesterId AND b.blocked_account_id=target.workerAccountId) " +
+  "OR (b.blocker_account_id=target.workerAccountId AND b.blocked_account_id=target.requesterId))";
+
 /**
  * A separate INTERNAL caller-side preflight for a previously prepared call:
- * match a server-held original opt-in epoch to the CURRENT worker preference.
+ * match the original opt-in epoch and reject current blocks in either direction.
  * This is one read-only session/listing/consent D1 SELECT, not a token or
  * public invitation. Real admission needs atomic recheck in an approved writer.
  */
 export const READ_CALLER_SESSION_BOUND_AGORA_CONSENT_EPOCH_MATCH_QUERY =
-  CALLER_AGORA_CONSENT_EPOCH_SOURCE + " AND pref.revision=? LIMIT 1";
+  CALLER_AGORA_CONSENT_EPOCH_SOURCE + " AND pref.revision=?" +
+  NO_CURRENT_CONTACT_BLOCK + " LIMIT 1";
 
 export type CallerAgoraConsentEpochPreview = Readonly<{
   target: RequestTargetFacts;
@@ -147,7 +153,7 @@ export const READ_WORKER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY =
   "JOIN accounts AS requester ON requester.id=? " +
   "WHERE wl.id=? AND worker.status='active' AND requester.status='active' " +
   "AND requester.id<>worker.id AND wp.status='draft' " +
-  "AND wl.status='published' AND wl.moderation_status='allowed' " +
+  "AND wl.status='published' AND wl.moderation_status='allowed' AND wl.report_hold=0 " +
   "AND c.is_active=1 " +
   "AND EXISTS (SELECT 1 FROM worker_agora_call_preferences AS pref " +
   "WHERE pref.account_id=worker.id AND pref.calls_enabled=1) LIMIT 1";
@@ -169,7 +175,7 @@ export const READ_WORKER_SESSION_BOUND_AGORA_CONSENT_EPOCH_MATCH_QUERY =
   READ_WORKER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY +
   ") AS target JOIN worker_agora_call_preferences AS pref " +
   "ON pref.account_id=target.workerAccountId AND pref.calls_enabled=1 " +
-  "AND pref.revision=? LIMIT 1";
+  "AND pref.revision=?" + NO_CURRENT_CONTACT_BLOCK + " LIMIT 1";
 
 type RequestTargetRow = {
   requesterId: unknown;
