@@ -39,7 +39,7 @@ test("Native Browse, Feed, Saved and Help all share explicit hide and restore", 
   assert.match(saved, /val saved = savedOriginal\.withoutHidden\(hidden\)/);
   assert.match(savedCore, /SavedPublicServices\(hidden\.visible\(entries\)\)/);
   assert.match(saved, /review\.nextBatch\(saved\)/);
-  assert.match(saved, /client\.approvedServiceDetail\(row\.id,row\.categoryId,selectedLanguage\)/);
+  assert.match(saved, /client\.approvedServiceDetail\(row\.id,\s*row\.categoryId,\s*selectedLanguage\)/);
   assert.match(hidden, /onUnhide: \(String\) -> Boolean/);
   assert.match(hidden, /onClear: \(\) -> Boolean/);
   assert.match(help, /JodloTextAction\(onClick = onHidden\)/);

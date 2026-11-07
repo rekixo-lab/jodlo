@@ -9,6 +9,9 @@ const routes=[
   "/api/v1/auth/google", "/api/v1/auth/logout", "/api/v1/auth/logout-all",
   "/api/v1/me/worker-profile", "/api/v1/me/listings", "/api/v1/listings",
   "/api/v1/me/overview", "/api/v1/me/data-export",
+  "/api/v1/me/service-details", "/api/v1/moderation/service-details",
+  "/api/v1/me/service-photo", "/api/v1/moderation/service-photo", "/api/v1/listings/photo",
+  "/api/v1/me/service-report", "/api/v1/me/service-appeal", "/api/v1/moderation/service-cases",
 ];
 function baseline() {
   return {
@@ -48,6 +51,9 @@ function baseline() {
       "scope TEXT CHECK(scope='invite'), " +
       "window_start_ms INTEGER, expires_at_ms INTEGER, " +
       "attempt_count INTEGER, revision INTEGER);",
+    "infra/migrations/0013_reviewed_service_profiles.sql":"CREATE TABLE worker_service_details (id TEXT);",
+    "infra/migrations/0014_reviewed_service_photos.sql":"CREATE TABLE worker_service_photos (id TEXT);",
+    "infra/migrations/0015_service_reports_and_appeals.sql":"CREATE TABLE service_report_cases (id TEXT);",
     "docs/decisions/0008-hindi-english-only.md":"Hinglish is NOT a supported language",
     ".github/workflows/checks.yml":"run: npm run build:api",
     "package.json":JSON.stringify({scripts:{"build:api":"wrangler deploy --dry-run --config apps/api/wrangler.jsonc"}}),
@@ -69,8 +75,8 @@ async function fixture(mutate,action=auditFounderGates) {
 test("approved routes, tables, draft state and languages pass",async()=>{
   const result=await fixture();
   assert.deepEqual(result.errors,[]);
-  assert.equal(result.routes.length,11);
-  assert.equal(result.tables.length,12);
+  assert.equal(result.routes.length,19);
+  assert.equal(result.tables.length,15);
 });
 test("hierarchy is optional to legacy fixtures but requires default-OFF full schema",async()=>{
   const schema=[
