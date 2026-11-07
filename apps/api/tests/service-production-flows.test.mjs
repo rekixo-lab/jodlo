@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import worker from "../src/index.ts";
+import { generateKeyPair, SignJWT } from "jose";
+import { handleRequest } from "../src/http/router.ts";
+import { verifyGoogleIdToken } from "../src/modules/identity/google.ts";
+import { createFcmProvider } from "../src/modules/notifications/fcm-provider.ts";
 import { openLocalDatabase } from "./helpers/local-db.mjs";
 import { ensureAccount } from "../src/modules/identity/accounts.ts";
 import { issueSession } from "../src/modules/identity/sessions.ts";
@@ -34,7 +38,7 @@ async function fixture() {
       const payload = await response.json();
       return {status: response.status, data: payload.data, error: payload.error};
     }
-    return {db, service, send, ownerToken, customerToken};
+    return {db, adapter, service, send, ownerToken, customerToken};
   } catch (error) {
     db.close();
     throw error;
@@ -119,6 +123,70 @@ test("a report hold hides a service and an accepted appeal preserves independent
     assert.equal(saved.moderation_status, "hidden");
     assert.equal((await f.send(listing)).status, 404);
   } finally { f.db.close(); }
+});
+
+test("account erasure requires the same Google identity and session-bound nonce", async () => {
+  const f = await fixture();
+  try {
+    const audience = "jodlo-synthetic-test.apps.googleusercontent.com";
+    const subject = "123456789012345678901";
+    const otherSubject = "999999999999999999999";
+    const keys = await generateKeyPair("RS256");
+    const resolver = async () => keys.publicKey;
+    const verify = (proof, client, _keys, android, nonce) =>
+      verifyGoogleIdToken(proof, client, resolver, android, nonce);
+    f.db.prepare("INSERT INTO google_identities(google_sub,account_id) VALUES(?,?)")
+      .run(subject, "service-owner-01");
+    const env = {DB: f.adapter, GOOGLE_CLIENT_ID: audience, ACCOUNT_ERASURE_RELEASE_KEY: "ac".repeat(32)};
+    async function request(method, token, body) {
+      const headers = {Authorization:"Bearer " + token};
+      if (body) headers["Content-Type"] = "application/json";
+      return handleRequest(new Request("https://jodlo.test/api/v1/me/account-erasure", {
+        method,headers,body:body && JSON.stringify(body),
+      }), env, verify);
+    }
+    async function proof(sub, nonce) {
+      return new SignJWT({nonce}).setProtectedHeader({alg:"RS256"})
+        .setIssuer("https://accounts.google.com").setAudience(audience).setSubject(sub)
+        .setIssuedAt().setExpirationTime("3m").sign(keys.privateKey);
+    }
+    const prepared = await request("POST", f.ownerToken);
+    assert.equal(prepared.status, 200);
+    const {challenge, nonce} = (await prepared.json()).data;
+    const matchingProof = await proof(subject, nonce);
+    assert.equal(await verify(matchingProof, audience), null);
+    assert.equal((await request("PUT", f.customerToken, {challenge,googleProof:matchingProof})).status, 409);
+    assert.equal((await request("PUT", f.ownerToken, {challenge,googleProof:await proof(otherSubject, nonce)})).status, 409);
+    assert.equal((await request("PUT", f.ownerToken, {challenge,googleProof:await proof(subject, "other-nonce")})).status, 409);
+    assert.equal((await request("PUT", f.ownerToken, {challenge,googleProof:matchingProof})).status, 200);
+    assert.equal(f.db.prepare("SELECT id FROM worker_listings WHERE id=?").get(f.service.id), undefined);
+    assert.equal((await request("POST", f.ownerToken)).status, 401);
+    assert.equal((await request("PUT", f.ownerToken, {challenge,googleProof:matchingProof})).status, 409);
+    assert.equal((await request("POST", f.customerToken)).status, 200);
+  } finally { f.db.close(); }
+});
+
+test("FCM adapter sends bounded data without putting account identity in the message", async () => {
+  let request;
+  const now = 1_700_000_000_000;
+  const provider = createFcmProvider({
+    projectId:"jodlo-test",
+    now:() => now,
+    accessToken:async () => "sample_oauth_token",
+    resolveDestination:async () => "device-registration:test",
+    request:async (url, options) => {
+      request = {url,options};
+      return new Response(null, {status:200});
+    },
+  });
+  assert.equal(await provider.send({
+    kind:"notification_delivery_v1",eventId:"event-12345678",recipientAccountId:"account-private-id",
+    eventType:"call_invite",createdAtMs:now,expiresAtMs:now+12000,
+  }), "accepted");
+  assert.equal(request.url, "https://fcm.googleapis.com/v1/projects/jodlo-test/messages:send");
+  assert.equal(request.options.headers.Authorization, "Bearer sample_oauth_token");
+  assert.equal(JSON.parse(request.options.body).message.android.ttl, "12s");
+  assert.equal(request.options.body.includes("account-private-id"), false);
 });
 
 // Synthetic baseline JPEG with no EXIF, used only by the isolated SQLite fixture.

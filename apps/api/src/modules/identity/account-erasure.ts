@@ -47,6 +47,7 @@ export async function prepareAccountErasure(
 export async function eraseOwnD1Account(
   db: D1Database, bearer: string, challenge: string, googleProof: string,
   config: Readonly<{signingKey: Uint8Array; googleAudience: string; androidClientId?: string}>,
+  verifyGoogle: typeof verifyGoogleIdToken = verifyGoogleIdToken,
 ): Promise<boolean> {
   if (!validSessionToken(bearer) || config.signingKey.byteLength < 32 ||
       challenge.length > 1024) return false;
@@ -70,7 +71,7 @@ export async function eraseOwnD1Account(
     throw error;
   }
 
-  const subject = await verifyGoogleIdToken(
+  const subject = await verifyGoogle(
     googleProof, config.googleAudience, undefined, config.androidClientId, nonce,
   );
   const now = Math.floor(Date.now() / 1000);

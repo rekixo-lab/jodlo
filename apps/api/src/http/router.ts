@@ -274,7 +274,7 @@ export async function handleRequest(
       if (!input) return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid confirmation"}},400);
       const erased = await eraseOwnD1Account(env.DB, token, input.challenge, input.googleProof, {
         signingKey, googleAudience: audience, androidClientId: env.GOOGLE_ANDROID_CLIENT_ID,
-      });
+      }, verifyGoogle);
       return erased ? json({ok:true,data:{erased:true}})
         : json({ok:false,error:{code:"CONFLICT",message:"Account erasure could not be confirmed"}},409);
     } catch {
