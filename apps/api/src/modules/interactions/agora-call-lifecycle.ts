@@ -1,6 +1,7 @@
 import { validCategoryId, validIdempotencyKey, validOpaqueId } from "../shared/identifiers.ts";
 import type { RequestTargetFacts } from "./request-target.ts";
 import { assessDirectCallCandidate, type DirectCallPolicyFacts } from "./direct-call.ts";
+import { CALL_RING_MS } from "./call-admission-policy.ts";
 
 /**
  * ADR-0013: purely LOCAL, TEST-ONLY rehearsal of an Agora in-app AUDIO call.
@@ -246,7 +247,7 @@ export function prepareSyntheticAgoraInvite(
   policy: DirectCallPolicyFacts | null,
   callId: string,
   createdAtMs: number,
-  ringDeadlineMs: number,
+  ringDeadlineMs = createdAtMs + CALL_RING_MS,
 ): Readonly<{ kind: "prepared"; call: AgoraCallSnapshot }> |
    Readonly<{ kind: "denied"; reason: "INVALID_INVITE" | "CONTACT_NOT_APPROVED" }> {
   if (!validOpaqueId(callId) || !nonnegativeInteger(createdAtMs) ||

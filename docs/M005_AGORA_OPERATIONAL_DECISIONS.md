@@ -13,6 +13,12 @@
 - **ADR-0010 / ADR-0011:** Bilaspur and Raipur selected as city names; the **889 Category / 7,267 Service** full-scope objective remains binding. No artificial ten-trade launch cap. Human occupational/regulatory/category approvals and precise locality decisions remain outstanding.
 - Local synthetic state/SQLite tests in `apps/api/tests` are NOT actual worker presence, real blocking, quota reservation, durable provider send or Cloudflare D1/DO guarantees.
 
+## Ring and attempt values selected on 2026-11-08
+
+The founder chose Finworkar's limits for JODLO. The server reference sets a 90-second ringing deadline and five-minute windows anchored to the first counted attempt. The caps are 8 per directed caller–receiver pair, 20 per caller and 30 per receiver. Retrying the same admitted attempt does not consume another slot. [Finworkar server reference](https://github.com/rekixo-lab/finworkar-backend/blob/f31d089953f68868108f5d475436842b55c10204/functions/src/calling.js)
+
+This resolves the numeric ring deadline and quota values within T01 and A01. Those rows still include remaining choices for admission, retries and durable counters. Live dispatch still depends on those choices and an atomic admission transaction.
+
 ## Founder decision register — ALL items below remain PENDING
 
 The **working proposal** column is a recommendation for discussion, **not an implementation default**. If undecided, current behavior is **no real calls**. Time values and thresholds are deliberately left blank rather than invented.

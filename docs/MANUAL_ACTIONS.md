@@ -1,7 +1,7 @@
 ## 2026-11-08 — Calls and minute packs
 
 - **M-003, call history retention decided.** On 2026-11-08 the founder selected **90 days** in the active conversation. The call-history implementation must expire records after that period and honor earlier account erasure. Other call data and backup retention decisions remain separate.
-- **M-005, call admission pending.** Before dispatching calls, choose ringing timeout and per-caller limits. The private call preference and outgoing block list can be checked locally meanwhile.
+- **M-005, ring and attempt limits decided.** On 2026-11-08 the founder chose the Finworkar behavior: a 90-second ringing deadline and five-minute attempt windows with caps of 8 per directed pair, 20 per caller and 30 per receiver. Window timing starts with its first counted attempt. Other admission and delivery choices remain open.
 - **M-006, provider onboarding pending.** Set up a JODLO Agora project and a JODLO Firebase Android app for `com.rekixo.jodlo`. Configure provider credentials through protected configuration. Provide only project identifiers or confirmation that setup is complete in chat.
 - **Payments, Play Console setup pending.** Finworkar used up to 60 free seconds per recipient and a first eligible call allowance that brought its total budget up to five minutes. Its six Razorpay packs covered 5, 20, 50, 100, 300 and 500 minutes. This is behavioral reference evidence. JODLO needs its own Play product IDs and configured prices before checkout can accept real purchases.
 
