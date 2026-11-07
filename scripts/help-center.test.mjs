@@ -86,7 +86,7 @@ test("Native Help routes to existing controls and localizations are complete", (
   assert.match(main, /"help" -> HelpAndPrivacyDashboard\(/);
   assert.match(main, /"saved" -> SavedServicesDashboard\(/);
   assert.match(main, /else -> AccountDashboard\(activity, session, openHelp/);
-  assert.match(home, /JodloTextAction\(onClick = openHelp\)/);
+  assert.match(home, /JodloTextAction\(onClick = openHelp(?:,|\))/);
   assert.match(account, /JodloTextAction\(onClick = openHelp\)/);
   assert.doesNotMatch(screen, /Http|Repository|ContentResolver|SharedPreferences|ACTION_SEND|email|Uri\.|rememberSaveable/);
 });

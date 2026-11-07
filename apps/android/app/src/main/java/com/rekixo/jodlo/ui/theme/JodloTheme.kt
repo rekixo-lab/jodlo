@@ -37,6 +37,7 @@ object JodloSizes {
     val CardPadding = 12.dp
     val Gap = 12.dp
     val SmallGap = 8.dp
+    val BrandMark = 48.dp
     val MinTouch = 48.dp
 }
 
