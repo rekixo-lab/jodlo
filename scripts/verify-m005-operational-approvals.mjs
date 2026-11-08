@@ -37,7 +37,7 @@ async function read(root,path,errors){
   try { return await readFile(join(root,path),"utf8"); }
   catch { errors.push("Missing required M-005 source: "+path);return null; }
 }
-function detectVendorDependencies(raw,label,errors){
+function detectVendorDependencies(raw,label,errors,allowControlledSigner=false){
   if(raw===null)return null;
   let pkg;
   try {pkg=JSON.parse(raw);}
@@ -53,6 +53,8 @@ function detectVendorDependencies(raw,label,errors){
     const deps=pkg[section];
     if(deps && typeof deps==="object"){
       for(const key of Object.keys(deps)){
+        if (allowControlledSigner && section==="dependencies" &&
+            key==="agora-token" && deps[key]==="2.0.7") continue;
         if(/(^agora(?:$|[-_])|^@agora[./-]|^@agora\.io\/)/i.test(key))
           errors.push(label+": Agora SDK/provider dependency requires M-006 approval: "+key);
       }
@@ -125,7 +127,13 @@ export async function auditM005OperationalApprovals(root=rootDefault){
       /M-005 now selects direct telephone call as the FIRST contact/i.test(contact))
     errors.push("Outdated PSTN first-contact claim contradicts ADR-0013");
 
-  const pkg=detectVendorDependencies(sources.pkg,"package.json",errors);
+  let allowControlledSigner=false;
+  if (sources.pkg && /"agora-token"\s*:\s*"2\.0\.7"/.test(sources.pkg)) {
+    const manual=await read(root,"docs/MANUAL_ACTIONS.md",errors);
+    allowControlledSigner=Boolean(manual?.includes("M-006 controlled Agora signer approved") &&
+      router?.includes('env.CALL_MEDIA_VERIFICATION_ENABLED === "1"'));
+  }
+  const pkg=detectVendorDependencies(sources.pkg,"package.json",errors,allowControlledSigner);
   detectVendorDependencies(sources.apiPkg,"apps/api/package.json",errors);
   if(pkg){
     if(typeof pkg.scripts?.["founder:check"]!=="string" ||

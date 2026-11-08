@@ -7,6 +7,16 @@ import { readFile, readdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 const rootDefault = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+// Private controlled-verification routes are allowed in source. Their
+// presence does not authorize setting any of the release flags in production.
+const controlledCallRoutes = new Map([
+  ["/api/v1/me/call-device", "CALL_DEVICES_ENABLED"],
+  ["/api/v1/me/call", "CALL_SIGNALING_ENABLED"],
+  ["/api/v1/me/call-invitation", "CALL_SIGNALING_ENABLED"],
+  ["/api/v1/me/call-availability", "CALL_SIGNALING_ENABLED"],
+  ["/api/v1/me/call-media", "CALL_MEDIA_VERIFICATION_ENABLED"],
+]);
+const CALL_DEVICE_MIGRATION = "0021_private_call_devices.sql";
 const allowedRoutes = new Set([
   "/api/v1/health", "/api/v1/catalog", "/api/v1/catalog/search",
   // Only approved, default-OFF taxonomy hierarchy; no public Worker or GPS.
@@ -31,6 +41,7 @@ const allowedTables = new Set([
   "call_attempt_windows",
   "private_call_invitations",
   "private_call_dispatch_slots",
+  "private_call_devices",
   "categories",
   // No auto-seed, no public data until human-reviewed Group/Family/mapping approval.
   "catalog_groups", "catalog_families", "catalog_family_categories",
@@ -96,7 +107,11 @@ export async function auditFounderGates(root = rootDefault) {
   const routes = router === null ? [] :
     [...router.matchAll(/([\x22\x27\x60])(\/api\/v1\/[a-z0-9/_-]+)\1/g)].map(m=>m[2]);
   for(const route of new Set(routes))
-    if(!allowedRoutes.has(route)) errors.push("Unapproved API route: " + route + " (M-005/M-003)");
+    if(!allowedRoutes.has(route) && !controlledCallRoutes.has(route)) errors.push("Unapproved API route: " + route + " (M-005/M-003)");
+  for (const [route, flag] of controlledCallRoutes) {
+    if (routes.includes(route) && !router.includes(`env.${flag} === "1"`))
+      errors.push("Private call route requires a default-OFF release gate: " + route);
+  }
   for(const route of allowedRoutes)
     if(route!=="/api/v1/catalog/hierarchy" && route!=="/api/v1/me/account-erasure" &&
        route!=="/api/v1/me/contact-block" && route!=="/api/v1/me/contact-blocks" &&
@@ -145,6 +160,10 @@ export async function auditFounderGates(root = rootDefault) {
         errors.push("Private call invitations are only allowed in their reviewed migration");
       if(table==="private_call_dispatch_slots" && name!=="0020_private_call_dispatch_slots.sql")
         errors.push("Private call dispatch slots are only allowed in their reviewed migration");
+      if(table==="private_call_devices" &&
+        (name!==CALL_DEVICE_MIGRATION ||
+         !/session_hash TEXT PRIMARY KEY NOT NULL REFERENCES auth_sessions\(token_hash\) ON DELETE CASCADE/i.test(content)))
+        errors.push("Private call devices must use the reviewed session-cascading migration");
       if(table==="notification_delivery_receipts" && name!==RECEIPT_MIGRATION)
         errors.push("Notification receipt table must use its reviewed migration: "+name);
       if(table==="notification_delivery_dead_letters" && name!==DEAD_LETTER_MIGRATION)
@@ -232,7 +251,7 @@ export async function auditFounderGates(root = rootDefault) {
     "catalog_family_categories"];
   for(const table of allowedTables)
     if(table!=="call_history" && table!=="call_attempt_windows" && table!=="private_call_invitations" &&
-       table!=="private_call_dispatch_slots" &&
+       table!=="private_call_dispatch_slots" && table!=="private_call_devices" &&
        !hierarchyTables.includes(table) && !tables.includes(table))
       errors.push("Expected D1 table missing: "+table);
   const hasHierarchy=migrations.includes("0010_approved_catalog_hierarchy.sql");
@@ -275,6 +294,17 @@ export async function auditFounderGates(root = rootDefault) {
     errors.push("Private call invitations require their table and migration");
   if (migrations.includes("0020_private_call_dispatch_slots.sql") !== tables.includes("private_call_dispatch_slots"))
     errors.push("Private call dispatch slots require their table and migration");
+  const hasCallDevices = migrations.includes(CALL_DEVICE_MIGRATION);
+  if (hasCallDevices !== tables.includes("private_call_devices") ||
+      hasCallDevices !== routes.includes("/api/v1/me/call-device"))
+    errors.push("Private call devices require their scoped route, table and migration");
+  const hasCallSignaling = migrations.includes("0022_private_call_signaling.sql");
+  for (const route of controlledCallRoutes.keys()) {
+    if (route !== "/api/v1/me/call-device" && hasCallSignaling !== routes.includes(route))
+      errors.push("Controlled call routes require the signaling migration: " + route);
+  }
+  if (hasCallSignaling !== migrations.includes("0023_call_history_recording.sql"))
+    errors.push("Private call signaling requires the history recording migration");
   if (hasServiceCases !== routes.includes("/api/v1/me/service-report") ||
       hasServiceCases !== routes.includes("/api/v1/me/service-appeal") ||
       hasServiceCases !== routes.includes("/api/v1/moderation/service-cases") ||
