@@ -15,6 +15,10 @@ type FcmProviderDependencies = Readonly<{
   now?: () => number;
 }>;
 
+export function validFcmRegistrationToken(value: unknown): value is string {
+  return typeof value === "string" && /^[!-~]{1,4096}$/.test(value);
+}
+
 /** Android data-only delivery. A provider acknowledgement means accepted
  * for delivery. The device must fetch the current event under its own session.
  */
@@ -38,7 +42,7 @@ export function createFcmProvider(deps: FcmProviderDependencies): NotificationPr
           return "transient";
         }
         const registrationToken = await deps.resolveDestination(job);
-        if (registrationToken === null || !/^[!-~]{1,4096}$/.test(registrationToken)) {
+        if (!validFcmRegistrationToken(registrationToken)) {
           return "permanent";
         }
 
@@ -59,7 +63,12 @@ export function createFcmProvider(deps: FcmProviderDependencies): NotificationPr
           body: JSON.stringify({
             message: {
               token: registrationToken,
-              android: { ttl: `${Math.min(ttl, 2_419_200)}s` },
+              android: {
+                ttl: `${Math.min(ttl, 2_419_200)}s`,
+                ...(job.eventType === "call_ring"
+                  ? {priority: "HIGH", restricted_package_name: "com.rekixo.jodlo"}
+                  : {}),
+              },
               data: {
                 eventId: job.eventId,
                 eventType: job.eventType,

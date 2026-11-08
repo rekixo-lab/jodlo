@@ -56,6 +56,7 @@ internal fun PublicServicesFeed(
     onHide: (String) -> Boolean,
     onBrowseCategories: () -> Unit,
     contactSession: InMemorySessionCoordinator?,
+    onCall: ((String) -> Unit)? = null,
     city: NearbyPilotCity? = null,
     onBackToCityPicker: (() -> Unit)? = null,
 ) {
@@ -311,6 +312,7 @@ internal fun PublicServicesFeed(
             if (safeCard != null) {
                 item { SafePublicProfileFacts(safeCard.profile, safeCard.city) }
                 item { ApprovedServicePhoto(repository, safeCard) }
+                item { ServiceCallButton(onCall, safeCard.listing.id) }
                 item { ContactBlockControls(contactSession, safeCard.listing.id) }
                 item { ReportServiceControls(contactSession, safeCard.listing.id) }
                 item {

@@ -270,7 +270,7 @@ test("SQL read and writes bind hash-based live session, no account/phone value",
   }finally{f.close();}
 });
 
-test("no public preference/call endpoint, phone, channel or call-history schema",async()=>{
+test("no public preference/call endpoint, phone, channel or call-session schema",async()=>{
   const f=await fixture();
   try{
     for(const path of [
@@ -287,7 +287,7 @@ test("no public preference/call endpoint, phone, channel or call-history schema"
     const names=f.db.prepare("SELECT name FROM sqlite_schema WHERE type='table'")
       .all().map(row=>row.name);
     assert.ok(names.includes("worker_agora_call_preferences"));
-    for(const name of ["call_history","agora_tokens","agora_channels",
+    for(const name of ["agora_tokens","agora_channels",
       "rtc_participants","phone_numbers","call_sessions"]) {
       assert.equal(names.includes(name),false,name);
     }

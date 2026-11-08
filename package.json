@@ -79,6 +79,7 @@
     "wrangler": "^4.0.0"
   },
   "dependencies": {
+    "agora-token": "2.0.7",
     "jose": "^6.1.0"
   }
 }

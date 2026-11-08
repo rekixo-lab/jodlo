@@ -27,6 +27,7 @@ import com.rekixo.jodlo.core.network.HomeCategorySnapshot
 import com.rekixo.jodlo.core.network.Language
 import com.rekixo.jodlo.core.network.PublicCategory
 import com.rekixo.jodlo.core.network.RemoteCatalogRepository
+import com.rekixo.jodlo.ui.theme.JodloBrandHeading
 import com.rekixo.jodlo.ui.theme.JodloButton
 import com.rekixo.jodlo.ui.theme.JodloCard
 import com.rekixo.jodlo.ui.theme.JodloChip
@@ -132,8 +133,7 @@ internal fun CustomerHome(
         verticalArrangement = Arrangement.spacedBy(JodloSizes.Gap),
     ) {
         item {
-            Text(stringResource(R.string.home_heading),
-                style = MaterialTheme.typography.headlineLarge)
+            JodloBrandHeading(stringResource(R.string.home_heading))
             Text(stringResource(R.string.home_intro),
                 style = MaterialTheme.typography.bodyMedium)
         }
@@ -149,19 +149,28 @@ internal fun CustomerHome(
             }
         }
         item {
-            JodloTextAction(onClick = openServices, enabled = repository != null) {
+            JodloTextAction(onClick = openServices, enabled = repository != null,
+                modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.home_services_action))
             }
-            JodloTextAction(onClick = openNearby) {
+        }
+        item {
+            JodloTextAction(onClick = openNearby, modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.home_nearby_action))
             }
-            JodloTextAction(onClick = openSaved) {
+        }
+        item {
+            JodloTextAction(onClick = openSaved, modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.home_saved_action))
             }
-            JodloTextAction(onClick = openWorker) {
+        }
+        item {
+            JodloTextAction(onClick = openWorker, modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.home_worker_action))
             }
-            JodloTextAction(onClick = openHelp) {
+        }
+        item {
+            JodloTextAction(onClick = openHelp, modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.help_home_action))
             }
         }

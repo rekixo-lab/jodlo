@@ -379,7 +379,7 @@ test("call account bindings cannot be replayed against an unrelated service or o
   }finally{f.close();}
 });
 
-test("no actual Agora signaling/RTC channel, phone fields, new D1 table or public call route",async()=>{
+test("no actual Agora signaling/RTC channel, phone fields, call-session tables or public call route",async()=>{
   const f=await fixture();
   try{
     const prepared=await f.prepare();
@@ -394,7 +394,7 @@ test("no actual Agora signaling/RTC channel, phone fields, new D1 table or publi
     }
     const tables=f.db.prepare("SELECT name FROM sqlite_schema WHERE type='table'")
       .all().map(x=>x.name);
-    for(const t of ["call_sessions","agora_channels","call_invitations","call_history",
+    for(const t of ["call_sessions","agora_channels","call_invitations",
       "rtc_participants","phone_numbers"]){
       assert.equal(tables.includes(t),false);
     }

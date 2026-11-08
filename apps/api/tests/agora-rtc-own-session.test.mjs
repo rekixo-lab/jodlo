@@ -275,7 +275,7 @@ test("no public token/join API or personal call data schema introduced",async()=
     const tables=f.db.prepare("SELECT name FROM sqlite_schema WHERE type='table'")
       .all().map(x=>x.name);
     for(const missing of ["agora_tokens","agora_channels","rtc_participants",
-      "call_sessions","call_history","phone_numbers"]){
+      "call_sessions","phone_numbers"]){
       assert.equal(tables.includes(missing),false,missing);
     }
   }finally{f.close();}
@@ -479,7 +479,7 @@ test("fake D1 rows must match exact trusted actor and consent epoch; no grants o
     }
     const tables=f.db.prepare("SELECT name FROM sqlite_schema WHERE type='table'")
       .all().map(row=>row.name);
-    for(const name of ["call_sessions","agora_tokens","call_history"]){
+    for(const name of ["call_sessions","agora_tokens"]){
       assert.equal(tables.includes(name),false);
     }
   }finally{f.close();}

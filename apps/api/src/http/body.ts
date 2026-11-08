@@ -157,6 +157,11 @@ async function readBoundedObject(request: Request, maxBytes: number,
   }
 }
 
+export async function readCallDeviceBody(request: Request): Promise<string | null> {
+  const obj = await readBoundedObject(request, 8192);
+  return typeof obj?.registrationToken === "string" ? obj.registrationToken : null;
+}
+
 export async function readGoogleLoginBody(request: Request): Promise<string | null> {
   const obj = await readBoundedObject(request, 8192);
   if (!obj || Object.keys(obj).length !== 1 || typeof obj.idToken !== "string") return null;

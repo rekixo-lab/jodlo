@@ -550,7 +550,7 @@ test("test-only call/outbox schema is absent from production migrations and stor
     for (const table of [
       "fake_epoch_journal", "fake_epoch_unsent",
       "fake_epoch_identity_immutable", "agora_call_sessions",
-      "rtc_channels", "call_history",
+      "rtc_channels",
     ]) assert.equal(names.includes(table), false, table);
   } finally { real.db.close(); }
   await withTrial(async f => {

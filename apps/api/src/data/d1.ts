@@ -26,6 +26,14 @@ export interface Env {
   /** Unset until account-erasure release. Server secret, 32 random bytes as hex. */
   ACCOUNT_ERASURE_RELEASE_KEY?: string;
   CONTACT_BLOCKS_ENABLED?: string;
+  CALL_HISTORY_ENABLED?: string;
+  CALL_DEVICES_ENABLED?: string;
+  CALL_SIGNALING_ENABLED?: string;
+  CALL_MEDIA_VERIFICATION_ENABLED?: string;
+  AGORA_APP_CERTIFICATE?: string;
+  FCM_PROJECT_ID?: string;
+  FCM_SERVICE_ACCOUNT_EMAIL?: string;
+  FCM_SERVICE_ACCOUNT_PRIVATE_KEY?: string;
   SERVICE_MODERATION_KEY?: string;
   DB?: D1Database;
   LOGIN_BURST_LIMITER?: RateLimitBinding;

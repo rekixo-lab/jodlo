@@ -23,6 +23,7 @@ class ApiCall private constructor(
     val resource: String,
     private val bearer: String? = null,
     private val json: String? = null,
+    private val idempotencyKey: String? = null,
 ) {
     init {
         require(resource.startsWith("/api/v1/") && !resource.contains('#') &&
@@ -35,6 +36,7 @@ class ApiCall private constructor(
         put("Accept", "application/json")
         if (json != null) put("Content-Type", "application/json")
         if (bearer != null) put("Authorization", "Bearer $bearer")
+        if (idempotencyKey != null) put("Idempotency-Key", idempotencyKey)
     }
     fun bodyUtf8(): ByteArray? = json?.toByteArray(StandardCharsets.UTF_8)
     override fun toString(): String =
@@ -46,7 +48,11 @@ class ApiCall private constructor(
         fun getOwned(path: String, bearer: String): ApiCall = ApiCall(HttpMethod.GET, path, bearer)
         fun post(path: String, bearer: String, body: String? = null): ApiCall =
             ApiCall(HttpMethod.POST, path, bearer, body)
-        fun put(path: String, bearer: String, body: String): ApiCall =
+        internal fun callInvitation(path: String, bearer: String, attemptKey: String): ApiCall {
+            require(Regex("[A-Za-z0-9_-]{12,80}").matches(attemptKey))
+            return ApiCall(HttpMethod.POST, path, bearer, idempotencyKey = attemptKey)
+        }
+        fun put(path: String, bearer: String, body: String? = null): ApiCall =
             ApiCall(HttpMethod.PUT, path, bearer, body)
         fun delete(path: String, bearer: String): ApiCall =
             ApiCall(HttpMethod.DELETE, path, bearer)
@@ -319,6 +325,20 @@ object JodloRoutes {
         return if (blocked) ApiCall.post(path, token) else ApiCall.delete(path, token)
     }
 
+    private val CONTACT_BLOCK_ID = Regex("[a-f0-9]{32}")
+
+    fun contactBlocks(token: String, language: Language, after: String?): ApiCall {
+        require(after == null || CONTACT_BLOCK_ID.matches(after))
+        val path = "/api/v1/me/contact-blocks?lang=${language.code}" +
+            (if (after == null) "" else "&after=$after")
+        return ApiCall.getOwned(path, token)
+    }
+
+    fun removeContactBlock(token: String, id: String): ApiCall {
+        require(CONTACT_BLOCK_ID.matches(id))
+        return ApiCall.delete("/api/v1/me/contact-blocks?id=$id", token)
+    }
+
     private const val ACCOUNT_ERASURE = "/api/v1/me/account-erasure"
     private val COMPACT_JWT = Regex("[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+")
 
@@ -334,6 +354,50 @@ object JodloRoutes {
     /** Private, current-account overview; no owner ID in path, query or body. */
     fun accountOverview(token: String): ApiCall =
         ApiCall.getOwned("/api/v1/me/overview", token)
+
+    fun callDevice(token: String, registrationToken: String?): ApiCall {
+        val path = "/api/v1/me/call-device"
+        if (registrationToken == null) return ApiCall.delete(path, token)
+        require(registrationToken.length in 1..4096 && registrationToken.all { it in '!'..'~' })
+        return ApiCall.put(path, token, buildJsonObject {
+            put("registrationToken", JsonPrimitive(registrationToken))
+        }.toString())
+    }
+
+    fun startCall(token: String, listingId: String, attemptKey: String): ApiCall {
+        requireListingId(listingId)
+        return ApiCall.callInvitation("/api/v1/me/call-invitation?listingId=$listingId", token, attemptKey)
+    }
+
+    fun callHistory(token: String, after: String?): ApiCall {
+        if (after != null) requireListingId(after)
+        val path = "/api/v1/me/call-history"
+        return ApiCall.getOwned(if (after == null) path else "$path?after=$after", token)
+    }
+
+    fun callAudioGrant(token: String, id: String): ApiCall {
+        requireListingId(id)
+        return ApiCall.post("/api/v1/me/call-media?id=$id", token)
+    }
+
+    fun callSignal(token: String, id: String, action: CallAction? = null): ApiCall {
+        requireListingId(id)
+        val path = "/api/v1/me/call?id=$id"
+        return if (action == null) ApiCall.getOwned(path, token)
+        else ApiCall.put("$path&action=${action.wire}", token)
+    }
+
+    private fun callPreferencePath(availability: Boolean) =
+        if (availability) "/api/v1/me/call-availability" else "/api/v1/me/call-preference"
+
+    fun callPreference(token: String, availability: Boolean = false): ApiCall =
+        ApiCall.getOwned(callPreferencePath(availability), token)
+
+    fun changeCallPreference(token: String, enabled: Boolean, revision: Long, availability: Boolean = false): ApiCall {
+        require(revision in 0 until 2147483647L)
+        val value = if (enabled) 1 else 0
+        return ApiCall.post("${callPreferencePath(availability)}?enabled=$value&revision=$revision", token)
+    }
 
     /** Explicit owner data portability; carries bearer in header only.
      * The API response is private, and no export is fetched before a user action.

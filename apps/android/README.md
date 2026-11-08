@@ -286,3 +286,13 @@ A future approved Android host must construct its `HeadlessWorkerDashboardPresen
 ## 2026-10-30 — Nonvisual unresolved Worker write page-review projection (PR CI pending)
 
 The existing live `HeadlessWorkerDashboardPresentation` now proposes only three safe `WorkerDashboardState` fields for #117's opt-in private review: `reviewPagesChecked` (count), `reviewHasNextPage` and `reviewScanComplete`. No raw keyset cursor, bearer, account ID, worker contact, GPS or certainty of publication. `START_UNCERTAIN_PAGE_REVIEW` and `NEXT_UNCERTAIN_PAGE_REVIEW` are inert action hints and appear only when an optional `OwnListingPageRepository` exists. Legacy workers retain the exact old recheck action; actual HTTP remains one user-initiated GET via `HeadlessWorkerWriteScope.recheckOwnListingsPage()` per call and no automatic POST/DELETE/retry. `RECHECKING`, signed-out/replaced login, closed state or acknowledgement hide prior progress. Existing compiled Worker Dashboard JVM fake-network tests cover 25+1 owner pages, request counters, in-flight suppression and privacy. This is not an Android Activity, Compose UI, real OAuth, approved trust or production readiness; M-003/004/005/007/008 and original 889/7267 source human review remain.
+
+## Firebase Cloud Messaging build
+
+For a build against JODLO's Firebase project, place the downloaded `google-services.json` in `app/` and run from the repository root:
+
+```sh
+gradle -p apps/android -PincludeAndroidApp=true -PjodloEnableFcm=true :app:assembleDebug
+```
+
+The standard Android build can run without the Firebase file. Messaging auto-initialization is disabled while device registration and call consent are being integrated.

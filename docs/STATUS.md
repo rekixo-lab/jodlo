@@ -1,3 +1,149 @@
+## 2026-11-08 — Call history recording and account release preparation
+
+The independently verified 2026-11-05 Worker baseline remains in [Current State](CURRENT_STATE.md).
+
+**Done locally.** Terminal call signaling now writes private per-account history in the same D1 transaction. An expired ring records a missed call for the caller and records the receiver only if that receiver acknowledged it. No media duration is inferred from signaling. The native Account tab reads paged history with a current-session fence. Account erasure cascades to that owner's records.
+
+**Release.** Apply migration `0023` before enabling call history. The release requires the hourly retention trigger, exact-head checks and authenticated device verification. See [Manual Actions](MANUAL_ACTIONS.md). Firebase sender onboarding, real call proof and payment onboarding remain separate.
+
+## 2026-11-08 — Samsung device smoke and branding restoration
+
+The independently verified 2026-11-05 Worker baseline remains in [Current State](CURRENT_STATE.md).
+
+**Done.** The call branch had diverged before branding commit `06b7c5b`. Its original Android and web assets and layout changes were restored into the working tree alongside the new call code. The merged APK was installed in place on a Samsung Galaxy A71 and cold-launched successfully.
+
+**Evidence.** On the same screen and device, top-tab text moved from y=34 to y=125 below the status bar. The original logo rendered in Home and the APK declared the original adaptive launcher icon. Public smoke verified the English `electric` query, Hindi Group-to-Family navigation, the manual Raipur filter and the empty live Services feed. Android build, web help test, design and documentation checks passed.
+
+**Signed-in device checks.** Google sign-in worked after the owner selected the account. The Account summary loaded and the existing Worker draft read as active. The blocked contacts screen could not confirm a server response. The live API health returned 200 and the unauthenticated block-list probe returned 404.
+
+**Pending.** The public feed had no eligible live service to open. Publish/detail, live blocks and call history, payment, and full two-device calling were not verified. Calling still requires the FCM sender bindings and a controlled release.
+
+## 2026-11-08 — Approved native call screens
+
+The independently verified 2026-11-05 Worker baseline remains in [Current State](CURRENT_STATE.md).
+
+**Done.** After seeing the preview, the founder authorized implementation with design discretion. The Agora-enabled build opens a call from a verified service detail, opens an incoming invitation from a verified FCM notification, and offers microphone permission, answer, decline, cancel, mute and hangup. A call is shown as connected only after the Agora adapter reports both participants. The Account screen offers a separate private availability switch. An earlier invitation cannot ring or grant audio after the Worker changes availability.
+
+**Evidence.** The Agora and FCM Android debug APK, Kotlin contracts, all 73 API test files, local workerd+D1 smoke, Worker dry-run, TypeScript, design and documentation checks passed.
+
+**Pending.** Production calling remains off. End-to-end device verification needs the Firebase sender bindings and a controlled release. Android requires its live in-memory session to authenticate a notification. The current call screen ends active media when the Activity moves into the background. See [Manual Actions](MANUAL_ACTIONS.md).
+
+## 2026-11-08 — Android Agora voice adapter and call design preview
+
+The independently verified 2026-11-05 Worker baseline remains in [Current State](CURRENT_STATE.md).
+
+**Done.** The Android verification build can opt into the Agora voice SDK. The adapter checks microphone permission, joins with the accepted invitation's participant grant, tracks peer connection and reconnect callbacks, renews only with a fresh session grant, and leaves the channel on hangup. A three-screen visual preview was shown for approval.
+
+**Evidence.** The debug APK built with both Agora and FCM enabled. All 73 API test files, TypeScript, design and documentation checks passed.
+
+**Provider setup.** Wrangler confirmed that `AGORA_APP_CERTIFICATE` exists by name on `jodlo-api`. It also confirmed both Firebase sender secret names were absent. The Worker defaults to `jodlo-2027` and accepts either multiline PEM or the escaped newlines from the service account JSON. See [Manual Actions](MANUAL_ACTIONS.md).
+
+**Pending at this checkpoint.** Preview approval and screen wiring were outstanding at this checkpoint. Controlled two-device verification depends on the Firebase sender setup and the release checks. Calling remains disabled in production.
+
+## 2026-11-08 — Agora audio grants for controlled verification
+
+**Done.** The JODLO Agora App ID is wired to the Cloudflare issuer. The existing accepted invitation now records its answering session. The release-gated media route uses the official Agora AccessToken2 library to grant join and audio privileges for at most 60 seconds to the exact calling or answering session. The issuer checks both sessions, current Worker consent, listing eligibility and both block directions before every grant. Android Core has the matching private client and validates the response for the requested invitation.
+
+**Evidence.** Local tests decode the token with the Agora library, verify its signature and audio-only privileges, and reject another session on the same account, a third party and a finished call. All 73 API test files, Kotlin contracts, Worker dry-run bundling, local D1 migrations and the local workerd HTTP smoke passed.
+
+**Pending.** The certificate binding is confirmed by name. Android RTC engine integration, renewal/reconnect, two-device checks and release gates remain outstanding. The invitation lifetime is a bound for controlled verification and does not set product minutes or billing.
+
+## 2026-11-08 — Private call signaling and Android receipt
+
+**Done.** The release-gated API connects existing invitation limits and FCM dispatch to participant-only call status and actions. D1 checks the active sessions, current consent revision, publication, availability, blocks, dispatch slot and ring deadline before a Worker can acknowledge or accept. The caller can cancel and either participant can end an accepted invitation. Android has typed clients for these endpoints. A Firebase-enabled build can ask permission after Worker opt-in, register or rotate the address and acknowledge a current invitation before posting a private, expiring system notification.
+
+**Evidence.** Local SQLite covers unauthorized participants, the dispatched state, notification acknowledgment, consent, acceptance, replay, hangup and the ring deadline. All 73 API test files passed. Kotlin contracts, the FCM debug APK, TypeScript, design and documentation checks, and the Worker dry-run build passed. Production gates remain disabled.
+
+**Pending.** The in-memory Android session supports background delivery only while its process and session survive. A killed process cannot authenticate a ring. The notification opens JODLO. The full call screen, Agora media authorization, audio reconnect and real two-device verification remain outstanding. See [Manual Actions](MANUAL_ACTIONS.md).
+
+## 2026-11-08 — Session-bound call device registration
+
+**Done.** Migration `0021` and the private `/api/v1/me/call-device` route bind an FCM address to a current signed-in session with explicit Worker call consent. Rotation replaces the session's previous address. Worker opt-out or session deletion removes the binding. Expired bindings are eligible for scheduled cleanup.
+
+**Evidence.** Local SQLite route coverage verifies default-off access, registration and rotation, cross-account isolation, removal, opt-out and session deletion.
+
+**Next action.** Android must register after notification permission, remove its binding when notifications are disabled, and confirm the current invitation under the recipient's session before ringing. The registration route stays release-disabled until migration and integration checks pass. See [Manual Actions](MANUAL_ACTIONS.md).
+
+## 2026-11-08 — Android FCM build setup
+
+**Done.** The local Android configuration matches Firebase project `jodlo-2027` and package `com.rekixo.jodlo`. Android builds can opt in to the Messaging SDK with `-PjodloEnableFcm=true`. Messaging auto-initialization and Firebase Analytics collection are disabled. The downloaded file stays local.
+
+**Evidence.** The local FCM-enabled Android debug APK assembled successfully, including the Google Services resource generation task. Documentation checks passed.
+
+**Pending.** Add session-bound device registration and removal, then handle incoming messages and verify the current call before displaying a ring. The Cloudflare sender still needs its production identity. See [Manual Actions](MANUAL_ACTIONS.md).
+
+## 2026-11-08 — Private FCM ring transport
+
+**Done.** The internal ring sender resolves the destination through a trusted device lookup and claims the current invitation's dispatch slot just before sending. It sends a high-priority data message scoped to the JODLO Android package, with a TTL bounded by the ring deadline. A provider acceptance and an unconfirmed transport result are distinct.
+
+**Evidence.** A local transport test verifies the FCM request, destination ownership, one send under two concurrent dispatch attempts, and no duplicate send after an uncertain result.
+
+**Pending.** Production needs an authenticated device binding and reachability source, configured Firebase credentials, Android receive and acknowledgment handling, and Agora media integration. See [Manual Actions](MANUAL_ACTIONS.md). The 2026-11-05 Worker checkpoints remain below, with independently verified baseline evidence in [Current State](CURRENT_STATE.md).
+
+**Next action.** Connect the device binding to the private ring sender and acknowledge verified receipt from the intended device.
+
+## 2026-11-08 — Private call dispatch reservation
+
+The 2026-11-05 Worker software checkpoints remain recorded below. The latest independently verified baseline is in [Current State](CURRENT_STATE.md).
+
+**Done.** The server can claim one pending ring slot per receiver across listings. The claim checks the caller session, receiver reachability input, invitation deadline, the exact Worker consent revision, current listing visibility, the availability preference and both block directions. A slot expires with its invitation's ring deadline.
+
+**Evidence.** Local tests reject mismatched reachability, a different caller session, a late block, a held listing and an invitation from an earlier consent revision. They also verify that a second claim cannot use a busy slot and that a new invitation can replace an expired slot.
+
+**Pending.** A trusted reachability source, provider delivery and real-time call transitions are required before live use. The current slot covers pending rings. Accepted and connected calls still need a durable occupancy lifecycle.
+
+**Manual.** The production presence source, concurrency policy and provider onboarding remain pending. See [Manual Actions](MANUAL_ACTIONS.md).
+
+**Next action.** Connect trusted reachability and delivery acknowledgments to the private dispatch path.
+
+## 2026-11-08 — Private invitation preparation and retry handling
+
+**Done.** The server resolves the caller from a current session and the recipient from the listing. One D1 batch creates a private invitation and reserves all three quota counters. It rechecks listing eligibility, explicit call consent, availability preference and bilateral blocks at write time. An identical retry returns the original invitation during the five-minute retry window without increasing any counter.
+
+**Evidence.** Local tests cover duplicate requests, a retry key reused for a different listing, consent changing before the transaction, quota exhaustion, a forced rollback and expired invitation cleanup.
+
+**Pending.** The invitation is private server state. Device presence, busy coordination, push delivery, RTC credentials, call transitions and history writes remain to connect before live use. Production migration 0019 and the invitation retention policy are pending.
+
+**Manual.** See [Manual Actions](MANUAL_ACTIONS.md) for call policy and provider requirements.
+
+**Next action.** Establish trusted presence and reserve a recipient slot before dispatch. Use the recorded consent revision to reject stale invitations.
+
+## 2026-11-08 — Atomic call attempt counters
+
+**Done.** The internal reservation writes all three five-minute quota counters in one database statement. If any scope is at its limit, or either account is inactive, the statement changes no counters. Expired counters can be removed by the Worker cleanup schedule.
+
+**Evidence.** SQLite tests exercised the directed pair, caller and receiver caps, an expired window, the cleanup handler and account deletion.
+
+**Pending.** Live call admission still needs an authoritative invitation transaction that deduplicates retries and checks eligibility. The new migration is for local verification until the call-data policy and production release are ready.
+
+**Manual.** The approved quota values and remaining provider and privacy choices are in [Manual Actions](MANUAL_ACTIONS.md).
+
+**Next action.** Connect the reservation to durable invitation creation before dispatching a call.
+
+## 2026-11-08 — Call history retention and private read
+
+**Done.** The server has a private call-summary table and a read endpoint behind the call-history release switch. Reads exclude records at the 90-day boundary. A scheduled Worker handler removes expired rows in bounded batches, and account deletion cascades to that account's summaries.
+
+**Evidence.** The local SQLite route test covers owner isolation, pagination, the retention boundary, scheduled deletion and account erasure. All 17 migrations applied to disposable local D1 and the Worker bundle dry run passed.
+
+**Pending.** The live call lifecycle must write the summaries before the Account screen can show real history. Production still needs migration 0017 and the hourly Cloudflare Cron Trigger `17 * * * *`.
+
+**Manual.** The 90-day decision is recorded. Call admission and real provider onboarding remain in [Manual Actions](MANUAL_ACTIONS.md).
+
+**Next action.** Connect verified call outcomes to the private history store after the live call admission and provider requirements are resolved.
+
+## 2026-11-08 — Private call preference and blocked contacts
+
+**Done.** A signed-in Worker can check and change the incoming-call preference from Account. New Workers start with it off, and a change based on an older revision is rejected. Account also lists a user's outgoing blocks and lets them remove a block even after the original listing is unpublished. Migration 0016 gives existing and new blocks private references, so removing an earlier block cannot remove a later block of the same contact.
+
+**Evidence.** Local API tests cover authentication, ownership, preference revisions, unpublished listings and stale block removal. All 69 API test files, the Android debug build, headless Kotlin checks, TypeScript, founder and design checks, and the Worker dry run passed locally.
+
+**Pending.** GitHub CI and physical-device acceptance remain pending. Applying migration 0016 and releasing these changes are still pending. Live Agora ringing, call history, FCM registration and billing require additional work.
+
+**Manual.** The founder selected 90 days for call history retention on 2026-11-08. Call admission and provider onboarding remain pending. See [Manual Actions](MANUAL_ACTIONS.md).
+
+**Next action.** Review the Account controls and run GitHub CI. Connect authenticated call admission to durable server state once the call data and admission policy are settled.
+
 ## 2026-11-05 — Unified Customer public Service cards (source-only; PR CI pending)
 
 Customer Browse, anonymous all-Service Feed and on-device Saved now share a bilingual **public Category / Listing reference** card. The headless evidence model distinguishes a stale/page/saved **reference** from a fresh same-ID, same-Category, same-language exact public Service detail **public when checked** result. Only the latter allows Save on configured HTTPS; neither implies Worker verification, rate, address or call availability. A wrong/stale detail cannot be promoted to a checked card. [Contract, tests and future field-level policy proposal](PUBLIC_SERVICE_CARDS_SAFE_SLICE_2026-11-05.md).

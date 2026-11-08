@@ -7,6 +7,16 @@ import { readFile, readdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 const rootDefault = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+// Private controlled-verification routes are allowed in source. Their
+// presence does not authorize setting any of the release flags in production.
+const controlledCallRoutes = new Map([
+  ["/api/v1/me/call-device", "CALL_DEVICES_ENABLED"],
+  ["/api/v1/me/call", "CALL_SIGNALING_ENABLED"],
+  ["/api/v1/me/call-invitation", "CALL_SIGNALING_ENABLED"],
+  ["/api/v1/me/call-availability", "CALL_SIGNALING_ENABLED"],
+  ["/api/v1/me/call-media", "CALL_MEDIA_VERIFICATION_ENABLED"],
+]);
+const CALL_DEVICE_MIGRATION = "0021_private_call_devices.sql";
 const allowedRoutes = new Set([
   "/api/v1/health", "/api/v1/catalog", "/api/v1/catalog/search",
   // Only approved, default-OFF taxonomy hierarchy; no public Worker or GPS.
@@ -19,12 +29,19 @@ const allowedRoutes = new Set([
   // This is NOT permission for public profile, account deletion, block or contact APIs.
   "/api/v1/me/overview", "/api/v1/me/data-export",
   // The authorized erasure route stays disabled without its release secret.
-  "/api/v1/me/account-erasure", "/api/v1/me/contact-block",
+  "/api/v1/me/account-erasure", "/api/v1/me/contact-block", "/api/v1/me/contact-blocks",
+  "/api/v1/me/call-preference",
+  "/api/v1/me/call-history",
   "/api/v1/me/service-area", "/api/v1/me/service-details", "/api/v1/moderation/service-details",
   "/api/v1/me/service-photo", "/api/v1/moderation/service-photo", "/api/v1/listings/photo",
   "/api/v1/me/service-report", "/api/v1/me/service-appeal", "/api/v1/moderation/service-cases",
 ]);
 const allowedTables = new Set([
+  "call_history",
+  "call_attempt_windows",
+  "private_call_invitations",
+  "private_call_dispatch_slots",
+  "private_call_devices",
   "categories",
   // No auto-seed, no public data until human-reviewed Group/Family/mapping approval.
   "catalog_groups", "catalog_families", "catalog_family_categories",
@@ -90,10 +107,16 @@ export async function auditFounderGates(root = rootDefault) {
   const routes = router === null ? [] :
     [...router.matchAll(/([\x22\x27\x60])(\/api\/v1\/[a-z0-9/_-]+)\1/g)].map(m=>m[2]);
   for(const route of new Set(routes))
-    if(!allowedRoutes.has(route)) errors.push("Unapproved API route: " + route + " (M-005/M-003)");
+    if(!allowedRoutes.has(route) && !controlledCallRoutes.has(route)) errors.push("Unapproved API route: " + route + " (M-005/M-003)");
+  for (const [route, flag] of controlledCallRoutes) {
+    if (routes.includes(route) && !router.includes(`env.${flag} === "1"`))
+      errors.push("Private call route requires a default-OFF release gate: " + route);
+  }
   for(const route of allowedRoutes)
     if(route!=="/api/v1/catalog/hierarchy" && route!=="/api/v1/me/account-erasure" &&
-       route!=="/api/v1/me/contact-block" && route!=="/api/v1/me/service-area" && route!=="/api/v1/me/service-details" &&
+       route!=="/api/v1/me/contact-block" && route!=="/api/v1/me/contact-blocks" &&
+       route!=="/api/v1/me/call-preference" && route!=="/api/v1/me/call-history" &&
+       route!=="/api/v1/me/service-area" && route!=="/api/v1/me/service-details" &&
        route!=="/api/v1/moderation/service-details" && route!=="/api/v1/me/service-photo" &&
        route!=="/api/v1/moderation/service-photo" && route!=="/api/v1/listings/photo" &&
        route!=="/api/v1/me/service-report" && route!=="/api/v1/me/service-appeal" &&
@@ -129,6 +152,18 @@ export async function auditFounderGates(root = rootDefault) {
       const table=match[1].toLowerCase();
       tables.push(table);
       if(!allowedTables.has(table)) errors.push("Unapproved D1 table: "+table+" ("+name+")");
+      if(table==="call_history" && name!=="0017_private_call_history.sql")
+        errors.push("Private call history table is only allowed in its reviewed migration");
+      if(table==="call_attempt_windows" && name!=="0018_call_attempt_windows.sql")
+        errors.push("Private call attempt windows are only allowed in their reviewed migration");
+      if(table==="private_call_invitations" && name!=="0019_private_call_invitations.sql")
+        errors.push("Private call invitations are only allowed in their reviewed migration");
+      if(table==="private_call_dispatch_slots" && name!=="0020_private_call_dispatch_slots.sql")
+        errors.push("Private call dispatch slots are only allowed in their reviewed migration");
+      if(table==="private_call_devices" &&
+        (name!==CALL_DEVICE_MIGRATION ||
+         !/session_hash TEXT PRIMARY KEY NOT NULL REFERENCES auth_sessions\(token_hash\) ON DELETE CASCADE/i.test(content)))
+        errors.push("Private call devices must use the reviewed session-cascading migration");
       if(table==="notification_delivery_receipts" && name!==RECEIPT_MIGRATION)
         errors.push("Notification receipt table must use its reviewed migration: "+name);
       if(table==="notification_delivery_dead_letters" && name!==DEAD_LETTER_MIGRATION)
@@ -196,7 +231,10 @@ export async function auditFounderGates(root = rootDefault) {
     if(/\b(?:ALTER|DROP)\s+TABLE\s+worker_agora_call_preferences\b/i.test(content))
       errors.push("Unauthorized Agora preference schema mutation: "+name);
     for(const table of Object.keys(AGORA_SAFETY_SCHEMA)) {
-      if(new RegExp("\\b(?:ALTER|DROP)\\s+TABLE\\s+"+table+"\\b","i").test(content))
+      const mutations = name === "0016_contact_block_management.sql" && table === "agora_account_blocks"
+        ? content.replace(/^ALTER TABLE agora_account_blocks ADD COLUMN management_id TEXT;$/m, "")
+        : content;
+      if(new RegExp("\\b(?:ALTER|DROP)\\s+TABLE\\s+"+table+"\\b","i").test(mutations))
         errors.push("Unauthorized private Agora safety schema mutation: "+table);
     }
     if(/\b(?:ALTER|DROP)\s+TABLE\s+notification_delivery_dead_letters\b/i.test(content))
@@ -212,7 +250,9 @@ export async function auditFounderGates(root = rootDefault) {
   const hierarchyTables=["catalog_groups","catalog_families",
     "catalog_family_categories"];
   for(const table of allowedTables)
-    if(!hierarchyTables.includes(table) && !tables.includes(table))
+    if(table!=="call_history" && table!=="call_attempt_windows" && table!=="private_call_invitations" &&
+       table!=="private_call_dispatch_slots" && table!=="private_call_devices" &&
+       !hierarchyTables.includes(table) && !tables.includes(table))
       errors.push("Expected D1 table missing: "+table);
   const hasHierarchy=migrations.includes("0010_approved_catalog_hierarchy.sql");
   const hasHierarchyRoute=routes.includes("/api/v1/catalog/hierarchy");
@@ -243,6 +283,28 @@ export async function auditFounderGates(root = rootDefault) {
   // Keep baseline synthetic fixture without 0011 valid; if it is introduced,
   // the versioned read+CAS route and the safe trigger are both mandatory.
   const hasServiceCases = migrations.includes("0015_service_reports_and_appeals.sql");
+  if (migrations.includes("0016_contact_block_management.sql") !== routes.includes("/api/v1/me/contact-blocks"))
+    errors.push("Private contact block management requires both its route and migration");
+  if (migrations.includes("0017_private_call_history.sql") !== routes.includes("/api/v1/me/call-history") ||
+      tables.includes("call_history") !== routes.includes("/api/v1/me/call-history"))
+    errors.push("Private call history requires its route, table and migration");
+  if (migrations.includes("0018_call_attempt_windows.sql") !== tables.includes("call_attempt_windows"))
+    errors.push("Private call attempt windows require their table and migration");
+  if (migrations.includes("0019_private_call_invitations.sql") !== tables.includes("private_call_invitations"))
+    errors.push("Private call invitations require their table and migration");
+  if (migrations.includes("0020_private_call_dispatch_slots.sql") !== tables.includes("private_call_dispatch_slots"))
+    errors.push("Private call dispatch slots require their table and migration");
+  const hasCallDevices = migrations.includes(CALL_DEVICE_MIGRATION);
+  if (hasCallDevices !== tables.includes("private_call_devices") ||
+      hasCallDevices !== routes.includes("/api/v1/me/call-device"))
+    errors.push("Private call devices require their scoped route, table and migration");
+  const hasCallSignaling = migrations.includes("0022_private_call_signaling.sql");
+  for (const route of controlledCallRoutes.keys()) {
+    if (route !== "/api/v1/me/call-device" && hasCallSignaling !== routes.includes(route))
+      errors.push("Controlled call routes require the signaling migration: " + route);
+  }
+  if (hasCallSignaling !== migrations.includes("0023_call_history_recording.sql"))
+    errors.push("Private call signaling requires the history recording migration");
   if (hasServiceCases !== routes.includes("/api/v1/me/service-report") ||
       hasServiceCases !== routes.includes("/api/v1/me/service-appeal") ||
       hasServiceCases !== routes.includes("/api/v1/moderation/service-cases") ||

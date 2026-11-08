@@ -1,5 +1,6 @@
 package com.rekixo.jodlo
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.CircularProgressIndicator
@@ -23,6 +25,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -57,6 +60,7 @@ import com.rekixo.jodlo.core.network.RemoteWorkerRepository
 import com.rekixo.jodlo.core.network.SavedPublicServices
 import com.rekixo.jodlo.core.network.HiddenPublicServices
 import com.rekixo.jodlo.core.network.asRequestSender
+import com.rekixo.jodlo.ui.theme.JodloBrandHeading
 import com.rekixo.jodlo.ui.theme.JodloPalette
 import com.rekixo.jodlo.ui.theme.JodloTheme
 import com.rekixo.jodlo.ui.theme.JodloButton
@@ -67,6 +71,7 @@ import com.rekixo.jodlo.ui.theme.JodloSearchField
 import com.rekixo.jodlo.ui.theme.JodloSizes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -80,8 +85,26 @@ private data class HomeCategorySelection(
 
 /** Native app entrypoint; Google sign-in is attempted only with explicit configuration. */
 class MainActivity : ComponentActivity() {
+    private val incomingCall = MutableStateFlow<String?>(null)
+
+    private fun readIncomingCall(intent: Intent) {
+        incomingCall.value = intent.getStringExtra(INCOMING_CALL_EXTRA)?.takeIf(CALL_INVITATION_ID::matches)
+        intent.removeExtra(INCOMING_CALL_EXTRA)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        readIncomingCall(intent)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        CallNotifications.sync(applicationContext)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        readIncomingCall(intent)
         // Keep white system-bar icons on the founder-approved black canvas,
         // even when the device runs in light system mode.
         enableEdgeToEdge(
@@ -89,13 +112,14 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(JodloPalette.Canvas.toArgb()),
         )
         setContent {
-            JodloTheme { JodloApp(this) }
+            val incoming by incomingCall.collectAsState()
+            JodloTheme { JodloApp(this, incoming) { incomingCall.value = null } }
         }
     }
 }
 
 @Composable
-private fun JodloApp(activity: ComponentActivity) {
+private fun JodloApp(activity: ComponentActivity, incomingCall: String?, clearIncoming: () -> Unit) {
     val sender = remember {
         BuildConfig.API_ORIGIN.takeIf { it.isNotBlank() }?.let {
             HttpsTransport(it).asRequestSender()
@@ -112,6 +136,24 @@ private fun JodloApp(activity: ComponentActivity) {
     }
     val session = remember(sender) {
         sender?.let { InMemorySessionCoordinator(RemoteWorkerRepository(it), it) }
+    }
+    var callScreen by remember(session) { mutableStateOf<CallScreenRequest?>(null) }
+    val onCall: ((String) -> Unit)? = if (BuildConfig.AGORA_ENABLED && session != null && !debugPreview) {
+        { id -> if (callScreen == null) callScreen = CallScreenRequest.Outgoing(id) }
+    } else null
+    LaunchedEffect(session, incomingCall) {
+        if (incomingCall != null) {
+            if (BuildConfig.AGORA_ENABLED && session != null && callScreen == null) {
+                callScreen = CallScreenRequest.Incoming(incomingCall)
+            }
+            clearIncoming()
+        }
+    }
+    if (session != null) callScreen?.let { CallScreen(activity, it, session) { callScreen = null } }
+
+    LaunchedEffect(session) {
+        CallNotifications.attach(session)
+        CallNotifications.sync(activity.applicationContext)
     }
     val writes = remember(session) { session?.let(::HeadlessWorkerWriteScope) }
     val savedStore = remember(activity) { DeviceSavedServices(activity.applicationContext) }
@@ -188,7 +230,11 @@ private fun JodloApp(activity: ComponentActivity) {
     var homeCategory by remember { mutableStateOf<HomeCategorySelection?>(null) }
     var section by rememberSaveable { mutableStateOf("home") }
     var discoveryCity by remember { mutableStateOf<NearbyPilotCity?>(null) }
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    Column(
+        Modifier.fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .safeDrawingPadding(),
+    ) {
         Row(
             Modifier.fillMaxWidth()
                 .horizontalScroll(rememberScrollState())
@@ -306,11 +352,11 @@ private fun JodloApp(activity: ComponentActivity) {
                     customerCatalog, liveApiConfigured = sender != null,
                     saved = savedServices, onSaveToggle = ::toggleSaved,
                     hidden = hiddenServices, onHide = ::hideService,
-                    homeCategory = homeCategory, contactSession = session,
+                    homeCategory = homeCategory, contactSession = session, onCall = onCall,
                 )
                 "saved" -> SavedServicesDashboard(
                     catalog, savedServices, ::removeSaved, ::clearSaved,
-                    hiddenServices, ::hideService, contactSession = session,
+                    hiddenServices, ::hideService, contactSession = session, onCall = onCall,
                 )
                 "hidden" -> HiddenServicesDashboard(
                     hiddenServices, ::unhideService, ::clearHidden,
@@ -329,7 +375,7 @@ private fun JodloApp(activity: ComponentActivity) {
                     if (catalog != null && city != null) PublicServicesFeed(
                         catalog, savedServices, ::toggleSaved, hiddenServices, ::hideService,
                         onBrowseCategories = { homeCategory = null; section = "customer" },
-                        contactSession = session, city = city,
+                        contactSession = session, onCall = onCall, city = city,
                         onBackToCityPicker = { section = "nearby" },
                     ) else ManualNearbyDiscovery(
                         onBrowseAll = { section = "customer" },
@@ -341,7 +387,7 @@ private fun JodloApp(activity: ComponentActivity) {
                     catalog, savedServices, ::toggleSaved,
                     hiddenServices, ::hideService,
                     onBrowseCategories = { homeCategory = null; section = "customer" },
-                    contactSession = session,
+                    contactSession = session, onCall = onCall,
                 )
                 "worker" -> WorkerDashboard(activity, session, writes, catalog)
                 "help" -> HelpAndPrivacyDashboard(
@@ -388,6 +434,7 @@ private fun GuestDiscovery(
     onHide: (String) -> Boolean,
     homeCategory: HomeCategorySelection? = null,
     contactSession: InMemorySessionCoordinator?,
+    onCall: ((String) -> Unit)?,
 ) {
     val scope = rememberCoroutineScope()
     var language by remember { mutableStateOf(homeCategory?.language ?: Language.HI) }
@@ -768,10 +815,7 @@ private fun GuestDiscovery(
             verticalArrangement = Arrangement.spacedBy(JodloSizes.Gap),
         ) {
             item {
-                Text(
-                    stringResource(R.string.app_name),
-                    style = MaterialTheme.typography.headlineLarge,
-                )
+                JodloBrandHeading(stringResource(R.string.app_name))
             }
             item {
                 Text(
@@ -987,6 +1031,7 @@ private fun GuestDiscovery(
                     if (card?.evidence == CustomerServiceCardEvidence.PUBLIC_WHEN_CHECKED) {
                         item { SafePublicProfileFacts(card.profile, card.city) }
                         item { ApprovedServicePhoto(repository, card) }
+                        if (liveApiConfigured) item { ServiceCallButton(onCall, card.listing.id) }
                         item { ContactBlockControls(contactSession, card.listing.id) }
                         item { ReportServiceControls(contactSession, card.listing.id) }
                     }

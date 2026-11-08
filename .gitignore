@@ -13,6 +13,7 @@ coverage/
 .vscode/*.local.json
 apps/android/.gradle/
 apps/android/local.properties
+apps/android/app/google-services.json
 *.jks
 *.keystore
 *.p12
