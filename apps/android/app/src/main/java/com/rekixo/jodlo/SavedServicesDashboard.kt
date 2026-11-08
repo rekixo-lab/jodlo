@@ -61,6 +61,7 @@ internal fun SavedServicesDashboard(
     hidden: HiddenPublicServices,
     onHide: (String) -> Boolean,
     contactSession: InMemorySessionCoordinator?,
+    onCall: ((String) -> Unit)? = null,
 ) {
     // A hidden bookmark remains durable but is not displayed or sent to
     // explicit review/Category-name HTTP reads until the user unhides it.
@@ -421,6 +422,7 @@ internal fun SavedServicesDashboard(
             if (currentCard != null) {
                 item { SafePublicProfileFacts(currentCard.profile, currentCard.city) }
                 item { ApprovedServicePhoto(repository, currentCard) }
+                item { ServiceCallButton(onCall, currentCard.listing.id) }
                 item { ContactBlockControls(contactSession, currentCard.listing.id) }
                 item { ReportServiceControls(contactSession, currentCard.listing.id) }
             }

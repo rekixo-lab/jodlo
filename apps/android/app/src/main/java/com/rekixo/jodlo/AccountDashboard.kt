@@ -337,8 +337,14 @@ internal fun AccountDashboard(
             if (session != null && ((login as? LoginState.SignedIn)?.worker == WorkerState.DRAFT ||
                     confirmedOverview?.workerEnabled == true)) {
                 CallPreferenceControls(session, busy, ::refresh)
+                if (BuildConfig.AGORA_ENABLED) {
+                    CallPreferenceControls(session, busy, ::refresh, availability = true)
+                }
             }
-            if (session != null) ContactBlockList(session, busy)
+            if (session != null) {
+                ContactBlockList(session, busy)
+                CallHistorySection(session, busy)
+            }
             Text(stringResource(R.string.account_export_privacy_notice),
                 style = MaterialTheme.typography.bodySmall)
             JodloButton(onClick = ::saveOwnData,
@@ -378,7 +384,12 @@ private fun CallPreferenceControls(
     session: InMemorySessionCoordinator,
     accountBusy: Boolean,
     onChanged: () -> Unit,
+    availability: Boolean = false,
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        CallNotifications.sync(context.applicationContext)
+    }
     val scope = rememberCoroutineScope()
     var checked by remember(session) {
         mutableStateOf<Pair<AccountPrivateReadMarker, OwnCallPreference>?>(null)
@@ -397,14 +408,25 @@ private fun CallPreferenceControls(
         scope.launch {
             try {
                 val result = withContext(Dispatchers.IO) {
-                    if (change == null) session.callPreference(captured)
-                    else session.changeCallPreference(captured, change)
+                    if (change == null) session.callPreference(captured, availability)
+                    else session.changeCallPreference(captured, change, availability)
                 }
                 val expected = if (change == null) captured
                     else captured.copy(writeRevision = captured.writeRevision + 1)
                 if (result is SessionResult.Success && session.accountPrivateReadMarker() == expected) {
                     checked = expected to result.value
-                    if (change != null) onChanged()
+                    if (change != null) {
+                        if (!availability && BuildConfig.FCM_ENABLED && result.value.enabled &&
+                            android.os.Build.VERSION.SDK_INT >= 33 &&
+                            context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+                            android.content.pm.PackageManager.PERMISSION_GRANTED
+                        ) {
+                            notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                        } else if (!availability) {
+                            CallNotifications.preferenceChanged(context, result.value.enabled)
+                        }
+                        onChanged()
+                    }
                 } else {
                     failed = true
                 }
@@ -420,16 +442,24 @@ private fun CallPreferenceControls(
 
     val canRequest = owner != null && !busy && !accountBusy
     if (preference != null) {
-        Text(stringResource(if (preference.enabled) R.string.account_voice_opted_in
-            else R.string.account_voice_opted_out), style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(when {
+            availability && preference.enabled -> R.string.call_available_status
+            availability -> R.string.call_unavailable_status
+            preference.enabled -> R.string.account_voice_opted_in
+            else -> R.string.account_voice_opted_out
+        }), style = MaterialTheme.typography.bodySmall)
         JodloButton(onClick = { request(preference) },
             enabled = canRequest && preference.revision < 2147483647L) {
-            Text(stringResource(if (preference.enabled) R.string.account_voice_disable
-                else R.string.account_voice_enable))
+            Text(stringResource(when {
+                availability && preference.enabled -> R.string.call_set_unavailable
+                availability -> R.string.call_set_available
+                preference.enabled -> R.string.account_voice_disable
+                else -> R.string.account_voice_enable
+            }))
         }
     } else {
         JodloTextAction(onClick = { request(null) }, enabled = canRequest) {
-            Text(stringResource(R.string.account_voice_check))
+            Text(stringResource(if (availability) R.string.call_check_availability else R.string.account_voice_check))
         }
     }
     if (failed) Text(stringResource(R.string.account_voice_failed),

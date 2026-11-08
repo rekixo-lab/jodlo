@@ -1,3 +1,12 @@
+import { readOwnWorkerAvailability, setOwnWorkerAvailability } from "../modules/interactions/agora-private-safety-state.ts";
+import { issueOwnAgoraAudioGrant } from "../modules/interactions/private-agora-media.ts";
+import { validIdempotencyKey } from "../modules/shared/identifiers.ts";
+import { ownPrivateCallSignal, validCallAction } from "../modules/interactions/private-call-signaling.ts";
+import { preparePrivateCallInvitation } from "../modules/interactions/private-call-invitation.ts";
+import { sendPrivateCallRing } from "../modules/interactions/private-call-ring.ts";
+import { createFcmAccessTokenSource } from "../modules/notifications/fcm-oauth.ts";
+import { readRegisteredCallDestination, registerOwnCallDevice, removeOwnCallDevice } from "../modules/notifications/private-call-devices.ts";
+import { validFcmRegistrationToken } from "../modules/notifications/fcm-provider.ts";
 import type { Env } from "../data/d1.ts";
 import { validOpaqueId } from "../modules/shared/identifiers.ts";
 import { browsePublicCategories, parseCatalogBrowse, parseCatalogSearch, searchPublicCategories, parsePublicCategoryLabels, resolveApprovedCategoryLabels } from "../modules/catalog/catalog.ts";
@@ -16,7 +25,7 @@ import { ownAccountOverview, exportOwnAccountData } from "../modules/identity/ac
 import { validGoogleClientId, verifyGoogleIdToken } from "../modules/identity/google.ts";
 import { resolveGoogleAccount } from "../modules/identity/google-accounts.ts";
 import { issueSession, makeSessionVerifier, validSessionToken, revokeAllSessions, revokeSession, SESSION_TTL_SECONDS } from "../modules/identity/sessions.ts";
-import { hasEmptyBody, readGoogleLoginBody, readServiceListingBody, readCategoryEditBody, readVersionedCategoryEditBody, readResumeOwnListingBody, readPublicationRevisionBody, readAccountErasureBody, readServiceCityBody, readServiceDetailsBody, readServicePhotoBody, readServiceCaseReason } from "./body.ts";
+import { readCallDeviceBody, hasEmptyBody, readGoogleLoginBody, readServiceListingBody, readCategoryEditBody, readVersionedCategoryEditBody, readResumeOwnListingBody, readPublicationRevisionBody, readAccountErasureBody, readServiceCityBody, readServiceDetailsBody, readServicePhotoBody, readServiceCaseReason } from "./body.ts";
 import { validCategoryId } from "../modules/shared/identifiers.ts";
 import { publishListing, myListings, pageMyListings, pageManagedOwnListings, exactManagedOwnListing, exactManagedOwnListingByCategory, exactVersionedOwnListing, parseOwnListingsPage, publicListings, pagePublicListings, publicListingDetail, publicApprovedServiceDetail, pageAllPublicListings, unpublishListing, editOwnListingCategory, editOwnListingCategoryVersioned, resumeOwnListing, changeOwnListingPublication, createOwnListing } from "../modules/workers/listings.ts";
 import {
@@ -209,6 +218,112 @@ export async function handleRequest(
       return json({ ok: true, data: { revoked: true, ...(allDevices ? { allDevices: true } : {}) } });
     } catch {
       return json({ ok: false, error: { code: "SERVICE_UNAVAILABLE", message: "Identity unavailable" } }, 503);
+    }
+  }
+
+  if (url.pathname === "/api/v1/me/call-media" && env.CALL_SIGNALING_ENABLED === "1" &&
+      env.CALL_MEDIA_VERIFICATION_ENABLED === "1") {
+    if (request.method !== "POST") {
+      return json({ok:false,error:{code:"METHOD_NOT_ALLOWED",message:"Method not allowed"}},405,{Allow:"POST"});
+    }
+    const bearer = bearerToken(request);
+    if (!validSessionToken(bearer)) {
+      return json({ok:false,error:{code:"UNAUTHORIZED",message:"Authentication required"}},401);
+    }
+    const id = url.searchParams.get("id");
+    if (!validOpaqueId(id) || url.searchParams.size !== 1 || !(await hasEmptyBody(request))) {
+      return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid call input"}},400);
+    }
+    try {
+      if (!env.DB || !env.AGORA_APP_CERTIFICATE) throw new Error("Missing media setup");
+      const grant = await issueOwnAgoraAudioGrant(env.DB, bearer, id, env.AGORA_APP_CERTIFICATE);
+      if (grant) return json({ok:true,data:grant});
+      return json({ok:false,error:{code:"NOT_FOUND",message:"Call unavailable"}},404);
+    } catch {
+      return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Call unavailable"}},503);
+    }
+  }
+
+  if (env.CALL_SIGNALING_ENABLED === "1" &&
+      (url.pathname === "/api/v1/me/call" || url.pathname === "/api/v1/me/call-invitation")) {
+    const starting = url.pathname.endsWith("/call-invitation");
+    const allow = starting ? "POST" : "GET, PUT";
+    if (starting ? request.method !== "POST" : !["GET", "PUT"].includes(request.method)) {
+      return json({ok:false,error:{code:"METHOD_NOT_ALLOWED",message:"Method not allowed"}},405,{Allow:allow});
+    }
+    const bearer = bearerToken(request);
+    if (!validSessionToken(bearer)) {
+      return json({ok:false,error:{code:"UNAUTHORIZED",message:"Authentication required"}},401);
+    }
+    const id = url.searchParams.get(starting ? "listingId" : "id");
+    const attemptKey = request.headers.get("Idempotency-Key");
+    const action = request.method === "PUT" ? url.searchParams.get("action") : undefined;
+    if (!validOpaqueId(id) || url.searchParams.size !== (request.method === "PUT" ? 2 : 1) ||
+        (starting && !validIdempotencyKey(attemptKey)) ||
+        (request.method === "PUT" && !validCallAction(action)) || !(await hasEmptyBody(request))) {
+      return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid call input"}},400);
+    }
+    try {
+      const db = env.DB;
+      if (!db) throw new Error("Missing call storage");
+      if (starting && validIdempotencyKey(attemptKey)) {
+        const {FCM_PROJECT_ID:projectId = "jodlo-2027", FCM_SERVICE_ACCOUNT_EMAIL:email,
+          FCM_SERVICE_ACCOUNT_PRIVATE_KEY:privateKey} = env;
+        if (!projectId || !email || !privateKey || env.CALL_DEVICES_ENABLED !== "1") {
+          throw new Error("Missing call provider configuration");
+        }
+        const accessToken = createFcmAccessTokenSource({email,privateKey});
+        const invitation = await preparePrivateCallInvitation(db, bearer, id, attemptKey);
+        if (invitation.kind !== "denied") {
+          const delivery = await sendPrivateCallRing(db, bearer, invitation.invitationId, {
+            projectId, accessToken,
+            resolveReachableDevice: accountId => readRegisteredCallDestination(db, accountId),
+          });
+          if (invitation.kind === "created" && delivery === "not_sent") {
+            await ownPrivateCallSignal(db, bearer, invitation.invitationId, "cancel");
+            return json({ok:false,error:{code:"NOT_FOUND",message:"Call unavailable"}},404);
+          }
+          return json({ok:true,data:{id:invitation.invitationId,ringDeadlineMs:invitation.ringDeadlineMs}});
+        }
+      } else {
+        const signal = await ownPrivateCallSignal(db, bearer, id, validCallAction(action) ? action : undefined);
+        if (signal) return json({ok:true,data:signal});
+      }
+      return json({ok:false,error:{code:"NOT_FOUND",message:"Call unavailable"}},404);
+    } catch {
+      return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Call unavailable"}},503);
+    }
+  }
+
+  if (url.pathname === "/api/v1/me/call-device" && env.CALL_DEVICES_ENABLED === "1") {
+    if (request.method !== "PUT" && request.method !== "DELETE") {
+      return json({ok:false,error:{code:"METHOD_NOT_ALLOWED",message:"Method not allowed"}},405,{Allow:"PUT, DELETE"});
+    }
+    const bearer = bearerToken(request);
+    if (!validSessionToken(bearer)) {
+      return json({ok:false,error:{code:"UNAUTHORIZED",message:"Authentication required"}},401);
+    }
+    const registrationToken = request.method === "PUT" ? await readCallDeviceBody(request) : null;
+    if (url.searchParams.size || (request.method === "PUT"
+      ? !validFcmRegistrationToken(registrationToken)
+      : !(await hasEmptyBody(request)))) {
+      return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid call device input"}},400);
+    }
+    try {
+      if (!env.DB) throw new Error("Missing device storage");
+      if (!(await makeSessionVerifier(env.DB).verify(bearer))) {
+        return json({ok:false,error:{code:"UNAUTHORIZED",message:"Authentication required"}},401);
+      }
+      if (registrationToken === null) {
+        await removeOwnCallDevice(env.DB, bearer);
+        return json({ok:true,data:{registered:false}});
+      }
+      if (!(await registerOwnCallDevice(env.DB, bearer, registrationToken))) {
+        return json({ok:false,error:{code:"FORBIDDEN",message:"Call device registration unavailable"}},403);
+      }
+      return json({ok:true,data:{registered:true}});
+    } catch {
+      return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Call device unavailable"}},503);
     }
   }
 
@@ -663,7 +778,8 @@ export async function handleRequest(
       return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Service area unavailable"}},503);
     }
   }
-  if (url.pathname === "/api/v1/me/call-preference") {
+  const callAvailability = url.pathname === "/api/v1/me/call-availability" && env.CALL_SIGNALING_ENABLED === "1";
+  if (url.pathname === "/api/v1/me/call-preference" || callAvailability) {
     const method = request.method;
     if (method !== "GET" && method !== "POST") {
       return json({ok:false,error:{code:"METHOD_NOT_ALLOWED",message:"Method not allowed"}},405,
@@ -687,9 +803,18 @@ export async function handleRequest(
       return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Call preference unavailable"}},503);
     }
     if (method === "GET") {
-      const preference = await readOwnWorkerAgoraCallPreference(env.DB, token);
+      const availability = callAvailability ? await readOwnWorkerAvailability(env.DB, token) : null;
+      const preference = callAvailability
+        ? availability && {enabled:availability.acceptingCalls,revision:availability.revision}
+        : await readOwnWorkerAgoraCallPreference(env.DB, token);
       return preference ? json({ok:true,data:preference})
         : json({ok:false,error:{code:"NOT_FOUND",message:"Call preference unavailable"}},404);
+    }
+    if (callAvailability) {
+      const result = await setOwnWorkerAvailability(env.DB, token, enabled === "1", Number(revision));
+      return result.kind === "updated"
+        ? json({ok:true,data:{enabled:result.preference.acceptingCalls,revision:result.preference.revision}})
+        : json({ok:false,error:{code:"CONFLICT",message:"Call availability changed or unavailable"}},409);
     }
     const result = await setOwnWorkerAgoraCallPreference(env.DB, token, enabled === "1", Number(revision));
     return result.kind === "updated" ? json({ok:true,data:result.preference})

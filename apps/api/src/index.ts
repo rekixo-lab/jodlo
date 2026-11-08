@@ -1,3 +1,4 @@
+import { purgeExpiredCallDevices } from "./modules/notifications/private-call-devices.ts";
 import type { Env } from "./data/d1.ts";
 import { handleRequest } from "./http/router.ts";
 import { CALL_HISTORY_CLEANUP_CRON, purgeExpiredCallHistory } from "./modules/interactions/call-history.ts";
@@ -11,10 +12,11 @@ export default {
   },
   async scheduled(event: {cron: string; scheduledTime: number}, env: Env): Promise<void> {
     if (event.cron === CALL_HISTORY_CLEANUP_CRON && env.DB) {
+      await purgeExpiredPrivateInvitations(env.DB, event.scheduledTime);
       await Promise.all([
         purgeExpiredCallHistory(env.DB, Math.floor(event.scheduledTime / 1000)),
         purgeExpiredCallAttemptWindows(env.DB, event.scheduledTime),
-        purgeExpiredPrivateInvitations(env.DB, event.scheduledTime),
+        purgeExpiredCallDevices(env.DB, Math.floor(event.scheduledTime / 1000)),
       ]);
     }
   },

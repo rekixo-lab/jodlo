@@ -3,11 +3,29 @@ import java.net.URI
 plugins {
     id("com.android.application") version "8.6.1"
     id("org.jetbrains.kotlin.android") version "1.9.24"
+    id("com.google.gms.google-services") version "4.4.4" apply false
+}
+
+val agoraEnabled = providers.gradleProperty("jodloEnableAgora").orNull == "true"
+val fcmEnabled = providers.gradleProperty("jodloEnableFcm").orNull == "true"
+if (fcmEnabled) {
+    require(file("google-services.json").isFile) {
+        "Place JODLO's google-services.json in the Android app module before enabling FCM"
+    }
+    apply(plugin = "com.google.gms.google-services")
 }
 
 repositories {
     google()
     mavenCentral()
+    if (agoraEnabled) {
+        maven("https://download.agora.io/maven/") {
+            content {
+                includeGroup("io.agora.rtc")
+                includeGroup("io.agora.infra")
+            }
+        }
+    }
 }
 
 val apiOrigin = providers.gradleProperty("jodloApiOrigin").orNull?.trim().orEmpty()
@@ -27,6 +45,10 @@ require(googleWebClientId.isEmpty() ||
 }
 
 android {
+    sourceSets.getByName("main") {
+        java.srcDir(if (agoraEnabled) "src/agora/kotlin" else "src/noAgora/kotlin")
+        java.srcDir(if (fcmEnabled) "src/fcm/kotlin" else "src/noFcm/kotlin")
+    }
     namespace = "com.rekixo.jodlo"
     compileSdk = 35
 
@@ -36,6 +58,9 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0-dev"
+        manifestPlaceholders["callMessagingServiceEnabled"] = fcmEnabled
+        buildConfigField("boolean", "FCM_ENABLED", fcmEnabled.toString())
+        buildConfigField("boolean", "AGORA_ENABLED", agoraEnabled.toString())
         buildConfigField("String", "API_ORIGIN", "\"" + apiOrigin + "\"")
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"" + googleWebClientId + "\"")
     }
@@ -58,6 +83,11 @@ android {
 
 dependencies {
     implementation(project(":core"))
+    if (agoraEnabled) implementation("io.agora.rtc:voice-sdk:4.7.0")
+    if (fcmEnabled) {
+        implementation(platform("com.google.firebase:firebase-bom:34.7.0"))
+        implementation("com.google.firebase:firebase-messaging")
+    }
     implementation(platform("androidx.compose:compose-bom:2024.06.00"))
     implementation("androidx.activity:activity-compose:1.9.0")
     implementation("androidx.compose.ui:ui")

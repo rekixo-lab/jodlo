@@ -50,6 +50,9 @@ jobs:
       - name: Run Kotlin Core verification under JDK 21
         if: matrix.java-version == '21'
         run: gradle -p apps/android :core:verifyHeadlessCore --no-daemon
+      - name: Compile the optional Agora voice integration
+        if: matrix.java-version == '21'
+        run: gradle -p apps/android -PincludeAndroidApp=true -PjodloEnableAgora=true :app:compileDebugKotlin --no-daemon
       - name: Save temporary debug APK for physical-device testing (main only)
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && matrix.java-version == '17'
         uses: actions/upload-artifact@v4

@@ -11,8 +11,8 @@ import { readCallerSessionBoundAgoraOptInTarget } from "./request-target.ts";
 
 const CREATE_INVITATION = CALL_ATTEMPT_WINDOWS_CTE + `
 INSERT INTO private_call_invitations(id,caller_account_id,receiver_account_id,listing_id,
-  attempt_key_hash,consent_revision,created_at_ms,ring_deadline_ms,expires_at_ms)
-SELECT ?11,?2,?3,wl.id,?12,pref.revision,?9,?13,?10
+  attempt_key_hash,consent_revision,created_at_ms,ring_deadline_ms,expires_at_ms,availability_revision)
+SELECT ?11,?2,?3,wl.id,?12,pref.revision,?9,?13,?10,avail.revision
 FROM auth_sessions AS s
 JOIN worker_listings AS wl ON wl.id=?14 AND wl.worker_account_id=?3
 JOIN accounts AS a ON a.id=wl.worker_account_id
@@ -81,11 +81,19 @@ export async function preparePrivateCallInvitation(
 
 export async function purgeExpiredPrivateInvitations(db: D1Database, nowMs: number): Promise<void> {
   if (!Number.isSafeInteger(nowMs) || nowMs <= 0) throw new Error("Invalid cleanup time");
+  const expiredPage = "SELECT id FROM private_call_invitations WHERE expires_at_ms<=? ORDER BY expires_at_ms,id LIMIT 500";
   for (let batch = 0; batch < 20; batch++) {
-    const {meta} = await db.prepare(
-      "DELETE FROM private_call_invitations WHERE id IN (" +
-      "SELECT id FROM private_call_invitations WHERE expires_at_ms<=? ORDER BY expires_at_ms,id LIMIT 500)",
-    ).bind(nowMs).run();
-    if (meta.changes < 500) break;
+    const {results} = await db.prepare("SELECT id FROM private_call_invitations WHERE expires_at_ms<=? LIMIT 1")
+      .bind(nowMs).all<{id:string}>();
+    if (!results.length) break;
+    await db.batch([
+      db.prepare(`
+        UPDATE private_call_invitations
+        SET terminal_at_ms=CASE WHEN phase='ringing' THEN ring_deadline_ms ELSE expires_at_ms END,
+            history_outcome=CASE WHEN phase='ringing' THEN 'missed' ELSE 'ended' END
+        WHERE id IN (${expiredPage}) AND phase IN ('ringing','accepted') AND terminal_at_ms IS NULL
+      `).bind(nowMs),
+      db.prepare(`DELETE FROM private_call_invitations WHERE id IN (${expiredPage})`).bind(nowMs),
+    ]);
   }
 }

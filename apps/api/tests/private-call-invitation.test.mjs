@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { issueSession } from "../src/modules/identity/sessions.ts";
+import { ownPrivateCallSignal } from "../src/modules/interactions/private-call-signaling.ts";
 import { claimPrivateCallDispatch } from "../src/modules/interactions/private-call-dispatch.ts";
 import { sendPrivateCallRing } from "../src/modules/interactions/private-call-ring.ts";
 import { preparePrivateCallInvitation, purgeExpiredPrivateInvitations } from "../src/modules/interactions/private-call-invitation.ts";
@@ -157,6 +158,149 @@ test("private invitation commits with quota, deduplicates retries and rolls back
     await purgeExpiredPrivateInvitations(adapter, uncertainAt + 300_000);
     assert.equal(rows(), 0);
     assert.equal(db.prepare("SELECT count(*) AS count FROM private_call_dispatch_slots").get().count, 0);
+  } finally {
+    db.close();
+  }
+});
+
+test("call device registration requires a current opted-in session and removes tokens on opt-out", async () => {
+  const {db, adapter} = openLocalDatabase();
+  try {
+    const {handleRequest} = await import("../src/http/router.ts");
+    db.exec(`
+      INSERT INTO accounts(id) VALUES ('device-worker'),('other-worker');
+      INSERT INTO worker_profiles(account_id,status) VALUES ('device-worker','draft'),('other-worker','draft');
+      INSERT INTO worker_agora_call_preferences VALUES ('device-worker',0,1),('other-worker',1,1);
+    `);
+    const first = (await issueSession(adapter, "device-worker")).accessToken;
+    const second = (await issueSession(adapter, "other-worker")).accessToken;
+    const send = (bearer, registrationToken, enabled = "1") => handleRequest(
+      new Request("https://example.invalid/api/v1/me/call-device", {
+        method: registrationToken === undefined ? "DELETE" : "PUT",
+        headers: {Authorization: `Bearer ${bearer}`, "Content-Type": "application/json"},
+        body: registrationToken === undefined ? undefined : JSON.stringify({registrationToken}),
+      }),
+      {DB:adapter,CALL_DEVICES_ENABLED:enabled},
+    );
+    assert.equal((await send(first, "synthetic:device", "0")).status, 404);
+    assert.equal((await send(first, "synthetic:device")).status, 403);
+    db.exec("UPDATE worker_agora_call_preferences SET calls_enabled=1 WHERE account_id='device-worker'");
+    assert.equal((await send(first, "synthetic:device")).status, 200);
+    assert.equal((await send(second, "synthetic:device")).status, 403);
+    assert.equal((await send(first, "synthetic:rotated")).status, 200);
+    assert.equal((await send(second, "synthetic:device")).status, 200);
+    assert.equal((await send(second)).status, 200);
+    db.exec("UPDATE worker_agora_call_preferences SET calls_enabled=0 WHERE account_id='device-worker'");
+    assert.equal(db.prepare("SELECT count(*) AS total FROM private_call_devices").get().total, 0);
+    assert.equal((await send(second, "synthetic:device")).status, 200);
+    db.exec("DELETE FROM auth_sessions WHERE account_id='other-worker'");
+    assert.equal(db.prepare("SELECT count(*) AS total FROM private_call_devices").get().total, 0);
+    assert.equal((await send(second, "synthetic:device")).status, 401);
+  } finally {
+    db.close();
+  }
+});
+
+test("call signaling enforces participant roles, dispatch, current consent, and terminal states", async () => {
+  const {db, adapter} = openLocalDatabase();
+  try {
+    db.exec(`
+      INSERT INTO accounts(id) VALUES ('signal-caller'),('signal-worker'),('signal-outsider');
+      INSERT INTO categories(id,slug,name_en,is_active) VALUES ('repair','repair','Repair',1);
+      INSERT INTO worker_profiles(account_id,status) VALUES ('signal-worker','draft');
+      INSERT INTO worker_listings(id,worker_account_id,category_id,status)
+        VALUES ('d23e2000-d7e3-4a55-8eea-3328e2292526','signal-worker','repair','published');
+      INSERT INTO worker_agora_call_preferences VALUES ('signal-worker',1,1);
+      INSERT INTO worker_agora_availability_preferences VALUES ('signal-worker',1,1);
+    `);
+    const [caller, worker, outsider] = await Promise.all(["signal-caller","signal-worker","signal-outsider"]
+      .map(async account => (await issueSession(adapter, account)).accessToken));
+    const now = Date.now();
+    const start = key => preparePrivateCallInvitation(adapter, caller, "d23e2000-d7e3-4a55-8eea-3328e2292526", key, now);
+    const first = await start("first-signal-key");
+    const act = (token, action, time = now) =>
+      ownPrivateCallSignal(adapter, token, first.invitationId, action, time);
+    assert.equal((await act(caller)).phase, "pending");
+    assert.equal(await act(worker), null);
+    assert.ok(await claimPrivateCallDispatch(adapter, caller, first.invitationId, "signal-worker", now));
+    assert.equal((await act(worker)).phase, "ringing");
+    const {handleRequest} = await import("../src/http/router.ts");
+    const url = `https://example.invalid/api/v1/me/call?id=${first.invitationId}`;
+    const request = new Request(url, {headers:{Authorization:`Bearer ${worker}`}});
+    assert.equal((await handleRequest(request, {DB:adapter})).status, 404);
+    const reply = await handleRequest(request, {DB:adapter,CALL_SIGNALING_ENABLED:"1"});
+    assert.deepEqual(await reply.json(), {ok:true,data:{
+      role:"receiver",phase:"ringing",ringDeadlineMs:first.ringDeadlineMs,
+    }});
+    assert.equal(await act(worker, "ack"), null, "a device binding is needed to acknowledge delivery");
+    const {registerOwnCallDevice} = await import("../src/modules/notifications/private-call-devices.ts");
+    assert.equal(await registerOwnCallDevice(adapter, worker, "synthetic:ack-device"), true);
+    assert.equal((await act(worker, "ack")).phase, "ringing");
+    assert.equal(db.prepare("SELECT received_at_ms FROM private_call_invitations WHERE id=?")
+      .get(first.invitationId).received_at_ms, now);
+    assert.equal(await act(outsider, "accept"), null);
+    assert.equal(await act(caller, "accept"), null);
+    assert.equal(await act(worker, "cancel"), null);
+    db.exec("UPDATE worker_agora_call_preferences SET calls_enabled=0");
+    assert.equal(await act(worker, "accept"), null);
+    db.exec("UPDATE worker_agora_call_preferences SET calls_enabled=1");
+    assert.equal((await act(worker, "accept")).phase, "accepted");
+    assert.equal((await act(worker, "accept")).phase, "accepted");
+    assert.equal((await act(caller)).phase, "accepted");
+    const {issueOwnAgoraAudioGrant, JODLO_AGORA_APP_ID} =
+      await import("../src/modules/interactions/private-agora-media.ts");
+    const {AccessToken2, kRtcServiceType} = await import("agora-token/src/AccessToken2.js");
+    const certificate = "a".repeat(32);
+    const issue = bearer => issueOwnAgoraAudioGrant(adapter, bearer, first.invitationId, certificate, now);
+    const secondWorkerSession = (await issueSession(adapter, "signal-worker")).accessToken;
+    assert.equal(await issue(secondWorkerSession), null);
+    assert.equal(await issue(outsider), null);
+    const callerGrant = await issue(caller);
+    const workerGrant = await issue(worker);
+    assert.equal(callerGrant.appId, JODLO_AGORA_APP_ID);
+    assert.equal(callerGrant.channel, workerGrant.channel);
+    assert.equal(callerGrant.uid, 1);
+    assert.equal(workerGrant.uid, 2);
+    assert.equal(callerGrant.expiresInSeconds, 60);
+    const decoded = new AccessToken2();
+    assert.equal(decoded.from_string(workerGrant.token), true);
+    assert.equal(decoded.verifySignature(certificate), true);
+    assert.equal(decoded.getServices(kRtcServiceType)[0].__uid.toString(), "2");
+    assert.deepEqual({...decoded.getServices(kRtcServiceType)[0].__privileges}, {1:60,2:60});
+    assert.equal((await act(caller, "hangup")).phase, "ended");
+    assert.equal(await issue(caller), null);
+    assert.deepEqual(db.prepare("SELECT direction,outcome,connected_seconds FROM call_history ORDER BY direction")
+      .all().map(row => ({...row})), [
+      {direction:"incoming",outcome:"ended",connected_seconds:0},
+      {direction:"outgoing",outcome:"ended",connected_seconds:0},
+    ]);
+    assert.equal(await act(worker, "accept"), null);
+    const preference = (suffix = "", method = "GET") => new Request(
+      `https://example.invalid/api/v1/me/call-availability${suffix}`,
+      {method,headers:{Authorization:`Bearer ${worker}`}},
+    );
+    assert.equal((await handleRequest(preference(), {DB:adapter})).status, 404);
+    const env = {DB:adapter,CALL_SIGNALING_ENABLED:"1"};
+    assert.deepEqual((await (await handleRequest(preference(), env)).json()).data, {enabled:true,revision:1});
+    const stale = await start("before-unavailable");
+    assert.equal((await handleRequest(preference("?enabled=0&revision=1", "POST"), env)).status, 200);
+    assert.equal((await start("while-unavailable")).kind, "denied");
+    assert.equal((await handleRequest(preference("?enabled=1&revision=2", "POST"), env)).status, 200);
+    assert.equal(await claimPrivateCallDispatch(adapter, caller, stale.invitationId, "signal-worker", now), null);
+    const second = await start("other-signal-key");
+    assert.equal((await ownPrivateCallSignal(adapter, caller, second.invitationId,
+      undefined, now + 90_000)).phase, "missed");
+    assert.equal(await ownPrivateCallSignal(adapter, worker, second.invitationId,
+      "accept", now + 90_000), null);
+    await purgeExpiredPrivateInvitations(adapter, now + 300_000);
+    await purgeExpiredPrivateInvitations(adapter, now + 300_000);
+    assert.deepEqual({...db.prepare("SELECT direction,outcome,connected_seconds FROM call_history WHERE id=?")
+      .get(second.invitationId)}, {direction:"outgoing",outcome:"missed",connected_seconds:0});
+    assert.equal(db.prepare("SELECT count(*) AS total FROM call_history WHERE account_id='signal-worker'")
+      .get().total, 1, "an unseen invitation adds no receiver history");
+    db.exec("DELETE FROM accounts WHERE id='signal-worker'");
+    assert.equal(db.prepare("SELECT count(*) AS total FROM call_history WHERE account_id='signal-worker'")
+      .get().total, 0);
   } finally {
     db.close();
   }

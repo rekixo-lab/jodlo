@@ -1,3 +1,77 @@
+## 2026-11-08 — Call history recording and account release preparation
+
+The independently verified 2026-11-05 Worker baseline remains in [Current State](CURRENT_STATE.md).
+
+**Done locally.** Terminal call signaling now writes private per-account history in the same D1 transaction. An expired ring records a missed call for the caller and records the receiver only if that receiver acknowledged it. No media duration is inferred from signaling. The native Account tab reads paged history with a current-session fence. Account erasure cascades to that owner's records.
+
+**Release.** Apply migration `0023` before enabling call history. The release requires the hourly retention trigger, exact-head checks and authenticated device verification. See [Manual Actions](MANUAL_ACTIONS.md). Firebase sender onboarding, real call proof and payment onboarding remain separate.
+
+## 2026-11-08 — Samsung device smoke and branding restoration
+
+The independently verified 2026-11-05 Worker baseline remains in [Current State](CURRENT_STATE.md).
+
+**Done.** The call branch had diverged before branding commit `06b7c5b`. Its original Android and web assets and layout changes were restored into the working tree alongside the new call code. The merged APK was installed in place on a Samsung Galaxy A71 and cold-launched successfully.
+
+**Evidence.** On the same screen and device, top-tab text moved from y=34 to y=125 below the status bar. The original logo rendered in Home and the APK declared the original adaptive launcher icon. Public smoke verified the English `electric` query, Hindi Group-to-Family navigation, the manual Raipur filter and the empty live Services feed. Android build, web help test, design and documentation checks passed.
+
+**Signed-in device checks.** Google sign-in worked after the owner selected the account. The Account summary loaded and the existing Worker draft read as active. The blocked contacts screen could not confirm a server response. The live API health returned 200 and the unauthenticated block-list probe returned 404.
+
+**Pending.** The public feed had no eligible live service to open. Publish/detail, live blocks and call history, payment, and full two-device calling were not verified. Calling still requires the FCM sender bindings and a controlled release.
+
+## 2026-11-08 — Approved native call screens
+
+The independently verified 2026-11-05 Worker baseline remains in [Current State](CURRENT_STATE.md).
+
+**Done.** After seeing the preview, the founder authorized implementation with design discretion. The Agora-enabled build opens a call from a verified service detail, opens an incoming invitation from a verified FCM notification, and offers microphone permission, answer, decline, cancel, mute and hangup. A call is shown as connected only after the Agora adapter reports both participants. The Account screen offers a separate private availability switch. An earlier invitation cannot ring or grant audio after the Worker changes availability.
+
+**Evidence.** The Agora and FCM Android debug APK, Kotlin contracts, all 73 API test files, local workerd+D1 smoke, Worker dry-run, TypeScript, design and documentation checks passed.
+
+**Pending.** Production calling remains off. End-to-end device verification needs the Firebase sender bindings and a controlled release. Android requires its live in-memory session to authenticate a notification. The current call screen ends active media when the Activity moves into the background. See [Manual Actions](MANUAL_ACTIONS.md).
+
+## 2026-11-08 — Android Agora voice adapter and call design preview
+
+The independently verified 2026-11-05 Worker baseline remains in [Current State](CURRENT_STATE.md).
+
+**Done.** The Android verification build can opt into the Agora voice SDK. The adapter checks microphone permission, joins with the accepted invitation's participant grant, tracks peer connection and reconnect callbacks, renews only with a fresh session grant, and leaves the channel on hangup. A three-screen visual preview was shown for approval.
+
+**Evidence.** The debug APK built with both Agora and FCM enabled. All 73 API test files, TypeScript, design and documentation checks passed.
+
+**Provider setup.** Wrangler confirmed that `AGORA_APP_CERTIFICATE` exists by name on `jodlo-api`. It also confirmed both Firebase sender secret names were absent. The Worker defaults to `jodlo-2027` and accepts either multiline PEM or the escaped newlines from the service account JSON. See [Manual Actions](MANUAL_ACTIONS.md).
+
+**Pending at this checkpoint.** Preview approval and screen wiring were outstanding at this checkpoint. Controlled two-device verification depends on the Firebase sender setup and the release checks. Calling remains disabled in production.
+
+## 2026-11-08 — Agora audio grants for controlled verification
+
+**Done.** The JODLO Agora App ID is wired to the Cloudflare issuer. The existing accepted invitation now records its answering session. The release-gated media route uses the official Agora AccessToken2 library to grant join and audio privileges for at most 60 seconds to the exact calling or answering session. The issuer checks both sessions, current Worker consent, listing eligibility and both block directions before every grant. Android Core has the matching private client and validates the response for the requested invitation.
+
+**Evidence.** Local tests decode the token with the Agora library, verify its signature and audio-only privileges, and reject another session on the same account, a third party and a finished call. All 73 API test files, Kotlin contracts, Worker dry-run bundling, local D1 migrations and the local workerd HTTP smoke passed.
+
+**Pending.** The certificate binding is confirmed by name. Android RTC engine integration, renewal/reconnect, two-device checks and release gates remain outstanding. The invitation lifetime is a bound for controlled verification and does not set product minutes or billing.
+
+## 2026-11-08 — Private call signaling and Android receipt
+
+**Done.** The release-gated API connects existing invitation limits and FCM dispatch to participant-only call status and actions. D1 checks the active sessions, current consent revision, publication, availability, blocks, dispatch slot and ring deadline before a Worker can acknowledge or accept. The caller can cancel and either participant can end an accepted invitation. Android has typed clients for these endpoints. A Firebase-enabled build can ask permission after Worker opt-in, register or rotate the address and acknowledge a current invitation before posting a private, expiring system notification.
+
+**Evidence.** Local SQLite covers unauthorized participants, the dispatched state, notification acknowledgment, consent, acceptance, replay, hangup and the ring deadline. All 73 API test files passed. Kotlin contracts, the FCM debug APK, TypeScript, design and documentation checks, and the Worker dry-run build passed. Production gates remain disabled.
+
+**Pending.** The in-memory Android session supports background delivery only while its process and session survive. A killed process cannot authenticate a ring. The notification opens JODLO. The full call screen, Agora media authorization, audio reconnect and real two-device verification remain outstanding. See [Manual Actions](MANUAL_ACTIONS.md).
+
+## 2026-11-08 — Session-bound call device registration
+
+**Done.** Migration `0021` and the private `/api/v1/me/call-device` route bind an FCM address to a current signed-in session with explicit Worker call consent. Rotation replaces the session's previous address. Worker opt-out or session deletion removes the binding. Expired bindings are eligible for scheduled cleanup.
+
+**Evidence.** Local SQLite route coverage verifies default-off access, registration and rotation, cross-account isolation, removal, opt-out and session deletion.
+
+**Next action.** Android must register after notification permission, remove its binding when notifications are disabled, and confirm the current invitation under the recipient's session before ringing. The registration route stays release-disabled until migration and integration checks pass. See [Manual Actions](MANUAL_ACTIONS.md).
+
+## 2026-11-08 — Android FCM build setup
+
+**Done.** The local Android configuration matches Firebase project `jodlo-2027` and package `com.rekixo.jodlo`. Android builds can opt in to the Messaging SDK with `-PjodloEnableFcm=true`. Messaging auto-initialization and Firebase Analytics collection are disabled. The downloaded file stays local.
+
+**Evidence.** The local FCM-enabled Android debug APK assembled successfully, including the Google Services resource generation task. Documentation checks passed.
+
+**Pending.** Add session-bound device registration and removal, then handle incoming messages and verify the current call before displaying a ring. The Cloudflare sender still needs its production identity. See [Manual Actions](MANUAL_ACTIONS.md).
+
 ## 2026-11-08 — Private FCM ring transport
 
 **Done.** The internal ring sender resolves the destination through a trusted device lookup and claims the current invitation's dispatch slot just before sending. It sends a high-priority data message scoped to the JODLO Android package, with a TTL bounded by the ring deadline. A provider acceptance and an unconfirmed transport result are distinct.

@@ -23,6 +23,7 @@ class ApiCall private constructor(
     val resource: String,
     private val bearer: String? = null,
     private val json: String? = null,
+    private val idempotencyKey: String? = null,
 ) {
     init {
         require(resource.startsWith("/api/v1/") && !resource.contains('#') &&
@@ -35,6 +36,7 @@ class ApiCall private constructor(
         put("Accept", "application/json")
         if (json != null) put("Content-Type", "application/json")
         if (bearer != null) put("Authorization", "Bearer $bearer")
+        if (idempotencyKey != null) put("Idempotency-Key", idempotencyKey)
     }
     fun bodyUtf8(): ByteArray? = json?.toByteArray(StandardCharsets.UTF_8)
     override fun toString(): String =
@@ -46,7 +48,11 @@ class ApiCall private constructor(
         fun getOwned(path: String, bearer: String): ApiCall = ApiCall(HttpMethod.GET, path, bearer)
         fun post(path: String, bearer: String, body: String? = null): ApiCall =
             ApiCall(HttpMethod.POST, path, bearer, body)
-        fun put(path: String, bearer: String, body: String): ApiCall =
+        internal fun callInvitation(path: String, bearer: String, attemptKey: String): ApiCall {
+            require(Regex("[A-Za-z0-9_-]{12,80}").matches(attemptKey))
+            return ApiCall(HttpMethod.POST, path, bearer, idempotencyKey = attemptKey)
+        }
+        fun put(path: String, bearer: String, body: String? = null): ApiCall =
             ApiCall(HttpMethod.PUT, path, bearer, body)
         fun delete(path: String, bearer: String): ApiCall =
             ApiCall(HttpMethod.DELETE, path, bearer)
@@ -349,13 +355,48 @@ object JodloRoutes {
     fun accountOverview(token: String): ApiCall =
         ApiCall.getOwned("/api/v1/me/overview", token)
 
-    fun callPreference(token: String): ApiCall =
-        ApiCall.getOwned("/api/v1/me/call-preference", token)
+    fun callDevice(token: String, registrationToken: String?): ApiCall {
+        val path = "/api/v1/me/call-device"
+        if (registrationToken == null) return ApiCall.delete(path, token)
+        require(registrationToken.length in 1..4096 && registrationToken.all { it in '!'..'~' })
+        return ApiCall.put(path, token, buildJsonObject {
+            put("registrationToken", JsonPrimitive(registrationToken))
+        }.toString())
+    }
 
-    fun changeCallPreference(token: String, enabled: Boolean, revision: Long): ApiCall {
+    fun startCall(token: String, listingId: String, attemptKey: String): ApiCall {
+        requireListingId(listingId)
+        return ApiCall.callInvitation("/api/v1/me/call-invitation?listingId=$listingId", token, attemptKey)
+    }
+
+    fun callHistory(token: String, after: String?): ApiCall {
+        if (after != null) requireListingId(after)
+        val path = "/api/v1/me/call-history"
+        return ApiCall.getOwned(if (after == null) path else "$path?after=$after", token)
+    }
+
+    fun callAudioGrant(token: String, id: String): ApiCall {
+        requireListingId(id)
+        return ApiCall.post("/api/v1/me/call-media?id=$id", token)
+    }
+
+    fun callSignal(token: String, id: String, action: CallAction? = null): ApiCall {
+        requireListingId(id)
+        val path = "/api/v1/me/call?id=$id"
+        return if (action == null) ApiCall.getOwned(path, token)
+        else ApiCall.put("$path&action=${action.wire}", token)
+    }
+
+    private fun callPreferencePath(availability: Boolean) =
+        if (availability) "/api/v1/me/call-availability" else "/api/v1/me/call-preference"
+
+    fun callPreference(token: String, availability: Boolean = false): ApiCall =
+        ApiCall.getOwned(callPreferencePath(availability), token)
+
+    fun changeCallPreference(token: String, enabled: Boolean, revision: Long, availability: Boolean = false): ApiCall {
         require(revision in 0 until 2147483647L)
         val value = if (enabled) 1 else 0
-        return ApiCall.post("/api/v1/me/call-preference?enabled=$value&revision=$revision", token)
+        return ApiCall.post("${callPreferencePath(availability)}?enabled=$value&revision=$revision", token)
     }
 
     /** Explicit owner data portability; carries bearer in header only.

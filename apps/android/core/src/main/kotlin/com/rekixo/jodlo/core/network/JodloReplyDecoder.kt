@@ -723,6 +723,71 @@ object JodloReplyDecoder {
         true
     }
 
+    fun callDevice(reply: TransportReply): ApiOutcome<Boolean> = decode(reply) { data ->
+        data.keysOnly(setOf("registered"))
+        data.required("registered").bool()
+    }
+
+    private fun callDeadline(data: JsonObject): Long {
+        val value = data.required("ringDeadlineMs") as? JsonPrimitive ?: bad()
+        return value.content.toLongOrNull()?.takeIf { !value.isString && it > 0 } ?: bad()
+    }
+
+    fun callInvitation(reply: TransportReply): ApiOutcome<CallInvitation> = decode(reply) { data ->
+        data.keysOnly(setOf("id", "ringDeadlineMs"))
+        val id = data.required("id").str()
+        if (!Regex("[A-Za-z0-9_-]{8,128}").matches(id)) bad()
+        CallInvitation(id, callDeadline(data))
+    }
+
+    fun callHistory(reply: TransportReply): ApiOutcome<CallHistoryPage> = decode(reply) { data ->
+        data.keysOnly(setOf("items", "nextCursor"))
+        val items = data.required("items") as? JsonArray ?: bad()
+        if (items.size > 25) bad()
+        val ids = mutableSetOf<String>()
+        val entries = items.map { item ->
+            val row = item as? JsonObject ?: bad()
+            row.keysOnly(setOf("id", "direction", "outcome", "endedAt", "connectedSeconds"))
+            val id = row.required("id").str()
+            val direction = row.required("direction").str()
+            val outcome = CallHistoryOutcome.entries.firstOrNull {
+                it.wire == row.required("outcome").str()
+            } ?: bad()
+            val endedAt = (row.required("endedAt") as? JsonPrimitive)?.takeUnless { it.isString }
+                ?.content?.toLongOrNull() ?: bad()
+            val duration = row.required("connectedSeconds").number()
+            if (!Regex("[A-Za-z0-9_-]{8,128}").matches(id) || !ids.add(id) ||
+                direction !in setOf("incoming", "outgoing") || endedAt !in 1..253402300799L ||
+                duration < 0 || (outcome != CallHistoryOutcome.ENDED && duration != 0)
+            ) bad()
+            CallHistoryEntry(id, direction == "incoming", outcome, endedAt)
+        }
+        val cursor = data.optionalString("nextCursor")
+        if (cursor != null && (entries.size != 25 || cursor != entries.last().id)) bad()
+        CallHistoryPage(entries, cursor)
+    }
+
+    fun callAudioGrant(reply: TransportReply, invitationId: String): ApiOutcome<CallAudioGrant> =
+        decode(reply) { data ->
+            data.keysOnly(setOf("appId", "channel", "uid", "token", "expiresInSeconds"))
+            val appId = data.required("appId").str()
+            val channel = data.required("channel").str()
+            val uid = data.required("uid").number()
+            val token = data.required("token").str()
+            val expires = data.required("expiresInSeconds").number()
+            if (!Regex("[a-fA-F0-9]{32}").matches(appId) || channel != "jodlo-$invitationId" ||
+                uid !in 1..2 || expires !in 1..60 || !Regex("007[A-Za-z0-9+/]{1,4093}={0,2}").matches(token)
+            ) bad()
+            CallAudioGrant(appId, channel, uid, token, expires)
+        }
+
+    fun callSignal(reply: TransportReply): ApiOutcome<CallSignal> = decode(reply) { data ->
+        data.keysOnly(setOf("role", "phase", "ringDeadlineMs"))
+        val role = CallRole.entries.firstOrNull { it.wire == data.required("role").str() } ?: bad()
+        val phase = CallPhase.entries.firstOrNull { it.wire == data.required("phase").str() } ?: bad()
+        CallSignal(role, phase, callDeadline(data))
+    }
+
     fun callPreference(reply: TransportReply): ApiOutcome<OwnCallPreference> = decode(reply) { data ->
         data.keysOnly(setOf("enabled", "revision"))
         val enabled = data.required("enabled").bool()

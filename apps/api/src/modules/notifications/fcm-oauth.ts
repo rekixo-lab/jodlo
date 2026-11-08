@@ -16,8 +16,9 @@ type FcmServiceAccount = Readonly<{
 export function createFcmAccessTokenSource(
   account: FcmServiceAccount, request: typeof fetch = fetch,
 ): () => Promise<string | null> {
+  const privateKey = account.privateKey.replaceAll("\\n", "\n");
   if (!/^[a-z0-9._-]+@[a-z0-9.-]+\.gserviceaccount\.com$/i.test(account.email) ||
-      !account.privateKey.startsWith("-----BEGIN PRIVATE KEY-----") ||
+      !privateKey.startsWith("-----BEGIN PRIVATE KEY-----") ||
       (account.keyId !== undefined && !/^[a-z0-9_-]{1,128}$/i.test(account.keyId))) {
     throw new Error("Invalid FCM service account configuration");
   }
@@ -27,7 +28,7 @@ export function createFcmAccessTokenSource(
 
   async function refresh(): Promise<string | null> {
     try {
-      const signingKey = await (key ??= importPKCS8(account.privateKey, "RS256"));
+      const signingKey = await (key ??= importPKCS8(privateKey, "RS256"));
       const now = Date.now();
       const issuedAt = Math.floor(now / 1000);
       const assertion = await new SignJWT({scope: MESSAGING_SCOPE})

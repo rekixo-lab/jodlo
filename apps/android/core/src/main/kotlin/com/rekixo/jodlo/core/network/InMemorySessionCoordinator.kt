@@ -512,18 +512,59 @@ class InMemorySessionCoordinator(
      * A response overtaken by logout, account replacement or a Worker write
      * cannot be accepted in the UI.
      */
-    fun callPreference(owner: AccountPrivateReadMarker): SessionResult<OwnCallPreference> = withSession(
-        call = { token -> performOnce(JodloRoutes.callPreference(token), authSender::send,
+    fun setCallDevice(owner: AccountPrivateReadMarker, registrationToken: String?): SessionResult<Boolean> =
+        withSession(
+            call = { token -> performOnce(JodloRoutes.callDevice(token, registrationToken), authSender::send,
+                JodloReplyDecoder::callDevice) },
+            update = { reply, _ -> outcome(reply) },
+            mutation = true, expectedOwner = owner,
+        )
+
+    fun startCall(owner: AccountPrivateReadMarker, listingId: String, attemptKey: String): SessionResult<CallInvitation> =
+        withSession(
+            call = { token -> performOnce(JodloRoutes.startCall(token, listingId, attemptKey), authSender::send,
+                JodloReplyDecoder::callInvitation) },
+            update = { reply, _ -> outcome(reply) },
+            mutation = true, expectedOwner = owner,
+        )
+
+    fun callHistory(owner: AccountPrivateReadMarker, after: String? = null): SessionResult<CallHistoryPage> =
+        withSession(
+            call = { token -> performOnce(JodloRoutes.callHistory(token, after), authSender::send,
+                JodloReplyDecoder::callHistory) },
+            update = { reply, _ -> outcome(reply) },
+            consistentRead = true, expectedOwner = owner,
+        )
+
+    fun callAudioGrant(owner: AccountPrivateReadMarker, id: String): SessionResult<CallAudioGrant> =
+        withSession(
+            call = { token -> performOnce(JodloRoutes.callAudioGrant(token, id), authSender::send) {
+                JodloReplyDecoder.callAudioGrant(it, id)
+            } },
+            update = { reply, _ -> outcome(reply) },
+            consistentRead = true, expectedOwner = owner,
+        )
+
+    fun callSignal(owner: AccountPrivateReadMarker, id: String, action: CallAction? = null): SessionResult<CallSignal> =
+        withSession(
+            call = { token -> performOnce(JodloRoutes.callSignal(token, id, action), authSender::send,
+                JodloReplyDecoder::callSignal) },
+            update = { reply, _ -> outcome(reply) },
+            mutation = action != null, consistentRead = action == null, expectedOwner = owner,
+        )
+
+    fun callPreference(owner: AccountPrivateReadMarker, availability: Boolean = false): SessionResult<OwnCallPreference> = withSession(
+        call = { token -> performOnce(JodloRoutes.callPreference(token, availability), authSender::send,
             JodloReplyDecoder::callPreference) },
         update = { reply, _ -> outcome(reply) },
         consistentRead = true, expectedOwner = owner,
     )
 
     fun changeCallPreference(
-        owner: AccountPrivateReadMarker, preference: OwnCallPreference,
+        owner: AccountPrivateReadMarker, preference: OwnCallPreference, availability: Boolean = false,
     ): SessionResult<OwnCallPreference> = withSession(
         call = { token -> performOnce(
-            JodloRoutes.changeCallPreference(token, !preference.enabled, preference.revision),
+            JodloRoutes.changeCallPreference(token, !preference.enabled, preference.revision, availability),
             authSender::send, JodloReplyDecoder::callPreference) },
         update = { reply, _ ->
             if (reply is ApiOutcome.Ok &&
