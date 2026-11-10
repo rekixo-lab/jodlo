@@ -144,6 +144,7 @@ internal object CallNotifications {
         }
     }
 
+    @Synchronized
     private fun showNotice(context: Context, wakeup: IncomingCallWakeup, verified: Boolean) {
         val remaining = wakeup.remainingMs(System.currentTimeMillis())
         if (remaining == 0L) return
@@ -163,7 +164,8 @@ internal object CallNotifications {
         }
         val open = PendingIntent.getActivity(context, 0, intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        manager.notify(NOTICE, Notification.Builder(context, CHANNEL)
+        try {
+            manager.notify(NOTICE, Notification.Builder(context, CHANNEL)
             .setSmallIcon(android.R.drawable.stat_sys_phone_call)
             .setContentTitle(context.getString(if (verified)
                 R.string.call_notification_title else R.string.call_wakeup_title))
@@ -176,6 +178,12 @@ internal object CallNotifications {
             .setAutoCancel(true)
             .setTimeoutAfter(remaining)
             .build())
+        } catch (failure: RuntimeException) {
+            // A permission/OS error must not poison the one-slot freshness
+            // gate: the next valid push may retry showing the notice.
+            noticeGate.clear()
+            throw failure
+        }
     }
 
     fun ring(context: Context, data: Map<String, String>) {
