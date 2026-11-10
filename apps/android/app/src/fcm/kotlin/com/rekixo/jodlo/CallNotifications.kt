@@ -12,6 +12,7 @@ import com.google.firebase.messaging.RemoteMessage
 import com.rekixo.jodlo.core.network.AccountPrivateReadMarker
 import com.rekixo.jodlo.core.network.CallAction
 import com.rekixo.jodlo.core.network.CallDeviceRegistrationGate
+import com.rekixo.jodlo.core.network.CallNotificationFreshnessGate
 import com.rekixo.jodlo.core.network.CallPhase
 import com.rekixo.jodlo.core.network.CallRole
 import com.rekixo.jodlo.core.network.InMemorySessionCoordinator
@@ -28,6 +29,7 @@ internal object CallNotifications {
     // The only cached push address is process-local, never disk-backed. Only
     // the single registration executor may inspect or mutate this gate.
     private val registered = CallDeviceRegistrationGate()
+    private val noticeGate = CallNotificationFreshnessGate()
 
     fun attach(session: InMemorySessionCoordinator?) {
         val previous = coordinator
@@ -47,11 +49,15 @@ internal object CallNotifications {
      * Session revocation / device row deletion remain server-owned. */
     fun clearLocal(context: Context) {
         manager(context).cancel(NOTICE)
+        noticeGate.clear()
         work.execute { registered.clear() }
     }
 
     fun preferenceChanged(context: Context, enabled: Boolean) {
-        if (!enabled) manager(context).cancel(NOTICE)
+        if (!enabled) {
+            manager(context).cancel(NOTICE)
+            noticeGate.clear()
+        }
         sync(context.applicationContext)
     }
 
@@ -97,11 +103,13 @@ internal object CallNotifications {
                     // Even a locally revoked, remote-uncertain session must
                     // never leave a former owner's incoming-call notice shown.
                     manager(app).cancel(NOTICE)
+                    noticeGate.clear()
                     registered.clear()
                     return@execute
                 }
                 if (!notificationsAllowed(app)) {
                     manager(app).cancel(NOTICE)
+                    noticeGate.clear()
                     unregisterIfNeeded(session, owner)
                     return@execute
                 }
@@ -112,6 +120,7 @@ internal object CallNotifications {
                 }
                 if (!preference.value.enabled) {
                     manager(app).cancel(NOTICE)
+                    noticeGate.clear()
                     unregisterIfNeeded(session, owner)
                     return@execute
                 }
@@ -144,6 +153,9 @@ internal object CallNotifications {
             CHANNEL, context.getString(R.string.call_notification_channel), NotificationManager.IMPORTANCE_HIGH,
         ))
         if (!notificationsAllowed(context)) return
+        // One PendingIntent slot: a delayed older FCM event must not replace
+        // a newer invitation's notification or downgrade verified status.
+        if (!noticeGate.accept(wakeup, verified, System.currentTimeMillis())) return
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra(INCOMING_CALL_EXTRA, wakeup.invitationId)
@@ -167,24 +179,31 @@ internal object CallNotifications {
     }
 
     fun ring(context: Context, data: Map<String, String>) {
-        val wakeup = IncomingCallWakeup.fromPush(
-            data["eventType"], data["eventId"], data["expiresAtMs"], System.currentTimeMillis(),
-        ) ?: return
-        if (!notificationsAllowed(context)) return
-        val session = coordinator
-        val owner = session?.accountPrivateReadMarker()
-        if (session == null || owner == null) {
-            // A restarted FCM service has no bearer. This generic prompt
-            // cannot ACK or join anything; the user must explicitly sign in.
-            showNotice(context, wakeup, verified = false)
-            return
+        // FirebaseMessagingService must not crash when Android permission is
+        // withdrawn, the private ACK network fails, or the event is malformed.
+        try {
+            val wakeup = IncomingCallWakeup.fromPush(
+                data["eventType"], data["eventId"], data["expiresAtMs"], System.currentTimeMillis(),
+            ) ?: return
+            if (!notificationsAllowed(context)) return
+            val session = coordinator
+            val owner = session?.accountPrivateReadMarker()
+            if (session == null || owner == null) {
+                // Process restart: no bearer. Only generic notification,
+                // followed by explicit Google sign-in + server-owned GET.
+                showNotice(context, wakeup, verified = false)
+                return
+            }
+            val signal = (session.callSignal(owner, wakeup.invitationId, CallAction.ACK)
+                as? SessionResult.Success)?.value ?: return
+            if (!wakeup.matchesAuthenticatedRing(signal, System.currentTimeMillis()) ||
+                coordinator !== session ||
+                session.accountPrivateReadMarker() != owner.copy(writeRevision = owner.writeRevision + 1)) return
+            showNotice(context, wakeup, verified = true)
+        } catch (_: Exception) {
+            // An outage or OS notification failure is never proof of a
+            // verified call. Never log FCM tokens, identity or call IDs.
         }
-        val signal = (session.callSignal(owner, wakeup.invitationId, CallAction.ACK)
-            as? SessionResult.Success)?.value ?: return
-        if (!wakeup.matchesAuthenticatedRing(signal, System.currentTimeMillis()) ||
-            coordinator !== session ||
-            session.accountPrivateReadMarker() != owner.copy(writeRevision = owner.writeRevision + 1)) return
-        showNotice(context, wakeup, verified = true)
     }
 }
 
