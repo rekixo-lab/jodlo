@@ -58,7 +58,7 @@ object CallHistoryTimeline {
         val earlier = if (requestedCursor == null) {
             emptyList()
         } else {
-            if (previous?.nextCursor != requestedCursor || previous.items.isEmpty() ||
+            if (previous == null || previous.nextCursor != requestedCursor || previous.items.isEmpty() ||
                 incoming.items.isEmpty()) return null
             previous.items
         }
