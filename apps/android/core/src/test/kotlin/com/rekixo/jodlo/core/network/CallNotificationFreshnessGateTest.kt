@@ -37,8 +37,7 @@ private fun testSameDeadlineOtherIdAndExpiry() {
     check(gate.accept(newer, verified = false, nowMs = NOW + 41_000))
 }
 
-fun main() {
+internal fun testCallNotificationFreshnessGate() {
     testNotificationOrderingAndVerification()
     testSameDeadlineOtherIdAndExpiry()
-    println("JODLO FCM notices: old/delayed push cannot replace newer pending call or downgrade verified ring")
 }
