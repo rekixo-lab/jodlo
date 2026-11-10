@@ -277,7 +277,7 @@ fun main() {
         val entries = rows.joinToString(",") {
             """{"id":"${it.id}","direction":"${if (it.incoming) "incoming" else "outgoing"}","outcome":"ended","endedAt":${it.endedAtSeconds},"connectedSeconds":5}"""
         }
-        val cursor = next?.let { """"$it"""" } ?: "null"
+        val cursor = next?.let { "\\"" + it + "\\"" } ?: "null"
         val response = JodloReplyDecoder.callHistory(TransportReply(200,
             envelope("""{"items":[$entries],"nextCursor":$cursor}""")))
         check(response is ApiOutcome.Ok)
