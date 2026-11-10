@@ -113,3 +113,40 @@ test("Optional FCM call-device registration is epoch-scoped, consent-safe and co
     assert.match(workflow,/synthetic-not-a-real-credential/);
     assert.match(ignored,/apps\/android\/app\/google-services\.json/);
 });
+
+
+test("Cold-start FCM wakeup stays generic until fresh same-owner server GET after Google reauthentication",()=>{
+    const main=read("apps/android/app/src/main/java/com/rekixo/jodlo/MainActivity.kt");
+    const fcm=read("apps/android/app/src/fcm/kotlin/com/rekixo/jodlo/CallNotifications.kt");
+    const gate=read("apps/android/core/src/main/kotlin/com/rekixo/jodlo/core/network/IncomingCallWakeup.kt");
+    const account=read("apps/android/app/src/main/java/com/rekixo/jodlo/AccountDashboard.kt");
+    const en=read("apps/android/app/src/main/res/values/strings.xml");
+    const hi=read("apps/android/app/src/main/res/values-hi/strings.xml");
+    assert.match(fcm,/IncomingCallWakeup\.fromPush\(/);
+    assert.match(fcm,/if \(session == null \|\| owner == null\) \{/);
+    assert.match(fcm,/showNotice\(context, wakeup, verified = false\)/);
+    assert.match(fcm,/if \(!wakeup\.matchesAuthenticatedRing\(signal, System\.currentTimeMillis\(\)\)/);
+    assert.match(fcm,/putExtra\(INCOMING_CALL_EXPIRY_EXTRA, wakeup\.expiresAtMs\)/);
+    assert.match(fcm,/\.setCategory\(if \(verified\) Notification\.CATEGORY_CALL else Notification\.CATEGORY_MESSAGE\)/);
+    assert.match(main,/IncomingCallWakeup\.fromIntent\(/);
+    assert.match(main,/intent\.removeExtra\(INCOMING_CALL_EXTRA\)/);
+    assert.match(main,/intent\.removeExtra\(INCOMING_CALL_EXPIRY_EXTRA\)/);
+    assert.match(main,/LaunchedEffect\(session, incomingCall, loginRevision\)/);
+    assert.match(main,/section = "account"/);
+    assert.match(main,/session\.callSignal\(owner, wakeup\.invitationId\)/);
+    assert.match(main,/session\.accountPrivateReadMarker\(\) == owner/);
+    assert.match(main,/wakeup\.matchesAuthenticatedRing\(status\.value, System\.currentTimeMillis\(\)\)/);
+    assert.match(main,/CallScreenRequest\.Incoming\(wakeup\.invitationId\)/);
+    assert.match(main,/onSignInSuccess = \{ loginRevision\+\+ \}/);
+    assert.match(account,/if \(result is SessionResult\.Success\) \{[\s\S]*?onSignInSuccess\(\)/);
+    assert.match(gate,/signal\.role == CallRole\.RECEIVER/);
+    assert.match(gate,/signal\.phase == CallPhase\.RINGING/);
+    assert.match(gate,/signal\.ringDeadlineMs == expiresAtMs/);
+    assert.match(gate,/MAX_RING_WINDOW_MS: Long = 90_000L/);
+    for(const xml of [en,hi])for(const key of [
+        "call_wakeup_title","call_wakeup_detail","call_wakeup_sign_in"
+    ])assert.match(xml,new RegExp('name="'+key+'"'));
+    assert.doesNotMatch(main,/rememberSaveable\s*\{\s*mutableStateOf<IncomingCallWakeup/);
+    assert.doesNotMatch(fcm,/SharedPreferences|DataStore|FileOutputStream|Log\./);
+    assert.doesNotMatch(fcm,/\.setContentText\([^\n]*(?:phone|callerName|displayName)/);
+});

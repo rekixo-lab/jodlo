@@ -15,6 +15,7 @@ import com.rekixo.jodlo.core.network.CallDeviceRegistrationGate
 import com.rekixo.jodlo.core.network.CallPhase
 import com.rekixo.jodlo.core.network.CallRole
 import com.rekixo.jodlo.core.network.InMemorySessionCoordinator
+import com.rekixo.jodlo.core.network.IncomingCallWakeup
 import com.rekixo.jodlo.core.network.SessionResult
 import java.util.concurrent.Executors
 
@@ -134,43 +135,56 @@ internal object CallNotifications {
         }
     }
 
-    fun ring(context: Context, data: Map<String, String>) {
-        if (data["eventType"] != "call_ring") return
-        val id = data["eventId"] ?: return
-        if (!CALL_INVITATION_ID.matches(id)) return
-        val expiry = data["expiresAtMs"]?.toLongOrNull() ?: return
-        if (expiry <= System.currentTimeMillis()) return
-        val session = coordinator ?: return
-        val owner = session.accountPrivateReadMarker() ?: return
-        if (!manager(context).areNotificationsEnabled()) return
-        val signal = (session.callSignal(owner, id, CallAction.ACK) as? SessionResult.Success)?.value ?: return
-        val remaining = expiry - System.currentTimeMillis()
-        if (signal.role != CallRole.RECEIVER || signal.phase != CallPhase.RINGING ||
-            signal.ringDeadlineMs != expiry || remaining !in 1..90_000 ||
-            coordinator !== session || session.accountPrivateReadMarker() != owner.copy(writeRevision = owner.writeRevision + 1)
-        ) return
-
+    private fun showNotice(context: Context, wakeup: IncomingCallWakeup, verified: Boolean) {
+        val remaining = wakeup.remainingMs(System.currentTimeMillis())
+        if (remaining == 0L) return
         val manager = manager(context)
         if (!manager.areNotificationsEnabled()) return
         manager.createNotificationChannel(NotificationChannel(
             CHANNEL, context.getString(R.string.call_notification_channel), NotificationManager.IMPORTANCE_HIGH,
         ))
+        if (!notificationsAllowed(context)) return
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-            putExtra(INCOMING_CALL_EXTRA, id)
+            putExtra(INCOMING_CALL_EXTRA, wakeup.invitationId)
+            putExtra(INCOMING_CALL_EXPIRY_EXTRA, wakeup.expiresAtMs)
         }
         val open = PendingIntent.getActivity(context, 0, intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         manager.notify(NOTICE, Notification.Builder(context, CHANNEL)
             .setSmallIcon(android.R.drawable.stat_sys_phone_call)
-            .setContentTitle(context.getString(R.string.call_notification_title))
+            .setContentTitle(context.getString(if (verified)
+                R.string.call_notification_title else R.string.call_wakeup_title))
+            .setContentText(context.getString(if (verified)
+                R.string.call_notification_title else R.string.call_wakeup_detail))
             .setVisibility(Notification.VISIBILITY_PRIVATE)
-            .setCategory(Notification.CATEGORY_CALL)
+            .setCategory(if (verified) Notification.CATEGORY_CALL else Notification.CATEGORY_MESSAGE)
             .setOnlyAlertOnce(true)
             .setContentIntent(open)
             .setAutoCancel(true)
             .setTimeoutAfter(remaining)
             .build())
+    }
+
+    fun ring(context: Context, data: Map<String, String>) {
+        val wakeup = IncomingCallWakeup.fromPush(
+            data["eventType"], data["eventId"], data["expiresAtMs"], System.currentTimeMillis(),
+        ) ?: return
+        if (!notificationsAllowed(context)) return
+        val session = coordinator
+        val owner = session?.accountPrivateReadMarker()
+        if (session == null || owner == null) {
+            // A restarted FCM service has no bearer. This generic prompt
+            // cannot ACK or join anything; the user must explicitly sign in.
+            showNotice(context, wakeup, verified = false)
+            return
+        }
+        val signal = (session.callSignal(owner, wakeup.invitationId, CallAction.ACK)
+            as? SessionResult.Success)?.value ?: return
+        if (!wakeup.matchesAuthenticatedRing(signal, System.currentTimeMillis()) ||
+            coordinator !== session ||
+            session.accountPrivateReadMarker() != owner.copy(writeRevision = owner.writeRevision + 1)) return
+        showNotice(context, wakeup, verified = true)
     }
 }
 

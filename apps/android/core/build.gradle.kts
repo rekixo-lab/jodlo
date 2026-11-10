@@ -46,6 +46,14 @@ tasks.register<JavaExec>("verifyRepositories") {
     mainClass.set("com.rekixo.jodlo.core.network.JodloRepositoryTestKt")
 }
 
+tasks.register<JavaExec>("verifyIncomingWakeup") {
+    group = "verification"
+    description = "Verify bounded FCM cold-start reference and server-confirmed call admission"
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.rekixo.jodlo.core.network.IncomingCallWakeupTestKt")
+}
+
 tasks.register<JavaExec>("verifySessions") {
     group = "verification"
     description = "Compile and run nonvisual in-memory session and worker state tests"

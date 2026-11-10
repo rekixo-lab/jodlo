@@ -482,6 +482,9 @@
     <string name="case_appeal_send">अपील भेजें</string>
     <string name="call_notification_channel">आने वाली कॉल</string>
     <string name="call_notification_title">JODLO पर कॉल आ रही है</string>
+    <string name="call_wakeup_title">JODLO की कॉल जाँचें</string>
+    <string name="call_wakeup_detail">कॉल उपलब्ध है या नहीं, यह जानने के लिए JODLO खोलकर साइन इन करें।</string>
+    <string name="call_wakeup_sign_in">हाल की कॉल जाँचने के लिए साइन इन करें। सर्वर की पुष्टि से पहले कॉल स्वीकार नहीं की जाएगी।</string>
     <string name="call_start">कॉल करें</string>
     <string name="call_answer">उठाएँ</string>
     <string name="call_decline">ठुकराएँ</string>

@@ -57,6 +57,7 @@ internal fun AccountDashboard(
     activity: ComponentActivity,
     session: InMemorySessionCoordinator?,
     openHelp: () -> Unit,
+    onSignInSuccess: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     var login by remember(session) {
@@ -185,6 +186,7 @@ internal fun AccountDashboard(
                 // Register a device only after fresh server-owned worker consent.
                 CallNotifications.clearLocal(activity.applicationContext)
                 CallNotifications.sync(activity.applicationContext)
+                onSignInSuccess()
             }
             notice = if (result is SessionResult.Success) R.string.account_login_success
                 else R.string.account_login_failed

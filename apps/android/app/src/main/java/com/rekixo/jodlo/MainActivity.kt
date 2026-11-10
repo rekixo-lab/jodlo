@@ -48,6 +48,8 @@ import com.rekixo.jodlo.core.network.CustomerSuggestionView
 import com.rekixo.jodlo.core.network.HeadlessWorkerWriteScope
 import com.rekixo.jodlo.core.network.HttpsTransport
 import com.rekixo.jodlo.core.network.InMemorySessionCoordinator
+import com.rekixo.jodlo.core.network.IncomingCallWakeup
+import com.rekixo.jodlo.core.network.SessionResult
 import com.rekixo.jodlo.core.network.NearbyPilotCity
 import com.rekixo.jodlo.core.network.Language
 import com.rekixo.jodlo.core.network.PublicCategory
@@ -85,11 +87,17 @@ private data class HomeCategorySelection(
 
 /** Native app entrypoint; Google sign-in is attempted only with explicit configuration. */
 class MainActivity : ComponentActivity() {
-    private val incomingCall = MutableStateFlow<String?>(null)
+    private val incomingCall = MutableStateFlow<IncomingCallWakeup?>(null)
 
     private fun readIncomingCall(intent: Intent) {
-        incomingCall.value = intent.getStringExtra(INCOMING_CALL_EXTRA)?.takeIf(CALL_INVITATION_ID::matches)
+        val expiry = if (intent.hasExtra(INCOMING_CALL_EXPIRY_EXTRA))
+            intent.getLongExtra(INCOMING_CALL_EXPIRY_EXTRA, 0) else null
+        incomingCall.value = IncomingCallWakeup.fromIntent(
+            intent.getStringExtra(INCOMING_CALL_EXTRA), expiry, System.currentTimeMillis(),
+        )
+        // Do not persist invitation references in task history or saved state.
         intent.removeExtra(INCOMING_CALL_EXTRA)
+        intent.removeExtra(INCOMING_CALL_EXPIRY_EXTRA)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -119,7 +127,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun JodloApp(activity: ComponentActivity, incomingCall: String?, clearIncoming: () -> Unit) {
+private fun JodloApp(activity: ComponentActivity, incomingCall: IncomingCallWakeup?, clearIncoming: () -> Unit) {
     val sender = remember {
         BuildConfig.API_ORIGIN.takeIf { it.isNotBlank() }?.let {
             HttpsTransport(it).asRequestSender()
@@ -137,17 +145,44 @@ private fun JodloApp(activity: ComponentActivity, incomingCall: String?, clearIn
     val session = remember(sender) {
         sender?.let { InMemorySessionCoordinator(RemoteWorkerRepository(it), it) }
     }
+    var section by rememberSaveable { mutableStateOf("home") }
+    var loginRevision by remember { mutableIntStateOf(0) }
+    var wakeupNotice by remember { mutableStateOf<Int?>(null) }
     var callScreen by remember(session) { mutableStateOf<CallScreenRequest?>(null) }
     val onCall: ((String) -> Unit)? = if (BuildConfig.AGORA_ENABLED && session != null && !debugPreview) {
         { id -> if (callScreen == null) callScreen = CallScreenRequest.Outgoing(id) }
     } else null
-    LaunchedEffect(session, incomingCall) {
-        if (incomingCall != null) {
-            if (BuildConfig.AGORA_ENABLED && session != null && callScreen == null) {
-                callScreen = CallScreenRequest.Incoming(incomingCall)
-            }
+    // An FCM event and exported Activity extras are unverified. In a newly
+    // started process, show Account first: never ACK/accept/join on a push.
+    // After explicit Google sign-in, GET the current owner's exact call state.
+    LaunchedEffect(session, incomingCall, loginRevision) {
+        val wakeup = incomingCall ?: return@LaunchedEffect
+        if (wakeup.remainingMs(System.currentTimeMillis()) == 0L ||
+            !BuildConfig.AGORA_ENABLED || session == null) {
+            wakeupNotice = R.string.call_unavailable
             clearIncoming()
+            return@LaunchedEffect
         }
+        val owner = session.accountPrivateReadMarker()
+        if (owner == null) {
+            section = "account"
+            return@LaunchedEffect
+        }
+        val status = try {
+            withContext(Dispatchers.IO) { session.callSignal(owner, wakeup.invitationId) }
+        } catch (_: Exception) {
+            null
+        }
+        if (session.accountPrivateReadMarker() == owner &&
+            status is SessionResult.Success &&
+            wakeup.matchesAuthenticatedRing(status.value, System.currentTimeMillis()) &&
+            callScreen == null) {
+            callScreen = CallScreenRequest.Incoming(wakeup.invitationId)
+            wakeupNotice = null
+        } else {
+            wakeupNotice = R.string.call_unavailable
+        }
+        clearIncoming()
     }
     if (session != null) callScreen?.let { CallScreen(activity, it, session) { callScreen = null } }
 
@@ -228,13 +263,26 @@ private fun JodloApp(activity: ComponentActivity, incomingCall: String?, clearIn
         onDispose { writes?.close() }
     }
     var homeCategory by remember { mutableStateOf<HomeCategorySelection?>(null) }
-    var section by rememberSaveable { mutableStateOf("home") }
     var discoveryCity by remember { mutableStateOf<NearbyPilotCity?>(null) }
     Column(
         Modifier.fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .safeDrawingPadding(),
     ) {
+        if (incomingCall != null && section == "account") {
+            Text(
+                stringResource(R.string.call_wakeup_sign_in),
+                modifier = Modifier.padding(horizontal = JodloSizes.ScreenPadding),
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+        }
+        wakeupNotice?.let { notice ->
+            Text(
+                stringResource(notice),
+                modifier = Modifier.padding(horizontal = JodloSizes.ScreenPadding),
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+        }
         Row(
             Modifier.fillMaxWidth()
                 .horizontalScroll(rememberScrollState())
@@ -399,7 +447,10 @@ private fun JodloApp(activity: ComponentActivity, incomingCall: String?, clearIn
                     onAccount = { section = "account" },
                     onWorker = { section = "worker" },
                 )
-                else -> AccountDashboard(activity, session, openHelp = { section = "help" })
+                else -> AccountDashboard(
+                    activity, session, openHelp = { section = "help" },
+                    onSignInSuccess = { loginRevision++ },
+                )
             }
         }
     }
