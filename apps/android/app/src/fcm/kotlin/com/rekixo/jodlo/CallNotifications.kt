@@ -18,12 +18,25 @@ import com.rekixo.jodlo.core.network.CallRole
 import com.rekixo.jodlo.core.network.InMemorySessionCoordinator
 import com.rekixo.jodlo.core.network.IncomingCallWakeup
 import com.rekixo.jodlo.core.network.SessionResult
+import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 
 internal object CallNotifications {
     private const val CHANNEL = "incoming_calls"
     private const val NOTICE = 1
     private val work = Executors.newSingleThreadExecutor()
+    // Do not perform authenticated HTTPS ACK in FirebaseMessagingService's
+    // short onMessageReceived callback. Keep a separate, bounded FIFO for
+    // rings so slow server I/O cannot grow an unbounded push backlog or block
+    // call-device registration/consent updates on the existing executor.
+    private val ringWork = ThreadPoolExecutor(
+        1, 1, 0L, TimeUnit.MILLISECONDS, ArrayBlockingQueue<Runnable>(2),
+        { task -> Thread(task, "jodlo-fcm-ring-ack").apply { isDaemon = true } },
+        ThreadPoolExecutor.AbortPolicy(),
+    )
     @Volatile private var coordinator: InMemorySessionCoordinator? = null
 
     // The only cached push address is process-local, never disk-backed. Only
@@ -234,13 +247,35 @@ internal object CallNotifications {
                 showNotice(context, wakeup, verified = false, session, expectedMarker = null)
                 return
             }
-            val signal = (session.callSignal(owner, wakeup.invitationId, CallAction.ACK)
-                as? SessionResult.Success)?.value ?: return
-            if (!wakeup.matchesAuthenticatedRing(signal, System.currentTimeMillis()) ||
-                coordinator !== session ||
-                session.accountPrivateReadMarker() != owner.copy(writeRevision = owner.writeRevision + 1)) return
-            showNotice(context, wakeup, verified = true, session,
-                expectedMarker = owner.copy(writeRevision = owner.writeRevision + 1))
+            // A signed-in call requires server-owned ACK. Never make that
+            // blocking HTTPS request on the Firebase callback thread.
+            // A queue saturated by slow requests fails closed: no fake ring
+            // and no implicit retry of the mutation.
+            try {
+                ringWork.execute {
+                    try {
+                        if (wakeup.remainingMs(System.currentTimeMillis()) == 0L ||
+                            coordinator !== session ||
+                            session.accountPrivateReadMarker() != owner ||
+                            !notificationsAllowed(context)) return@execute
+                        val signal = (session.callSignal(owner, wakeup.invitationId, CallAction.ACK)
+                            as? SessionResult.Success)?.value ?: return@execute
+                        if (!wakeup.matchesAuthenticatedRing(signal, System.currentTimeMillis()) ||
+                            coordinator !== session ||
+                            session.accountPrivateReadMarker() != owner.copy(writeRevision = owner.writeRevision + 1)) {
+                            return@execute
+                        }
+                        showNotice(context, wakeup, verified = true, session,
+                            expectedMarker = owner.copy(writeRevision = owner.writeRevision + 1))
+                    } catch (_: Exception) {
+                        // The server might have committed an ACK even when
+                        // its reply is lost. Do not claim verified delivery.
+                    }
+                }
+            } catch (_: RejectedExecutionException) {
+                // Bounded queue full: fail closed instead of blocking FCM
+                // callback or retaining unbounded old call events.
+            }
         } catch (_: Exception) {
             // An outage or OS notification failure is never proof of a
             // verified call. Never log FCM tokens, identity or call IDs.

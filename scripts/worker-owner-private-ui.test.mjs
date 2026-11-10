@@ -220,3 +220,25 @@ test("FCM logout/opt-out notice cancellation is atomic with owner-fenced display
     assert.match(fcm,/expectedMarker = owner\.copy\(writeRevision = owner\.writeRevision \+ 1\)/);
     assert.doesNotMatch(fcm,/SharedPreferences|DataStore|FileOutputStream|Log\./);
 });
+
+
+test("FCM callback never blocks on HTTPS ACK and bounds stale-call work separately from device consent",()=>{
+    const fcm=read("apps/android/app/src/fcm/kotlin/com/rekixo/jodlo/CallNotifications.kt");
+    const transport=read("apps/android/core/src/main/kotlin/com/rekixo/jodlo/core/network/JodloApiCore.kt");
+    assert.match(fcm,/private val ringWork = ThreadPoolExecutor\(/);
+    assert.match(fcm,/1, 1, 0L, TimeUnit\.MILLISECONDS, ArrayBlockingQueue<Runnable>\(2\)/);
+    assert.match(fcm,/ThreadPoolExecutor\.AbortPolicy\(\)/);
+    assert.match(fcm,/private val work = Executors\.newSingleThreadExecutor\(\)/);
+    assert.match(fcm,/fun ring\(context: Context, data: Map<String, String>\)/);
+    assert.match(fcm,/ringWork\.execute \{[\s\S]*?session\.callSignal\(owner, wakeup\.invitationId, CallAction\.ACK\)/);
+    assert.match(fcm,/catch \(_: RejectedExecutionException\) \{/);
+    assert.match(fcm,/wakeup\.remainingMs\(System\.currentTimeMillis\(\)\) == 0L/);
+    assert.match(fcm,/session\.accountPrivateReadMarker\(\) != owner/);
+    assert.match(fcm,/!notificationsAllowed\(context\)\) return@execute/);
+    assert.match(fcm,/session\.accountPrivateReadMarker\(\) != owner\.copy\(writeRevision = owner\.writeRevision \+ 1\)/);
+    assert.match(fcm,/showNotice\(context, wakeup, verified = false, session, expectedMarker = null\)/);
+    assert.match(fcm,/showNotice\(context, wakeup, verified = true, session,/);
+    assert.match(fcm,/override fun onMessageReceived\(message: RemoteMessage\) = CallNotifications\.ring/);
+    assert.match(transport,/check\(Thread\.currentThread\(\)\.name != "main"\)/);
+    assert.doesNotMatch(fcm,/SharedPreferences|DataStore|FileOutputStream|Log\./);
+});
