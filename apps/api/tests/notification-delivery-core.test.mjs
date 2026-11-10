@@ -262,6 +262,28 @@ test("a late device lookup resolution after FCM deadline cannot dispatch a push"
   assert.equal(sends,0,"late server lookup must never issue a second send");
 });
 
+test("FCM callback deadline fence closes after send return and prevents delayed mutations",async()=>{
+  let releaseLookup;
+  let lateWrites=0,providerPosts=0;
+  const pending=new Promise(resolve=>{releaseLookup=resolve;});
+  const provider=createFcmProvider({
+    projectId:"jodlo-test", now:()=>NOW, timeoutMs:60,
+    accessToken:async()=>"synthetic-oauth-token",
+    resolveDestination:async(_event,mayContinue)=>{
+      await pending;
+      if (!mayContinue()) return null;
+      lateWrites++;
+      return "synthetic-device-token";
+    },
+    request:async()=>{providerPosts++;return new Response("{}",{status:200});},
+  });
+  assert.equal(await provider.send({...job,eventType:"call_ring"}),"transient");
+  releaseLookup();
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(lateWrites,0,"expired resolver may not start mutation after provider returned");
+  assert.equal(providerPosts,0,"expired resolver may not issue a Firebase POST");
+});
+
 test("an FCM mock that ignores AbortSignal is bounded and cannot fake acceptance",async()=>{
   let sends=0;
   const provider=createFcmProvider({

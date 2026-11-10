@@ -12,6 +12,8 @@ type RingDependencies = Readonly<{
   resolveReachableDevice(receiverId: string): Promise<ReachableDevice | null>;
   request?: typeof fetch;
   now?: () => number;
+  /** Test-only smaller budget; live uses the provider's fixed 5-second cap. */
+  timeoutMs?: number;
 }>;
 
 const READ_RING_TARGET = `
@@ -44,13 +46,20 @@ export async function sendPrivateCallRing(
     accessToken: deps.accessToken,
     request: deps.request,
     now,
-    async resolveDestination() {
+    timeoutMs: deps.timeoutMs,
+    async resolveDestination(_job, mayContinue) {
       const device = await deps.resolveReachableDevice(target.receiverId);
+      // A prior provider timeout may have already returned to Customer;
+      // never let the old device lookup claim the Worker's D1 ring slot.
+      if (!mayContinue()) return null;
       if (!device || device.accountId !== target.receiverId ||
           !validFcmRegistrationToken(device.registrationToken)) return null;
       const slot = await claimPrivateCallDispatch(db, callerBearer, invitationId, device.accountId, now());
       if (!slot || slot.ringDeadlineMs !== target.ringDeadlineMs) return null;
       claimed = true;
+      // The D1 claim itself may take longer than the provider budget.
+      // Do not initiate a late Firebase POST after it finishes.
+      if (!mayContinue()) return null;
       return device.registrationToken;
     },
   });
