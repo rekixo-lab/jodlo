@@ -150,3 +150,27 @@ test("Cold-start FCM wakeup stays generic until fresh same-owner server GET afte
     assert.doesNotMatch(fcm,/SharedPreferences|DataStore|FileOutputStream|Log\./);
     assert.doesNotMatch(fcm,/\.setContentText\([^\n]*(?:phone|callerName|displayName)/);
 });
+
+
+test("FCM single notification refuses delayed older call and catches provider/permission exceptions",()=>{
+    const fcm=read("apps/android/app/src/fcm/kotlin/com/rekixo/jodlo/CallNotifications.kt");
+    const gate=read("apps/android/core/src/main/kotlin/com/rekixo/jodlo/core/network/CallNotificationFreshnessGate.kt");
+    const test=read("apps/android/core/src/test/kotlin/com/rekixo/jodlo/core/network/CallNotificationFreshnessGateTest.kt");
+    const runner=read("apps/android/core/src/test/kotlin/com/rekixo/jodlo/core/network/IncomingCallWakeupTest.kt");
+    assert.match(fcm,/val noticeGate = CallNotificationFreshnessGate\(\)/);
+    assert.match(fcm,/@Synchronized\s+private fun showNotice/);
+    assert.match(fcm,/catch \(failure: RuntimeException\) \{[\s\S]*?noticeGate\.clear\(\)/);
+    assert.match(fcm,/if \(!noticeGate\.accept\(wakeup, verified, System\.currentTimeMillis\(\)\)\) return/);
+    assert.match(fcm,/fun clearLocal\(context: Context\) \{[\s\S]*?noticeGate\.clear\(\)/);
+    assert.match(fcm,/if \(!enabled\) \{[\s\S]*?noticeGate\.clear\(\)/);
+    assert.match(fcm,/fun ring\(context: Context, data: Map<String, String>\) \{\s*\/\/[^\n]*\n[\s\S]*?try \{/);
+    assert.match(fcm,/session\.callSignal\(owner, wakeup\.invitationId, CallAction\.ACK\)/);
+    assert.match(fcm,/catch \(_: Exception\) \{\s*\/\//);
+    assert.match(gate,/@Synchronized\s+fun accept/);
+    assert.match(gate,/wakeup\.expiresAtMs <= previous\.expiresAtMs/);
+    assert.match(gate,/previous\.serverVerified \|\| !verified/);
+    assert.match(gate,/override fun toString\(\) = "CallNotificationFreshnessGate\(<redacted>\)"/);
+    assert.match(test,/check\(!gate\.accept\(first, verified = true, nowMs = NOW \+ 6\)\)/);
+    assert.match(runner,/testCallNotificationFreshnessGate\(\)/);
+    assert.doesNotMatch(fcm,/Log\.|SharedPreferences|FileOutputStream/);
+});
