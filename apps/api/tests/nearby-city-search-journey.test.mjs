@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import worker from "../src/index.ts";
 import { openLocalDatabase } from "./helpers/local-db.mjs";
+import { issueSession } from "../src/modules/identity/sessions.ts";
 
 /** Actual HTTP Worker router and all D1 migrations with synthetic owners.
  * No real users, Cloudflare deployment, Google, FCM or Agora connection.
@@ -10,9 +11,9 @@ import { openLocalDatabase } from "./helpers/local-db.mjs";
  */
 const origin = "https://jodlo.test";
 const owners = [
-  ["fixture-raipur-plumber", "owner-raipur", "cat-plumber", "raipur"],
-  ["fixture-bilaspur-plumber", "owner-bilaspur", "cat-plumber", "bilaspur"],
-  ["fixture-raipur-electrician", "owner-electric", "cat-electrician", "raipur"],
+  ["owner-raipur", "cat-plumber", "raipur"],
+  ["owner-bilaspur", "cat-plumber", "bilaspur"],
+  ["owner-electric", "cat-electrician", "raipur"],
 ];
 function fixture() {
   const { db, adapter } = openLocalDatabase();
@@ -22,11 +23,10 @@ function fixture() {
       .run(id, id, plumber ? "Plumbing" : "Electrician",
         plumber ? "प्लंबिंग" : "इलेक्ट्रीशियन", plumber ? 10 : 20);
   }
-  for (const [,account] of owners) db.prepare("INSERT INTO accounts(id) VALUES(?)").run(account);
-  const env = {DB:adapter, AUTH:{async verify(token) {
-    const row = owners.find(([t]) => t === token);
-    return row ? {accountId:row[1]} : null;
-  }}};
+  for (const [account] of owners) db.prepare("INSERT INTO accounts(id) VALUES(?)").run(account);
+  // Use real, expiring D1-backed synthetic session tokens, not a lenient
+  // AUTH fixture: Service Area correctly rejects fake/short bearer strings.
+  const env = {DB:adapter};
   async function send(path, {method="GET",token=null,body}={}) {
     const response = await worker.fetch(new Request(origin + "/api/v1/" + path, {
       method,
@@ -38,14 +38,17 @@ function fixture() {
     }),env);
     return {status:response.status, payload:await response.json()};
   }
-  return {db,send};
+  return {db,adapter,send};
 }
 
 test("Worker publish -> Category Search -> explicit city+trade selection -> reviewed public detail", async () => {
   const f=fixture();
   try {
     const byCity={};
-    for (const [token,,category,city] of owners) {
+    for (const [account,category,city] of owners) {
+      const issued=await issueSession(f.adapter, account);
+      assert.ok(issued && issued.accessToken.length===43);
+      const token=issued.accessToken;
       assert.equal((await f.send("me/worker-profile",{method:"POST",token})).status,200);
       const created=await f.send("me/listings",{method:"POST",token,body:{categoryId:category}});
       assert.equal(created.status,200);
@@ -110,7 +113,7 @@ test("Worker publish -> Category Search -> explicit city+trade selection -> revi
     }
     const blob=JSON.stringify(raipur.payload);
     for(const secret of ["owner-raipur","owner-bilaspur","owner-electric",
-      "fixture-raipur-plumber","moderation_status","worker_account_id","phone","latitude"]) {
+      "moderation_status","worker_account_id","phone","latitude"]) {
       assert.equal(blob.includes(secret),false,secret);
     }
   } finally { f.db.close(); }
