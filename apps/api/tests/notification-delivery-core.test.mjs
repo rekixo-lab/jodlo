@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { openLocalDatabase } from "./helpers/local-db.mjs";
+import {createFcmProvider} from "../src/modules/notifications/fcm-provider.ts";
 import { makeD1NotificationReceiptStore } from "../src/modules/notifications/d1-receipts.ts";
 import {
   deliverNotificationMessage, MAX_NOTIFICATION_ATTEMPTS,
@@ -221,4 +222,62 @@ test("bounded retry backoff is deterministic and never trusts a payload counter"
   assert.equal(notificationRetryDelaySeconds(5),80);
   assert.equal(notificationRetryDelaySeconds(100000),300);
   assert.equal(notificationRetryDelaySeconds(-1),5);
+});
+
+
+test("FCM OAuth and trusted device lookup share a bounded budget, even if either hangs", async()=>{
+  const never = new Promise(()=>{});
+  const event={...job,eventType:"call_ring"};
+  for(const blocked of ["oauth","destination"]){
+    let lookups=0,sends=0;
+    const provider=createFcmProvider({
+      projectId:"jodlo-test",now:()=>NOW,timeoutMs:70,
+      accessToken:async()=>blocked==="oauth"?await never:"synthetic-oauth-token",
+      resolveDestination:async()=>{lookups++;return blocked==="destination"?await never:"synthetic-device-token";},
+      request:async()=>{sends++;return new Response("{}",{status:200});},
+    });
+    const started=performance.now();
+    assert.equal(await provider.send(event),"transient");
+    assert.ok(performance.now()-started<1800,"hung preflight cannot hold call open indefinitely");
+    assert.equal(lookups,blocked==="oauth"?0:1);
+    assert.equal(sends,0,"no Firebase POST after the expired provider budget");
+  }
+});
+
+test("a late device lookup resolution after FCM deadline cannot dispatch a push",async()=>{
+  let resolveDevice;
+  let sends=0;
+  const waiting=new Promise(resolve=>{resolveDevice=resolve;});
+  const provider=createFcmProvider({
+    projectId:"jodlo-test",now:()=>NOW,timeoutMs:50,
+    accessToken:async()=>"synthetic-oauth-token",
+    resolveDestination:async()=>waiting,
+    request:async()=>{sends++;return new Response("{}",{status:200});},
+  });
+  assert.equal(await provider.send({...job,eventType:"call_ring"}),"transient");
+  resolveDevice("synthetic-device-token");
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(sends,0,"late server lookup must never issue a second send");
+});
+
+test("an FCM mock that ignores AbortSignal is bounded and cannot fake acceptance",async()=>{
+  let sends=0;
+  const provider=createFcmProvider({
+    projectId:"jodlo-test",now:()=>NOW,timeoutMs:50,
+    accessToken:async()=>"synthetic-oauth-token",
+    resolveDestination:async()=>"synthetic-device-token",
+    request:async()=>{sends++;return new Promise(()=>{});},
+  });
+  assert.equal(await provider.send({...job,eventType:"call_ring"}),"transient");
+  assert.equal(sends,1);
+});
+
+test("FCM test timeout cannot exceed the production limit or be non-finite",()=>{
+  const deps={
+    projectId:"jodlo-test", accessToken:async()=>"synthetic-oauth-token",
+    resolveDestination:async()=>"synthetic-device-token",
+  };
+  for(const timeoutMs of [0,-1,1.5,Infinity,NOTIFICATION_PROVIDER_TIMEOUT_MS+1]){
+    assert.throws(()=>createFcmProvider({...deps,timeoutMs}),/Invalid FCM provider deadline/);
+  }
 });
