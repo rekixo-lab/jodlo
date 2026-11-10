@@ -40,6 +40,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.rekixo.jodlo.core.network.CallAction
+import com.rekixo.jodlo.core.network.CallAcceptRecovery
 import com.rekixo.jodlo.core.network.CallEndProtocol
 import com.rekixo.jodlo.core.network.CallPhase
 import com.rekixo.jodlo.core.network.CallRole
@@ -103,6 +104,9 @@ internal fun CallScreen(
     // A lost POST response is NOT proof an invitation or termination failed.
     // Keep the original idempotency key; never auto-repeat a mutation.
     var dialUncertain by remember(request) { mutableStateOf(false) }
+    // ACCEPT may commit on the server even if the HTTP response is lost.
+    // Do not start RTC, silently retry ACCEPT, or claim it was rejected.
+    var acceptUncertain by remember(request) { mutableStateOf(false) }
     var ending by remember(request) { mutableStateOf<CallAction?>(null) }
     var reviewLocalClose by remember(request) { mutableStateOf(false) }
 
@@ -125,7 +129,11 @@ internal fun CallScreen(
         }
         if (owner == null) {
             if (session.accountExportSessionMarker() != epoch) close()
-            else error = if (terminalRequest) R.string.call_end_unconfirmed else R.string.call_unavailable
+            else {
+                if (!terminalRequest) acceptUncertain = true
+                error = if (terminalRequest) R.string.call_end_unconfirmed
+                    else R.string.call_accept_unconfirmed
+            }
             return
         }
         busy = true
@@ -150,17 +158,71 @@ internal fun CallScreen(
                         }
                         error = R.string.call_end_unconfirmed
                     }
-                } else if (confirmed != null) {
-                    phase = confirmed.phase
+                } else if (confirmed != null && CallAcceptRecovery.confirmed(confirmed)) {
+                    acceptUncertain = false
+                    phase = CallPhase.ACCEPTED
                 } else {
-                    error = R.string.call_unavailable
+                    // A failed/mismatched ACCEPT response is uncertain; only
+                    // a fresh authenticated GET may establish actual state.
+                    acceptUncertain = true
+                    error = R.string.call_accept_unconfirmed
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
                 if (session.accountExportSessionMarker() == epoch) {
-                    error = if (terminalRequest) R.string.call_end_unconfirmed else R.string.call_unavailable
+                    if (!terminalRequest) acceptUncertain = true
+                    error = if (terminalRequest) R.string.call_end_unconfirmed
+                        else R.string.call_accept_unconfirmed
                 }
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    fun checkAcceptance() {
+        val id = invitationId ?: return
+        val owner = session.accountPrivateReadMarker()?.takeIf { it.sessionGeneration == epoch }
+        if (!acceptUncertain || busy || owner == null) return
+        busy = true
+        scope.launch {
+            try {
+                // No hidden second ACCEPT. The exact server-owned invitation
+                // is read without mutating it, under this same owner marker.
+                val result = withContext(Dispatchers.IO) { session.callSignal(owner, id) }
+                if (session.accountExportSessionMarker() != epoch) {
+                    audio.close()
+                    close()
+                    return@launch
+                }
+                val signal = (result as? SessionResult.Success)?.value
+                    ?.takeIf { session.accountPrivateReadMarker() == owner }
+                when {
+                    signal != null && CallAcceptRecovery.confirmed(signal) -> {
+                        phase = CallPhase.ACCEPTED
+                        acceptUncertain = false
+                        error = null
+                    }
+                    signal != null && CallAcceptRecovery.canAnswer(signal, System.currentTimeMillis()) -> {
+                        // The server explicitly still reports RINGING. A new
+                        // tap on Answer is an *explicit* retry, not automatic.
+                        setRingDeadline(signal.ringDeadlineMs)
+                        phase = CallPhase.RINGING
+                        acceptUncertain = false
+                        error = null
+                    }
+                    signal != null && CallEndProtocol.isConfirmed(CallRole.RECEIVER, signal) -> {
+                        phase = signal.phase
+                        acceptUncertain = false
+                        error = null
+                    }
+                    else -> error = R.string.call_accept_unconfirmed
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                error = R.string.call_accept_unconfirmed
             } finally {
                 busy = false
             }
@@ -264,7 +326,7 @@ internal fun CallScreen(
             reviewLocalClose = false
             return
         }
-        if (ending != null || (invitationId == null && dialUncertain)) {
+        if (ending != null || acceptUncertain || (invitationId == null && dialUncertain)) {
             reviewLocalClose = true
             return
         }
@@ -323,7 +385,7 @@ internal fun CallScreen(
                     }
                 }
             }
-            if (!busy && phase != CallPhase.ACCEPTED && phase !in terminalPhases &&
+            if (!busy && !acceptUncertain && phase != CallPhase.ACCEPTED && phase !in terminalPhases &&
                 ringUntil?.let { SystemClock.elapsedRealtime() >= it } == true) {
                 phase = CallPhase.MISSED
             }
@@ -353,6 +415,7 @@ internal fun CallScreen(
         reviewLocalClose -> R.string.call_close_warning
         ending != null && busy -> R.string.call_ending
         ending != null -> R.string.call_end_unconfirmed
+        acceptUncertain -> R.string.call_accept_unconfirmed
         dialUncertain && invitationId == null && busy -> R.string.call_connecting
         dialUncertain && invitationId == null -> R.string.call_dial_unconfirmed
         else -> error ?: when (phase) {
@@ -410,6 +473,16 @@ internal fun CallScreen(
                     JodloTextAction(onClick = { ending?.let(::send) },
                         modifier = Modifier.fillMaxWidth(), enabled = !busy) {
                         Text(stringResource(R.string.call_retry_end))
+                    }
+                    JodloTextAction(onClick = { reviewLocalClose = true },
+                        modifier = Modifier.fillMaxWidth(), enabled = !busy) {
+                        Text(stringResource(R.string.call_close_local))
+                    }
+                }
+                acceptUncertain -> {
+                    JodloButton(onClick = ::checkAcceptance,
+                        modifier = Modifier.fillMaxWidth(), enabled = !busy) {
+                        Text(stringResource(R.string.call_check_accept))
                     }
                     JodloTextAction(onClick = { reviewLocalClose = true },
                         modifier = Modifier.fillMaxWidth(), enabled = !busy) {
