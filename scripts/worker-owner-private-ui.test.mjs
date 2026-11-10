@@ -124,7 +124,7 @@ test("Cold-start FCM wakeup stays generic until fresh same-owner server GET afte
     const hi=read("apps/android/app/src/main/res/values-hi/strings.xml");
     assert.match(fcm,/IncomingCallWakeup\.fromPush\(/);
     assert.match(fcm,/if \(session == null \|\| owner == null\) \{/);
-    assert.match(fcm,/showNotice\(context, wakeup, verified = false\)/);
+    assert.match(fcm,/showNotice\(context, wakeup, verified = false, session, expectedMarker = null\)/);
     assert.match(fcm,/if \(!wakeup\.matchesAuthenticatedRing\(signal, System\.currentTimeMillis\(\)\)/);
     assert.match(fcm,/putExtra\(INCOMING_CALL_EXPIRY_EXTRA, wakeup\.expiresAtMs\)/);
     assert.match(fcm,/\.setCategory\(if \(verified\) Notification\.CATEGORY_CALL else Notification\.CATEGORY_MESSAGE\)/);
@@ -161,8 +161,8 @@ test("FCM single notification refuses delayed older call and catches provider/pe
     assert.match(fcm,/@Synchronized\s+private fun showNotice/);
     assert.match(fcm,/catch \(failure: RuntimeException\) \{[\s\S]*?noticeGate\.clear\(\)/);
     assert.match(fcm,/if \(!noticeGate\.accept\(wakeup, verified, System\.currentTimeMillis\(\)\)\) return/);
-    assert.match(fcm,/fun clearLocal\(context: Context\) \{[\s\S]*?noticeGate\.clear\(\)/);
-    assert.match(fcm,/if \(!enabled\) \{[\s\S]*?noticeGate\.clear\(\)/);
+    assert.match(fcm,/fun clearLocal\(context: Context\) \{\s*cancelNotice\(context, suppressGeneric = true\)/);
+    assert.match(fcm,/if \(!enabled\) \{\s*cancelNotice\(context, suppressGeneric = true\)/);
     assert.match(fcm,/fun ring\(context: Context, data: Map<String, String>\) \{\s*\/\/[^\n]*\n[\s\S]*?try \{/);
     assert.match(fcm,/session\.callSignal\(owner, wakeup\.invitationId, CallAction\.ACK\)/);
     assert.match(fcm,/catch \(_: Exception\) \{\s*\/\//);
@@ -202,4 +202,21 @@ test("Receiver Answer response loss stays uncertain until explicit authenticated
     assert.match(kotlin,/answerPuts == 1 && reads == 1/);
     for(const xml of [en,hi])for(const name of ["call_accept_unconfirmed","call_check_accept"])
         assert.match(xml,new RegExp('name="'+name+'"'));
+});
+
+
+test("FCM logout/opt-out notice cancellation is atomic with owner-fenced display",()=>{
+    const fcm=read("apps/android/app/src/fcm/kotlin/com/rekixo/jodlo/CallNotifications.kt");
+    assert.match(fcm,/@Synchronized\s+private fun cancelNotice\(context: Context, suppressGeneric: Boolean\)/);
+    assert.match(fcm,/@Synchronized\s+private fun showNotice\(/);
+    assert.match(fcm,/suppressGenericNotice = true[\s\S]*?manager\(context\)\.cancel\(NOTICE\)[\s\S]*?noticeGate\.clear\(\)/);
+    assert.match(fcm,/fun clearLocal\(context: Context\) \{\s*cancelNotice\(context, suppressGeneric = true\)/);
+    assert.match(fcm,/if \(!enabled\) \{\s*cancelNotice\(context, suppressGeneric = true\)/);
+    assert.match(fcm,/if \(session == null \|\| owner == null\) \{[\s\S]*?showNotice\(context, wakeup, verified = false, session, expectedMarker = null\)/);
+    assert.match(fcm,/if \(coordinator !== expectedSession\) return/);
+    assert.match(fcm,/expectedSession\.accountPrivateReadMarker\(\) != expectedMarker\) return/);
+    assert.match(fcm,/if \(suppressGenericNotice \|\|[\s\S]*?expectedSession\?\.accountPrivateReadMarker\(\) != null\) return/);
+    assert.match(fcm,/allowGenericAfterCurrentConsent\(session, owner\)/);
+    assert.match(fcm,/expectedMarker = owner\.copy\(writeRevision = owner\.writeRevision \+ 1\)/);
+    assert.doesNotMatch(fcm,/SharedPreferences|DataStore|FileOutputStream|Log\./);
 });

@@ -30,6 +30,25 @@ internal object CallNotifications {
     // the single registration executor may inspect or mutate this gate.
     private val registered = CallDeviceRegistrationGate()
     private val noticeGate = CallNotificationFreshnessGate()
+    // Uses the SAME monitor as showNotice: old callbacks cannot republish a
+    // prior owner's alert after logout, erasure or explicit opt-out.
+    private var suppressGenericNotice = false
+
+    @Synchronized
+    private fun cancelNotice(context: Context, suppressGeneric: Boolean) {
+        if (suppressGeneric) suppressGenericNotice = true
+        manager(context).cancel(NOTICE)
+        noticeGate.clear()
+    }
+
+    @Synchronized
+    private fun allowGenericAfterCurrentConsent(
+        session: InMemorySessionCoordinator, owner: AccountPrivateReadMarker,
+    ) {
+        if (coordinator === session && session.accountPrivateReadMarker() == owner) {
+            suppressGenericNotice = false
+        }
+    }
 
     fun attach(session: InMemorySessionCoordinator?) {
         val previous = coordinator
@@ -48,15 +67,13 @@ internal object CallNotifications {
     /** Local-only disclosure clear on account replacement, logout or erasure.
      * Session revocation / device row deletion remain server-owned. */
     fun clearLocal(context: Context) {
-        manager(context).cancel(NOTICE)
-        noticeGate.clear()
+        cancelNotice(context, suppressGeneric = true)
         work.execute { registered.clear() }
     }
 
     fun preferenceChanged(context: Context, enabled: Boolean) {
         if (!enabled) {
-            manager(context).cancel(NOTICE)
-            noticeGate.clear()
+            cancelNotice(context, suppressGeneric = true)
         }
         sync(context.applicationContext)
     }
@@ -100,16 +117,16 @@ internal object CallNotifications {
                 val session = coordinator
                 val owner = session?.accountPrivateReadMarker()
                 if (session == null || owner == null) {
-                    // Even a locally revoked, remote-uncertain session must
-                    // never leave a former owner's incoming-call notice shown.
-                    manager(app).cancel(NOTICE)
-                    noticeGate.clear()
+                    // A fresh, unauthenticated process must still be able to
+                    // receive the generic FCM wakeup later. Do not *create*
+                    // opt-out state just because its memory session is empty.
+                    // Any earlier explicit logout/erasure suppression remains.
+                    cancelNotice(app, suppressGeneric = false)
                     registered.clear()
                     return@execute
                 }
                 if (!notificationsAllowed(app)) {
-                    manager(app).cancel(NOTICE)
-                    noticeGate.clear()
+                    cancelNotice(app, suppressGeneric = true)
                     unregisterIfNeeded(session, owner)
                     return@execute
                 }
@@ -119,11 +136,13 @@ internal object CallNotifications {
                     return@execute
                 }
                 if (!preference.value.enabled) {
-                    manager(app).cancel(NOTICE)
-                    noticeGate.clear()
+                    cancelNotice(app, suppressGeneric = true)
                     unregisterIfNeeded(session, owner)
                     return@execute
                 }
+                // Only a current, freshly confirmed opted-in Worker may
+                // lift process-local generic-notice suppression.
+                allowGenericAfterCurrentConsent(session, owner)
                 if (refreshedToken != null) {
                     registerFresh(app, session, owner.sessionGeneration, refreshedToken)
                 } else {
@@ -145,7 +164,20 @@ internal object CallNotifications {
     }
 
     @Synchronized
-    private fun showNotice(context: Context, wakeup: IncomingCallWakeup, verified: Boolean) {
+    private fun showNotice(
+        context: Context, wakeup: IncomingCallWakeup, verified: Boolean,
+        expectedSession: InMemorySessionCoordinator?,
+        expectedMarker: AccountPrivateReadMarker?,
+    ) {
+        // This monitor serializes the final owner check with cancelNotice().
+        if (coordinator !== expectedSession) return
+        if (verified) {
+            if (expectedSession == null || expectedMarker == null ||
+                expectedSession.accountPrivateReadMarker() != expectedMarker) return
+        } else {
+            if (suppressGenericNotice ||
+                expectedSession?.accountPrivateReadMarker() != null) return
+        }
         val remaining = wakeup.remainingMs(System.currentTimeMillis())
         if (remaining == 0L) return
         val manager = manager(context)
@@ -199,7 +231,7 @@ internal object CallNotifications {
             if (session == null || owner == null) {
                 // Process restart: no bearer. Only generic notification,
                 // followed by explicit Google sign-in + server-owned GET.
-                showNotice(context, wakeup, verified = false)
+                showNotice(context, wakeup, verified = false, session, expectedMarker = null)
                 return
             }
             val signal = (session.callSignal(owner, wakeup.invitationId, CallAction.ACK)
@@ -207,7 +239,8 @@ internal object CallNotifications {
             if (!wakeup.matchesAuthenticatedRing(signal, System.currentTimeMillis()) ||
                 coordinator !== session ||
                 session.accountPrivateReadMarker() != owner.copy(writeRevision = owner.writeRevision + 1)) return
-            showNotice(context, wakeup, verified = true)
+            showNotice(context, wakeup, verified = true, session,
+                expectedMarker = owner.copy(writeRevision = owner.writeRevision + 1))
         } catch (_: Exception) {
             // An outage or OS notification failure is never proof of a
             // verified call. Never log FCM tokens, identity or call IDs.
