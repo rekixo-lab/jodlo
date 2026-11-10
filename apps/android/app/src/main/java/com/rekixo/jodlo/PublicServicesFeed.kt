@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -27,6 +28,7 @@ import com.rekixo.jodlo.core.network.NearbyPilotCity
 import com.rekixo.jodlo.core.network.Language
 import com.rekixo.jodlo.core.network.CustomerServiceCard
 import com.rekixo.jodlo.core.network.PublicApprovedServiceDetail
+import com.rekixo.jodlo.core.network.PublicCategory
 import com.rekixo.jodlo.core.network.PublicListing
 import com.rekixo.jodlo.core.network.RemoteCatalogRepository
 import com.rekixo.jodlo.core.network.SavedPublicServices
@@ -34,6 +36,7 @@ import com.rekixo.jodlo.core.network.HiddenPublicServices
 import com.rekixo.jodlo.ui.theme.JodloButton
 import com.rekixo.jodlo.ui.theme.JodloChip
 import com.rekixo.jodlo.ui.theme.JodloSizes
+import com.rekixo.jodlo.ui.theme.JodloSearchField
 import com.rekixo.jodlo.ui.theme.JodloTextAction
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -79,6 +82,84 @@ internal fun PublicServicesFeed(
     var hidingFailure by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var revision by remember { mutableIntStateOf(0) }
+    // Only approved public Category labels are searched. A typed query is
+    // sent on explicit Search; the result is never a Worker/contact/nearby
+    // eligibility claim until the city-filtered public Listing GET succeeds.
+    var categoryQuery by remember { mutableStateOf("") }
+    var submittedCategoryQuery by remember { mutableStateOf<String?>(null) }
+    var matchedCategories by remember { mutableStateOf<List<PublicCategory>>(emptyList()) }
+    var matchedCursor by remember { mutableStateOf<String?>(null) }
+    var categorySearchReady by remember { mutableStateOf(false) }
+    var categorySearchBusy by remember { mutableStateOf(false) }
+    var categorySearchFailed by remember { mutableStateOf(false) }
+    var invalidCategoryQuery by remember { mutableStateOf(false) }
+    var categorySearchRevision by remember { mutableIntStateOf(0) }
+
+    fun clearCategorySearch() {
+        categorySearchRevision++
+        categorySearchBusy = false
+        submittedCategoryQuery = null
+        matchedCategories = emptyList()
+        matchedCursor = null
+        categorySearchReady = false
+        categorySearchFailed = false
+        invalidCategoryQuery = false
+    }
+
+    fun searchCategories(after: String? = null) {
+        if (busy || categorySearchBusy || selected != null) return
+        if (after != null && (after != matchedCursor || submittedCategoryQuery == null)) return
+        val query = if (after == null) categoryQuery.trim() else submittedCategoryQuery ?: return
+        if (query.codePointCount(0, query.length) !in 2..64 ||
+            query.any { Character.isISOControl(it) }) {
+            invalidCategoryQuery = true
+            return
+        }
+        val lang = language
+        val generation = ++categorySearchRevision
+        categorySearchBusy = true
+        categorySearchFailed = false
+        invalidCategoryQuery = false
+        if (after == null) {
+            matchedCategories = emptyList()
+            matchedCursor = null
+            categorySearchReady = false
+            submittedCategoryQuery = query
+        }
+        scope.launch {
+            // Category Search has NO city predicate. Only the subsequent
+            // listing request is scoped to an explicitly selected city.
+            val result = withContext(Dispatchers.IO) {
+                try { repository.searchCursor(query, lang, limit = 20, after = after) }
+                catch (cancelled: kotlin.coroutines.cancellation.CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    ApiOutcome.Failed(FailureKind.BAD_RESPONSE, false)
+                }
+            }
+            if (categorySearchRevision != generation || language != lang ||
+                selected != null) return@launch
+            categorySearchBusy = false
+            when (result) {
+                is ApiOutcome.Failed -> categorySearchFailed = true
+                is ApiOutcome.Ok -> {
+                    val page = result.value
+                    val seen = matchedCategories.mapTo(mutableSetOf()) { it.id }
+                    if ((after != null && page.categories.isEmpty()) ||
+                        page.categories.map { it.id }.toSet().size != page.categories.size ||
+                        page.categories.any { it.id in seen }) {
+                        matchedCursor = null
+                        categorySearchFailed = true
+                    } else {
+                        matchedCategories = if (after == null) page.categories
+                            else matchedCategories + page.categories
+                        matchedCursor = page.nextCursor
+                        categorySearchReady = true
+                    }
+                }
+            }
+        }
+    }
 
     fun leaveDetail() {
         revision++
@@ -90,7 +171,7 @@ internal fun PublicServicesFeed(
         busy = false
     }
     fun loadPage(after: String? = null) {
-        if (busy || selected != null) return
+        if (busy || categorySearchBusy || selected != null) return
         if (after != null && after != nextCursor) return
         val current = ++revision
         val lang = language
@@ -175,14 +256,23 @@ internal fun PublicServicesFeed(
     fun changeScope(nextLanguage: Language, nextCategory: String?) {
         if (language == nextLanguage && categoryFilter == nextCategory) return
         leaveDetail()
+        clearCategorySearch()
         if (language != nextLanguage) filterNames = emptyMap()
         language = nextLanguage
         categoryFilter = nextCategory
         loadPage()
     }
 
-    LaunchedEffect(repository) {
+    // A new city must NEVER display a prior city's Service cards. Explicit
+    // city selection is in-memory; old feed/search responses are invalidated.
+    LaunchedEffect(repository, city) {
         leaveDetail()
+        clearCategorySearch()
+        listings = emptyList()
+        categoryNames = emptyMap()
+        nextCursor = null
+        categoryFilter = null
+        filterNames = emptyMap()
         loadPage()
     }
     val selectedListing = selected
@@ -219,6 +309,73 @@ internal fun PublicServicesFeed(
                         label = { Text(stringResource(R.string.language_english)) })
                 }
             }
+            item {
+                JodloSearchField(
+                    value = categoryQuery,
+                    onValueChange = {
+                        if (it.length <= 160) {
+                            categoryQuery = it
+                            invalidCategoryQuery = false
+                        }
+                    },
+                    label = { Text(stringResource(R.string.search_label)) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (invalidCategoryQuery) {
+                    Text(stringResource(R.string.search_validation),
+                        color = MaterialTheme.colorScheme.error)
+                }
+                JodloButton(
+                    onClick = { searchCategories() },
+                    enabled = !busy && !categorySearchBusy,
+                ) { Text(stringResource(R.string.search_action)) }
+                // This is just a Category result set. Choosing a Category
+                // triggers a new server-filtered city+category feed; a global
+                // search match alone does NOT claim any nearby Worker exists.
+                if (categorySearchReady) {
+                    Text(stringResource(R.string.search_query_caption,
+                        submittedCategoryQuery.orEmpty()))
+                    JodloTextAction(onClick = { clearCategorySearch() },
+                        enabled = !busy && !categorySearchBusy) {
+                        Text(stringResource(R.string.feed_all_categories))
+                    }
+                }
+            }
+            if (matchedCategories.isNotEmpty()) item {
+                Text(stringResource(R.string.choose_category),
+                    style = MaterialTheme.typography.titleSmall)
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
+                    items(matchedCategories, key = { "city-search-" + it.id }) { category ->
+                        JodloChip(
+                            selected = categoryFilter == category.id,
+                            enabled = !busy && !categorySearchBusy,
+                            onClick = {
+                                filterNames = filterNames + (category.id to category.name)
+                                changeScope(language, category.id)
+                            },
+                            label = { Text(category.name) },
+                        )
+                    }
+                }
+            }
+            if (categorySearchReady && matchedCategories.isEmpty()) item {
+                Text(stringResource(R.string.empty_catalog))
+            }
+            if (matchedCursor != null) item {
+                JodloTextAction(onClick = { searchCategories(matchedCursor) },
+                    enabled = !busy && !categorySearchBusy) {
+                    Text(stringResource(R.string.customer_more_categories))
+                }
+            }
+            if (categorySearchFailed) item {
+                Text(stringResource(R.string.request_failed),
+                    color = MaterialTheme.colorScheme.error)
+                JodloTextAction(onClick = { searchCategories(matchedCursor) },
+                    enabled = !busy && !categorySearchBusy) {
+                    Text(stringResource(R.string.retry_action))
+                }
+            }
+            if (categorySearchBusy) item { CircularProgressIndicator() }
             if (filterNames.isNotEmpty()) item {
                 Text(stringResource(R.string.feed_quick_filters),
                     style = MaterialTheme.typography.titleSmall)
