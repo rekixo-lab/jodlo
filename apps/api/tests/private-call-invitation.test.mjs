@@ -155,7 +155,34 @@ test("private invitation commits with quota, deduplicates retries and rolls back
     assert.equal(await sendPrivateCallRing(adapter, secondToken, uncertain.invitationId,
       uncertainDeps), "not_sent");
 
-    await purgeExpiredPrivateInvitations(adapter, uncertainAt + 300_000);
+    // A device lookup may keep running in another promise after the provider
+    // deadline returns. That OLD callback must not reserve a receiver slot,
+    // because doing so would strand the next otherwise valid call.
+    const delayedAt = uncertainAt + 90_000;
+    const delayed = await preparePrivateCallInvitation(adapter, secondToken, alternate,
+      "late-device-timeout-key", delayedAt);
+    assert.equal(delayed.kind, "created");
+    let releaseLookup;
+    const lookupWait = new Promise(resolve => {releaseLookup = resolve;});
+    let delayedPosts = 0;
+    const delayedDeps = {
+      ...deps, now:() => delayedAt, timeoutMs:60,
+      resolveReachableDevice:async () => await lookupWait,
+      request:async () => {delayedPosts++; return new Response("{}",{status:200});},
+    };
+    assert.equal(await sendPrivateCallRing(adapter, secondToken, delayed.invitationId,
+      delayedDeps), "not_sent");
+    releaseLookup({accountId:receiver,registrationToken:"synthetic-device-token"});
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(db.prepare("SELECT count(*) AS n FROM private_call_dispatch_slots WHERE invitation_id=?")
+      .get(delayed.invitationId).n, 0,
+      "timed-out FCM destination lookup must not claim a D1 dispatch slot later");
+    assert.equal(delayedPosts, 0, "no Firebase send after the provider timeout");
+    assert.equal(await sendPrivateCallRing(adapter, secondToken, delayed.invitationId,
+      {...deps, now:() => delayedAt}), "provider_accepted",
+      "a fresh valid call attempt can still claim and send exactly once");
+
+    await purgeExpiredPrivateInvitations(adapter, delayedAt + 300_000);
     assert.equal(rows(), 0);
     assert.equal(db.prepare("SELECT count(*) AS count FROM private_call_dispatch_slots").get().count, 0);
   } finally {
