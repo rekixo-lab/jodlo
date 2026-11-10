@@ -264,5 +264,51 @@ fun main() {
             "\"inboundBlockerIds\":[],\"limitations\":["),
     )) rejects(envelope(badExport),parse=JodloReplyDecoder::accountDataExport)
 
+    // Actual Account Call History "More" must append, not replace the first
+    // 25 rows; network error, stale cursor, duplicate and reordered results
+    // must leave the last valid private page on the screen.
+    fun historyEntry(n: Int): CallHistoryEntry = CallHistoryEntry(
+        "00000000-0000-4000-8000-" + n.toString().padStart(12, '0'),
+        incoming = n % 2 == 0,
+        outcome = CallHistoryOutcome.ENDED,
+        endedAtSeconds = 2_000_000_000L - n,
+    )
+    fun decodedHistory(rows: List<CallHistoryEntry>, next: String?): CallHistoryPage {
+        val entries = rows.joinToString(",") {
+            """{"id":"${it.id}","direction":"${if (it.incoming) "incoming" else "outgoing"}","outcome":"ended","endedAt":${it.endedAtSeconds},"connectedSeconds":5}"""
+        }
+        val cursor = next?.let { """"$it"""" } ?: "null"
+        val response = JodloReplyDecoder.callHistory(TransportReply(200,
+            envelope("""{"items":[$entries],"nextCursor":$cursor}""")))
+        check(response is ApiOutcome.Ok)
+        return response.value
+    }
+    val firstHistory = decodedHistory((1..25).map(::historyEntry), historyEntry(25).id)
+    val olderHistory = decodedHistory((26..30).map(::historyEntry), null)
+    val firstTimeline = CallHistoryTimeline.merge(null, null, firstHistory)
+    eq(firstTimeline, firstHistory)
+    val fullTimeline = CallHistoryTimeline.merge(firstTimeline, firstHistory.nextCursor, olderHistory)
+    eq(fullTimeline, CallHistoryPage((1..30).map(::historyEntry), null))
+    eq(CallHistoryTimeline.merge(firstTimeline, "wrong-cursor", olderHistory), null)
+    eq(CallHistoryTimeline.merge(null, firstHistory.nextCursor, olderHistory), null)
+    eq(CallHistoryTimeline.merge(firstTimeline, firstHistory.nextCursor,
+        CallHistoryPage(emptyList(), null)), null)
+    eq(CallHistoryTimeline.merge(firstTimeline, firstHistory.nextCursor,
+        CallHistoryPage(listOf(historyEntry(25)) + (27..30).map(::historyEntry), null)), null)
+    eq(CallHistoryTimeline.merge(firstTimeline, firstHistory.nextCursor,
+        CallHistoryPage(olderHistory.items.reversed(), null)), null)
+    eq(CallHistoryTimeline.merge(null, null,
+        CallHistoryPage(firstHistory.items, "incorrect-last-row")), null)
+    eq(CallHistoryTimeline.merge(null, null,
+        CallHistoryPage((1..26).map(::historyEntry), null)), null)
+    // Explicit refresh starts fresh rather than mixing old and new result sets.
+    eq(CallHistoryTimeline.merge(fullTimeline, null,
+        decodedHistory(listOf(historyEntry(1)), null)),
+        CallHistoryPage(listOf(historyEntry(1)), null))
+    for (badHistory in listOf(
+        """{"items":[],"nextCursor":"fake"}""",
+        """{"items":[{"id":"${historyEntry(1).id}","direction":"outgoing","outcome":"ended","endedAt":1999999999,"connectedSeconds":1,"phone":"private"}],"nextCursor":null}""",
+    )) rejects(envelope(badHistory),parse=JodloReplyDecoder::callHistory)
+
     println("JODLO Kotlin reply decoder: typed pages, explicit choices, listing privacy and one-shot network safety OK")
 }
