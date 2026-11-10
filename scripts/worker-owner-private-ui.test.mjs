@@ -31,3 +31,21 @@ test("Unconfirmed publication stays unconfirmed across Hindi/English owner views
     ])assert.match(xml,new RegExp('name="'+key+'"'));
     assert.doesNotMatch(ui,/else R\.string\.worker_management_published/);
 });
+
+
+test("Account Call History keeps cursor pages together and never installs stale/private replies",()=>{
+    const ui=read("apps/android/app/src/main/java/com/rekixo/jodlo/CallHistorySection.kt");
+    const merge=read("apps/android/core/src/main/kotlin/com/rekixo/jodlo/core/network/CallSignal.kt");
+    assert.match(ui,/remember\(session, marker\)/);
+    assert.match(ui,/loaded\?\.takeIf\s*\{\s*it\.first == marker\s*\}/);
+    assert.match(ui,/earlier\.nextCursor != after/);
+    assert.match(ui,/CallHistoryTimeline\.merge\(earlier, after, reply\.value\)/);
+    assert.match(ui,/session\.accountPrivateReadMarker\(\) == owner/);
+    assert.match(ui,/if \(combined != null\) loaded = owner to combined else failed = true/);
+    assert.match(ui,/catch \(_:\s*Exception\)/);
+    assert.match(ui,/page\?\.let\s*\{\s*page\s*->/);
+    assert.match(merge,/object CallHistoryTimeline/);
+    assert.match(merge,/previous\.nextCursor != requestedCursor/);
+    assert.match(merge,/!ids\.add\(item\.id\)/);
+    assert.doesNotMatch(ui,/result\s*=\s*page\.value/);
+});
