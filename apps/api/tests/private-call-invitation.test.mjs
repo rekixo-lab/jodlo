@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { issueSession } from "../src/modules/identity/sessions.ts";
+import { issueSession, sessionHash } from "../src/modules/identity/sessions.ts";
 import { ownPrivateCallSignal } from "../src/modules/interactions/private-call-signaling.ts";
 import { claimPrivateCallDispatch } from "../src/modules/interactions/private-call-dispatch.ts";
 import { sendPrivateCallRing } from "../src/modules/interactions/private-call-ring.ts";
@@ -190,6 +190,26 @@ test("call device registration requires a current opted-in session and removes t
     assert.equal((await send(first, "synthetic:rotated")).status, 200);
     assert.equal((await send(second, "synthetic:device")).status, 200);
     assert.equal((await send(second)).status, 200);
+
+    // Re-signing into the SAME Worker on one installed device must move its
+    // FCM token to the new authenticated session, not leave the new session
+    // unringable. No cross-account transfer may ever be permitted.
+    const freshSameWorker = (await issueSession(adapter, "device-worker")).accessToken;
+    const formerSessionHash = await sessionHash(first);
+    const newSessionHash = await sessionHash(freshSameWorker);
+    assert.equal(db.prepare("SELECT session_hash FROM private_call_devices WHERE registration_token=?")
+      .get("synthetic:rotated").session_hash, formerSessionHash);
+    assert.equal((await send(freshSameWorker, "synthetic:rotated")).status, 200);
+    assert.equal(db.prepare("SELECT session_hash FROM private_call_devices WHERE registration_token=?")
+      .get("synthetic:rotated").session_hash, newSessionHash);
+    assert.equal((await send(freshSameWorker, "synthetic:rotated")).status, 200,
+      "repeated registration from current Worker session is safe");
+    assert.equal((await send(second, "synthetic:rotated")).status, 403,
+      "other account must NEVER steal the active Worker's FCM destination");
+    assert.equal(db.prepare("SELECT session_hash FROM private_call_devices WHERE registration_token=?")
+      .get("synthetic:rotated").session_hash, newSessionHash,
+      "cross-account denial must not modify the existing owner binding");
+
     db.exec("UPDATE worker_agora_call_preferences SET calls_enabled=0 WHERE account_id='device-worker'");
     assert.equal(db.prepare("SELECT count(*) AS total FROM private_call_devices").get().total, 0);
     assert.equal((await send(second, "synthetic:device")).status, 200);

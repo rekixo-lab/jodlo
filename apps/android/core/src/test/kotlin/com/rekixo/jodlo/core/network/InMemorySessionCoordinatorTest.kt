@@ -589,7 +589,33 @@ private fun testUncertainVoiceCallRecovery() {
     check(statusGets == 1 && cancelPuts == 1)
 }
 
+/** Device registration is bound to a memory-only account generation, never
+ * guessed from Worker preference or reused for a replacement account. */
+private fun testCallDeviceRegistrationGate() {
+    val gate = CallDeviceRegistrationGate()
+    val original = "synthetic-registration-device-token"
+    val rotated = "synthetic-registration-rotated-token"
+    check(gate.shouldRegister(1L, original))
+    check(!gate.shouldRegister(1L, ""))
+    check(!gate.shouldUnregister(1L))
+    gate.confirmed(1L, original)
+    check(!gate.shouldRegister(1L, original))
+    check(gate.shouldRegister(1L, rotated))
+    check(gate.shouldUnregister(1L))
+    check(!gate.shouldUnregister(2L))
+    check(gate.shouldRegister(2L, original))
+    check(!gate.toString().contains(original))
+    check(!gate.toString().contains(rotated))
+    gate.confirmed(1L, rotated)
+    check(!gate.shouldRegister(1L, rotated))
+    gate.clear()
+    check(!gate.shouldUnregister(1L))
+    check(gate.shouldRegister(1L, rotated))
+    check(runCatching { gate.confirmed(1L, "") }.isFailure)
+}
+
 fun main() {
+    testCallDeviceRegistrationGate()
     testUncertainVoiceCallRecovery()
     testOwnerAccountPrivatePresentationFence()
     testRevisionSnapshotAndSingleFlightCas()

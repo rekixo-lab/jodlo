@@ -77,3 +77,39 @@ test("Call UI never claims server termination on a lost POST and explicitly reco
     ])assert.match(xml,new RegExp('name="'+name+'"'));
     assert.doesNotMatch(ui,/if \(action == CallAction\.HANGUP \|\| action == CallAction\.DECLINE \|\| action == CallAction\.CANCEL\) \{\s*close\(\)/);
 });
+
+
+test("Optional FCM call-device registration is epoch-scoped, consent-safe and compiled by CI",()=>{
+    const fcm=read("apps/android/app/src/fcm/kotlin/com/rekixo/jodlo/CallNotifications.kt");
+    const noFcm=read("apps/android/app/src/noFcm/kotlin/com/rekixo/jodlo/CallNotifications.kt");
+    const gate=read("apps/android/core/src/main/kotlin/com/rekixo/jodlo/core/network/CallDeviceRegistrationGate.kt");
+    const accounts=read("apps/android/app/src/main/java/com/rekixo/jodlo/AccountDashboard.kt");
+    const workflow=read(".github/workflows/android-native.yml");
+    const ignored=read(".gitignore");
+    assert.match(fcm,/val registered = CallDeviceRegistrationGate\(\)/);
+    assert.match(fcm,/if \(previous !== session\) work\.execute \{ registered\.clear\(\) \}/);
+    assert.match(fcm,/manager\(context\)\.cancel\(NOTICE\)/);
+    assert.match(fcm,/val consent = session\.callPreference\(owner\) as\? SessionResult\.Success/);
+    assert.match(fcm,/session\.accountExportSessionMarker\(\) != generation/);
+    assert.match(fcm,/session\.accountPrivateReadMarker\(\) != owner/);
+    assert.match(fcm,/!notificationsAllowed\(context\)/);
+    assert.match(fcm,/!registered\.shouldRegister\(generation, token\)/);
+    assert.match(fcm,/session\.setCallDevice\(owner, token\)/);
+    assert.match(fcm,/session\.setCallDevice\(owner, null\)/);
+    assert.match(fcm,/registered\.confirmed\(generation, token\)/);
+    assert.match(fcm,/registered\.shouldUnregister\(owner\.sessionGeneration\)/);
+    assert.match(fcm,/if \(!preference\.value\.enabled\) \{/);
+    assert.match(fcm,/FirebaseMessaging\.getInstance\(\)\.token\.addOnSuccessListener/);
+    assert.match(fcm,/fun clearLocal\(context: Context\)/);
+    assert.match(noFcm,/fun clearLocal\(context: Context\) = Unit/);
+    assert.match(accounts,/if \(result is SessionResult\.Success\) \{\s*\/\/ Replaced-account notices[\s\S]*?CallNotifications\.sync\(activity\.applicationContext\)/);
+    assert.match(accounts,/if \(login !is LoginState\.SignedIn\) CallNotifications\.clearLocal\(activity\.applicationContext\)/);
+    assert.match(gate,/private data class Bound/);
+    assert.match(gate,/override fun toString\(\) = "CallDeviceRegistrationGate\(<redacted>\)"/);
+    assert.doesNotMatch(fcm,/SharedPreferences|DataStore|FileOutputStream|Log\./);
+    assert.match(workflow,/jodloEnableFcm=true :app:assembleDebug --no-daemon/);
+    assert.match(workflow,/jodloEnableAgora=true -PjodloEnableFcm=true/);
+    assert.match(workflow,/trap 'rm -f "\$CONFIG"' EXIT/);
+    assert.match(workflow,/synthetic-not-a-real-credential/);
+    assert.match(ignored,/apps\/android\/app\/google-services\.json/);
+});
