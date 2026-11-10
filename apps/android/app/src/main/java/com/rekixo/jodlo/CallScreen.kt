@@ -304,8 +304,15 @@ internal fun CallScreen(
                 val owner = session.accountPrivateReadMarker()
                 if (owner != null) {
                     val observed = phase
-                    val result = withContext(Dispatchers.IO) { session.callSignal(owner, id) }
-                    if (!busy && phase == observed && session.accountExportSessionMarker() == epoch) {
+                    val result = try {
+                        withContext(Dispatchers.IO) { session.callSignal(owner, id) }
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        null // transient poll failure must not crash the call screen
+                    }
+                    if (!busy && phase == observed && ending == null &&
+                        session.accountExportSessionMarker() == epoch) {
                         if (result is SessionResult.Success && result.value.role == expectedRole) {
                             setRingDeadline(result.value.ringDeadlineMs)
                             phase = result.value.phase
