@@ -30,6 +30,7 @@ private fun testServerOwnedConfirmationOnly() {
 }
 
 fun main() {
+    testCallNotificationFreshnessGate()
     testUnverifiedWakeupAdmission()
     testServerOwnedConfirmationOnly()
     println("JODLO FCM cold-start: bounded unverified wakeup and authenticated ring-only admission OK")
