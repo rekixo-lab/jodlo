@@ -180,6 +180,12 @@ internal fun AccountDashboard(
             login = session.snapshot()
             observedMarker = session.accountPrivateReadMarker()
             busy = false
+            if (result is SessionResult.Success) {
+                // Replaced-account notices never survive a new Google sign-in.
+                // Register a device only after fresh server-owned worker consent.
+                CallNotifications.clearLocal(activity.applicationContext)
+                CallNotifications.sync(activity.applicationContext)
+            }
             notice = if (result is SessionResult.Success) R.string.account_login_success
                 else R.string.account_login_failed
         }
@@ -227,6 +233,9 @@ internal fun AccountDashboard(
             } catch (_: Exception) { null }
             login = session.snapshot()
             observedMarker = session.accountPrivateReadMarker()
+            // Server revocation may be uncertain; still clear the former
+            // account's notification locally after credentials are forgotten.
+            if (login !is LoginState.SignedIn) CallNotifications.clearLocal(activity.applicationContext)
             busy = false
             notice = if (result is SessionResult.Success)
                 R.string.account_logged_out_all else R.string.account_logged_out_uncertain
@@ -279,6 +288,7 @@ internal fun AccountDashboard(
             } finally {
                 login = currentSession.snapshot()
                 observedMarker = currentSession.accountPrivateReadMarker()
+                if (login !is LoginState.SignedIn) CallNotifications.clearLocal(activity.applicationContext)
                 busy = false
             }
         }
