@@ -44,9 +44,9 @@
     <string name="worker_load_more">अगला पृष्ठ देखें</string>
     <string name="worker_unpublish_selected">चुनी हुई सेवा सूची हटाएँ</string>
     <string name="worker_customer_preview_heading">ग्राहक को दिखने वाली सेवा जाँचें</string>
-    <string name="worker_customer_preview_explainer">ठीक वही Service जानकारी देखें जो ग्राहक देख सकता है: एक नई सार्वजनिक जाँच में Listing और स्वीकृत श्रेणी का हिंदी या अंग्रेज़ी नाम। वर्कर का निजी विवरण या कॉल उपलब्धता शामिल नहीं है।</string>
+    <string name="worker_customer_preview_explainer">ग्राहक जैसी ही नई सार्वजनिक सेवा जाँच करें। केवल स्वीकृत जानकारी दिखेगी: श्रेणी, समीक्षा किया गया सेवा विवरण, वैकल्पिक शहर और फोटो। वर्कर की योग्यता और कॉल उपलब्धता की पुष्टि नहीं होती।</string>
     <string name="worker_customer_preview_check">ग्राहक को दिखने वाला सेवा विवरण जाँचें</string>
-    <string name="worker_customer_preview_visible">पिछली जाँच के समय सार्वजनिक थी। ऊपर दिया गया स्वीकृत श्रेणी नाम और मूल Service संदर्भ एक ही सार्वजनिक जाँच से मिले हैं। इससे वर्कर की पहचान सत्यापित या संपर्क की अनुमति नहीं मिलती।</string>
+    <string name="worker_customer_preview_visible">पिछली जाँच के समय सार्वजनिक थी। केवल अलग से समीक्षा की गई सेवा जानकारी दिखाई गई है। इससे वर्कर की पहचान सत्यापित या संपर्क की अनुमति नहीं मिलती।</string>
     <string name="worker_customer_preview_not_public">यह सेवा अभी सार्वजनिक नहीं है। अप्रकाशित, छिपी या अनुपलब्ध हो सकती है; कारण यहाँ नहीं बताया जाता।</string>
     <string name="worker_customer_preview_failed">सार्वजनिक स्थिति की पुष्टि नहीं हुई। दिखाई देना या न दिखना मानकर न चलें; दोबारा जाँचें।</string>
     <string name="worker_publish_category">सेवा श्रेणी प्रकाशित करें</string>
@@ -329,7 +329,7 @@
     <string name="saved_review_row_public">पिछली जाँच के समय सार्वजनिक थी। दोबारा जाँचने के लिए खोलें।</string>
     <string name="saved_review_row_missing">पिछली जाँच के समय सार्वजनिक नहीं थी। बंद या प्रतिबंधित हो सकती है; सेव की हुई प्रविष्टि फोन पर बनी रहेगी।</string>
     <string name="saved_review_row_unknown">पिछली जाँच में पुष्टि नहीं हो सकी। इसका अर्थ सेवा हटना नहीं है।</string>
-    <string name="worker_customer_preview_approved_label">उसी सार्वजनिक Service Detail जाँच से मिला वर्तमान स्वीकृत श्रेणी नाम। यह वर्कर की सत्यापित पहचान, उसका निजी विवरण या उपलब्धता की गारंटी नहीं है।</string>
+    <string name="worker_customer_preview_approved_label">ऊपर की श्रेणी और समीक्षा की गई सेवा जानकारी एक ही नई सार्वजनिक जाँच से मिली है, वर्कर के निजी एडिटर से नहीं।</string>
     <!-- Optional reviewed Group -> Family -> Category navigation, no seed or PII. -->
     <string name="home_hierarchy_action">स्वीकृत समूह → परिवार → श्रेणियाँ देखें</string>
     <string name="hierarchy_heading">समूह और परिवार से सेवा खोजें</string>
@@ -365,7 +365,7 @@
     <string name="service_profile_area">सेवा क्षेत्र: स्वीकृत शहर, पता या दूरी उपलब्ध नहीं है। Nearby में शहर चुनने से इस Service के वहाँ काम करने की पुष्टि नहीं होती।</string>
     <string name="service_profile_rates_calls">दर, फोटो और संपर्क: यहाँ उपलब्ध या सत्यापित नहीं हैं। इंटरनेट वॉइस कॉल अभी चालू नहीं हैं।</string>
     <string name="service_card_category_not_confirmed">स्वीकृत श्रेणी का नाम अभी जाँचा नहीं जा सका</string>
-    <string name="service_card_approved_category_notice">यह केवल श्रेणी का नाम है, Worker की लिखी प्रोफ़ाइल या अभी प्रकाशित होने का प्रमाण नहीं। ऑफ़लाइन डेवेलपर नमूने असली सेवाएँ नहीं हैं।</string>
+    <string name="service_card_approved_category_notice">यह स्वीकृत श्रेणी नाम है, वर्कर की सत्यापित पहचान नहीं। समीक्षा किया गया सेवा विवरण अलग दिख सकता है; बिना नई जाँच का संदर्भ वर्तमान प्रकाशन का प्रमाण नहीं।</string>
     <string name="service_card_checked_time_only">पिछली सटीक जाँच के समय यह सेवा सार्वजनिक थी। उसके बाद स्थिति बदल सकती है।</string>
     <string name="service_card_must_recheck">यह केवल सेवा का संदर्भ है। अभी सार्वजनिक है या नहीं, जानने के लिए इसे खोलकर जाँचें।</string>
     <string name="service_card_no_worker_claims">Worker की सत्यापित पहचान, रेटिंग, कीमत, पता, संपर्क या कॉल उपलब्धता की जानकारी नहीं दी गई है।</string>

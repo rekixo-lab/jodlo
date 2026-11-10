@@ -12,11 +12,13 @@ enum class WorkerCustomerServicePreviewPhase {
 
 data class WorkerCustomerServicePreview private constructor(
     val phase: WorkerCustomerServicePreviewPhase,
-    /** The ONLY extra field surfaced beyond the existing public Listing ID
-     * and Category ID. This is an approved Catalog Category name, never an
-     * unreviewed Worker description, experience, location, price or badge.
-     */
+    /** Approved Catalog label from the same exact anonymous public read. */
     val approvedCategoryName: String? = null,
+    /** The strict Customer public-card projection, NOT an owner draft or a
+     * contact permission. Absent on 404, transport failure or any ID/locale
+     * mismatch. Reviewed details/photos still require independent approval.
+     */
+    val checkedCard: CustomerServiceCard? = null,
 ) {
     companion object {
         fun unchecked() = WorkerCustomerServicePreview(
@@ -40,17 +42,18 @@ data class WorkerCustomerServicePreview private constructor(
                     else WorkerCustomerServicePreviewPhase.CANNOT_CONFIRM)
             }
             val value = (reply as ApiOutcome.Ok).value
-            if (value.language != requestedLanguage ||
-                value.listing.id != selectedOwnRow.id ||
-                value.listing.categoryId != selectedOwnRow.categoryId ||
-                value.category.id != selectedOwnRow.categoryId ||
-                value.category.name.isBlank()) {
-                return WorkerCustomerServicePreview(
-                    WorkerCustomerServicePreviewPhase.CANNOT_CONFIRM)
-            }
+            // Use exactly the same public-card constructor as Customer Browse,
+            // Feed and Saved. The private owner row is ONLY the requested ID
+            // and Category, never a source for public profile/area/photo data.
+            val card = CustomerServiceCard.publicWhenChecked(
+                PublicListing(selectedOwnRow.id, selectedOwnRow.categoryId),
+                requestedLanguage, value,
+            ) ?: return WorkerCustomerServicePreview(
+                WorkerCustomerServicePreviewPhase.CANNOT_CONFIRM)
             return WorkerCustomerServicePreview(
                 WorkerCustomerServicePreviewPhase.PUBLIC_WHEN_CHECKED,
-                value.category.name,
+                card.approvedCategoryName,
+                card,
             )
         }
     }

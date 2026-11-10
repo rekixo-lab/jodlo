@@ -52,4 +52,43 @@ internal fun verifyCustomerServiceCards() {
             approved.copy(name="Plumber")))
     check(en?.approvedCategoryName == "Plumber")
     check(en?.evidence == CustomerServiceCardEvidence.PUBLIC_WHEN_CHECKED)
+
+    // Worker "Customer Preview" must use the same exact moderated PUBLIC
+    // card as the Customer Detail screen; owner rows cannot contribute text,
+    // rate, city, photo or verification/availability claims.
+    val ownRow = OwnListing(selected.id, selected.categoryId, true)
+    val publicProfile = ServiceProfile("Test Service", "Reviewed sample repair details", 4, 250)
+    val reviewed = detail.copy(
+        profile=publicProfile, city=NearbyPilotCity.RAIPUR, hasPhoto=true)
+    val workerPreview = WorkerCustomerServicePreview.fromPublicRead(
+        ownRow, Language.HI, ApiOutcome.Ok(reviewed))
+    check(workerPreview.phase==WorkerCustomerServicePreviewPhase.PUBLIC_WHEN_CHECKED)
+    val workerCard = checkNotNull(workerPreview.checkedCard)
+    check(workerCard.evidence==CustomerServiceCardEvidence.PUBLIC_WHEN_CHECKED)
+    check(workerCard.listing==selected && workerCard.approvedCategoryName==approved.name)
+    check(workerCard.profile==publicProfile && workerCard.city==NearbyPilotCity.RAIPUR)
+    check(workerCard.hasPhoto)
+
+    val wrongLocale = WorkerCustomerServicePreview.fromPublicRead(
+        ownRow, Language.EN, ApiOutcome.Ok(reviewed))
+    check(wrongLocale.phase==WorkerCustomerServicePreviewPhase.CANNOT_CONFIRM)
+    check(wrongLocale.checkedCard==null)
+    val wrongCategory = WorkerCustomerServicePreview.fromPublicRead(
+        ownRow.copy(categoryId="carpenter"), Language.HI, ApiOutcome.Ok(reviewed))
+    check(wrongCategory.phase==WorkerCustomerServicePreviewPhase.CANNOT_CONFIRM)
+    check(wrongCategory.checkedCard==null)
+    val swappedListing = WorkerCustomerServicePreview.fromPublicRead(
+        ownRow, Language.HI, ApiOutcome.Ok(reviewed.copy(
+            listing=selected.copy(id="dddddddd-dddd-4ddd-8ddd-dddddddddddd"))))
+    check(swappedListing.phase==WorkerCustomerServicePreviewPhase.CANNOT_CONFIRM)
+    check(swappedListing.checkedCard==null)
+    val noLongerPublic = WorkerCustomerServicePreview.fromPublicRead(
+        ownRow, Language.HI, ApiOutcome.Failed(FailureKind.NOT_FOUND,false))
+    check(noLongerPublic.phase==WorkerCustomerServicePreviewPhase.NOT_PUBLIC_WHEN_CHECKED)
+    check(noLongerPublic.checkedCard==null)
+    val unavailable = WorkerCustomerServicePreview.fromPublicRead(
+        ownRow, Language.HI, ApiOutcome.Failed(FailureKind.BAD_RESPONSE,false))
+    check(unavailable.phase==WorkerCustomerServicePreviewPhase.CANNOT_CONFIRM)
+    check(unavailable.checkedCard==null)
+    check(WorkerCustomerServicePreview.unchecked().checkedCard==null)
 }
