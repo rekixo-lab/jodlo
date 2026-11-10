@@ -14,6 +14,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.getValue
@@ -633,20 +634,25 @@ internal fun WorkerDashboard(
             val reply:ApiOutcome<com.rekixo.jodlo.core.network.PublicApprovedServiceDetail> =
                 try {
                     withContext(Dispatchers.IO) {
-                        reader.approvedServiceDetail(chosen.id,chosen.categoryId,lang)
+                        // Preview must show the very same *reviewed PUBLIC*
+                        // fields that a Customer sees, never owner-private
+                        // drafts, pending revisions or unpublished media.
+                        reader.reviewedServiceDetail(chosen.id,chosen.categoryId,lang)
                     }
                 } catch (cancelled:kotlin.coroutines.cancellation.CancellationException) {
                     throw cancelled
                 } catch (_:Exception) {
                     ApiOutcome.Failed(FailureKind.BAD_RESPONSE,false)
                 }
-            busy=false
+            // A stale result must not clear the loading state of a newer
+            // selection/login/owner write. It cannot promote any private row.
             if(generation!=previewRevision ||
                 activeSession.accountPrivateReadMarker()!=actor ||
                 ownerRowsMarker!=actor ||
                 (activeSession.snapshot() as? LoginState.SignedIn)?.worker!=WorkerState.DRAFT ||
                 selectedListing!=chosen.id || categoryLanguage!=lang ||
                 ownListings.firstOrNull{it.id==chosen.id}!=chosen) return@launch
+            busy=false
             publicPreview=WorkerCustomerServicePreview.fromPublicRead(chosen,lang,reply)
         }
     }
@@ -1004,18 +1010,22 @@ internal fun WorkerDashboard(
                                     }
                                     when(publicPreview.phase) {
                                         WorkerCustomerServicePreviewPhase.PUBLIC_WHEN_CHECKED -> {
-                                            Text(publicPreview.approvedCategoryName.orEmpty(),
-                                                style=MaterialTheme.typography.titleMedium)
-                                            Text(stringResource(
-                                                R.string.worker_customer_preview_approved_label))
-                                            val row=displayedOwnListings.firstOrNull{it.id==selectedListing}
-                                            if(row!=null){
-                                                Text(stringResource(R.string.listing_reference,row.id))
-                                                Text(stringResource(R.string.worker_listing_category,row.categoryId))
+                                            // Rendering the exact validated public card prevents
+                                            // private draft/owner fields from appearing here.
+                                            publicPreview.checkedCard?.let { card ->
+                                                SafeServiceCard(card)
+                                                SafePublicProfileFacts(card.profile, card.city)
+                                                // Rechecking the same Service resets old bitmap
+                                                // state: photo revision may have been revoked.
+                                                key(previewRevision) {
+                                                    ApprovedServicePhoto(catalog, card)
+                                                }
+                                                Text(stringResource(
+                                                    R.string.worker_customer_preview_approved_label))
+                                                Text(stringResource(R.string.worker_customer_preview_visible))
+                                                Text(stringResource(R.string.listing_detail_private_notice),
+                                                    style=MaterialTheme.typography.bodySmall)
                                             }
-                                            Text(stringResource(R.string.worker_customer_preview_visible))
-                                            Text(stringResource(R.string.listing_detail_private_notice),
-                                                style=MaterialTheme.typography.bodySmall)
                                         }
                                         WorkerCustomerServicePreviewPhase.NOT_PUBLIC_WHEN_CHECKED ->
                                             Text(stringResource(R.string.worker_customer_preview_not_public))
