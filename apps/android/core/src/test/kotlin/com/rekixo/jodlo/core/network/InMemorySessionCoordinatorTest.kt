@@ -589,6 +589,45 @@ private fun testUncertainVoiceCallRecovery() {
     check(statusGets == 1 && cancelPuts == 1)
 }
 
+/** A committed ACCEPT with a lost response must not trigger an automatic
+ * second PUT. A same-owner GET observes ACCEPTED and permits audio join. */
+private fun testLostReceiverAnswerReconcilesByRead() {
+    val id = "33333333-3333-4333-8333-333333333333"
+    val deadline = 2_000_000_100_000L
+    var answerPuts = 0
+    var reads = 0
+    var phase = "ringing"
+    val sender = RequestSender { request ->
+        check(request.headers()["Authorization"] == "Bearer $TOKEN_ONE")
+        when (request.resource) {
+            "/api/v1/me/call?id=$id&action=accept" -> {
+                check(request.method == HttpMethod.PUT)
+                answerPuts++
+                phase = "accepted"
+                error(503, "SERVICE_UNAVAILABLE") // backend committed before reply was lost
+            }
+            "/api/v1/me/call?id=$id" -> {
+                check(request.method == HttpMethod.GET)
+                reads++
+                TransportReply(200,
+                    """{"ok":true,"data":{"role":"receiver","phase":"$phase","ringDeadlineMs":$deadline}}""")
+            }
+            else -> error("Unexpected fake call method/resource")
+        }
+    }
+    val session = InMemorySessionCoordinator(FakeWorkers(), sender) { 0L }
+    check(session.acceptIssuedSession(issued()) is ApiOutcome.Ok)
+    val owner = session.accountPrivateReadMarker()!!
+    check(session.callSignal(owner, id, CallAction.ACCEPT) ==
+        SessionResult.Failed(SessionFailure.REMOTE_FAILURE, FailureKind.SERVICE_UNAVAILABLE))
+    check(answerPuts == 1 && reads == 0)
+    check(session.callSignal(owner, id) is SessionResult.Failed) // Old marker fenced.
+    val renewed = session.accountPrivateReadMarker()!!
+    val read = session.callSignal(renewed, id)
+    check(read is SessionResult.Success && CallAcceptRecovery.confirmed(read.value))
+    check(answerPuts == 1 && reads == 1)
+}
+
 /** Device registration is bound to a memory-only account generation, never
  * guessed from Worker preference or reused for a replacement account. */
 private fun testCallDeviceRegistrationGate() {
@@ -644,6 +683,7 @@ private fun testReceiverAcceptRecoveryContract() {
 
 fun main() {
     testReceiverAcceptRecoveryContract()
+    testLostReceiverAnswerReconcilesByRead()
     testCallDeviceRegistrationGate()
     testUncertainVoiceCallRecovery()
     testOwnerAccountPrivatePresentationFence()
