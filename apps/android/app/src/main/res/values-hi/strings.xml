@@ -497,6 +497,15 @@
     <string name="call_declined">कॉल ठुकरा दी गई</string>
     <string name="call_missed">कॉल नहीं उठाई गई</string>
     <string name="call_finished">कॉल समाप्त हुई</string>
+    <string name="call_dial_unconfirmed">पुष्टि नहीं हुई कि कॉल शुरू हुई या नहीं। दोबारा कोशिश करने पर वही कॉल अनुरोध जाँचा जाएगा।</string>
+    <string name="call_end_unconfirmed">कॉल समाप्त होने की पुष्टि नहीं हुई। स्थिति जाँचें या दोबारा कॉल काटें।</string>
+    <string name="call_ending">कॉल समाप्त की जा रही है…</string>
+    <string name="call_check_end">कॉल की स्थिति जाँचें</string>
+    <string name="call_retry_end">दोबारा कॉल काटें</string>
+    <string name="call_retry_same_attempt">उसी कॉल की दोबारा कोशिश</string>
+    <string name="call_close_local">सिर्फ यहाँ बंद करें</string>
+    <string name="call_keep_open">कॉल पर वापस जाएँ</string>
+    <string name="call_close_warning">सर्वर से कॉल समाप्त होने की पुष्टि नहीं हुई है। यहाँ बंद करने के बाद भी दूसरी तरफ कॉल दिखाई दे सकती है।</string>
     <string name="call_unavailable">कॉल उपलब्ध नहीं है</string>
     <string name="call_sign_in">कॉल करने के लिए साइन इन करें</string>
     <string name="call_microphone_required">वॉइस कॉल के लिए माइक की अनुमति दें</string>

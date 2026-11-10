@@ -497,6 +497,15 @@
     <string name="call_declined">Call declined</string>
     <string name="call_missed">No answer</string>
     <string name="call_finished">Call ended</string>
+    <string name="call_dial_unconfirmed">Could not confirm whether this call started. Retry uses the same call attempt.</string>
+    <string name="call_end_unconfirmed">Could not confirm the call ended. Check its status or retry ending it.</string>
+    <string name="call_ending">Ending call…</string>
+    <string name="call_check_end">Check call status</string>
+    <string name="call_retry_end">Try ending again</string>
+    <string name="call_retry_same_attempt">Retry same call</string>
+    <string name="call_close_local">Close locally</string>
+    <string name="call_keep_open">Go back to call</string>
+    <string name="call_close_warning">The server has not confirmed the call ended. Closing here may leave the other person seeing a call.</string>
     <string name="call_unavailable">Call unavailable</string>
     <string name="call_sign_in">Sign in to use calling</string>
     <string name="call_microphone_required">Allow microphone access to use voice calling</string>

@@ -49,3 +49,31 @@ test("Account Call History keeps cursor pages together and never installs stale/
     assert.match(merge,/!ids\.add\(item\.id\)/);
     assert.doesNotMatch(ui,/result\s*=\s*page\.value/);
 });
+
+
+test("Call UI never claims server termination on a lost POST and explicitly reconciles",()=>{
+    const ui=read("apps/android/app/src/main/java/com/rekixo/jodlo/CallScreen.kt");
+    const core=read("apps/android/core/src/main/kotlin/com/rekixo/jodlo/core/network/CallSignal.kt");
+    const en=read("apps/android/app/src/main/res/values/strings.xml");
+    const hi=read("apps/android/app/src/main/res/values-hi/strings.xml");
+    assert.match(ui,/val terminalRequest = action != CallAction\.ACCEPT/);
+    assert.match(ui,/audio\.close\(\)\s+ending = action/);
+    assert.match(ui,/if \(confirmed != null && CallEndProtocol\.isConfirmed\(expectedRole, confirmed\)\)/);
+    assert.match(ui,/CallEndProtocol\.actionToEnd\(expectedRole, confirmed\.phase\)/);
+    assert.match(ui,/session\.callSignal\(owner, id\)/);
+    assert.match(ui,/if \(signal != null && CallEndProtocol\.isConfirmed\(expectedRole, signal\)\)/);
+    assert.match(ui,/session\.accountExportSessionMarker\(\) != epoch/);
+    assert.match(ui,/session\.startCall\(owner, outgoing\.listingId, outgoing\.attemptKey\)/);
+    assert.match(ui,/dialUncertain = true/);
+    assert.match(ui,/ending != null \|\| \(invitationId == null && dialUncertain\)/);
+    assert.match(ui,/LaunchedEffect\(invitationId, phase, ending\)/);
+    assert.match(ui,/phase == CallPhase\.ACCEPTED && ending == null/);
+    assert.match(core,/object CallEndProtocol/);
+    assert.match(core,/signal\.role == expectedRole/);
+    for(const xml of [en,hi])for(const name of [
+        "call_dial_unconfirmed","call_end_unconfirmed","call_ending","call_check_end",
+        "call_retry_end","call_retry_same_attempt","call_close_local",
+        "call_keep_open","call_close_warning",
+    ])assert.match(xml,new RegExp('name="'+name+'"'));
+    assert.doesNotMatch(ui,/if \(action == CallAction\.HANGUP \|\| action == CallAction\.DECLINE \|\| action == CallAction\.CANCEL\) \{\s*close\(\)/);
+});

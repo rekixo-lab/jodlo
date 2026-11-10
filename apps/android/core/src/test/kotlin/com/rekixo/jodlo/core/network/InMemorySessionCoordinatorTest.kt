@@ -522,7 +522,75 @@ private fun testOwnerAccountPrivatePresentationFence() {
     check(coordinator.accountPrivateReadMarker()!=afterPublish)
 }
 
+/**
+ * An uncertain invite or termination is never repeated implicitly. A user
+ * retry retains Idempotency-Key; a failed end is reconciled with a fresh GET
+ * under the current account marker instead of claiming the call ended.
+ */
+private fun testUncertainVoiceCallRecovery() {
+    val invitationId = "22222222-2222-4222-8222-222222222222"
+    val attemptKey = "original-call-attempt-123456"
+    val deadline = 2_000_000_100_000L
+    var dialPosts = 0
+    var cancelPuts = 0
+    var statusGets = 0
+    var serverPhase = "ringing"
+    val sender = RequestSender { request ->
+        check(request.headers()["Authorization"] == "Bearer $TOKEN_ONE")
+        when {
+            request.resource.startsWith("/api/v1/me/call-invitation?") -> {
+                check(request.method == HttpMethod.POST)
+                check(request.headers()["Idempotency-Key"] == attemptKey)
+                check(request.resource.contains("listingId=$LISTING_ID"))
+                dialPosts++
+                if (dialPosts == 1) {
+                    // Pretend the server committed but its reply was lost.
+                    error(503, "SERVICE_UNAVAILABLE")
+                } else TransportReply(200,
+                    """{"ok":true,"data":{"id":"$invitationId","ringDeadlineMs":$deadline}}""")
+            }
+            request.resource == "/api/v1/me/call?id=$invitationId&action=cancel" -> {
+                check(request.method == HttpMethod.PUT)
+                cancelPuts++
+                serverPhase = "cancelled" // The response still gets lost.
+                error(503, "SERVICE_UNAVAILABLE")
+            }
+            request.resource == "/api/v1/me/call?id=$invitationId" -> {
+                check(request.method == HttpMethod.GET)
+                statusGets++
+                TransportReply(200,
+                    """{"ok":true,"data":{"role":"caller","phase":"$serverPhase","ringDeadlineMs":$deadline}}""")
+            }
+            else -> error("Unexpected fake call: ${request.method}")
+        }
+    }
+    val session = InMemorySessionCoordinator(FakeWorkers(), sender) { 0L }
+    check(session.acceptIssuedSession(issued()) is ApiOutcome.Ok)
+    val before = session.accountPrivateReadMarker()!!
+    check(session.startCall(before, LISTING_ID, attemptKey) ==
+        SessionResult.Failed(SessionFailure.REMOTE_FAILURE, FailureKind.SERVICE_UNAVAILABLE))
+    check(dialPosts == 1 && cancelPuts == 0 && statusGets == 0)
+    val afterFirstAttempt = session.accountPrivateReadMarker()!!
+    check(afterFirstAttempt != before)
+    check(session.startCall(before, LISTING_ID, attemptKey) is SessionResult.Failed)
+    check(dialPosts == 1) // Stale epoch never sends another invitation.
+    check(session.startCall(afterFirstAttempt, LISTING_ID, attemptKey) ==
+        SessionResult.Success(CallInvitation(invitationId, deadline)))
+    check(dialPosts == 2) // Only explicit same-key retry.
+    val afterDial = session.accountPrivateReadMarker()!!
+    check(session.callSignal(afterDial, invitationId, CallAction.CANCEL) ==
+        SessionResult.Failed(SessionFailure.REMOTE_FAILURE, FailureKind.SERVICE_UNAVAILABLE))
+    check(cancelPuts == 1 && statusGets == 0)
+    val afterCancel = session.accountPrivateReadMarker()!!
+    val status = session.callSignal(afterCancel, invitationId)
+    check(status is SessionResult.Success && status.value ==
+        CallSignal(CallRole.CALLER, CallPhase.CANCELLED, deadline))
+    check(CallEndProtocol.isConfirmed(CallRole.CALLER, status.value))
+    check(statusGets == 1 && cancelPuts == 1)
+}
+
 fun main() {
+    testUncertainVoiceCallRecovery()
     testOwnerAccountPrivatePresentationFence()
     testRevisionSnapshotAndSingleFlightCas()
     testExactSelectedServiceReadSessionIsolation()

@@ -40,6 +40,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.rekixo.jodlo.core.network.CallAction
+import com.rekixo.jodlo.core.network.CallEndProtocol
 import com.rekixo.jodlo.core.network.CallPhase
 import com.rekixo.jodlo.core.network.CallRole
 import com.rekixo.jodlo.core.network.InMemorySessionCoordinator
@@ -50,6 +51,7 @@ import com.rekixo.jodlo.ui.theme.JodloSizes
 import com.rekixo.jodlo.ui.theme.JodloTextAction
 import java.util.Locale
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -97,6 +99,11 @@ internal fun CallScreen(
     var muted by remember(request) { mutableStateOf(false) }
     var connectedAt by remember(request) { mutableStateOf<Long?>(null) }
     var seconds by remember(request) { mutableStateOf(0L) }
+    // A lost POST response is NOT proof an invitation or termination failed.
+    // Keep the original idempotency key; never auto-repeat a mutation.
+    var dialUncertain by remember(request) { mutableStateOf(false) }
+    var ending by remember(request) { mutableStateOf<CallAction?>(null) }
+    var reviewLocalClose by remember(request) { mutableStateOf(false) }
 
     fun setRingDeadline(deadline: Long) {
         if (ringUntil == null) {
@@ -107,22 +114,90 @@ internal fun CallScreen(
     fun send(action: CallAction) {
         if (busy) return
         val id = invitationId ?: return
+        val terminalRequest = action != CallAction.ACCEPT
         val owner = session.accountPrivateReadMarker()?.takeIf { it.sessionGeneration == epoch }
+        if (terminalRequest) {
+            // Stop transmission immediately even when the server is offline.
+            audio.close()
+            ending = action
+            reviewLocalClose = false
+        }
         if (owner == null) {
             if (session.accountExportSessionMarker() != epoch) close()
+            else error = if (terminalRequest) R.string.call_end_unconfirmed else R.string.call_unavailable
             return
         }
-        if (action == CallAction.HANGUP) audio.close()
+        busy = true
+        error = null
+        scope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) { session.callSignal(owner, id, action) }
+                if (session.accountExportSessionMarker() != epoch) {
+                    audio.close()
+                    close()
+                    return@launch
+                }
+                val confirmed = (result as? SessionResult.Success)?.value
+                    ?.takeIf { it.role == expectedRole }
+                if (terminalRequest) {
+                    if (confirmed != null && CallEndProtocol.isConfirmed(expectedRole, confirmed)) {
+                        close() // Only the server's terminal phase confirms the end.
+                    } else {
+                        if (confirmed != null) {
+                            phase = confirmed.phase
+                            ending = CallEndProtocol.actionToEnd(expectedRole, confirmed.phase) ?: action
+                        }
+                        error = R.string.call_end_unconfirmed
+                    }
+                } else if (confirmed != null) {
+                    phase = confirmed.phase
+                } else {
+                    error = R.string.call_unavailable
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                if (session.accountExportSessionMarker() == epoch) {
+                    error = if (terminalRequest) R.string.call_end_unconfirmed else R.string.call_unavailable
+                }
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    fun checkEnding() {
+        val requested = ending ?: return
+        val id = invitationId ?: return
+        val owner = session.accountPrivateReadMarker()?.takeIf { it.sessionGeneration == epoch }
+        if (busy || owner == null) return
         busy = true
         scope.launch {
-            val result = withContext(Dispatchers.IO) { session.callSignal(owner, id, action) }
-            busy = false
-            if (action == CallAction.HANGUP || action == CallAction.DECLINE || action == CallAction.CANCEL) {
-                close()
-            } else if (result is SessionResult.Success && result.value.role == expectedRole) {
-                phase = result.value.phase
-            } else {
-                error = R.string.call_unavailable
+            try {
+                // Read-only reconciliation, never an automatic second POST.
+                val result = withContext(Dispatchers.IO) { session.callSignal(owner, id) }
+                if (session.accountExportSessionMarker() != epoch) {
+                    audio.close()
+                    close()
+                    return@launch
+                }
+                val signal = (result as? SessionResult.Success)?.value
+                    ?.takeIf { it.role == expectedRole }
+                if (signal != null && CallEndProtocol.isConfirmed(expectedRole, signal)) {
+                    close()
+                } else {
+                    if (signal != null) {
+                        phase = signal.phase
+                        ending = CallEndProtocol.actionToEnd(expectedRole, signal.phase) ?: requested
+                    }
+                    error = R.string.call_end_unconfirmed
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                error = R.string.call_end_unconfirmed
+            } finally {
+                busy = false
             }
         }
     }
@@ -136,13 +211,33 @@ internal fun CallScreen(
         }
         if (busy || invitationId != null) return
         busy = true
+        error = null
         scope.launch {
-            val result = withContext(Dispatchers.IO) { session.startCall(owner, outgoing.listingId, outgoing.attemptKey) }
-            busy = false
-            if (result is SessionResult.Success) {
-                setRingDeadline(result.value.ringDeadlineMs)
-                invitationId = result.value.id
-            } else error = R.string.call_unavailable
+            try {
+                // On an uncertain first response, retry uses the SAME key.
+                val result = withContext(Dispatchers.IO) {
+                    session.startCall(owner, outgoing.listingId, outgoing.attemptKey)
+                }
+                if (session.accountExportSessionMarker() != epoch) {
+                    close()
+                    return@launch
+                }
+                if (result is SessionResult.Success) {
+                    dialUncertain = false
+                    setRingDeadline(result.value.ringDeadlineMs)
+                    invitationId = result.value.id
+                } else {
+                    dialUncertain = true
+                    error = R.string.call_dial_unconfirmed
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                dialUncertain = true
+                error = R.string.call_dial_unconfirmed
+            } finally {
+                busy = false
+            }
         }
     }
 
@@ -164,21 +259,25 @@ internal fun CallScreen(
 
     fun endOrClose() {
         if (busy) return
-        when (phase) {
-            CallPhase.ACCEPTED -> send(CallAction.HANGUP)
-            CallPhase.RINGING, CallPhase.PENDING, null -> when {
-                invitationId == null || error != null -> close()
-                receiver && phase == CallPhase.RINGING -> send(CallAction.DECLINE)
-                !receiver -> send(CallAction.CANCEL)
-                else -> close()
-            }
-            else -> close()
+        if (reviewLocalClose) {
+            reviewLocalClose = false
+            return
+        }
+        if (ending != null || (invitationId == null && dialUncertain)) {
+            reviewLocalClose = true
+            return
+        }
+        when {
+            phase in terminalPhases -> close()
+            invitationId == null -> close()
+            else -> CallEndProtocol.actionToEnd(expectedRole, phase ?: CallPhase.PENDING)
+                ?.let(::send) ?: close()
         }
     }
 
     DisposableEffect(activity, audio) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP && phase == CallPhase.ACCEPTED) {
+            if (event == Lifecycle.Event.ON_STOP && phase == CallPhase.ACCEPTED && ending == null && !busy) {
                 audio.close()
                 send(CallAction.HANGUP)
             }
@@ -201,12 +300,19 @@ internal fun CallScreen(
                 error = R.string.call_sign_in
                 break
             }
-            if (!busy && error == null) {
+            if (!busy && error == null && ending == null) {
                 val owner = session.accountPrivateReadMarker()
                 if (owner != null) {
                     val observed = phase
-                    val result = withContext(Dispatchers.IO) { session.callSignal(owner, id) }
-                    if (!busy && phase == observed && session.accountExportSessionMarker() == epoch) {
+                    val result = try {
+                        withContext(Dispatchers.IO) { session.callSignal(owner, id) }
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        null // transient poll failure must not crash the call screen
+                    }
+                    if (!busy && phase == observed && ending == null &&
+                        session.accountExportSessionMarker() == epoch) {
                         if (result is SessionResult.Success && result.value.role == expectedRole) {
                             setRingDeadline(result.value.ringDeadlineMs)
                             phase = result.value.phase
@@ -220,17 +326,17 @@ internal fun CallScreen(
                 ringUntil?.let { SystemClock.elapsedRealtime() >= it } == true) {
                 phase = CallPhase.MISSED
             }
-            if (phase in terminalPhases || error != null) break
+            if (phase in terminalPhases || error != null || ending != null) break
             delay(1_500)
         }
     }
-    LaunchedEffect(invitationId, phase) {
-        if (phase == CallPhase.ACCEPTED) {
+    LaunchedEffect(invitationId, phase, ending) {
+        if (phase == CallPhase.ACCEPTED && ending == null) {
             if (activity.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
                 invitationId?.let(audio::join)
             } else send(CallAction.HANGUP)
         }
-        if (phase in terminalPhases) audio.close()
+        if (phase in terminalPhases || ending != null) audio.close()
     }
     LaunchedEffect(audioState) {
         if (audioState == AgoraAudioState.CONNECTED && connectedAt == null) connectedAt = SystemClock.elapsedRealtime()
@@ -242,7 +348,13 @@ internal fun CallScreen(
         }
     }
 
-    val status = error ?: when (phase) {
+    val status = when {
+        reviewLocalClose -> R.string.call_close_warning
+        ending != null && busy -> R.string.call_ending
+        ending != null -> R.string.call_end_unconfirmed
+        dialUncertain && invitationId == null && busy -> R.string.call_connecting
+        dialUncertain && invitationId == null -> R.string.call_dial_unconfirmed
+        else -> error ?: when (phase) {
         CallPhase.ACCEPTED -> when (audioState) {
             AgoraAudioState.CONNECTED -> R.string.call_connected
             AgoraAudioState.RECONNECTING -> R.string.call_reconnecting
@@ -255,6 +367,7 @@ internal fun CallScreen(
         CallPhase.MISSED -> R.string.call_missed
         CallPhase.CANCELLED, CallPhase.ENDED -> R.string.call_finished
         else -> R.string.call_connecting
+        }
     }
     Dialog(onDismissRequest = ::endOrClose, properties = DialogProperties(
         dismissOnClickOutside = false, usePlatformDefaultWidth = false,
@@ -277,28 +390,64 @@ internal fun CallScreen(
                         color = JodloPalette.Accent, style = MaterialTheme.typography.titleLarge)
                 }
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(JodloSizes.Gap)) {
-                when {
-                    error == null && receiver && phase == CallPhase.RINGING -> {
-                        JodloTextAction(::endOrClose, Modifier.weight(1f), enabled = !busy) {
-                            Text(stringResource(R.string.call_decline), color = JodloPalette.Error)
-                        }
-                        JodloButton(::requestMicrophone, Modifier.weight(1f), enabled = !busy) {
-                            Text(stringResource(R.string.call_answer), color = JodloPalette.Accent)
-                        }
+            when {
+                reviewLocalClose -> {
+                    // Closing locally cannot prove the remote invitation ended.
+                    JodloTextAction(onClick = { reviewLocalClose = false },
+                        modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(R.string.call_keep_open))
                     }
-                    phase == CallPhase.ACCEPTED -> {
-                        JodloTextAction({ if (audio.muteMicrophone(!muted)) muted = !muted },
-                            Modifier.weight(1f), enabled = audioState == AgoraAudioState.CONNECTED) {
-                            Text(stringResource(if (muted) R.string.call_unmute else R.string.call_mute))
-                        }
-                        JodloTextAction(::endOrClose, Modifier.weight(1f), enabled = !busy) {
-                            Text(stringResource(R.string.call_hangup), color = JodloPalette.Error)
-                        }
+                    JodloButton(onClick = { audio.close(); close() },
+                        modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(R.string.call_close_local))
                     }
-                    else -> JodloTextAction(::endOrClose, Modifier.fillMaxWidth(), enabled = !busy) {
-                        Text(stringResource(if (phase == CallPhase.RINGING || phase == CallPhase.PENDING)
-                            R.string.call_cancel else R.string.call_close))
+                }
+                ending != null -> {
+                    JodloButton(onClick = ::checkEnding, modifier = Modifier.fillMaxWidth(), enabled = !busy) {
+                        Text(stringResource(R.string.call_check_end))
+                    }
+                    JodloTextAction(onClick = { ending?.let(::send) },
+                        modifier = Modifier.fillMaxWidth(), enabled = !busy) {
+                        Text(stringResource(R.string.call_retry_end))
+                    }
+                    JodloTextAction(onClick = { reviewLocalClose = true },
+                        modifier = Modifier.fillMaxWidth(), enabled = !busy) {
+                        Text(stringResource(R.string.call_close_local))
+                    }
+                }
+                dialUncertain && invitationId == null -> {
+                    JodloButton(onClick = ::dial, modifier = Modifier.fillMaxWidth(), enabled = !busy) {
+                        Text(stringResource(R.string.call_retry_same_attempt))
+                    }
+                    JodloTextAction(onClick = { reviewLocalClose = true },
+                        modifier = Modifier.fillMaxWidth(), enabled = !busy) {
+                        Text(stringResource(R.string.call_close_local))
+                    }
+                }
+                else -> Row(Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(JodloSizes.Gap)) {
+                    when {
+                        error == null && receiver && phase == CallPhase.RINGING -> {
+                            JodloTextAction(::endOrClose, Modifier.weight(1f), enabled = !busy) {
+                                Text(stringResource(R.string.call_decline), color = JodloPalette.Error)
+                            }
+                            JodloButton(::requestMicrophone, Modifier.weight(1f), enabled = !busy) {
+                                Text(stringResource(R.string.call_answer), color = JodloPalette.Accent)
+                            }
+                        }
+                        phase == CallPhase.ACCEPTED -> {
+                            JodloTextAction({ if (audio.muteMicrophone(!muted)) muted = !muted },
+                                Modifier.weight(1f), enabled = audioState == AgoraAudioState.CONNECTED) {
+                                Text(stringResource(if (muted) R.string.call_unmute else R.string.call_mute))
+                            }
+                            JodloTextAction(::endOrClose, Modifier.weight(1f), enabled = !busy) {
+                                Text(stringResource(R.string.call_hangup), color = JodloPalette.Error)
+                            }
+                        }
+                        else -> JodloTextAction(::endOrClose, Modifier.fillMaxWidth(), enabled = !busy) {
+                            Text(stringResource(if (phase == CallPhase.RINGING || phase == CallPhase.PENDING)
+                                R.string.call_cancel else R.string.call_close))
+                        }
                     }
                 }
             }
