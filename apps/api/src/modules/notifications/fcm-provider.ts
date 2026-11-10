@@ -10,7 +10,11 @@ type FcmProviderDependencies = Readonly<{
   /** Server-side source of a short-lived Firebase Messaging OAuth token. */
   accessToken(): Promise<string | null>;
   /** Recheck delivery policy and the current recipient/device binding here. */
-  resolveDestination(job: NotificationEnvelope): Promise<string | null>;
+  /** Deadline fence for asynchronous lookup side effects (e.g. D1 dispatch claim).
+   * A callback that resumes after send() returned MUST call mayContinue()
+   * before starting a new irreversible operation.
+   */
+  resolveDestination(job: NotificationEnvelope, mayContinue: () => boolean): Promise<string | null>;
   request?: typeof fetch;
   now?: () => number;
   /** Controlled test budget; live providers always use the five-second cap. */
@@ -68,6 +72,9 @@ export function createFcmProvider(deps: FcmProviderDependencies): NotificationPr
       const started = performance.now();
       const remainingBudget = () => Math.max(0,
         Math.floor(timeoutMs - (performance.now() - started)));
+      let active = true;
+      const mayContinue = () => active && remainingBudget() > 0 &&
+        job.expiresAtMs > now();
       try {
         const accessToken = await withinBudget(
           Promise.resolve().then(deps.accessToken), remainingBudget());
@@ -75,7 +82,8 @@ export function createFcmProvider(deps: FcmProviderDependencies): NotificationPr
           return "transient";
         }
         const registrationToken = await withinBudget(
-          Promise.resolve().then(() => deps.resolveDestination(job)), remainingBudget());
+          Promise.resolve().then(() => deps.resolveDestination(job, mayContinue)), remainingBudget());
+        if (!mayContinue()) return "transient";
         if (!validFcmRegistrationToken(registrationToken)) {
           return "permanent";
         }
@@ -118,6 +126,10 @@ export function createFcmProvider(deps: FcmProviderDependencies): NotificationPr
         return "permanent";
       } catch {
         return "transient";
+      } finally {
+        // If a lookup resolves after a timeout/return, its callback must
+        // never start a late server-owned dispatch-slot mutation.
+        active = false;
       }
     },
   };
