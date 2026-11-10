@@ -53,6 +53,30 @@ jobs:
       - name: Compile the optional Agora voice integration
         if: matrix.java-version == '21'
         run: gradle -p apps/android -PincludeAndroidApp=true -PjodloEnableAgora=true :app:compileDebugKotlin --no-daemon
+      - name: Compile FCM and Agora together using synthetic CI-only Firebase configuration
+        if: matrix.java-version == '21'
+        run: |
+          CONFIG=apps/android/app/google-services.json
+          test ! -e "$CONFIG"
+          trap 'rm -f "$CONFIG"' EXIT
+          cat > "$CONFIG" <<'JSON'
+          {
+            "project_info": {
+              "project_number": "123456789012",
+              "project_id": "jodlo-ci-synthetic-not-real"
+            },
+            "client": [{
+              "client_info": {
+                "mobilesdk_app_id": "1:123456789012:android:abcdef1234567890",
+                "android_client_info": {"package_name": "com.rekixo.jodlo"}
+              },
+              "api_key": [{"current_key": "synthetic-not-a-real-credential"}]
+            }],
+            "configuration_version": "1"
+          }
+          JSON
+          gradle -p apps/android -PincludeAndroidApp=true -PjodloEnableAgora=true -PjodloEnableFcm=true :app:assembleDebug --no-daemon
+          test -s apps/android/app/build/outputs/apk/debug/app-debug.apk
       - name: Save temporary debug APK for physical-device testing (main only)
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && matrix.java-version == '17'
         uses: actions/upload-artifact@v4
