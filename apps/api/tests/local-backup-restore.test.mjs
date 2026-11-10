@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { backup, DatabaseSync } from "node:sqlite";
-import { mkdtempSync, copyFileSync, rmSync, statSync } from "node:fs";
+import { mkdtempSync, copyFileSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import worker from "../src/index.ts";
@@ -20,7 +20,7 @@ const get = (path, env, bearer) => worker.fetch(new Request(ORIGIN + path, {
   headers: bearer ? { Authorization: "Bearer " + bearer } : {},
 }), env);
 
-test("local six-migration SQLite backup restores authorization, receipts and dead letters", async () => {
+test("local SQLite backup restores authorization, receipts and dead letters", async () => {
   // Every row and bearer is synthetic; this never opens a Cloudflare D1 binding.
   const { db, adapter } = openLocalDatabase();
   const dir = mkdtempSync(join(tmpdir(), "jodlo-local-recovery-"));
@@ -146,6 +146,61 @@ test("local six-migration SQLite backup restores authorization, receipts and dea
   } finally {
     recovered?.close();
     db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("legacy SQLite snapshot restores and upgrades without losing account or listing access", async () => {
+  const migrations = new URL("../../../infra/migrations/", import.meta.url);
+  const names = readdirSync(migrations).filter(name => /^\d{4}_.+\.sql$/.test(name)).sort();
+  const firstPending = names.indexOf("0009_public_cross_category_feed_index.sql");
+  assert.equal(firstPending, 8);
+  const dir = mkdtempSync(join(tmpdir(), "jodlo-upgrade-recovery-"));
+  const legacy = new DatabaseSync(":memory:");
+  let restored;
+  try {
+    legacy.exec("PRAGMA foreign_keys = ON");
+    for (const name of names.slice(0, firstPending)) {
+      legacy.exec(readFileSync(new URL(name, migrations), "utf8"));
+    }
+    const db = localD1Adapter(legacy);
+    await ensureAccount(db, OWNER);
+    await optInAsWorker(db, OWNER);
+    const session = await issueSession(db, OWNER);
+    assert.ok(session?.accessToken);
+    legacy.prepare(
+      "INSERT INTO categories(id,slug,name_en,is_active) VALUES(?,?,?,1)"
+    ).run("fixture-plumber", "fixture-plumber", "Plumber");
+    const listingId = "6ef45488-82b3-4b40-ac55-b9cdfc754809";
+    legacy.prepare("INSERT INTO worker_listings(id,worker_account_id,category_id) VALUES(?,?,?)")
+      .run(listingId, OWNER, "fixture-plumber");
+
+    const snapshot = join(dir, "before-upgrade.sqlite");
+    const recovered = join(dir, "restored.sqlite");
+    await backup(legacy, snapshot);
+    copyFileSync(snapshot, recovered);
+    restored = new DatabaseSync(recovered);
+    restored.exec("PRAGMA foreign_keys = ON");
+    for (const name of names.slice(firstPending)) {
+      restored.exec(readFileSync(new URL(name, migrations), "utf8"));
+    }
+
+    assert.equal(restored.prepare("PRAGMA integrity_check").get().integrity_check, "ok");
+    assert.deepEqual(restored.prepare("PRAGMA foreign_key_check").all(), []);
+    assert.deepEqual({
+      ...restored.prepare("SELECT revision, service_city, report_hold FROM worker_listings WHERE id=?")
+        .get(listingId),
+    }, { revision: 0, service_city: null, report_hold: 0 });
+    const env = { DB: localD1Adapter(restored) };
+    const owner = await get("/api/v1/me/listings", env, session.accessToken);
+    assert.equal(owner.status, 200);
+    assert.equal((await owner.json()).data.listings[0].id, listingId);
+    const publicList = await get("/api/v1/listings?categoryId=fixture-plumber", env);
+    assert.equal(publicList.status, 200);
+    assert.equal((await publicList.json()).data.listings[0].id, listingId);
+  } finally {
+    restored?.close();
+    legacy.close();
     rmSync(dir, { recursive: true, force: true });
   }
 });
