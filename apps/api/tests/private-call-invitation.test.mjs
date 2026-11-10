@@ -216,6 +216,22 @@ test("call signaling enforces participant roles, dispatch, current consent, and 
     const [caller, worker, outsider] = await Promise.all(["signal-caller","signal-worker","signal-outsider"]
       .map(async account => (await issueSession(adapter, account)).accessToken));
     const now = Date.now();
+    // A call must never commit or dispatch with an implicit Firebase project.
+    // All rows and credentials in this check are local synthetic fixtures.
+    const {handleRequest: guardedCallStart} = await import("../src/http/router.ts");
+    const missingProject = await guardedCallStart(new Request(
+      "https://example.invalid/api/v1/me/call-invitation?listingId=d23e2000-d7e3-4a55-8eea-3328e2292526", {
+        method:"POST",
+        headers:{Authorization:`Bearer ${caller}`, "Idempotency-Key":"missing-fcm-project"},
+      },
+    ), {
+      DB:adapter,CALL_SIGNALING_ENABLED:"1",CALL_DEVICES_ENABLED:"1",
+      FCM_SERVICE_ACCOUNT_EMAIL:"jodlo@test-service.gserviceaccount.com",
+      FCM_SERVICE_ACCOUNT_PRIVATE_KEY:"-----BEGIN PRIVATE KEY-----\\nsynthetic",
+    });
+    assert.equal(missingProject.status, 503);
+    assert.equal(db.prepare("SELECT count(*) AS total FROM private_call_invitations").get().total, 0,
+      "unconfigured provider cannot reserve a call invitation");
     const start = key => preparePrivateCallInvitation(adapter, caller, "d23e2000-d7e3-4a55-8eea-3328e2292526", key, now);
     const first = await start("first-signal-key");
     const act = (token, action, time = now) =>
