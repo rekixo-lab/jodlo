@@ -3,6 +3,8 @@ import { importPKCS8, SignJWT } from "jose";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const MESSAGING_SCOPE = "https://www.googleapis.com/auth/firebase.messaging";
 const REFRESH_MARGIN_MS = 60_000;
+const MAX_REFRESH_MS = 3_000;
+type RefreshedToken = Readonly<{token: string; expiresAt: number}>;
 
 type FcmServiceAccount = Readonly<{
   email: string;
@@ -15,7 +17,11 @@ type FcmServiceAccount = Readonly<{
  */
 export function createFcmAccessTokenSource(
   account: FcmServiceAccount, request: typeof fetch = fetch,
+  timeoutMs = MAX_REFRESH_MS,
 ): () => Promise<string | null> {
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > MAX_REFRESH_MS) {
+    throw new Error("Invalid FCM OAuth deadline");
+  }
   const privateKey = account.privateKey.replaceAll("\\n", "\n");
   if (!/^[a-z0-9._-]+@[a-z0-9.-]+\.gserviceaccount\.com$/i.test(account.email) ||
       !privateKey.startsWith("-----BEGIN PRIVATE KEY-----") ||
@@ -26,7 +32,9 @@ export function createFcmAccessTokenSource(
   let cached: {token: string; expiresAt: number} | undefined;
   let pending: Promise<string | null> | undefined;
 
-  async function refresh(): Promise<string | null> {
+  // This function NEVER mutates the shared cache. A timed-out attempt can
+  // finish late, but must not overwrite the result of a newer refresh.
+  async function refresh(): Promise<RefreshedToken | null> {
     try {
       const signingKey = await (key ??= importPKCS8(privateKey, "RS256"));
       const now = Date.now();
@@ -42,7 +50,7 @@ export function createFcmAccessTokenSource(
       const response = await request(TOKEN_URL, {
         method: "POST",
         redirect: "error",
-        signal: AbortSignal.timeout(3000),
+        signal: AbortSignal.timeout(timeoutMs),
         body: new URLSearchParams({
           grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
           assertion,
@@ -62,15 +70,39 @@ export function createFcmAccessTokenSource(
           expires_in <= 0 || expires_in > 3600) return null;
       const expiresAt = now + expires_in * 1000;
       if (Date.now() >= expiresAt) return null;
-      cached = {token: access_token, expiresAt};
-      return access_token;
+      return {token: access_token, expiresAt};
     } catch {
       return null;
     }
   }
 
+  async function boundedRefresh(): Promise<string | null> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      // Bound the ENTIRE signing + OAuth fetch + response.json flow, not
+      // merely the network fetch. A mock/transport ignoring AbortSignal or
+      // stalled JSON stream must not permanently poison the shared pending
+      // refresh for this Worker isolate.
+      const result = await Promise.race<RefreshedToken | null>([
+        refresh(),
+        new Promise<null>(resolve => {
+          timer = setTimeout(() => resolve(null), timeoutMs);
+        }),
+      ]);
+      if (!result || Date.now() >= result.expiresAt) return null;
+      // Commit only a timely, fully validated response. Late stale refresh
+      // completions may not change the cached token after this deadline.
+      cached = result;
+      return result.token;
+    } catch {
+      return null;
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
+  }
+
   return async () => {
     if (cached && Date.now() + REFRESH_MARGIN_MS < cached.expiresAt) return cached.token;
-    return pending ??= refresh().finally(() => { pending = undefined; });
+    return pending ??= boundedRefresh().finally(() => { pending = undefined; });
   };
 }

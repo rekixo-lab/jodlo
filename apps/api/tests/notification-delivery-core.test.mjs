@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { openLocalDatabase } from "./helpers/local-db.mjs";
 import {createFcmProvider} from "../src/modules/notifications/fcm-provider.ts";
+import {createFcmAccessTokenSource} from "../src/modules/notifications/fcm-oauth.ts";
+import {generateKeyPairSync} from "node:crypto";
 import { makeD1NotificationReceiptStore } from "../src/modules/notifications/d1-receipts.ts";
 import {
   deliverNotificationMessage, MAX_NOTIFICATION_ATTEMPTS,
@@ -279,5 +281,72 @@ test("FCM test timeout cannot exceed the production limit or be non-finite",()=>
   };
   for(const timeoutMs of [0,-1,1.5,Infinity,NOTIFICATION_PROVIDER_TIMEOUT_MS+1]){
     assert.throws(()=>createFcmProvider({...deps,timeoutMs}),/Invalid FCM provider deadline/);
+  }
+});
+
+
+test("OAuth shared refresh unblocks after stalled network and ignores late old token",async()=>{
+  // Synthetic local RSA key: never a real Firebase identity or provider send.
+  const {privateKey} = generateKeyPairSync("rsa",{modulusLength:2048});
+  const account={
+    email:"synthetic-ci@jodlo-test.iam.gserviceaccount.com",
+    privateKey:privateKey.export({format:"pem",type:"pkcs8"}).toString(),
+  };
+  let resolveFirst;
+  let sends=0;
+  const request=async(url,init)=>{
+    sends++;
+    assert.equal(url,"https://oauth2.googleapis.com/token");
+    assert.equal(init.method,"POST");
+    assert.ok(init.signal);
+    if(sends===1)return new Promise(resolve=>{resolveFirst=resolve;});
+    return new Response(JSON.stringify({
+      access_token:"synthetic-current-token",token_type:"Bearer",expires_in:3600,
+    }),{status:200});
+  };
+  const source=createFcmAccessTokenSource(account,request,250);
+  const begun=performance.now();
+  const results=await Promise.all([source(),source(),source()]);
+  assert.deepEqual(results,[null,null,null],"all simultaneous callers share bounded first OAuth attempt");
+  assert.ok(performance.now()-begun<2200);
+  assert.equal(sends,1,"single-flight refresh must not create extra OAuth requests");
+
+  assert.equal(await source(),"synthetic-current-token","a later caller can refresh after a hang");
+  assert.equal(sends,2);
+  resolveFirst(new Response(JSON.stringify({
+    access_token:"synthetic-stale-token",token_type:"Bearer",expires_in:3600,
+  }),{status:200}));
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(await source(),"synthetic-current-token","late prior response cannot poison the cache");
+  assert.equal(sends,2,"new cached result should be reused");
+});
+
+test("OAuth refresh bounds an unending success JSON stream and retries next time",async()=>{
+  const {privateKey} = generateKeyPairSync("rsa",{modulusLength:2048});
+  const account={
+    email:"synthetic-ci@jodlo-test.iam.gserviceaccount.com",
+    privateKey:privateKey.export({format:"pem",type:"pkcs8"}).toString(),
+  };
+  let attempts=0;
+  const source=createFcmAccessTokenSource(account,async()=>{
+    attempts++;
+    if(attempts===1)return new Response(new ReadableStream({start(){}}),{status:200});
+    return new Response(JSON.stringify({
+      access_token:"synthetic-recovered",token_type:"Bearer",expires_in:3600,
+    }),{status:200});
+  },250);
+  assert.equal(await source(),null,"a never-completing JSON read must time out");
+  assert.equal(await source(),"synthetic-recovered");
+  assert.equal(attempts,2);
+});
+
+test("FCM OAuth refresh test deadline is bounded to three seconds",()=>{
+  const account={
+    email:"synthetic-ci@jodlo-test.iam.gserviceaccount.com",
+    privateKey:"-----BEGIN PRIVATE KEY-----synthetic-only",
+  };
+  for(const timeout of [0,-1,3.5,Infinity,3001]){
+    assert.throws(()=>createFcmAccessTokenSource(account,async()=>new Response(),timeout),
+      /Invalid FCM OAuth deadline/);
   }
 });
