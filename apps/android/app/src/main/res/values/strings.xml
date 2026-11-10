@@ -482,6 +482,9 @@
     <string name="case_appeal_send">Submit appeal</string>
     <string name="call_notification_channel">Incoming calls</string>
     <string name="call_notification_title">Incoming JODLO call</string>
+    <string name="call_wakeup_title">Check a JODLO call</string>
+    <string name="call_wakeup_detail">Open JODLO and sign in to check if the call is still available.</string>
+    <string name="call_wakeup_sign_in">Sign in to check the recent call. No call is accepted until the server confirms it.</string>
     <string name="call_start">Call</string>
     <string name="call_answer">Answer</string>
     <string name="call_decline">Decline</string>
