@@ -117,9 +117,11 @@ internal object CallNotifications {
                 val session = coordinator
                 val owner = session?.accountPrivateReadMarker()
                 if (session == null || owner == null) {
-                    // Even a locally revoked, remote-uncertain session must
-                    // never leave a former owner's incoming-call notice shown.
-                    cancelNotice(app, suppressGeneric = true)
+                    // A fresh, unauthenticated process must still be able to
+                    // receive the generic FCM wakeup later. Do not *create*
+                    // opt-out state just because its memory session is empty.
+                    // Any earlier explicit logout/erasure suppression remains.
+                    cancelNotice(app, suppressGeneric = false)
                     registered.clear()
                     return@execute
                 }
