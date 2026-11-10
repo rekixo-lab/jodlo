@@ -158,6 +158,8 @@ test("FCM single notification refuses delayed older call and catches provider/pe
     const test=read("apps/android/core/src/test/kotlin/com/rekixo/jodlo/core/network/CallNotificationFreshnessGateTest.kt");
     const runner=read("apps/android/core/src/test/kotlin/com/rekixo/jodlo/core/network/IncomingCallWakeupTest.kt");
     assert.match(fcm,/val noticeGate = CallNotificationFreshnessGate\(\)/);
+    assert.match(fcm,/@Synchronized\s+private fun showNotice/);
+    assert.match(fcm,/catch \(failure: RuntimeException\) \{[\s\S]*?noticeGate\.clear\(\)/);
     assert.match(fcm,/if \(!noticeGate\.accept\(wakeup, verified, System\.currentTimeMillis\(\)\)\) return/);
     assert.match(fcm,/fun clearLocal\(context: Context\) \{[\s\S]*?noticeGate\.clear\(\)/);
     assert.match(fcm,/if \(!enabled\) \{[\s\S]*?noticeGate\.clear\(\)/);
