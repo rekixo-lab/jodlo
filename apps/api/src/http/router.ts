@@ -267,7 +267,7 @@ export async function handleRequest(
       const db = env.DB;
       if (!db) throw new Error("Missing call storage");
       if (starting && validIdempotencyKey(attemptKey)) {
-        const {FCM_PROJECT_ID:projectId = "jodlo-2027", FCM_SERVICE_ACCOUNT_EMAIL:email,
+        const {FCM_PROJECT_ID:projectId, FCM_SERVICE_ACCOUNT_EMAIL:email,
           FCM_SERVICE_ACCOUNT_PRIVATE_KEY:privateKey} = env;
         if (!projectId || !email || !privateKey || env.CALL_DEVICES_ENABLED !== "1") {
           throw new Error("Missing call provider configuration");
