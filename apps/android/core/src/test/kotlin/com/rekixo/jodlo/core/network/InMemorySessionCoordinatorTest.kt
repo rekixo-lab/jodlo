@@ -614,7 +614,36 @@ private fun testCallDeviceRegistrationGate() {
     check(runCatching { gate.confirmed(1L, "") }.isFailure)
 }
 
+/** Failed or lost ACCEPT HTTP acknowledgement must not be treated as an
+ * accepted audio session. A fresh receiver-owned read can either confirm
+ * ACCEPTED or establish still-ringing eligibility for an explicit retry. */
+private fun testReceiverAcceptRecoveryContract() {
+    val deadline = 1_700_000_090_000L
+    val receiverRinging = CallSignal(CallRole.RECEIVER, CallPhase.RINGING, deadline)
+    val receiverAccepted = CallSignal(CallRole.RECEIVER, CallPhase.ACCEPTED, deadline)
+    check(!CallAcceptRecovery.confirmed(receiverRinging))
+    check(CallAcceptRecovery.confirmed(receiverAccepted))
+    check(!CallAcceptRecovery.canAnswer(receiverAccepted, deadline - 2))
+    check(CallAcceptRecovery.canAnswer(receiverRinging, deadline - 1))
+    check(!CallAcceptRecovery.canAnswer(receiverRinging, deadline))
+    check(!CallAcceptRecovery.canAnswer(receiverRinging, deadline + 1))
+    check(!CallAcceptRecovery.canAnswer(receiverRinging, -1L))
+    for (phase in listOf(CallPhase.DECLINED, CallPhase.CANCELLED, CallPhase.ENDED, CallPhase.MISSED, CallPhase.PENDING)) {
+        val signal = CallSignal(CallRole.RECEIVER, phase, deadline)
+        check(!CallAcceptRecovery.confirmed(signal))
+        check(!CallAcceptRecovery.canAnswer(signal, deadline - 1))
+    }
+    for (phase in CallPhase.entries) {
+        val caller = CallSignal(CallRole.CALLER, phase, deadline)
+        check(!CallAcceptRecovery.confirmed(caller))
+        check(!CallAcceptRecovery.canAnswer(caller, deadline - 1))
+    }
+    check(CallEndProtocol.isConfirmed(CallRole.RECEIVER,
+        CallSignal(CallRole.RECEIVER, CallPhase.ENDED, deadline)))
+}
+
 fun main() {
+    testReceiverAcceptRecoveryContract()
     testCallDeviceRegistrationGate()
     testUncertainVoiceCallRecovery()
     testOwnerAccountPrivatePresentationFence()
