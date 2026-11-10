@@ -9,6 +9,7 @@ internal object CallNotifications {
     fun attach(session: InMemorySessionCoordinator?) = Unit
     fun sync(context: Context) = Unit
     fun preferenceChanged(context: Context, enabled: Boolean) = Unit
+    fun clearLocal(context: Context) = Unit
 }
 
 /** Disabled in the manifest of builds that omit Firebase. */
