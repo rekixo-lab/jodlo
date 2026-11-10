@@ -18,6 +18,21 @@ data class CallInvitation(val id: String, val ringDeadlineMs: Long)
 data class CallSignal(val role: CallRole, val phase: CallPhase, val ringDeadlineMs: Long)
 
 /**
+ * An ACCEPT response can be lost after the server commits it. Only a current,
+ * receiver-role server GET can prove the call is accepted; a still-ringing
+ * result allows an explicit, user-initiated second Answer, never an automatic
+ * action replay. No local timeout or network error is success evidence.
+ */
+object CallAcceptRecovery {
+    fun confirmed(signal: CallSignal): Boolean =
+        signal.role == CallRole.RECEIVER && signal.phase == CallPhase.ACCEPTED
+
+    fun canAnswer(signal: CallSignal, nowMs: Long): Boolean =
+        signal.role == CallRole.RECEIVER && signal.phase == CallPhase.RINGING &&
+            nowMs >= 0 && signal.ringDeadlineMs > nowMs
+}
+
+/**
  * Caller/Worker termination is confirmed only by an authenticated, matching
  * server-side terminal phase. A failed HTTP request may already have committed;
  * the UI must leave the audio locally closed, explicitly reconcile the

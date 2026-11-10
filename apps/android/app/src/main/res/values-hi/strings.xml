@@ -502,6 +502,8 @@
     <string name="call_finished">कॉल समाप्त हुई</string>
     <string name="call_dial_unconfirmed">पुष्टि नहीं हुई कि कॉल शुरू हुई या नहीं। दोबारा कोशिश करने पर वही कॉल अनुरोध जाँचा जाएगा।</string>
     <string name="call_end_unconfirmed">कॉल समाप्त होने की पुष्टि नहीं हुई। स्थिति जाँचें या दोबारा कॉल काटें।</string>
+    <string name="call_accept_unconfirmed">जवाब नहीं मिला: कॉल स्वीकार हुई या नहीं, पुष्टि नहीं है। कॉल की स्थिति जाँचें; दोबारा स्वीकार अपने-आप नहीं होगा।</string>
+    <string name="call_check_accept">सर्वर पर कॉल की स्थिति जाँचें</string>
     <string name="call_ending">कॉल समाप्त की जा रही है…</string>
     <string name="call_check_end">कॉल की स्थिति जाँचें</string>
     <string name="call_retry_end">दोबारा कॉल काटें</string>

@@ -65,7 +65,7 @@ test("Call UI never claims server termination on a lost POST and explicitly reco
     assert.match(ui,/session\.accountExportSessionMarker\(\) != epoch/);
     assert.match(ui,/session\.startCall\(owner, outgoing\.listingId, outgoing\.attemptKey\)/);
     assert.match(ui,/dialUncertain = true/);
-    assert.match(ui,/ending != null \|\| \(invitationId == null && dialUncertain\)/);
+    assert.match(ui,/ending != null \|\| acceptUncertain \|\| \(invitationId == null && dialUncertain\)/);
     assert.match(ui,/LaunchedEffect\(invitationId, phase, ending\)/);
     assert.match(ui,/phase == CallPhase\.ACCEPTED && ending == null/);
     assert.match(core,/object CallEndProtocol/);
@@ -173,4 +173,33 @@ test("FCM single notification refuses delayed older call and catches provider/pe
     assert.match(test,/check\(!gate\.accept\(first, verified = true, nowMs = NOW \+ 6\)\)/);
     assert.match(runner,/testCallNotificationFreshnessGate\(\)/);
     assert.doesNotMatch(fcm,/Log\.|SharedPreferences|FileOutputStream/);
+});
+
+
+test("Receiver Answer response loss stays uncertain until explicit authenticated same-owner GET",()=>{
+    const ui=read("apps/android/app/src/main/java/com/rekixo/jodlo/CallScreen.kt");
+    const core=read("apps/android/core/src/main/kotlin/com/rekixo/jodlo/core/network/CallSignal.kt");
+    const kotlin=read("apps/android/core/src/test/kotlin/com/rekixo/jodlo/core/network/InMemorySessionCoordinatorTest.kt");
+    const en=read("apps/android/app/src/main/res/values/strings.xml");
+    const hi=read("apps/android/app/src/main/res/values-hi/strings.xml");
+    assert.match(ui,/var acceptUncertain by remember\(request\)/);
+    assert.match(ui,/if \(!terminalRequest\) acceptUncertain = true/);
+    assert.match(ui,/CallAcceptRecovery\.confirmed\(confirmed\)/);
+    assert.match(ui,/fun checkAcceptance\(\) \{/);
+    assert.match(ui,/if \(!acceptUncertain \|\| busy \|\| owner == null\) return/);
+    assert.match(ui,/session\.callSignal\(owner, id\)/);
+    assert.match(ui,/session\.accountPrivateReadMarker\(\) == owner/);
+    assert.match(ui,/CallAcceptRecovery\.confirmed\(signal\)/);
+    assert.match(ui,/CallAcceptRecovery\.canAnswer\(signal, System\.currentTimeMillis\(\)\)/);
+    assert.match(ui,/acceptUncertain -> \{\s*JodloButton\(onClick = ::checkAcceptance/);
+    assert.match(ui,/if \(ending != null \|\| acceptUncertain \|\| \(invitationId == null && dialUncertain\)\)/);
+    assert.match(ui,/!acceptUncertain && phase != CallPhase\.ACCEPTED/);
+    assert.match(ui,/R\.string\.call_accept_unconfirmed/);
+    assert.match(ui,/R\.string\.call_check_accept/);
+    assert.match(core,/object CallAcceptRecovery/);
+    assert.match(core,/signal\.role == CallRole\.RECEIVER && signal\.phase == CallPhase\.ACCEPTED/);
+    assert.match(kotlin,/testLostReceiverAnswerReconcilesByRead\(\)/);
+    assert.match(kotlin,/answerPuts == 1 && reads == 1/);
+    for(const xml of [en,hi])for(const name of ["call_accept_unconfirmed","call_check_accept"])
+        assert.match(xml,new RegExp('name="'+name+'"'));
 });
