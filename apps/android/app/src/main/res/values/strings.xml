@@ -502,6 +502,8 @@
     <string name="call_finished">Call ended</string>
     <string name="call_dial_unconfirmed">Could not confirm whether this call started. Retry uses the same call attempt.</string>
     <string name="call_end_unconfirmed">Could not confirm the call ended. Check its status or retry ending it.</string>
+    <string name="call_accept_unconfirmed">Could not confirm whether Answer succeeded. Check the call status. JODLO will not retry accepting automatically.</string>
+    <string name="call_check_accept">Check whether call was answered</string>
     <string name="call_ending">Ending call…</string>
     <string name="call_check_end">Check call status</string>
     <string name="call_retry_end">Try ending again</string>
