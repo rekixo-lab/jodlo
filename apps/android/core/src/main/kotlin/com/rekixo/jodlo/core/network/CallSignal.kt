@@ -17,6 +17,26 @@ data class CallInvitation(val id: String, val ringDeadlineMs: Long)
 
 data class CallSignal(val role: CallRole, val phase: CallPhase, val ringDeadlineMs: Long)
 
+/**
+ * Caller/Worker termination is confirmed only by an authenticated, matching
+ * server-side terminal phase. A failed HTTP request may already have committed;
+ * the UI must leave the audio locally closed, explicitly reconcile the
+ * current call, and never silently claim the other party stopped ringing.
+ */
+object CallEndProtocol {
+    fun isConfirmed(expectedRole: CallRole, signal: CallSignal): Boolean =
+        signal.role == expectedRole && signal.phase in setOf(
+            CallPhase.DECLINED, CallPhase.CANCELLED, CallPhase.ENDED, CallPhase.MISSED,
+        )
+
+    fun actionToEnd(role: CallRole, phase: CallPhase): CallAction? = when (phase) {
+        CallPhase.ACCEPTED -> CallAction.HANGUP
+        CallPhase.RINGING, CallPhase.PENDING ->
+            if (role == CallRole.RECEIVER) CallAction.DECLINE else CallAction.CANCEL
+        else -> null
+    }
+}
+
 class CallAudioGrant internal constructor(
     val appId: String,
     val channel: String,
