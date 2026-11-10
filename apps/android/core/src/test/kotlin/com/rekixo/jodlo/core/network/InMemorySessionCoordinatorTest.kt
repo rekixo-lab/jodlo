@@ -583,8 +583,9 @@ private fun testUncertainVoiceCallRecovery() {
     check(cancelPuts == 1 && statusGets == 0)
     val afterCancel = session.accountPrivateReadMarker()!!
     val status = session.callSignal(afterCancel, invitationId)
-    check(status == SessionResult.Success(CallSignal(CallRole.CALLER, CallPhase.CANCELLED, deadline)))
-    check(CallEndProtocol.isConfirmed(CallRole.CALLER, (status as SessionResult.Success).value))
+    check(status is SessionResult.Success && status.value ==
+        CallSignal(CallRole.CALLER, CallPhase.CANCELLED, deadline))
+    check(CallEndProtocol.isConfirmed(CallRole.CALLER, status.value))
     check(statusGets == 1 && cancelPuts == 1)
 }
 
