@@ -310,5 +310,41 @@ fun main() {
         """{"items":[{"id":"${historyEntry(1).id}","direction":"outgoing","outcome":"ended","endedAt":1999999999,"connectedSeconds":1,"phone":"private"}],"nextCursor":null}""",
     )) rejects(envelope(badHistory),parse=JodloReplyDecoder::callHistory)
 
+    // Call ending is NOT confirmed merely because an action was attempted or
+    // because the local microphone/RTC stopped. Only an authenticated matching
+    // role and a terminal server phase can close the recovery screen.
+    val ringDeadline = 2_000_000_100_000L
+    val activeCaller = CallSignal(CallRole.CALLER, CallPhase.ACCEPTED, ringDeadline)
+    val ringingReceiver = CallSignal(CallRole.RECEIVER, CallPhase.RINGING, ringDeadline)
+    check(!CallEndProtocol.isConfirmed(CallRole.CALLER, activeCaller))
+    check(!CallEndProtocol.isConfirmed(CallRole.RECEIVER, activeCaller))
+    check(!CallEndProtocol.isConfirmed(CallRole.RECEIVER, ringingReceiver))
+    check(CallEndProtocol.actionToEnd(CallRole.CALLER, CallPhase.RINGING) == CallAction.CANCEL)
+    check(CallEndProtocol.actionToEnd(CallRole.RECEIVER, CallPhase.RINGING) == CallAction.DECLINE)
+    check(CallEndProtocol.actionToEnd(CallRole.CALLER, CallPhase.PENDING) == CallAction.CANCEL)
+    check(CallEndProtocol.actionToEnd(CallRole.RECEIVER, CallPhase.PENDING) == CallAction.DECLINE)
+    check(CallEndProtocol.actionToEnd(CallRole.CALLER, CallPhase.ACCEPTED) == CallAction.HANGUP)
+    check(CallEndProtocol.actionToEnd(CallRole.RECEIVER, CallPhase.ACCEPTED) == CallAction.HANGUP)
+    for (terminal in listOf(CallPhase.ENDED, CallPhase.CANCELLED, CallPhase.DECLINED, CallPhase.MISSED)) {
+        check(CallEndProtocol.isConfirmed(CallRole.CALLER,
+            CallSignal(CallRole.CALLER, terminal, ringDeadline)))
+        check(CallEndProtocol.isConfirmed(CallRole.RECEIVER,
+            CallSignal(CallRole.RECEIVER, terminal, ringDeadline)))
+        check(!CallEndProtocol.isConfirmed(CallRole.CALLER,
+            CallSignal(CallRole.RECEIVER, terminal, ringDeadline)))
+        check(CallEndProtocol.actionToEnd(CallRole.RECEIVER, terminal) == null)
+    }
+    val endedOnServer = JodloReplyDecoder.callSignal(TransportReply(200,
+        envelope("""{"role":"caller","phase":"ended","ringDeadlineMs":$ringDeadline}""")))
+    check(endedOnServer is ApiOutcome.Ok &&
+        CallEndProtocol.isConfirmed(CallRole.CALLER, endedOnServer.value))
+    val stillAccepted = JodloReplyDecoder.callSignal(TransportReply(200,
+        envelope("""{"role":"caller","phase":"accepted","ringDeadlineMs":$ringDeadline}""")))
+    check(stillAccepted is ApiOutcome.Ok &&
+        !CallEndProtocol.isConfirmed(CallRole.CALLER, stillAccepted.value) &&
+        CallEndProtocol.actionToEnd(CallRole.CALLER, stillAccepted.value.phase) == CallAction.HANGUP)
+    rejects(envelope("""{"role":"caller","phase":"ended","ringDeadlineMs":$ringDeadline,"phone":"private"}"""),
+        parse=JodloReplyDecoder::callSignal)
+
     println("JODLO Kotlin reply decoder: typed pages, explicit choices, listing privacy and one-shot network safety OK")
 }
