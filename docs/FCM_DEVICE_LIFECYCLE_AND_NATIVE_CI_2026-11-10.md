@@ -7,6 +7,12 @@ When the Worker disables calling or notification permission is revoked, the app 
 
 After a successful Google sign-in, the Android Account screen dismisses any former account's incoming-call notification and resyncs only with freshly verified new-account permission. After a local sign-out or confirmed erasure, it clears the notice. The no-FCM build stays functional with an inert matching method; no new storage permission, foreground service, persistent FCM token, account ID, phone number or secret was added.
 
+## Same-Worker device token rotation and account isolation (API + D1)
+
+A genuine device may sign in to the **same Worker account** again before its previous server session expires. Previously, a UNIQUE registration token held by that old session caused the fresh session's PUT to fail (403), and its FCM ring ACK could not use the new authenticated session. `registerOwnCallDevice` now uses an **atomic D1 batch** to transfer that one token from any older session of the SAME live, opted-in Worker account to the current session, then reads back the exact session-token binding and consent before returning success. A different account cannot claim or delete the other account's registration, even if it submits the same token. This does not allow a logged-out, unauthenticated client to take over a device. Existing opt-out trigger still erases that Worker's session-bound device tokens.
+
+Local real SQLite/D1 router tests cover same-account second login, exact token move, repeated registration, cross-account refusal preserving the existing binding and opt-out purge. No new schema or unverified remote operation was introduced.
+
 ## End-to-end compile safety
 Previously, default Android CI compiled the **no-FCM variant** only; the FCM real source set, Firebase Google Services Gradle plugin and combined Agora+FCM graph were not compiled in PR CI.
 
