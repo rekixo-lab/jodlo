@@ -1023,8 +1023,6 @@ internal fun WorkerDashboard(
                                                 Text(stringResource(
                                                     R.string.worker_customer_preview_approved_label))
                                                 Text(stringResource(R.string.worker_customer_preview_visible))
-                                                Text(stringResource(R.string.listing_detail_private_notice),
-                                                    style=MaterialTheme.typography.bodySmall)
                                             }
                                         }
                                         WorkerCustomerServicePreviewPhase.NOT_PUBLIC_WHEN_CHECKED ->

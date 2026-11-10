@@ -44,9 +44,9 @@
     <string name="worker_load_more">Load next page</string>
     <string name="worker_unpublish_selected">Unpublish selected listing</string>
     <string name="worker_customer_preview_heading">Customer view check</string>
-    <string name="worker_customer_preview_explainer">See exactly the Service details a Customer can access: one fresh public read of the Listing and currently approved Category name in Hindi or English. Private Worker details and call availability are not included.</string>
+    <string name="worker_customer_preview_explainer">Use the same fresh public Service check as a Customer. Only approved Service information may appear: Category, reviewed description, optional city and photo. Worker credentials and call availability are not verified.</string>
     <string name="worker_customer_preview_check">Check Customer-visible Service details</string>
-    <string name="worker_customer_preview_visible">Public at the last check. The approved Category name and original Service reference above were returned together; this does not verify Worker identity or authorize contact.</string>
+    <string name="worker_customer_preview_visible">Public when last checked. Only independently reviewed Service details are shown; this does not verify Worker identity or authorize contact.</string>
     <string name="worker_customer_preview_not_public">This service is not currently public. It may be unpublished, hidden or unavailable. No reason is disclosed here.</string>
     <string name="worker_customer_preview_failed">Could not confirm public visibility. Do not assume it is public or hidden; try again.</string>
     <string name="worker_publish_category">Publish a service Category</string>
@@ -329,7 +329,7 @@
     <string name="saved_review_row_public">Public at last check only. Open to verify again.</string>
     <string name="saved_review_row_missing">Not public at last check. It may be unpublished or restricted; bookmark remains on this device.</string>
     <string name="saved_review_row_unknown">Could not confirm at last check. This does not mean the service was removed.</string>
-    <string name="worker_customer_preview_approved_label">Currently approved Category name from the same public Service Detail read. Not Worker verification, a custom Worker description, or a guarantee of availability.</string>
+    <string name="worker_customer_preview_approved_label">Category and any reviewed Service details above came from the same fresh public read, not from the private Worker editor.</string>
     <!-- Optional reviewed Group -> Family -> Category navigation, no seed or PII. -->
     <string name="home_hierarchy_action">Browse approved Groups → Families → Categories</string>
     <string name="hierarchy_heading">Find work by Group and Family</string>
@@ -365,7 +365,7 @@
     <string name="service_profile_area">Service area: no approved city, address or distance is supplied. Choosing a city in Nearby does not verify this Service covers it.</string>
     <string name="service_profile_rates_calls">Rates, photos and contact: not supplied or verified here. Internet voice calls are not currently enabled.</string>
     <string name="service_card_category_not_confirmed">Approved category name could not be checked</string>
-    <string name="service_card_approved_category_notice">Category label only. It is not a Worker-written profile or proof of current publication; offline developer samples are not real services.</string>
+    <string name="service_card_approved_category_notice">This is an approved Category label, not Worker identity verification. Any reviewed Service details appear separately; an unchecked reference is not proof of current publication.</string>
     <string name="service_card_checked_time_only">This exact service was public at the time of its latest check. It may change afterward.</string>
     <string name="service_card_must_recheck">This is only a service reference. Open it to check whether it is public now.</string>
     <string name="service_card_no_worker_claims">No verified Worker identity, rating, price, address, contact or calling availability is provided.</string>
