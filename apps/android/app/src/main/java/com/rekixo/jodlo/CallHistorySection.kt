@@ -15,6 +15,7 @@ import androidx.compose.ui.res.stringResource
 import com.rekixo.jodlo.core.network.AccountPrivateReadMarker
 import com.rekixo.jodlo.core.network.CallHistoryOutcome
 import com.rekixo.jodlo.core.network.CallHistoryPage
+import com.rekixo.jodlo.core.network.CallHistoryTimeline
 import com.rekixo.jodlo.core.network.InMemorySessionCoordinator
 import com.rekixo.jodlo.core.network.SessionResult
 import com.rekixo.jodlo.ui.theme.JodloSizes
@@ -29,20 +30,35 @@ internal fun CallHistorySection(session: InMemorySessionCoordinator, accountBusy
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val marker = session.accountPrivateReadMarker()
-    var result by remember(session, marker) { mutableStateOf<CallHistoryPage?>(null) }
+    // This private history exists only for the current session/write epoch.
+    // New account, logout or Worker action clears the previous owner's rows.
+    var loaded by remember(session, marker) {
+        mutableStateOf<Pair<AccountPrivateReadMarker, CallHistoryPage>?>(null)
+    }
     var failed by remember(session, marker) { mutableStateOf(false) }
     var busy by remember(session, marker) { mutableStateOf(false) }
+    val page = loaded?.takeIf { it.first == marker }?.second
 
     fun load(owner: AccountPrivateReadMarker, after: String?) {
-        if (busy || accountBusy) return
+        if (busy || accountBusy || session.accountPrivateReadMarker() != owner) return
+        val earlier = loaded?.takeIf { it.first == owner }?.second
+        if (after != null && (earlier == null || earlier.nextCursor != after)) return
+        if (after == null) loaded = null // Explicit refresh hides stale rows immediately.
         busy = true
         failed = false
         scope.launch {
             try {
-                val page = withContext(Dispatchers.IO) { session.callHistory(owner, after) }
+                val reply = withContext(Dispatchers.IO) { session.callHistory(owner, after) }
                 if (session.accountPrivateReadMarker() == owner) {
-                    if (page is SessionResult.Success) result = page.value else failed = true
+                    if (reply is SessionResult.Success) {
+                        val combined = CallHistoryTimeline.merge(earlier, after, reply.value)
+                        if (combined != null) loaded = owner to combined else failed = true
+                    } else failed = true
                 }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                if (session.accountPrivateReadMarker() == owner) failed = true
             } finally {
                 busy = false
             }
@@ -55,7 +71,7 @@ internal fun CallHistorySection(session: InMemorySessionCoordinator, accountBusy
             Text(stringResource(R.string.call_history_read))
         }
         if (failed) Text(stringResource(R.string.call_unavailable), color = MaterialTheme.colorScheme.error)
-        result?.let { page ->
+        page?.let { page ->
             if (page.items.isEmpty()) Text(stringResource(R.string.call_history_empty))
             for (entry in page.items) {
                 val direction = stringResource(if (entry.incoming) R.string.call_history_incoming else R.string.call_history_outgoing)
