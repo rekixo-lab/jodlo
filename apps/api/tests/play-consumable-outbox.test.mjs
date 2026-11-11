@@ -5,13 +5,13 @@ import { openLocalDatabase } from "./helpers/local-db.mjs";
 import { issueSession } from "../src/modules/identity/sessions.ts";
 import { readOwnCallCreditBalance, recordTrustedCallCreditEvent } from
   "../src/modules/interactions/private-call-credits.ts";
-import { jodloPlayPurchaseFingerprint } from
+import { jodloPlayPurchaseFingerprint, jodloPlayAccountBinding } from
   "../src/modules/interactions/google-play-purchase-preflight.ts";
 import {
   PLAY_CONSUME_LEASE_MS, stageTrustedPlayConsumable,
   claimPlayConsumeOnce, deliverClaimedPlayConsume,
   quarantineExpiredPlayConsume, releaseUnsentPlayConsumeClaim,
-  holdVoidedPlayConsume, confirmReconciledPlayConsumption,
+  holdVoidedPlayConsume, reconcileUnknownPlayConsume,
 } from "../src/modules/interactions/play-consumable-outbox.ts";
 
 const TOKEN = "synthetic.jodlo.play-token-000000001";
@@ -140,11 +140,35 @@ test("provider ambiguity permanently quarantines the send and refuses automatic 
       "once a POST may have reached Play, never re-open the send lease");
     assert.equal(await stageTrustedPlayConsumable(adapter,first,APPROVED),"replay");
     assert.equal(rows(db,"call_credit_events"),1);
-    assert.equal(await confirmReconciledPlayConsumption(adapter,claim,now+250),true,
-      "only a separately trusted provider-recovery caller can mark consumed");
+    const binding=await jodloPlayAccountBinding(ACCOUNT);
+    const consumed={
+      kind:"androidpublisher#productPurchaseV2",
+      obfuscatedExternalAccountId:binding,
+      purchaseStateContext:{purchaseState:"PURCHASED"},
+      acknowledgementState:"ACKNOWLEDGEMENT_STATE_ACKNOWLEDGED",
+      productLineItem:[{productId:PRODUCT,productOfferDetails:{
+        quantity:1,refundableQuantity:1,consumptionState:"CONSUMPTION_STATE_CONSUMED",
+      }}],
+    };
+    const reconcileDeps=(value)=>({
+      now:()=>now+250,accessToken:async()=>"synthetic-access-bearer",
+      request:async(url,options)=>{
+        assert.equal(options.method,"GET","reconciliation never resends consume POST");
+        assert.match(url,/\\/purchases\\/productsv2\\/tokens\\//);
+        return new Response(JSON.stringify(value),{status:200});
+      },
+    });
+    assert.equal(await reconcileUnknownPlayConsume(adapter,claim,TOKEN+".wrong",
+      reconcileDeps(consumed)),"denied","wrong token cannot reconcile someone else's claim");
+    assert.equal(await reconcileUnknownPlayConsume(adapter,claim,TOKEN,
+      reconcileDeps({...consumed,obfuscatedExternalAccountId:"0".repeat(64)})),"unknown",
+      "account mismatch cannot clear unknown state");
+    assert.equal(getState(db).status,"unknown");
+    assert.equal(await reconcileUnknownPlayConsume(adapter,claim,TOKEN,
+      reconcileDeps(consumed)),"consumed","fresh Play V2 proof closes the unknown claim");
     assert.equal(getState(db).status,"consumed");
-    assert.equal(await confirmReconciledPlayConsumption(adapter,claim,now+300),false,
-      "cannot replay reconciliation");
+    assert.equal(await reconcileUnknownPlayConsume(adapter,claim,TOKEN,
+      reconcileDeps(consumed)),"denied","cannot replay reconciliation");
     assert.equal(rows(db,"call_credit_events"),1);
   }finally{db.close();}
 });
@@ -197,8 +221,10 @@ test("expired in-flight claims and proven voids never auto-send, even after late
     assert.equal(await holdVoidedPlayConsume(adapter,ACCOUNT,first.sourceKeyHash,
       claim.deadlineMs+3),true);
     assert.equal(getState(db).status,"void_hold");
-    assert.equal(await confirmReconciledPlayConsumption(adapter,claim,
-      claim.deadlineMs+4),false,"void hold beats stale confirmed callback");
+    assert.equal(await reconcileUnknownPlayConsume(adapter,claim,TOKEN,{
+      now:()=>claim.deadlineMs+4,accessToken:async()=>"synthetic-access-bearer",
+      request:async()=>{throw Error("must not contact Play after void hold");},
+    }),"denied","void hold prevents any provider recovery request");
     assert.equal(await holdVoidedPlayConsume(adapter,ACCOUNT,first.sourceKeyHash,
       claim.deadlineMs+5),false);
     assert.equal(await stageTrustedPlayConsumable(adapter,first,APPROVED),"void_hold");
