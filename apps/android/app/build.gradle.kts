@@ -8,6 +8,8 @@ plugins {
 
 val agoraEnabled = providers.gradleProperty("jodloEnableAgora").orNull == "true"
 val fcmEnabled = providers.gradleProperty("jodloEnableFcm").orNull == "true"
+// Opt-in library compile only; no real product IDs, checkout or entitlement route is authorized.
+val playBillingEnabled = providers.gradleProperty("jodloEnablePlayBilling").orNull == "true"
 if (fcmEnabled) {
     require(file("google-services.json").isFile) {
         "Place JODLO's google-services.json in the Android app module before enabling FCM"
@@ -48,6 +50,7 @@ android {
     sourceSets.getByName("main") {
         java.srcDir(if (agoraEnabled) "src/agora/kotlin" else "src/noAgora/kotlin")
         java.srcDir(if (fcmEnabled) "src/fcm/kotlin" else "src/noFcm/kotlin")
+        if (playBillingEnabled) java.srcDir("src/playBilling/kotlin")
     }
     namespace = "com.rekixo.jodlo"
     compileSdk = 35
@@ -61,6 +64,7 @@ android {
         manifestPlaceholders["callMessagingServiceEnabled"] = fcmEnabled
         buildConfigField("boolean", "FCM_ENABLED", fcmEnabled.toString())
         buildConfigField("boolean", "AGORA_ENABLED", agoraEnabled.toString())
+        buildConfigField("boolean", "PLAY_BILLING_ENABLED", playBillingEnabled.toString())
         buildConfigField("String", "API_ORIGIN", "\"" + apiOrigin + "\"")
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"" + googleWebClientId + "\"")
     }
@@ -84,6 +88,7 @@ android {
 dependencies {
     implementation(project(":core"))
     if (agoraEnabled) implementation("io.agora.rtc:voice-sdk:4.7.0")
+    if (playBillingEnabled) implementation("com.android.billingclient:billing:9.1.0")
     if (fcmEnabled) {
         implementation(platform("com.google.firebase:firebase-bom:34.7.0"))
         implementation("com.google.firebase:firebase-messaging")

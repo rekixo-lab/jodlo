@@ -53,6 +53,9 @@ jobs:
       - name: Compile the optional Agora voice integration
         if: matrix.java-version == '21'
         run: gradle -p apps/android -PincludeAndroidApp=true -PjodloEnableAgora=true :app:compileDebugKotlin --no-daemon
+      - name: Compile optional Play Billing 9.1 read-only client (no checkout)
+        if: matrix.java-version == '21'
+        run: gradle -p apps/android -PincludeAndroidApp=true -PjodloEnablePlayBilling=true :app:compileDebugKotlin --no-daemon
       - name: Compile FCM and Agora together using synthetic CI-only Firebase configuration
         if: matrix.java-version == '21'
         run: |
