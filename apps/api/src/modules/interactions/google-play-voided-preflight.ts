@@ -95,7 +95,7 @@ export async function inspectJodloPlayPurchaseWithVoids(
 
   try {
     const oauth = await withinDeadline(deps.accessToken, timeLeft);
-    if (!oauth || !/^[A-Za-z0-9._~+/-]{1,4096}={0,2}$/.test(oauth))
+    if (!oauth || !/^[A-Za-z0-9._~+\/-]{1,4096}={0,2}$/.test(oauth))
       return {kind: "unavailable"};
 
     const request = deps.request ?? fetch;
@@ -138,7 +138,7 @@ export async function inspectJodloPlayPurchaseWithVoids(
       const rawNext = pagination?.nextPageToken;
       if (rawNext !== undefined && rawNext !== null &&
           (typeof rawNext !== "string" || rawNext.length < 1 ||
-           rawNext.length > 4096 || !/^[A-Za-z0-9._~+/-]+={0,2}$/.test(rawNext)))
+           rawNext.length > 4096 || !/^[A-Za-z0-9._~+\/-]+={0,2}$/.test(rawNext)))
         return {kind: "unavailable"};
       const records = rows === undefined ? [] : rows as unknown[];
       const pageInfo = object(responseObject.pageInfo);
