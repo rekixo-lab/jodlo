@@ -1,4 +1,5 @@
 import { readOwnWorkerAvailability, setOwnWorkerAvailability } from "../modules/interactions/agora-private-safety-state.ts";
+import { handleConfiguredJodloPlayRtdn } from "../modules/interactions/google-play-pubsub-handler.ts";
 import { issueOwnAgoraAudioGrant } from "../modules/interactions/private-agora-media.ts";
 import { validIdempotencyKey } from "../modules/shared/identifiers.ts";
 import { ownPrivateCallSignal, validCallAction } from "../modules/interactions/private-call-signaling.ts";
