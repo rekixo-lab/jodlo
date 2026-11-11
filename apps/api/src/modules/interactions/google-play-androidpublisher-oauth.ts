@@ -59,9 +59,30 @@ export function createPlayAndroidPublisherAccessTokenSource(
       const length = response.headers.get("content-length");
       if (length !== null && (!/^\d+$/.test(length) || Number(length) > 4096))
         return null;
-      const raw = await response.text();
-      if (raw.length > 4096) return null;
-      const data: unknown = JSON.parse(raw);
+      if (!response.body) return null;
+      const reader = response.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let bytes = 0;
+      try {
+        while (true) {
+          const next = await reader.read();
+          if (next.done) break;
+          bytes += next.value.byteLength;
+          if (bytes > 4096) return null;
+          chunks.push(next.value);
+        }
+      } finally {
+        void reader.cancel().catch(() => {});
+        try { reader.releaseLock(); } catch { /* timed-out stream */ }
+      }
+      const combined = new Uint8Array(bytes);
+      let offset = 0;
+      for (const chunk of chunks) {
+        combined.set(chunk,offset);
+        offset += chunk.byteLength;
+      }
+      const data: unknown = JSON.parse(
+        new TextDecoder("utf-8",{fatal:true}).decode(combined));
       if (!data || typeof data !== "object" || Array.isArray(data))
         return null;
       const fields = data as Record<string, unknown>;
