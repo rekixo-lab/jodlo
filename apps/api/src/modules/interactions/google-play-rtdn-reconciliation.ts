@@ -6,7 +6,7 @@ import {
   recordTrustedPlayRevocation,
 } from "./google-play-rtdn-fences.ts";
 import {
-  JODLO_PLAY_PACKAGE,
+  JODLO_PLAY_PACKAGE, jodloPlayPurchaseFingerprint,
 } from "./google-play-purchase-preflight.ts";
 
 const MAX_PROVIDER_MS = 5_000;
@@ -174,6 +174,10 @@ export async function reconcileAuthenticatedJodloPlayRevocation(
   const remaining = () => Math.max(0, Math.floor(timeoutMs - (performance.now() - start)));
   try {
     const nowMs = now();
+    // Even an internal caller cannot fence an unrelated token digest.
+    if (await bounded(
+      () => jodloPlayPurchaseFingerprint(push.purchaseToken), remaining,
+    ) !== push.hint.sourceKeyHash) return "retry";
     if (!Number.isSafeInteger(nowMs) || nowMs <= VOID_SEARCH_MS ||
         !Number.isSafeInteger(push.hint.eventTimeMs) ||
         push.hint.eventTimeMs > nowMs + 300_000 ||
