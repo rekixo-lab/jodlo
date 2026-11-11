@@ -1,7 +1,7 @@
 import type { D1Database } from "../../data/d1.ts";
 import { validOpaqueId } from "../shared/identifiers.ts";
 import {
-  jodloPlayPurchaseFingerprint, JODLO_PLAY_PACKAGE,
+  jodloPlayPurchaseFingerprint, jodloPlayAccountBinding, JODLO_PLAY_PACKAGE,
   PLAY_PREFLIGHT_TIMEOUT_MS,
 } from "./google-play-purchase-preflight.ts";
 
@@ -185,7 +185,7 @@ export async function holdVoidedPlayConsume(
 /** An UNKNOWN send needs an independently checked Google consumption
  * response plus owner/SKU/token match before calling this reconciliation
  * seam. No automatic resend and no further credit is ever applied here. */
-export async function confirmReconciledPlayConsumption(
+async function confirmReconciledPlayConsumption(
   db:D1Database,claim:PlayConsumeClaim,nowMs:number,
 ):Promise<boolean> {
   if(!validClaim(claim)||!Number.isSafeInteger(nowMs)||nowMs<=0)return false;
@@ -238,8 +238,8 @@ export async function deliverClaimedPlayConsume(
       now()>=claim.deadlineMs)return "denied";
 
   const started=performance.now();
-  const remaining=()=>Math.max(0,Math.floor(Math.min(timeoutMs,
-    claim.deadlineMs-now())-(performance.now()-started)));
+  const remaining=()=>Math.max(0,Math.floor(Math.min(
+    timeoutMs-(performance.now()-started), claim.deadlineMs-now())));
   let sent=false;
   try {
     const digest=await deadline(()=>jodloPlayPurchaseFingerprint(purchaseToken),remaining);
@@ -283,4 +283,92 @@ export async function deliverClaimedPlayConsume(
       return changed?"unknown":"denied";
     }catch{return "denied";}
   }
+}
+
+
+/** Lost-response reconciliation: a fresh Google ProductPurchaseV2 GET must
+ * prove the SAME token, JODLO account, SKU and PURCHASED + CONSUMED +
+ * ACKNOWLEDGED state. This read never initiates a second consume, awards
+ * additional credit or overrides a refund hold. Partial refunds and test
+ * receipts cannot clear an ambiguous delivery.
+ */
+export async function reconcileUnknownPlayConsume(
+  db:D1Database,claim:PlayConsumeClaim,purchaseToken:string,deps:ConsumeProvider,
+):Promise<"consumed"|"unknown"|"denied"> {
+  if(!validClaim(claim))return "denied";
+  const timeoutMs=deps.timeoutMs??PLAY_PREFLIGHT_TIMEOUT_MS;
+  if(!Number.isSafeInteger(timeoutMs)||timeoutMs<1||
+      timeoutMs>PLAY_PREFLIGHT_TIMEOUT_MS)return "denied";
+  const now=deps.now??Date.now;
+  const started=performance.now();
+  const remaining=()=>Math.max(0,Math.floor(timeoutMs-(performance.now()-started)));
+  try{
+    const digest=await deadline(()=>jodloPlayPurchaseFingerprint(purchaseToken),remaining);
+    if(digest!==claim.sourceKeyHash)return "denied";
+    const {results}=await deadline(()=>db.prepare(
+      "SELECT 1 AS ok FROM play_consume_outbox AS o JOIN accounts AS a " +
+      "ON a.id=o.account_id AND a.status='active' " +
+      "WHERE o.source_key_hash=? AND o.account_id=? AND o.product_id=? " +
+      "AND o.status='unknown' AND o.attempt_id=?",
+    ).bind(claim.sourceKeyHash,claim.accountId,claim.productId,claim.attemptId)
+      .all<{ok:number}>(),remaining);
+    if(results[0]?.ok!==1)return "denied";
+    const binding=await deadline(()=>jodloPlayAccountBinding(claim.accountId),remaining);
+    if(!binding)return "denied";
+    const auth=await deadline(deps.accessToken,remaining);
+    if(!auth||!/^[A-Za-z0-9._~+\/-]{1,4096}={0,2}$/.test(auth))return "unknown";
+    const endpoint="https://androidpublisher.googleapis.com/androidpublisher/v3/applications/"+
+      JODLO_PLAY_PACKAGE+"/purchases/productsv2/tokens/"+encodeURIComponent(purchaseToken);
+    const request=deps.request??fetch;
+    const response=await deadline(()=>request(endpoint,{
+      method:"GET",redirect:"error",cache:"no-store",
+      signal:AbortSignal.timeout(Math.max(1,remaining())),
+      headers:{Authorization:"Bearer "+auth,Accept:"application/json"},
+    }),remaining);
+    if(response.status!==200){
+      void response.body?.cancel().catch(()=>{});
+      return "unknown";
+    }
+    const length=response.headers.get("content-length");
+    if(length!==null&&(!/^\d+$/.test(length)||Number(length)>16_384))return "unknown";
+    if(!response.body)return "unknown";
+    const reader=response.body.getReader();
+    const parts:Uint8Array[]=[];
+    let total=0;
+    try{
+      while(true){
+        const part=await deadline(()=>reader.read(),remaining);
+        if(part.done)break;
+        total+=part.value.byteLength;
+        if(total>16_384)return "unknown";
+        parts.push(part.value);
+      }
+    }finally{
+      void reader.cancel().catch(()=>{});
+      reader.releaseLock();
+    }
+    const all=new Uint8Array(total);
+    let offset=0;
+    for(const part of parts){all.set(part,offset);offset+=part.byteLength;}
+    const value:unknown=JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(all));
+    if(!value||typeof value!=="object"||Array.isArray(value))return "unknown";
+    const receipt=value as Record<string,unknown>;
+    const context=receipt.purchaseStateContext;
+    if(!context||typeof context!=="object"||Array.isArray(context) ||
+        (context as Record<string,unknown>).purchaseState!=="PURCHASED" ||
+        receipt.kind!=="androidpublisher#productPurchaseV2" ||
+        receipt.obfuscatedExternalAccountId!==binding ||
+        receipt.testPurchaseContext!==undefined ||
+        receipt.acknowledgementState!=="ACKNOWLEDGEMENT_STATE_ACKNOWLEDGED" ||
+        !Array.isArray(receipt.productLineItem)||receipt.productLineItem.length!==1)
+      return "unknown";
+    const item=receipt.productLineItem[0] as Record<string,unknown>|null;
+    const offer=item?.productOfferDetails as Record<string,unknown>|undefined;
+    if(!item||item.productId!==claim.productId||!offer||
+        offer.quantity!==1||offer.refundableQuantity!==1||
+        offer.consumptionState!=="CONSUMPTION_STATE_CONSUMED")
+      return "unknown";
+    const changed=await confirmReconciledPlayConsumption(db,claim,now());
+    return changed?"consumed":"denied";
+  }catch{return "unknown";}
 }
