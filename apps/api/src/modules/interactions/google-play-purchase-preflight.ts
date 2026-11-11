@@ -41,7 +41,7 @@ async function hexSha256(value: string): Promise<string> {
  * GET verification, D1 outbox and an eventual consume attempt. */
 export async function jodloPlayPurchaseFingerprint(purchaseToken: string): Promise<string | null> {
   if (typeof purchaseToken !== "string" ||
-      !/^[A-Za-z0-9._~+\\/=-]{20,4096}$/.test(purchaseToken)) return null;
+      !/^[A-Za-z0-9._~+\/=-]{20,4096}$/.test(purchaseToken)) return null;
   return hexSha256("jodlo-play-product-v2:" + JODLO_PLAY_PACKAGE + ":" + purchaseToken);
 }
 
