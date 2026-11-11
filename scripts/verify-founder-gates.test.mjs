@@ -355,3 +355,16 @@ test("scoped founder permission allows ONLY the minimal private Agora migration 
   });
   assert.match(omitted.errors.join(" "),/Expected D1 table missing/);
 });
+
+test("Google Play RTDN is optional in old fixtures but requires an explicit default-OFF flag",async()=>{
+  const absent=await fixture();
+  assert.deepEqual(absent.errors,[],"legacy pre-billing fixtures remain valid");
+  const unguarded=await fixture(files=>{
+    files["apps/api/src/http/router.ts"]+='\\nif(url.pathname==="/api/v1/play/rtdn") return;';
+  });
+  assert.match(unguarded.errors.join(" "),/Play RTDN push route requires an explicit default-OFF release gate/);
+  const guarded=await fixture(files=>{
+    files["apps/api/src/http/router.ts"]+='\\nif(url.pathname==="/api/v1/play/rtdn" && env.PLAY_RTDN_ENABLED === "1") return;';
+  });
+  assert.deepEqual(guarded.errors,[],"approved route only under the feature flag");
+});

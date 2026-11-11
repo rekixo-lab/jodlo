@@ -22,6 +22,9 @@ const PLAY_CONSUME_MIGRATION = "0025_play_consumable_outbox.sql";
 const PLAY_REVOCATION_MIGRATION = "0026_play_revocation_fences.sql";
 const allowedRoutes = new Set([
   "/api/v1/health", "/api/v1/catalog", "/api/v1/catalog/search",
+  // Only signed Google Pub/Sub RTDN with approved OAuth and rate-limit bindings.
+  // Default OFF, cannot credit minutes or process a purchase notification.
+  "/api/v1/play/rtdn",
   // Only approved, default-OFF taxonomy hierarchy; no public Worker or GPS.
   "/api/v1/catalog/hierarchy",
   "/api/v1/auth/google", "/api/v1/auth/logout", "/api/v1/auth/logout-all",
@@ -118,8 +121,14 @@ export async function auditFounderGates(root = rootDefault) {
     if (routes.includes(route) && !router.includes(`env.${flag} === "1"`))
       errors.push("Private call route requires a default-OFF release gate: " + route);
   }
+  // Legacy founder fixtures intentionally model a pre-billing router. RTDN
+  // is OPTIONAL in those fixtures, but if it exists it MUST remain default OFF.
+  if (routes.includes("/api/v1/play/rtdn") &&
+      !router.includes('env.PLAY_RTDN_ENABLED === "1"'))
+    errors.push("Play RTDN push route requires an explicit default-OFF release gate");
   for(const route of allowedRoutes)
-    if(route!=="/api/v1/catalog/hierarchy" && route!=="/api/v1/me/account-erasure" &&
+    if(route!=="/api/v1/play/rtdn" &&
+       route!=="/api/v1/catalog/hierarchy" && route!=="/api/v1/me/account-erasure" &&
        route!=="/api/v1/me/contact-block" && route!=="/api/v1/me/contact-blocks" &&
        route!=="/api/v1/me/call-preference" && route!=="/api/v1/me/call-history" &&
        route!=="/api/v1/me/service-area" && route!=="/api/v1/me/service-details" &&

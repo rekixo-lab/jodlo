@@ -1,4 +1,5 @@
 import { readOwnWorkerAvailability, setOwnWorkerAvailability } from "../modules/interactions/agora-private-safety-state.ts";
+import { handleConfiguredJodloPlayRtdn } from "../modules/interactions/google-play-pubsub-handler.ts";
 import { issueOwnAgoraAudioGrant } from "../modules/interactions/private-agora-media.ts";
 import { validIdempotencyKey } from "../modules/shared/identifiers.ts";
 import { ownPrivateCallSignal, validCallAction } from "../modules/interactions/private-call-signaling.ts";
@@ -80,6 +81,11 @@ export async function handleRequest(
   verifyGoogle: typeof verifyGoogleIdToken = verifyGoogleIdToken,
 ): Promise<Response> {
   const url = new URL(request.url);
+  if (url.pathname === "/api/v1/play/rtdn" && env.PLAY_RTDN_ENABLED === "1") {
+    // Default OFF. Only Google-signed Pub/Sub push plus a second live
+    // AndroidPublisher check can fence a purchase; this route never grants.
+    return handleConfiguredJodloPlayRtdn(request, env);
+  }
   if (url.pathname === "/api/v1/health") {
     return getOnly(request) ?? json({ ok: true, data: healthData() });
   }
