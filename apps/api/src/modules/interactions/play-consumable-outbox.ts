@@ -47,16 +47,25 @@ export async function stageTrustedPlayConsumable(
       approvedProducts.get(grant.productId) !== grant.seconds / 60 ||
       !Number.isSafeInteger(grant.createdAtMs) || grant.createdAtMs <= 0)
     return "denied";
-  const {results} = await db.prepare(
-    "INSERT INTO play_consume_outbox(" +
-    "source_key_hash,account_id,product_id,seconds,created_at_ms,updated_at_ms) " +
-    "SELECT ?,a.id,?,?,?,? FROM accounts AS a " +
-    "WHERE a.id=? AND a.status='active' " +
-    "ON CONFLICT(source_key_hash) DO NOTHING RETURNING source_key_hash",
-  ).bind(grant.sourceKeyHash,grant.productId,grant.seconds,
-    grant.createdAtMs,grant.createdAtMs,grant.accountId)
-    .all<{source_key_hash:string}>();
-  if (results.length) return "applied";
+  let inserted: {results: {source_key_hash:string}[]};
+  try {
+    inserted = await db.prepare(
+      "INSERT INTO play_consume_outbox(" +
+      "source_key_hash,account_id,product_id,seconds,created_at_ms,updated_at_ms) " +
+      "SELECT ?,a.id,?,?,?,? FROM accounts AS a " +
+      "WHERE a.id=? AND a.status='active' " +
+      "ON CONFLICT(source_key_hash) DO NOTHING RETURNING source_key_hash",
+    ).bind(grant.sourceKeyHash,grant.productId,grant.seconds,
+      grant.createdAtMs,grant.createdAtMs,grant.accountId)
+      .all<{source_key_hash:string}>();
+  } catch (error) {
+    // 0026's BEFORE INSERT abort is atomic with the outbox and credit
+    // triggers. Never interpret arbitrary SQL or provider failures as
+    // revocations; only the explicitly named local fence maps to void_hold.
+    if (String(error).includes("PLAY_REVOKED_TOKEN")) return "void_hold";
+    throw error;
+  }
+  if (inserted.results.length) return "applied";
   const existing=await db.prepare(
     "SELECT o.account_id,o.product_id,o.seconds,o.status " +
     "FROM play_consume_outbox AS o JOIN accounts AS a " +
