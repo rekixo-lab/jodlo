@@ -57,3 +57,27 @@ export async function claimPrivateCallDispatch(
   ).all<DispatchSlot>();
   return results[0] ?? null;
 }
+
+const RELEASE_UNSENT_DISPATCH = `
+DELETE FROM private_call_dispatch_slots
+WHERE receiver_account_id=? AND invitation_id=? AND caller_session_hash=?
+`;
+
+/** Compensate ONLY a dispatch claim that completed after its FCM provider
+ * deadline, before any HTTP POST could start. Never use this for an uncertain
+ * provider response: Firebase may have accepted that notification.
+ *
+ * Exact receiver/invitation/session matching cannot delete a newer claim or
+ * another caller's slot. No consent or session-lifetime recheck is needed to
+ * safely release the already-owned unsent reservation after a logout.
+ */
+export async function releaseUnsentPrivateCallDispatch(
+  db: D1Database, callerBearer: string, invitationId: string, receiverId: string,
+): Promise<boolean> {
+  if (!validSessionToken(callerBearer) || !validOpaqueId(invitationId) ||
+      !validOpaqueId(receiverId)) return false;
+  const tokenHash = await sessionHash(callerBearer);
+  const {meta} = await db.prepare(RELEASE_UNSENT_DISPATCH)
+    .bind(receiverId, invitationId, tokenHash).run();
+  return meta.changes === 1;
+}

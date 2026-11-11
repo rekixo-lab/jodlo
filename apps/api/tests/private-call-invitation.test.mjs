@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { issueSession, sessionHash } from "../src/modules/identity/sessions.ts";
 import { ownPrivateCallSignal } from "../src/modules/interactions/private-call-signaling.ts";
-import { claimPrivateCallDispatch } from "../src/modules/interactions/private-call-dispatch.ts";
+import { claimPrivateCallDispatch, releaseUnsentPrivateCallDispatch } from "../src/modules/interactions/private-call-dispatch.ts";
 import { sendPrivateCallRing } from "../src/modules/interactions/private-call-ring.ts";
 import { preparePrivateCallInvitation, purgeExpiredPrivateInvitations } from "../src/modules/interactions/private-call-invitation.ts";
 import { openLocalDatabase } from "./helpers/local-db.mjs";
@@ -182,7 +182,82 @@ test("private invitation commits with quota, deduplicates retries and rolls back
       {...deps, now:() => delayedAt}), "provider_accepted",
       "a fresh valid call attempt can still claim and send exactly once");
 
-    await purgeExpiredPrivateInvitations(adapter, delayedAt + 300_000);
+    // Unlike a delayed DEVICE lookup, the D1 INSERT itself may already
+    // be in-flight when FCM's deadline expires. Execute that real SQLite
+    // mutation AFTER the provider returned; the compensating exact-session
+    // DELETE must make the receiver ringable without a second push.
+    const slowClaimAt = delayedAt + 90_000;
+    const slowClaim = await preparePrivateCallInvitation(adapter, secondToken, alternate,
+      "late-d1-claim-key", slowClaimAt);
+    assert.equal(slowClaim.kind, "created");
+    let resumeClaim;
+    const holdClaim = new Promise(resolve => {resumeClaim = resolve;});
+    let observeRelease;
+    const released = new Promise(resolve => {observeRelease = resolve;});
+    const heldD1 = {
+      ...adapter,
+      prepare(query) {
+        const statement = adapter.prepare(query);
+        if (query.includes("INSERT INTO private_call_dispatch_slots")) {
+          return {
+            bind(...values) {
+              const bound = statement.bind(...values);
+              return {async all() {
+                await holdClaim;
+                return bound.all();
+              }};
+            },
+          };
+        }
+        if (query.includes("DELETE FROM private_call_dispatch_slots")) {
+          return {
+            bind(...values) {
+              const bound = statement.bind(...values);
+              return {async run() {
+                const result = await bound.run();
+                observeRelease(result.meta.changes);
+                return result;
+              }};
+            },
+          };
+        }
+        return statement;
+      },
+    };
+    let lateClaimPosts = 0;
+    const slowDeps = {
+      ...deps, now:() => slowClaimAt, timeoutMs:60,
+      request:async () => {
+        lateClaimPosts++;
+        return new Response("{}",{status:200});
+      },
+    };
+    assert.equal(await sendPrivateCallRing(heldD1, secondToken, slowClaim.invitationId,
+      slowDeps), "not_sent");
+    assert.equal(lateClaimPosts, 0);
+    resumeClaim();
+    let releaseTimeout;
+    const releasedCount = await Promise.race([
+      released,
+      new Promise((_resolve,reject) => {
+        releaseTimeout = setTimeout(
+          () => reject(new Error("late D1 dispatch claim was never compensated")), 2000);
+      }),
+    ]).finally(() => clearTimeout(releaseTimeout));
+    assert.equal(releasedCount, 1, "release exact unsent call slot after the D1 write completes");
+    assert.equal(db.prepare("SELECT count(*) AS n FROM private_call_dispatch_slots WHERE invitation_id=?")
+      .get(slowClaim.invitationId).n, 0);
+    assert.equal(lateClaimPosts, 0, "never send FCM after the deadline");
+    assert.equal(await sendPrivateCallRing(adapter, secondToken, slowClaim.invitationId,
+      {...deps, now:() => slowClaimAt}), "provider_accepted",
+      "the same safe attempt can still ring after unsent claim compensation");
+    assert.equal(await releaseUnsentPrivateCallDispatch(
+      adapter, receiverToken, slowClaim.invitationId, receiver,
+    ), false, "a different calling session cannot clear a successfully sent slot");
+    assert.equal(db.prepare("SELECT count(*) AS n FROM private_call_dispatch_slots WHERE invitation_id=?")
+      .get(slowClaim.invitationId).n, 1);
+
+    await purgeExpiredPrivateInvitations(adapter, slowClaimAt + 300_000);
     assert.equal(rows(), 0);
     assert.equal(db.prepare("SELECT count(*) AS count FROM private_call_dispatch_slots").get().count, 0);
   } finally {
