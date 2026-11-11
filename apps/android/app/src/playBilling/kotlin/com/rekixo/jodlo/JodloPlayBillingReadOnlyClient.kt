@@ -23,6 +23,7 @@ import com.android.billingclient.api.QueryPurchasesParams
  */
 internal class JodloPlayBillingReadOnlyClient(
     context: Context,
+    approvedProductIds: Set<String>,
     private val onUnverifiedPurchases: (List<UnverifiedPlayPurchase>) -> Unit,
 ) : AutoCloseable {
     internal enum class PurchaseState { PENDING, PURCHASED, OTHER }
@@ -33,9 +34,20 @@ internal class JodloPlayBillingReadOnlyClient(
         val acknowledged: Boolean,
     )
 
+    /** Immutable, trusted SKU snapshot; invalid/empty configurations fail closed. */
+    private val approvedIds = approvedProductIds.toSet().takeIf { ids ->
+        ids.isNotEmpty() && ids.size <= 16 && ids.all { VALID_PRODUCT_ID.matches(it) }
+    } ?: emptySet()
+
+    internal sealed interface ReadResult<out T> {
+        data class Available<T>(val items: List<T>) : ReadResult<T>
+        data object Unavailable : ReadResult<Nothing>
+    }
+
     private var closed = false
     private val listener = PurchasesUpdatedListener { result, purchases ->
-        if (!closed && result.responseCode == BillingClient.BillingResponseCode.OK &&
+        if (!closed && approvedIds.isNotEmpty() &&
+            result.responseCode == BillingClient.BillingResponseCode.OK &&
             purchases != null
         ) {
             onUnverifiedPurchases(purchases.mapNotNull(::unverified))
@@ -51,10 +63,10 @@ internal class JodloPlayBillingReadOnlyClient(
         .build()
 
     private fun unverified(purchase: Purchase): UnverifiedPlayPurchase? {
+        // Reject multi-product purchases instead of silently discarding
+        // an unapproved SKU from a mixed transaction.
         val ids = purchase.products
-            .filter { VALID_PRODUCT_ID.matches(it) }
-            .distinct()
-        if (ids.isEmpty() || ids.size > 16) return null
+        if (approvedIds.isEmpty() || ids.size != 1 || ids.single() !in approvedIds) return null
         val state = when (purchase.purchaseState) {
             Purchase.PurchaseState.PENDING -> PurchaseState.PENDING
             Purchase.PurchaseState.PURCHASED -> PurchaseState.PURCHASED
@@ -86,17 +98,13 @@ internal class JodloPlayBillingReadOnlyClient(
      * This method exposes IDs only; no fabricated prices or purchase CTA.
      */
     fun queryApprovedOneTimeProductIds(
-        approvedProductIds: Set<String>,
-        callback: (List<String>) -> Unit,
+        callback: (ReadResult<String>) -> Unit,
     ) {
-        if (closed || !client.isReady || approvedProductIds.isEmpty() ||
-            approvedProductIds.size > 16 ||
-            approvedProductIds.any { !VALID_PRODUCT_ID.matches(it) }
-        ) {
-            callback(emptyList())
+        if (closed || !client.isReady || approvedIds.isEmpty()) {
+            callback(ReadResult.Unavailable)
             return
         }
-        val products = approvedProductIds.sorted().map { id ->
+        val products = approvedIds.sorted().map { id ->
             QueryProductDetailsParams.Product.newBuilder()
                 .setProductId(id)
                 .setProductType(BillingClient.ProductType.INAPP)
@@ -106,15 +114,16 @@ internal class JodloPlayBillingReadOnlyClient(
             .setProductList(products)
             .build()
         client.queryProductDetailsAsync(params) { result, details ->
-            if (closed || result.responseCode != BillingClient.BillingResponseCode.OK) {
-                callback(emptyList())
+            if (closed) return@queryProductDetailsAsync
+            if (result.responseCode != BillingClient.BillingResponseCode.OK) {
+                callback(ReadResult.Unavailable)
             } else {
-                callback(details.productDetailsList
+                callback(ReadResult.Available(details.productDetailsList
                     .filter { it.productType == BillingClient.ProductType.INAPP &&
-                        it.productId in approvedProductIds
+                        it.productId in approvedIds
                     }
                     .map { it.productId }
-                    .distinct())
+                    .distinct()))
             }
         }
     }
@@ -124,20 +133,25 @@ internal class JodloPlayBillingReadOnlyClient(
      * PURCHASED, void/refund history and actual configured SKU first.
      */
     fun queryExistingOneTimePurchases(
-        callback: (List<UnverifiedPlayPurchase>) -> Unit,
+        callback: (ReadResult<UnverifiedPlayPurchase>) -> Unit,
     ) {
-        if (closed || !client.isReady) {
-            callback(emptyList())
+        // An absent approved SKU set means no Play query and no disclosure
+        // of purchases belonging to other apps/products.
+        if (closed || !client.isReady || approvedIds.isEmpty()) {
+            callback(ReadResult.Unavailable)
             return
         }
         val params = QueryPurchasesParams.newBuilder()
             .setProductType(BillingClient.ProductType.INAPP)
             .build()
         client.queryPurchasesAsync(params) { result, purchases ->
-            if (closed || result.responseCode != BillingClient.BillingResponseCode.OK) {
-                callback(emptyList())
+            if (closed) return@queryPurchasesAsync
+            if (result.responseCode != BillingClient.BillingResponseCode.OK) {
+                callback(ReadResult.Unavailable)
             } else {
-                callback(purchases.mapNotNull(::unverified))
+                // Available(empty) is a confirmed empty Play result;
+                // unavailable service is never presented as 'none'.
+                callback(ReadResult.Available(purchases.mapNotNull(::unverified)))
             }
         }
     }
