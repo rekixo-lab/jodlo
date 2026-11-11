@@ -167,7 +167,7 @@ test("incomplete/malformed/failed/oversized voided pages never clear a purchase"
       {kind:"unavailable"});
     assert.equal(h.calls.length,2);
   }
-  const repeated=harness(v2,()=>json({voidedPurchases:[],
+  const repeated=harness(v2,()=>json({voidedPurchases:[voided("unrelated")],
     tokenPagination:{nextPageToken:"same-page"}}));
   assert.equal((await inspectJodloPlayPurchaseWithVoids(ACCOUNT,TOKEN,repeated.deps)).kind,
     "unavailable","repeating a page is not full reconciliation");
