@@ -55,7 +55,7 @@ export async function handleConfiguredJodloPlayRtdn(
       request, policy, testOnly?.nowMs ?? Date.now(),testOnly?.keys);
     if (authenticated.kind === "rejected")
       return new Response(null,{status:401,headers:{"Cache-Control":"no-store"}});
-    if (authenticated.kind === "unavailable")return unavailable();
+    if (authenticated.kind !== "authenticated")return unavailable();
 
     const accessToken = createPlayAndroidPublisherAccessTokenSource({
       email:env.PLAY_SERVICE_ACCOUNT_EMAIL,
