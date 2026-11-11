@@ -71,8 +71,8 @@ export function validatePlayProductPurchaseV2(
       value.testPurchaseContext !== undefined ||
       value.acknowledgementState !== "ACKNOWLEDGEMENT_STATE_PENDING" ||
       record(value.purchaseStateContext)?.purchaseState !== "PURCHASED" ||
-      typeof value.orderId !== "string" ||
-      !/^GPA\.[A-Za-z0-9.\-]{8,120}$/.test(value.orderId) ||
+      (value.orderId !== undefined && (typeof value.orderId !== "string" ||
+        !/^GPA\.[A-Za-z0-9.\-]{8,120}$/.test(value.orderId))) ||
       typeof value.purchaseCompletionTime !== "string" ||
       !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)$/.test(value.purchaseCompletionTime))
     return null;
