@@ -127,6 +127,7 @@ test("Google V2 preflight refuses pending, cancelled, refunded, consumed, acknow
   ];
   assert.deepEqual(validatePlayProductPurchaseV2(positive,binding,PRODUCTS,NOW),{
     productId:"jodlo.testpack5",seconds:300,
+    purchasedAtMs:NOW-90_000,
   });
   for (const bad of changed) {
     assert.equal(validatePlayProductPurchaseV2({...positive,...bad},binding,PRODUCTS,NOW),null,
