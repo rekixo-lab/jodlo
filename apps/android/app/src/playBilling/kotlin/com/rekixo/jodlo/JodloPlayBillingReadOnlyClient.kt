@@ -5,7 +5,6 @@ import com.android.billingclient.api.BillingClient
 import com.android.billingclient.api.BillingClientStateListener
 import com.android.billingclient.api.BillingResult
 import com.android.billingclient.api.PendingPurchasesParams
-import com.android.billingclient.api.ProductDetails
 import com.android.billingclient.api.Purchase
 import com.android.billingclient.api.PurchasesUpdatedListener
 import com.android.billingclient.api.QueryProductDetailsParams
@@ -114,7 +113,7 @@ internal class JodloPlayBillingReadOnlyClient(
                     .filter { it.productType == BillingClient.ProductType.INAPP &&
                         it.productId in approvedProductIds
                     }
-                    .map(ProductDetails::getProductId)
+                    .map { it.productId }
                     .distinct())
             }
         }
