@@ -183,16 +183,16 @@ export async function auditFounderGates(root = rootDefault) {
     if(name===CREDIT_LEDGER_MIGRATION) {
       // Local-only schema, strictly private ownership, hashed receipt keys,
       // bounded seconds, atomic event/balance update and no public checkout.
-      if(!/CREATE TABLE call_credit_balances\\s*\\(/i.test(content) ||
-         !/CREATE TABLE call_credit_events\\s*\\(/i.test(content) ||
-         !/REFERENCES accounts\\(id\\) ON DELETE CASCADE/i.test(content) ||
+      if(!/CREATE TABLE call_credit_balances\s*\(/i.test(content) ||
+         !/CREATE TABLE call_credit_events\s*\(/i.test(content) ||
+         !/REFERENCES accounts\(id\) ON DELETE CASCADE/i.test(content) ||
          !/source_key_hash TEXT NOT NULL UNIQUE/i.test(content) ||
-         !/CHECK\\(seconds BETWEEN 1 AND 30000\\)/i.test(content) ||
-         !/CHECK\\(available_seconds BETWEEN 0 AND 2147483647\\)/i.test(content) ||
+         !/CHECK\(seconds BETWEEN 1 AND 30000\)/i.test(content) ||
+         !/CHECK\(available_seconds BETWEEN 0 AND 2147483647\)/i.test(content) ||
          !/CREATE TRIGGER apply_call_credit_event AFTER INSERT ON call_credit_events/i.test(content) ||
          !/UPDATE call_credit_balances/i.test(content))
         errors.push("Private credit ledger must be hashed, account-cascading, bounded and atomic");
-      if(/\\b(?:purchase_token|payment_receipt|raw_token|card_number|bank_account|email|phone|address)\\b/i.test(content))
+      if(/\b(?:purchase_token|payment_receipt|raw_token|card_number|bank_account|email|phone|address)\b/i.test(content))
         errors.push("Private credit ledger must not store raw provider credentials or identity");
     }
     if(name===RECEIPT_MIGRATION) {
