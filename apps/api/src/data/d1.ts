@@ -35,6 +35,14 @@ export interface Env {
   FCM_SERVICE_ACCOUNT_EMAIL?: string;
   FCM_SERVICE_ACCOUNT_PRIVATE_KEY?: string;
   SERVICE_MODERATION_KEY?: string;
+  /** Default-OFF Google Play RTDN: requires ALL exact Pub/Sub identity, OAuth and rate-limit bindings. */
+  PLAY_RTDN_ENABLED?: string;
+  PLAY_RTDN_AUDIENCE?: string;
+  PLAY_RTDN_PUSH_EMAIL?: string;
+  PLAY_RTDN_SUBSCRIPTION?: string;
+  PLAY_SERVICE_ACCOUNT_EMAIL?: string;
+  PLAY_SERVICE_ACCOUNT_PRIVATE_KEY?: string;
+  PLAY_RTDN_LIMITER?: RateLimitBinding;
   DB?: D1Database;
   LOGIN_BURST_LIMITER?: RateLimitBinding;
   ACCOUNT_LOGIN_LIMITER?: RateLimitBinding;
