@@ -101,6 +101,7 @@ export async function inspectJodloPlayPurchaseWithVoids(
     const request = deps.request ?? fetch;
     const seenPageTokens = new Set<string>();
     let nextPage: string | null = null;
+    let scannedCount = 0;
     for (let page = 0; page < MAX_PAGES; page++) {
       const endpoint = new URL("https://androidpublisher.googleapis.com/androidpublisher/v3/applications/" +
         JODLO_PLAY_PACKAGE + "/purchases/voidedpurchases");
@@ -148,6 +149,10 @@ export async function inspectJodloPlayPurchaseWithVoids(
       if (records.length === 0 && pageInfo &&
           typeof pageInfo.totalResults === "number" && pageInfo.totalResults > 0)
         return {kind: "unavailable"};
+      if (pageInfo?.totalResults !== undefined &&
+          (!Number.isSafeInteger(pageInfo.totalResults) ||
+           (pageInfo.totalResults as number) < 0))
+        return {kind: "unavailable"};
       for (const row of records) {
         const item = object(row);
         // Missing token in a void record means we cannot safely exclude it.
@@ -156,8 +161,14 @@ export async function inspectJodloPlayPurchaseWithVoids(
           return {kind: "unavailable"};
         if (item.purchaseToken === purchaseToken) return {kind: "not_eligible"};
       }
+      scannedCount += records.length;
       const nextCursor = typeof rawNext === "string" ? rawNext : null;
       if (nextCursor === null) {
+        // A reported total larger than the scanned records means Google
+        // omitted the continuation; do not issue a "clear" result.
+        if (pageInfo?.totalResults !== undefined &&
+            (pageInfo.totalResults as number) > scannedCount)
+          return {kind: "unavailable"};
         if (timeLeft() <= 0) return {kind: "unavailable"};
         return {kind: "screened_candidate", productId: initial.productId,
           seconds: initial.seconds, sourceKeyHash: initial.sourceKeyHash};
