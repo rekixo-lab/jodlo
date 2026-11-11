@@ -236,11 +236,14 @@ test("private invitation commits with quota, deduplicates retries and rolls back
       slowDeps), "not_sent");
     assert.equal(lateClaimPosts, 0);
     resumeClaim();
+    let releaseTimeout;
     const releasedCount = await Promise.race([
       released,
-      new Promise((_resolve,reject) => setTimeout(
-        () => reject(new Error("late D1 dispatch claim was never compensated")), 2000)),
-    ]);
+      new Promise((_resolve,reject) => {
+        releaseTimeout = setTimeout(
+          () => reject(new Error("late D1 dispatch claim was never compensated")), 2000);
+      }),
+    ]).finally(() => clearTimeout(releaseTimeout));
     assert.equal(releasedCount, 1, "release exact unsent call slot after the D1 write completes");
     assert.equal(db.prepare("SELECT count(*) AS n FROM private_call_dispatch_slots WHERE invitation_id=?")
       .get(slowClaim.invitationId).n, 0);
@@ -254,7 +257,7 @@ test("private invitation commits with quota, deduplicates retries and rolls back
     assert.equal(db.prepare("SELECT count(*) AS n FROM private_call_dispatch_slots WHERE invitation_id=?")
       .get(slowClaim.invitationId).n, 1);
 
-    await purgeExpiredPrivateInvitations(adapter, delayedAt + 300_000);
+    await purgeExpiredPrivateInvitations(adapter, slowClaimAt + 300_000);
     assert.equal(rows(), 0);
     assert.equal(db.prepare("SELECT count(*) AS count FROM private_call_dispatch_slots").get().count, 0);
   } finally {
