@@ -157,7 +157,7 @@ test("authenticated cancellation with fresh matching Google V2 read records dura
         assert.equal(url,"https://oauth2.googleapis.com/token");
         assert.equal(init.method,"POST");
         assert.equal(init.body.get("grant_type"),
-          "urn:ietf:params:oauth:grant_type:jwt-bearer");
+          "urn:ietf:params:oauth:grant-type:jwt-bearer");
         // The service account signs Google's fixed androidpublisher scope.
         const claims=decodeJwt(init.body.get("assertion"));
         assert.equal(claims.scope,"https://www.googleapis.com/auth/androidpublisher");
