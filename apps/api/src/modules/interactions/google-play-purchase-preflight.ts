@@ -13,7 +13,7 @@ export const PLAY_PREFLIGHT_TIMEOUT_MS = 5000;
 const MAX_RESPONSE_BYTES = 16_384;
 const encoder = new TextEncoder();
 
-type PlayPreflightDeps = Readonly<{
+export type PlayPreflightDeps = Readonly<{
   /** Trusted JODLO Play Console product IDs and exact minute quantities.
    * No default products are configured: callers must supply a nonempty map. */
   approvedProducts: ReadonlyMap<string, number>;
@@ -24,7 +24,7 @@ type PlayPreflightDeps = Readonly<{
 }>;
 
 export type PlayPreflightResult =
-  | Readonly<{kind: "candidate"; productId: string; seconds: number; sourceKeyHash: string}>
+  | Readonly<{kind: "candidate"; productId: string; seconds: number; purchasedAtMs: number; sourceKeyHash: string}>
   | Readonly<{kind: "not_eligible" | "unavailable" | "unconfigured"}>;
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -54,7 +54,7 @@ export async function jodloPlayAccountBinding(accountId: string): Promise<string
 export function validatePlayProductPurchaseV2(
   input: unknown, accountBinding: string,
   approvedProducts: ReadonlyMap<string, number>, nowMs: number,
-): {productId: string; seconds: number} | null {
+): {productId: string; seconds: number; purchasedAtMs: number} | null {
   const value = record(input);
   if (!value || !/^[0-9a-f]{64}$/.test(accountBinding) ||
       !Number.isSafeInteger(nowMs) || nowMs <= 0 ||
@@ -84,7 +84,7 @@ export function validatePlayProductPurchaseV2(
   const minutes = approvedProducts.get(line.productId);
   if (!Number.isSafeInteger(minutes) || minutes! < 1 || minutes! > 500)
     return null;
-  return {productId: line.productId, seconds: minutes! * 60};
+  return {productId: line.productId, seconds: minutes! * 60, purchasedAtMs: completedAt};
 }
 
 function validProducts(products: ReadonlyMap<string, number>): boolean {
