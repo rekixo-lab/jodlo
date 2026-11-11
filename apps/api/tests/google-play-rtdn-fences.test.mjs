@@ -27,9 +27,9 @@ const grant = (digest,accountId=ACCOUNT)=>({
   seconds:300,createdAtMs:NOW-1000,
 });
 const cnt = (db,table)=>db.prepare("SELECT COUNT(*) AS n FROM "+table).get().n;
-const state = (db,digest)=>db.prepare(
+const state = (db,digest)=>({...db.prepare(
   "SELECT status,attempt_id,attempt_deadline_ms FROM play_consume_outbox WHERE source_key_hash=?",
-).get(digest);
+).get(digest)});
 
 function wrapped(payload,messageId="765443210") {
   return {
