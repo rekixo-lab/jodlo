@@ -17,6 +17,7 @@ const controlledCallRoutes = new Map([
   ["/api/v1/me/call-media", "CALL_MEDIA_VERIFICATION_ENABLED"],
 ]);
 const CALL_DEVICE_MIGRATION = "0021_private_call_devices.sql";
+const CREDIT_LEDGER_MIGRATION = "0024_private_call_credit_ledger.sql";
 const allowedRoutes = new Set([
   "/api/v1/health", "/api/v1/catalog", "/api/v1/catalog/search",
   // Only approved, default-OFF taxonomy hierarchy; no public Worker or GPS.
@@ -38,6 +39,8 @@ const allowedRoutes = new Set([
 ]);
 const allowedTables = new Set([
   "call_history",
+  // Local-only private entitlement accounting; no purchase, wallet or payment route.
+  "call_credit_balances", "call_credit_events",
   "call_attempt_windows",
   "private_call_invitations",
   "private_call_dispatch_slots",
@@ -152,6 +155,9 @@ export async function auditFounderGates(root = rootDefault) {
       const table=match[1].toLowerCase();
       tables.push(table);
       if(!allowedTables.has(table)) errors.push("Unapproved D1 table: "+table+" ("+name+")");
+      if((table==="call_credit_balances" || table==="call_credit_events") &&
+          name!==CREDIT_LEDGER_MIGRATION)
+        errors.push("Private call credit tables require the scoped migration");
       if(table==="call_history" && name!=="0017_private_call_history.sql")
         errors.push("Private call history table is only allowed in its reviewed migration");
       if(table==="call_attempt_windows" && name!=="0018_call_attempt_windows.sql")
@@ -173,6 +179,21 @@ export async function auditFounderGates(root = rootDefault) {
       if(Object.hasOwn(AGORA_SAFETY_SCHEMA,table) &&
          name!==AGORA_SAFETY_MIGRATION)
         errors.push("Agora private safety table must use reviewed local migration: "+name);
+    }
+    if(name===CREDIT_LEDGER_MIGRATION) {
+      // Local-only schema, strictly private ownership, hashed receipt keys,
+      // bounded seconds, atomic event/balance update and no public checkout.
+      if(!/CREATE TABLE call_credit_balances\\s*\\(/i.test(content) ||
+         !/CREATE TABLE call_credit_events\\s*\\(/i.test(content) ||
+         !/REFERENCES accounts\\(id\\) ON DELETE CASCADE/i.test(content) ||
+         !/source_key_hash TEXT NOT NULL UNIQUE/i.test(content) ||
+         !/CHECK\\(seconds BETWEEN 1 AND 30000\\)/i.test(content) ||
+         !/CHECK\\(available_seconds BETWEEN 0 AND 2147483647\\)/i.test(content) ||
+         !/CREATE TRIGGER apply_call_credit_event AFTER INSERT ON call_credit_events/i.test(content) ||
+         !/UPDATE call_credit_balances/i.test(content))
+        errors.push("Private credit ledger must be hashed, account-cascading, bounded and atomic");
+      if(/\\b(?:purchase_token|payment_receipt|raw_token|card_number|bank_account|email|phone|address)\\b/i.test(content))
+        errors.push("Private credit ledger must not store raw provider credentials or identity");
     }
     if(name===RECEIPT_MIGRATION) {
       // The receipt store is strictly an opaque machine-event lease. Prevent
