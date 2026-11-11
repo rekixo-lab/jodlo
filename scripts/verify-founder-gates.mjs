@@ -22,6 +22,9 @@ const PLAY_CONSUME_MIGRATION = "0025_play_consumable_outbox.sql";
 const PLAY_REVOCATION_MIGRATION = "0026_play_revocation_fences.sql";
 const allowedRoutes = new Set([
   "/api/v1/health", "/api/v1/catalog", "/api/v1/catalog/search",
+  // Only signed Google Pub/Sub RTDN with approved OAuth and rate-limit bindings.
+  // Default OFF, cannot credit minutes or process a purchase notification.
+  "/api/v1/play/rtdn",
   // Only approved, default-OFF taxonomy hierarchy; no public Worker or GPS.
   "/api/v1/catalog/hierarchy",
   "/api/v1/auth/google", "/api/v1/auth/logout", "/api/v1/auth/logout-all",
