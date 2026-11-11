@@ -59,9 +59,23 @@ async function boundedBody(request: Request): Promise<unknown> {
   const reader = request.body.getReader();
   const parts: Uint8Array[] = [];
   let lengthRead = 0;
+  const started = performance.now();
   try {
     while (true) {
-      const chunk = await reader.read();
+      const remaining = Math.floor(3000 - (performance.now() - started));
+      if (remaining <= 0) throw Error("Pub/Sub body timeout");
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let chunk: ReadableStreamReadResult<Uint8Array>;
+      try {
+        chunk = await Promise.race([
+          reader.read(),
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(() => reject(Error("Pub/Sub body timeout")), remaining);
+          }),
+        ]);
+      } finally {
+        if (timer !== undefined) clearTimeout(timer);
+      }
       if (chunk.done) break;
       lengthRead += chunk.value.byteLength;
       if (lengthRead > MAX_PUSH_BYTES) throw Error("Oversized Pub/Sub body");
@@ -69,7 +83,7 @@ async function boundedBody(request: Request): Promise<unknown> {
     }
   } finally {
     void reader.cancel().catch(() => {});
-    reader.releaseLock();
+    try { reader.releaseLock(); } catch { /* pending timed-out body read */ }
   }
   const all = new Uint8Array(lengthRead);
   let offset = 0;
