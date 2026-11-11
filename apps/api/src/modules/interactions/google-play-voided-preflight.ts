@@ -141,6 +141,9 @@ export async function inspectJodloPlayPurchaseWithVoids(
            rawNext.length > 4096 || !/^[A-Za-z0-9._~+\/-]+={0,2}$/.test(rawNext)))
         return {kind: "unavailable"};
       const records = rows === undefined ? [] : rows as unknown[];
+      // A continuation without any returned records can indicate a broken
+      // or filtered pagination window; never classify that as complete.
+      if (records.length === 0 && rawNext) return {kind: "unavailable"};
       const pageInfo = object(responseObject.pageInfo);
       if (records.length === 0 && pageInfo &&
           typeof pageInfo.totalResults === "number" && pageInfo.totalResults > 0)
@@ -153,14 +156,15 @@ export async function inspectJodloPlayPurchaseWithVoids(
           return {kind: "unavailable"};
         if (item.purchaseToken === purchaseToken) return {kind: "not_eligible"};
       }
-      if (!rawNext) {
+      const nextCursor = typeof rawNext === "string" ? rawNext : null;
+      if (nextCursor === null) {
         if (timeLeft() <= 0) return {kind: "unavailable"};
         return {kind: "screened_candidate", productId: initial.productId,
           seconds: initial.seconds, sourceKeyHash: initial.sourceKeyHash};
       }
-      if (seenPageTokens.has(rawNext)) return {kind: "unavailable"};
-      seenPageTokens.add(rawNext);
-      nextPage = rawNext;
+      if (seenPageTokens.has(nextCursor)) return {kind: "unavailable"};
+      seenPageTokens.add(nextCursor);
+      nextPage = nextCursor;
     }
     // Never assert "not refunded" if there are more pages beyond our budget.
     return {kind: "unavailable"};
