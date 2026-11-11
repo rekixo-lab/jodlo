@@ -206,7 +206,7 @@ export async function auditFounderGates(root = rootDefault) {
          !/source_key_hash TEXT PRIMARY KEY NOT NULL/i.test(content) ||
          !/REFERENCES accounts\(id\) ON DELETE CASCADE/i.test(content) ||
          !/CHECK\(status IN \('ready','sending','unknown','consumed','void_hold'\)\)/i.test(content) ||
-         !/CREATE TRIGGER grant_play_outbox_credit AFTER INSERT ON play_consume_outbox/i.test(content) ||
+         !/CREATE\s+TRIGGER\s+grant_play_outbox_credit\s+AFTER\s+INSERT\s+ON\s+play_consume_outbox/i.test(content) ||
          !/INSERT INTO call_credit_events\(/i.test(content) ||
          !/NEW.source_key_hash/i.test(content))
         errors.push("Play outbox must be owner-cascading, hashed, bounded and atomic");
