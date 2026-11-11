@@ -270,11 +270,19 @@ export async function auditFounderGates(root = rootDefault) {
   // migration/route removal without changing historical fixture contracts.
   const hierarchyTables=["catalog_groups","catalog_families",
     "catalog_family_categories"];
+  // Existing founder test fixtures intentionally model pre-billing schemas.
+  // Credit tables are optional as a PAIR, not mandatory in old migrations.
+  const optionalCreditTables=["call_credit_balances","call_credit_events"];
   for(const table of allowedTables)
     if(table!=="call_history" && table!=="call_attempt_windows" && table!=="private_call_invitations" &&
        table!=="private_call_dispatch_slots" && table!=="private_call_devices" &&
+       !optionalCreditTables.includes(table) &&
        !hierarchyTables.includes(table) && !tables.includes(table))
       errors.push("Expected D1 table missing: "+table);
+  const hasCreditLedger=migrations.includes(CREDIT_LEDGER_MIGRATION);
+  for(const table of optionalCreditTables)
+    if(hasCreditLedger !== tables.includes(table))
+      errors.push("Credit ledger migration must create both private tables: "+table);
   const hasHierarchy=migrations.includes("0010_approved_catalog_hierarchy.sql");
   const hasHierarchyRoute=routes.includes("/api/v1/catalog/hierarchy");
   if(hasHierarchy) {
