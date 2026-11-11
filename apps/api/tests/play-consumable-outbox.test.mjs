@@ -154,7 +154,7 @@ test("provider ambiguity permanently quarantines the send and refuses automatic 
       now:()=>now+250,accessToken:async()=>"synthetic-access-bearer",
       request:async(url,options)=>{
         assert.equal(options.method,"GET","reconciliation never resends consume POST");
-        assert.match(url,/\\/purchases\\/productsv2\\/tokens\\//);
+        assert.match(url,/\/purchases\/productsv2\/tokens\//);
         return new Response(JSON.stringify(value),{status:200});
       },
     });
