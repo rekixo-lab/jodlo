@@ -18,6 +18,7 @@ const controlledCallRoutes = new Map([
 ]);
 const CALL_DEVICE_MIGRATION = "0021_private_call_devices.sql";
 const CREDIT_LEDGER_MIGRATION = "0024_private_call_credit_ledger.sql";
+const PLAY_CONSUME_MIGRATION = "0025_play_consumable_outbox.sql";
 const allowedRoutes = new Set([
   "/api/v1/health", "/api/v1/catalog", "/api/v1/catalog/search",
   // Only approved, default-OFF taxonomy hierarchy; no public Worker or GPS.
@@ -41,6 +42,7 @@ const allowedTables = new Set([
   "call_history",
   // Local-only private entitlement accounting; no purchase, wallet or payment route.
   "call_credit_balances", "call_credit_events",
+  "play_consume_outbox",
   "call_attempt_windows",
   "private_call_invitations",
   "private_call_dispatch_slots",
@@ -158,6 +160,8 @@ export async function auditFounderGates(root = rootDefault) {
       if((table==="call_credit_balances" || table==="call_credit_events") &&
           name!==CREDIT_LEDGER_MIGRATION)
         errors.push("Private call credit tables require the scoped migration");
+      if(table==="play_consume_outbox" && name!==PLAY_CONSUME_MIGRATION)
+        errors.push("Play consume outbox must use only its scoped migration");
       if(table==="call_history" && name!=="0017_private_call_history.sql")
         errors.push("Private call history table is only allowed in its reviewed migration");
       if(table==="call_attempt_windows" && name!=="0018_call_attempt_windows.sql")
@@ -194,6 +198,20 @@ export async function auditFounderGates(root = rootDefault) {
         errors.push("Private credit ledger must be hashed, account-cascading, bounded and atomic");
       if(/\b(?:purchase_token|payment_receipt|raw_token|card_number|bank_account|email|phone|address)\b/i.test(content))
         errors.push("Private credit ledger must not store raw provider credentials or identity");
+    }
+    if(name===PLAY_CONSUME_MIGRATION) {
+      // Outbox must not store raw Play tokens, OAuth credentials, order IDs or prices;
+      // its sole grant path is an atomic D1 trigger into the existing credit journal.
+      if(!/CREATE TABLE play_consume_outbox\s*\(/i.test(content) ||
+         !/source_key_hash TEXT PRIMARY KEY NOT NULL/i.test(content) ||
+         !/REFERENCES accounts\(id\) ON DELETE CASCADE/i.test(content) ||
+         !/CHECK\(status IN \('ready','sending','unknown','consumed','void_hold'\)\)/i.test(content) ||
+         !/CREATE\s+TRIGGER\s+grant_play_outbox_credit\s+AFTER\s+INSERT\s+ON\s+play_consume_outbox/i.test(content) ||
+         !/INSERT INTO call_credit_events\(/i.test(content) ||
+         !/NEW.source_key_hash/i.test(content))
+        errors.push("Play outbox must be owner-cascading, hashed, bounded and atomic");
+      if(/\b(?:purchase_token|raw_token|oauth_token|service_account|order_id|email|phone|address|price|card_number|bank_account)\b/i.test(content))
+        errors.push("Play outbox must not persist tokens, prices, credentials or identity");
     }
     if(name===RECEIPT_MIGRATION) {
       // The receipt store is strictly an opaque machine-event lease. Prevent
@@ -272,7 +290,7 @@ export async function auditFounderGates(root = rootDefault) {
     "catalog_family_categories"];
   // Existing founder test fixtures intentionally model pre-billing schemas.
   // Credit tables are optional as a PAIR, not mandatory in old migrations.
-  const optionalCreditTables=["call_credit_balances","call_credit_events"];
+  const optionalCreditTables=["call_credit_balances","call_credit_events","play_consume_outbox"];
   for(const table of allowedTables)
     if(table!=="call_history" && table!=="call_attempt_windows" && table!=="private_call_invitations" &&
        table!=="private_call_dispatch_slots" && table!=="private_call_devices" &&
@@ -280,9 +298,13 @@ export async function auditFounderGates(root = rootDefault) {
        !hierarchyTables.includes(table) && !tables.includes(table))
       errors.push("Expected D1 table missing: "+table);
   const hasCreditLedger=migrations.includes(CREDIT_LEDGER_MIGRATION);
-  for(const table of optionalCreditTables)
+  for(const table of ["call_credit_balances","call_credit_events"])
     if(hasCreditLedger !== tables.includes(table))
       errors.push("Credit ledger migration must create both private tables: "+table);
+  const hasPlayOutbox=migrations.includes(PLAY_CONSUME_MIGRATION);
+  if(hasPlayOutbox !== tables.includes("play_consume_outbox") ||
+     (hasPlayOutbox && !hasCreditLedger))
+    errors.push("Play consume outbox requires its local migration and existing credit ledger");
   const hasHierarchy=migrations.includes("0010_approved_catalog_hierarchy.sql");
   const hasHierarchyRoute=routes.includes("/api/v1/catalog/hierarchy");
   if(hasHierarchy) {

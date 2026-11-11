@@ -37,6 +37,14 @@ async function hexSha256(value: string): Promise<string> {
   return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
 }
 
+/** Canonical, non-reversible purchase token fingerprint shared by Google
+ * GET verification, D1 outbox and an eventual consume attempt. */
+export async function jodloPlayPurchaseFingerprint(purchaseToken: string): Promise<string | null> {
+  if (typeof purchaseToken !== "string" ||
+      !/^[A-Za-z0-9._~+\/=-]{20,4096}$/.test(purchaseToken)) return null;
+  return hexSha256("jodlo-play-product-v2:" + JODLO_PLAY_PACKAGE + ":" + purchaseToken);
+}
+
 /** Stable, 64-character one-way account binding for a FUTURE signed-in
  * BillingFlowParams.setObfuscatedAccountId; do not send raw account IDs, email
  * or Google subject to Play. Never accept an arbitrary client-chosen binding.
@@ -63,8 +71,8 @@ export function validatePlayProductPurchaseV2(
       value.testPurchaseContext !== undefined ||
       value.acknowledgementState !== "ACKNOWLEDGEMENT_STATE_PENDING" ||
       record(value.purchaseStateContext)?.purchaseState !== "PURCHASED" ||
-      typeof value.orderId !== "string" ||
-      !/^GPA\.[A-Za-z0-9.\-]{8,120}$/.test(value.orderId) ||
+      (value.orderId !== undefined && (typeof value.orderId !== "string" ||
+        !/^GPA\.[A-Za-z0-9.\-]{8,120}$/.test(value.orderId))) ||
       typeof value.purchaseCompletionTime !== "string" ||
       !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)$/.test(value.purchaseCompletionTime))
     return null;
@@ -181,9 +189,9 @@ export async function inspectJodloPlayOneTimePurchase(
     if (!verified) return {kind: "not_eligible"};
     // The fingerprint is scoped to the canonical package AND token, NOT the
     // SKU, to prevent cross-SKU replay of the same Play purchase.
-    const sourceKeyHash = await withinBudget(() => hexSha256(
-      "jodlo-play-product-v2:" + JODLO_PLAY_PACKAGE + ":" + purchaseToken,
-    ), budget);
+    const sourceKeyHash = await withinBudget(
+      () => jodloPlayPurchaseFingerprint(purchaseToken), budget);
+    if (sourceKeyHash === null) return {kind: "not_eligible"};
     return {kind: "candidate", ...verified, sourceKeyHash};
   } catch {
     return {kind: "unavailable"};
