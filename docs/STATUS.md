@@ -1,3 +1,7 @@
+## 2026-11-11 — Optional Play Billing restore: fail-closed safety
+
+The optional Android Billing 9.1 read-only adapter now requires an immutable approved SKU list, filters mixed/foreign purchase data, distinguishes Play service failures from a confirmed empty purchase list and suppresses closed-client callbacks. Product IDs, checkout, credit and live provider integration remain unconfigured and disabled. [Details](ANDROID_PLAY_BILLING_READINESS_2026-11-11.md). No real provider/Cloudflare/Finworkar writes or phone QA.
+
 ## 2026-11-08 — Call history recording and account release preparation
 
 The independently verified 2026-11-05 Worker baseline remains in [Current State](CURRENT_STATE.md).
