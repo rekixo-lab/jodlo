@@ -157,6 +157,8 @@ test("incomplete/malformed/failed/oversized voided pages never clear a purchase"
     () => json({voidedPurchases:[],tokenPagination:{nextPageToken:"bad cursor spaces"}}),
     () => json({voidedPurchases:[],tokenPagination:"not-an-object"}),
     () => json({voidedPurchases:[],pageInfo:{totalResults:15}}),
+    () => json({voidedPurchases:[voided("unrelated")],pageInfo:{totalResults:10}}),
+    () => json({voidedPurchases:[voided("unrelated")],pageInfo:{totalResults:"not-a-number"}}),
     () => json({voidedPurchases:Array.from({length:201},()=>voided("unrelated"))}),
   ];
   for(const reply of cases) {
