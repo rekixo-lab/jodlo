@@ -129,6 +129,11 @@ test("Google V2 preflight refuses pending, cancelled, refunded, consumed, acknow
     productId:"jodlo.testpack5",seconds:300,
     purchasedAtMs:NOW-90_000,
   });
+  const withoutOrder={...positive};
+  delete withoutOrder.orderId;
+  assert.deepEqual(validatePlayProductPurchaseV2(withoutOrder,binding,PRODUCTS,NOW),{
+    productId:"jodlo.testpack5",seconds:300,purchasedAtMs:NOW-90_000,
+  },"Google Play promotional purchases need not have an order ID");
   for (const bad of changed) {
     assert.equal(validatePlayProductPurchaseV2({...positive,...bad},binding,PRODUCTS,NOW),null,
       "refuse unsafe Play response: "+Object.keys(bad)[0]);
