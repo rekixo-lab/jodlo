@@ -2,7 +2,7 @@ import type { D1Database } from "../../data/d1.ts";
 import { sessionHash, validSessionToken } from "../identity/sessions.ts";
 import { createFcmProvider, validFcmRegistrationToken } from "../notifications/fcm-provider.ts";
 import { validOpaqueId } from "../shared/identifiers.ts";
-import { claimPrivateCallDispatch } from "./private-call-dispatch.ts";
+import { claimPrivateCallDispatch, releaseUnsentPrivateCallDispatch } from "./private-call-dispatch.ts";
 
 type ReachableDevice = Readonly<{accountId: string; registrationToken: string}>;
 type RingDependencies = Readonly<{
@@ -57,9 +57,21 @@ export async function sendPrivateCallRing(
       const slot = await claimPrivateCallDispatch(db, callerBearer, invitationId, device.accountId, now());
       if (!slot || slot.ringDeadlineMs !== target.ringDeadlineMs) return null;
       claimed = true;
-      // The D1 claim itself may take longer than the provider budget.
-      // Do not initiate a late Firebase POST after it finishes.
-      if (!mayContinue()) return null;
+      // The D1 mutation can finish after the provider already returned.
+      // No FCM POST has started on this path; release ONLY this exact
+      // invitation/session claim so it cannot block the next legitimate call.
+      // Never release after an actual (possibly uncertain) Firebase POST.
+      if (!mayContinue()) {
+        try {
+          if (await releaseUnsentPrivateCallDispatch(
+            db, callerBearer, invitationId, device.accountId,
+          )) claimed = false;
+        } catch {
+          // A failed cleanup is uncertain: retain the single reserved slot
+          // until its deadline rather than risk an accidental duplicate ring.
+        }
+        return null;
+      }
       return device.registrationToken;
     },
   });
