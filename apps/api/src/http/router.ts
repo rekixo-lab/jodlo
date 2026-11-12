@@ -333,9 +333,9 @@ export async function handleRequest(
     }
   }
 
-  // The Finworkar account/dashboard behavior is reconstructed with JODLO's
-  // own active-account D1 records. Both routes are private, read-only and
-  // require a current server-issued session; neither accepts a client owner ID.
+  // Private active-account JODLO history: GET is read-only; explicit DELETE
+  // deletes ONLY that same current owner's terminal history summaries.
+  // Neither route accepts a client owner ID; both require a live session.
   if (url.pathname === "/api/v1/me/call-history") {
     if (env.CALL_HISTORY_ENABLED !== "1") {
       return json({ok:false,error:{code:"NOT_FOUND",message:"Endpoint not found"}},404);
