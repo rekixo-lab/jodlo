@@ -13,7 +13,9 @@ private fun testNotificationOrderingAndVerification() {
     check(gate.accept(first, verified = true, nowMs = NOW + 2))
     check(!gate.accept(first, verified = false, nowMs = NOW + 3))
     check(!gate.accept(first, verified = true, nowMs = NOW + 4))
-    check(gate.accept(next, verified = false, nowMs = NOW + 5))
+    // The first ring is server-verified. A delayed generic event for a new
+    // ring cannot steal the one PendingIntent, even with a later deadline.
+    check(!gate.accept(next, verified = false, nowMs = NOW + 5))
     check(!gate.accept(first, verified = true, nowMs = NOW + 6))
     check(gate.accept(next, verified = true, nowMs = NOW + 7))
     check(!gate.accept(first, verified = false, nowMs = NOW + 8))
@@ -22,6 +24,29 @@ private fun testNotificationOrderingAndVerification() {
     check(!gate.toString().contains(SECOND))
     gate.clear()
     check(gate.accept(first, verified = false, nowMs = NOW + 9))
+}
+
+private fun testVerifiedNoticeCannotBeReplacedByUnverifiedNewerDeadline() {
+    val gate = CallNotificationFreshnessGate()
+    val confirmed = IncomingCallWakeup.fromIntent(FIRST, NOW + 45_000L, NOW)!!
+    val sameIdNewDeadline = IncomingCallWakeup.fromIntent(FIRST, NOW + 80_000L, NOW)!!
+    val laterUnverified = IncomingCallWakeup.fromIntent(SECOND, NOW + 70_000L, NOW)!!
+    check(gate.accept(confirmed, verified = false, nowMs = NOW))
+    check(gate.accept(confirmed, verified = true, nowMs = NOW + 1))
+    // Old payload duplicated with a different future expiry cannot silently
+    // rename or prolong this invitation, even if a server ACK happens.
+    check(!gate.accept(sameIdNewDeadline, verified = false, nowMs = NOW + 2))
+    check(!gate.accept(sameIdNewDeadline, verified = true, nowMs = NOW + 3))
+    check(!gate.accept(laterUnverified, verified = false, nowMs = NOW + 4))
+    // But an independently authenticated, more recent incoming call can
+    // replace the old one, and may never be downgraded to generic.
+    check(gate.accept(laterUnverified, verified = true, nowMs = NOW + 5))
+    check(!gate.accept(laterUnverified, verified = false, nowMs = NOW + 6))
+    check(!gate.accept(confirmed, verified = true, nowMs = NOW + 7))
+    // After the previous ring has timed out, a new short-lived generic
+    // wakeup is legitimate and does not inherit its old priority.
+    val afterExpiry = IncomingCallWakeup.fromIntent(FIRST, NOW + 85_000L, NOW)!!
+    check(gate.accept(afterExpiry, verified = false, nowMs = NOW + 70_000L))
 }
 
 private fun testSameDeadlineOtherIdAndExpiry() {
@@ -39,5 +64,6 @@ private fun testSameDeadlineOtherIdAndExpiry() {
 
 internal fun testCallNotificationFreshnessGate() {
     testNotificationOrderingAndVerification()
+    testVerifiedNoticeCannotBeReplacedByUnverifiedNewerDeadline()
     testSameDeadlineOtherIdAndExpiry()
 }
