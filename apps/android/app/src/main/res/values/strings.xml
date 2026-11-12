@@ -118,6 +118,12 @@
     <string name="account_voice_failed">Could not confirm your call preference. Check again.</string>
     <string name="call_notifications_blocked_warning">Incoming call consent is on, but Android has blocked JODLO call notifications. You may miss incoming calls. Allow notifications in your phone settings. Delivery is not guaranteed when the app is closed.</string>
     <string name="call_open_notification_settings">Open notification settings</string>
+    <string name="call_check_device_registration">Check this sign-in\'s call device registration</string>
+    <string name="call_device_registered">A call notification device is registered for this sign-in. Actual Firebase delivery has not been verified.</string>
+    <string name="call_device_not_registered">No call notification device is registered for this sign-in. Incoming call alerts may not arrive.</string>
+    <string name="call_retry_device_registration">Try registering this device again</string>
+    <string name="call_device_registration_requested">Registration was requested. Check again to confirm whether the server accepted it.</string>
+    <string name="call_device_status_failed">Could not check device registration. Calling may not be enabled on the server. Check again.</string>
     <string name="account_logout_all">Sign out on all devices</string>
     <string name="account_logged_out_all">All active sessions were revoked by the server.</string>
     <string name="account_logged_out_uncertain">Signed out on this phone. Server-wide revocation could not be confirmed.</string>

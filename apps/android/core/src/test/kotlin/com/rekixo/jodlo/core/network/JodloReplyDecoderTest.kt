@@ -358,5 +358,19 @@ fun main() {
         """{"cleared":true,"deletedCount":5}""",
     )) rejects(envelope(badClear), parse = JodloReplyDecoder::callHistoryCleared)
 
+    // Device readiness is only a one-bit private session diagnostic.
+    val deviceReady = JodloReplyDecoder.callDevice(TransportReply(200,
+        envelope("""{"registered":true}""")))
+    val deviceMissing = JodloReplyDecoder.callDevice(TransportReply(200,
+        envelope("""{"registered":false}""")))
+    check(deviceReady is ApiOutcome.Ok && deviceReady.value)
+    check(deviceMissing is ApiOutcome.Ok && !deviceMissing.value)
+    for (invalid in listOf(
+        """{"registered":"true"}""",
+        """{"registered":1}""",
+        """{"registered":true,"registrationToken":"secret"}""",
+        """{"registered":false,"accountId":"foreign"}""",
+    )) rejects(envelope(invalid),parse=JodloReplyDecoder::callDevice)
+
     println("JODLO Kotlin reply decoder: typed pages, explicit choices, listing privacy and one-shot network safety OK")
 }

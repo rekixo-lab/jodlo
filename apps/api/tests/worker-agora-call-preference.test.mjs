@@ -7,6 +7,9 @@ import { optInAsWorker } from "../src/modules/workers/profile.ts";
 import { publishListing } from "../src/modules/workers/listings.ts";
 import { issueSession, revokeSession, revokeAllSessions } from "../src/modules/identity/sessions.ts";
 import {
+  hasOwnCallDevice, registerOwnCallDevice,
+} from "../src/modules/notifications/private-call-devices.ts";
+import {
   readOwnWorkerAgoraCallPreference, setOwnWorkerAgoraCallPreference,
   READ_OWN_AGORA_CALL_PREFERENCE_QUERY, INSERT_AGORA_CALL_PREFERENCE_QUERY,
   UPDATE_AGORA_CALL_PREFERENCE_QUERY,
@@ -291,5 +294,55 @@ test("no public preference/call endpoint, phone, channel or call-session schema"
       "rtc_participants","phone_numbers","call_sessions"]) {
       assert.equal(names.includes(name),false,name);
     }
+  }finally{f.close();}
+});
+
+
+// Current-session call notification readiness is a private diagnostic, not
+// proof a Firebase message was delivered. Tests use disposable local D1.
+test("GET current call device returns only authenticated session binding, supports same-owner transfer and opt-out",async()=>{
+  const f=await fixture();
+  try {
+    const api=(token=f.workerToken,path="/api/v1/me/call-device",method="GET")=>
+      worker.fetch(new Request("https://api.jodlo.rekixo.com"+path,{
+        method,headers:{Authorization:"Bearer "+token},
+      }),{DB:f.adapter,CALL_DEVICES_ENABLED:"1"});
+    const read=async(token=f.workerToken,path="/api/v1/me/call-device")=>{
+      const res=await api(token,path);
+      return {status:res.status,body:await res.json()};
+    };
+    assert.deepEqual(await read(),{status:200,body:{ok:true,data:{registered:false}}});
+    assert.equal(await hasOwnCallDevice(f.adapter,f.workerToken),false);
+    assert.equal((await api(f.workerToken,"/api/v1/me/call-device","POST")).status,405);
+    const wrongMethod=await api(f.workerToken,"/api/v1/me/call-device","PATCH");
+    assert.equal(wrongMethod.headers.get("Allow"),"GET, PUT, DELETE");
+    assert.equal((await read(f.workerToken,"/api/v1/me/call-device?accountId="+OTHER)).status,400);
+    assert.equal((await read("invalid-token")).status,401);
+    const noFlag=await worker.fetch(new Request("https://api.jodlo.rekixo.com/api/v1/me/call-device",{
+      headers:{Authorization:"Bearer "+f.workerToken},
+    }),{DB:f.adapter});
+    assert.equal(noFlag.status,404);
+    assert.equal((await setOwnWorkerAgoraCallPreference(f.adapter,f.workerToken,true,0)).kind,"updated");
+    const token="synthetic-fcm-device-registration-token";
+    assert.equal(await registerOwnCallDevice(f.adapter,f.workerToken,token),true);
+    const active=await read();
+    assert.deepEqual(active,{status:200,body:{ok:true,data:{registered:true}}});
+    assert.equal(JSON.stringify(active).includes(token),false);
+    assert.equal(JSON.stringify(active).includes(WORKER),false);
+    assert.deepEqual(await read(f.otherToken),{status:200,body:{ok:true,data:{registered:false}}});
+    // Same account on another session is not this session; the token can
+    // move only via an authenticated registration on that new session.
+    const next=(await issueSession(f.adapter,WORKER))?.accessToken;
+    assert.ok(next);
+    assert.deepEqual(await read(next),{status:200,body:{ok:true,data:{registered:false}}});
+    assert.equal(await registerOwnCallDevice(f.adapter,next,token),true);
+    assert.deepEqual(await read(),{status:200,body:{ok:true,data:{registered:false}}});
+    assert.deepEqual(await read(next),{status:200,body:{ok:true,data:{registered:true}}});
+    const remaining=f.db.prepare("SELECT COUNT(*) AS n FROM private_call_devices").get().n;
+    assert.equal(remaining,1);
+    // An explicit current-account consent OFF must make the diagnostic
+    // false even if a prior session row existed before the trigger fires.
+    assert.equal((await setOwnWorkerAgoraCallPreference(f.adapter,next,false,1)).kind,"updated");
+    assert.deepEqual(await read(next),{status:200,body:{ok:true,data:{registered:false}}});
   }finally{f.close();}
 });

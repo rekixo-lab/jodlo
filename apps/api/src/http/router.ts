@@ -6,7 +6,7 @@ import { ownPrivateCallSignal, validCallAction } from "../modules/interactions/p
 import { preparePrivateCallInvitation } from "../modules/interactions/private-call-invitation.ts";
 import { sendPrivateCallRing } from "../modules/interactions/private-call-ring.ts";
 import { createFcmAccessTokenSource } from "../modules/notifications/fcm-oauth.ts";
-import { readRegisteredCallDestination, registerOwnCallDevice, removeOwnCallDevice } from "../modules/notifications/private-call-devices.ts";
+import { hasOwnCallDevice, readRegisteredCallDestination, registerOwnCallDevice, removeOwnCallDevice } from "../modules/notifications/private-call-devices.ts";
 import { validFcmRegistrationToken } from "../modules/notifications/fcm-provider.ts";
 import type { Env } from "../data/d1.ts";
 import { validOpaqueId } from "../modules/shared/identifiers.ts";
@@ -302,8 +302,8 @@ export async function handleRequest(
   }
 
   if (url.pathname === "/api/v1/me/call-device" && env.CALL_DEVICES_ENABLED === "1") {
-    if (request.method !== "PUT" && request.method !== "DELETE") {
-      return json({ok:false,error:{code:"METHOD_NOT_ALLOWED",message:"Method not allowed"}},405,{Allow:"PUT, DELETE"});
+    if (!["GET","PUT","DELETE"].includes(request.method)) {
+      return json({ok:false,error:{code:"METHOD_NOT_ALLOWED",message:"Method not allowed"}},405,{Allow:"GET, PUT, DELETE"});
     }
     const bearer = bearerToken(request);
     if (!validSessionToken(bearer)) {
@@ -319,6 +319,11 @@ export async function handleRequest(
       if (!env.DB) throw new Error("Missing device storage");
       if (!(await makeSessionVerifier(env.DB).verify(bearer))) {
         return json({ok:false,error:{code:"UNAUTHORIZED",message:"Authentication required"}},401);
+      }
+      if (request.method === "GET") {
+        // The diagnostic returns ONLY this session's server-bound boolean,
+        // not a registration token or the other devices of this account.
+        return json({ok:true,data:{registered:await hasOwnCallDevice(env.DB, bearer)}});
       }
       if (registrationToken === null) {
         await removeOwnCallDevice(env.DB, bearer);

@@ -355,6 +355,10 @@ object JodloRoutes {
     fun accountOverview(token: String): ApiCall =
         ApiCall.getOwned("/api/v1/me/overview", token)
 
+    /** Read-only, session-bound device status; token never enters URL or UI. */
+    fun ownCallDevice(token: String): ApiCall =
+        ApiCall.getOwned("/api/v1/me/call-device", token)
+
     fun callDevice(token: String, registrationToken: String?): ApiCall {
         val path = "/api/v1/me/call-device"
         if (registrationToken == null) return ApiCall.delete(path, token)

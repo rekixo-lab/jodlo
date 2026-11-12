@@ -639,6 +639,14 @@ private fun testCallDeviceRegistrationGate() {
     check(!gate.shouldUnregister(1L))
     gate.confirmed(1L, original)
     check(!gate.shouldRegister(1L, original))
+    gate.requestRefresh(2L) // Other sign-in must not bypass this session's dedup.
+    check(!gate.shouldRegister(1L, original))
+    gate.requestRefresh(1L)
+    check(gate.shouldRegister(1L, original))
+    // Refresh does NOT lose last confirmed token evidence needed for opt-out.
+    check(gate.shouldUnregister(1L))
+    gate.confirmed(1L, original)
+    check(!gate.shouldRegister(1L, original))
     check(gate.shouldRegister(1L, rotated))
     check(gate.shouldUnregister(1L))
     check(!gate.shouldUnregister(2L))

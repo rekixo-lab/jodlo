@@ -118,6 +118,12 @@
     <string name="account_voice_failed">कॉल की सेटिंग की पुष्टि नहीं हुई। दोबारा जाँचें।</string>
     <string name="call_notifications_blocked_warning">आने वाली कॉल की सहमति चालू है, लेकिन Android पर JODLO की कॉल सूचनाएँ बंद हैं। आपकी कॉल छूट सकती है। फोन की सेटिंग में सूचनाओं की अनुमति दें। ऐप बंद होने पर सूचना मिलना सुनिश्चित नहीं है।</string>
     <string name="call_open_notification_settings">सूचनाओं की सेटिंग खोलें</string>
+    <string name="call_check_device_registration">इस लॉगिन का कॉल-डिवाइस पंजीकरण जाँचें</string>
+    <string name="call_device_registered">इस लॉगिन के लिए कॉल-सूचना डिवाइस सर्वर पर दर्ज है। Firebase से सूचना पहुँचना अभी सत्यापित नहीं है।</string>
+    <string name="call_device_not_registered">इस लॉगिन के लिए कॉल-सूचना डिवाइस दर्ज नहीं है। आने वाली कॉल की सूचना नहीं भी मिल सकती है।</string>
+    <string name="call_retry_device_registration">इस डिवाइस का पंजीकरण फिर से करें</string>
+    <string name="call_device_registration_requested">पंजीकरण का अनुरोध भेजने की प्रक्रिया शुरू हुई है। सर्वर की पुष्टि के लिए दोबारा जाँचें।</string>
+    <string name="call_device_status_failed">डिवाइस पंजीकरण की जाँच नहीं हो पाई। संभव है सर्वर पर कॉल सेवा अभी बंद हो। दोबारा जाँचें।</string>
     <string name="account_logout_all">सभी फ़ोन पर सत्र समाप्त करें</string>
     <string name="account_logged_out_all">सर्वर ने सभी सक्रिय सत्र समाप्त करने की पुष्टि की।</string>
     <string name="account_logged_out_uncertain">इस फ़ोन से बाहर निकल गए। दूसरे फ़ोन पर सत्र समाप्त होने की पुष्टि नहीं हुई।</string>

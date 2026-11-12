@@ -8,6 +8,7 @@ import com.rekixo.jodlo.core.network.InMemorySessionCoordinator
 internal object CallNotifications {
     fun attach(session: InMemorySessionCoordinator?) = Unit
     fun sync(context: Context) = Unit
+    fun retryCurrentDeviceRegistration(context: Context) = Unit
     // The no-FCM build must never claim call notification delivery support.
     fun areLocalNoticesAllowed(context: Context): Boolean = false
     fun preferenceChanged(context: Context, enabled: Boolean) = Unit

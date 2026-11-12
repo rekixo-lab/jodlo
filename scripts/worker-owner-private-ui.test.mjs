@@ -331,3 +331,43 @@ test("Account shows actionable local OS call-notice block only for opted-in FCM 
     ])assert.match(xml,new RegExp('name="'+key+'"'));
     assert.doesNotMatch(account,/setCallDevice\(/);
 });
+
+test("Worker Account manual session device readiness spans API, Kotlin and gated FCM retry",()=>{
+    const backend=read("apps/api/src/modules/notifications/private-call-devices.ts");
+    const router=read("apps/api/src/http/router.ts");
+    const apiTests=read("apps/api/tests/worker-agora-call-preference.test.mjs");
+    const core=read("apps/android/core/src/main/kotlin/com/rekixo/jodlo/core/network/JodloApiCore.kt");
+    const session=read("apps/android/core/src/main/kotlin/com/rekixo/jodlo/core/network/InMemorySessionCoordinator.kt");
+    const device=read("apps/android/core/src/main/kotlin/com/rekixo/jodlo/core/network/CallDeviceRegistrationGate.kt");
+    const fcm=read("apps/android/app/src/fcm/kotlin/com/rekixo/jodlo/CallNotifications.kt");
+    const noFcm=read("apps/android/app/src/noFcm/kotlin/com/rekixo/jodlo/CallNotifications.kt");
+    const account=read("apps/android/app/src/main/java/com/rekixo/jodlo/AccountDashboard.kt");
+    assert.match(router,/request\.method === "GET"[\s\S]*?hasOwnCallDevice\(env\.DB, bearer\)/);
+    assert.match(router,/Allow:"GET, PUT, DELETE"/);
+    assert.match(backend,/export async function hasOwnCallDevice\(/);
+    assert.match(backend,/JOIN private_call_devices AS d ON d\.session_hash=s\.token_hash/);
+    assert.match(backend,/JOIN worker_agora_call_preferences AS p ON p\.account_id=a\.id AND p\.calls_enabled=1/);
+    assert.match(apiTests,/test\("GET current call device returns only authenticated session binding/);
+    assert.match(core,/fun ownCallDevice\(token: String\): ApiCall/);
+    assert.match(session,/fun ownCallDevice\(owner: AccountPrivateReadMarker\): SessionResult<Boolean>/);
+    assert.match(session,/JodloRoutes\.ownCallDevice\(token\)/);
+    assert.match(session,/consistentRead = true, expectedOwner = owner/);
+    assert.match(device,/fun requestRefresh\(sessionGeneration: Long\)/);
+    assert.match(device,/forceRefreshGeneration == sessionGeneration/);
+    assert.match(fcm,/fun retryCurrentDeviceRegistration\(context: Context\)/);
+    assert.match(fcm,/registered\.requestRefresh\(generation\)/);
+    assert.match(noFcm,/fun retryCurrentDeviceRegistration\(context: Context\) = Unit/);
+    assert.match(account,/fun checkDevice\(\) \{/);
+    assert.match(account,/session\.ownCallDevice\(captured\)/);
+    assert.match(account,/session\.accountPrivateReadMarker\(\) == captured/);
+    assert.match(account,/deviceStatus != \(captured to false\)/);
+    assert.match(account,/CallNotifications\.retryCurrentDeviceRegistration\(context\.applicationContext\)/);
+    assert.match(account,/!availability && BuildConfig\.FCM_ENABLED && preference\.enabled &&\s*localNotificationsReady/);
+    assert.match(account,/R\.string\.call_device_registered/);
+    assert.match(account,/R\.string\.call_device_not_registered/);
+    assert.match(account,/R\.string\.call_device_registration_requested/);
+    for(const xml of [en,hi])for(const key of [
+        "call_check_device_registration","call_device_registered","call_device_not_registered",
+        "call_retry_device_registration","call_device_registration_requested","call_device_status_failed",
+    ])assert.match(xml,new RegExp('name="'+key+'"'));
+});

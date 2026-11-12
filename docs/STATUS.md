@@ -1,3 +1,7 @@
+## 2026-11-12 — Worker can check exact server-side call-device registration (source only)
+
+A current opted-in Worker with Android notifications enabled may now manually check whether **their current authenticated sign-in** still has a device registered in D1; the read-only endpoint replies only with a boolean. If absent, Account offers an explicit, owner/consent/permission-gated registration retry. The app does not automatically retry mutations, expose an FCM token, claim delivery succeeded or indicate that an unconfigured server is registered. Uses the existing default-OFF `CALL_DEVICES_ENABLED` flag and D1 table; no migration or provider send. [Full contract](FCM_DEVICE_LIFECYCLE_AND_NATIVE_CI_2026-11-10.md). Real FCM sender, cold process and integrated phone acceptance remain pending.
+
 ## 2026-11-12 — Account warns if Android blocks incoming call notices (source only)
 
 When a current Worker has explicitly enabled incoming-call consent but the OS app/channel notifications are disabled, the Account screen now shows a **bilingual warning and direct Android notification-settings action**. On returning from Settings or permission prompt, it refreshes local readiness; FCM device registration still independently enforces current session, consent, permission and backend checks. An OS-allowed state is not proof of push delivery, and process-death receiving remains gated. No provider credentials, server feature flag, production D1 or phone test. [Details](FCM_DEVICE_LIFECYCLE_AND_NATIVE_CI_2026-11-10.md).
