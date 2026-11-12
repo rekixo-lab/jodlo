@@ -58,6 +58,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+internal const val INCOMING_CALL_ACTION_PREFIX = "com.rekixo.jodlo.INCOMING_CALL."
 internal const val INCOMING_CALL_EXTRA = "com.rekixo.jodlo.INCOMING_CALL"
 internal const val INCOMING_CALL_EXPIRY_EXTRA = "com.rekixo.jodlo.INCOMING_CALL_EXPIRY"
 internal val CALL_INVITATION_ID = Regex("[a-zA-Z0-9_-]{8,128}")
