@@ -256,5 +256,11 @@ fun main() {
     check(clearHistory.resource == "/api/v1/me/call-history")
     check(clearHistory.headers()["Authorization"] == "Bearer $TOKEN")
 
+    val ownDevice = JodloRoutes.ownCallDevice(TOKEN)
+    check(ownDevice.method == HttpMethod.GET)
+    check(ownDevice.resource == "/api/v1/me/call-device")
+    check(ownDevice.headers()["Authorization"] == "Bearer $TOKEN")
+    check(ownDevice.bodyUtf8() == null)
+
     println("JODLO Android headless Kotlin: bilingual Unicode, routes, privacy and publication safety OK")
 }
