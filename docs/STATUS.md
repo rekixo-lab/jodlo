@@ -1,3 +1,7 @@
+## 2026-11-12 — FCM verified ring cannot be overwritten by later unverified push (source only)
+
+The native one-slot incoming-call notification gate now rejects a different-ID unverified FCM wakeup while a server-confirmed ring remains active, regardless of the new push's claimed expiry; it also rejects shifted deadlines for the same invitation. A fresh authenticated ACK-verified newer call may replace the old notification. Android handles PendingIntent construction failures within the gate's failure boundary. Existing Kotlin regression + native FCM/Agora compile and UI source wiring verify the behavior; this does not constitute a live provider/device proof. See [FCM stale ring guard](FCM_STALE_RING_NOTIFICATION_GUARD_2026-11-10.md).
+
 ## 2026-11-12 — Notification tap: explicit recovery of transient incoming-call GET failures
 
 Native JODLO now retains only the bounded in-memory wakeup and offers a **bilingual user-tapped read-only retry** if initial notification-tap verification fails due to a temporary network/service error. Account changes, denial, wrong recipient and expired/mismatched deadlines still fail closed. On successful owner-bound verification, Incoming Call renders immediately from the confirmed ring instead of waiting on a redundant second initial GET; Answer and RTC remain server-gated. [Acceptance and limits](COLD_START_CALL_WAKEUP_REAUTH_2026-11-10.md). Source/CI only; real FCM, two phones and deployment remain unverified.
