@@ -346,5 +346,17 @@ fun main() {
     rejects(envelope("""{"role":"caller","phase":"ended","ringDeadlineMs":$ringDeadline,"phone":"private"}"""),
         parse=JodloReplyDecoder::callSignal)
 
+    // Server acknowledgement is strictly scoped to the selected account:
+    // no client owner ID, deleted count, or provider/backups claim is accepted.
+    val clearAck = JodloReplyDecoder.callHistoryCleared(TransportReply(200,
+        envelope("""{"cleared":true}""")))
+    check(clearAck is ApiOutcome.Ok && clearAck.value)
+    for (badClear in listOf(
+        """{"cleared":false}""",
+        """{"cleared":"true"}""",
+        """{"cleared":true,"owner":"other"}""",
+        """{"cleared":true,"deletedCount":5}""",
+    )) rejects(envelope(badClear), parse = JodloReplyDecoder::callHistoryCleared)
+
     println("JODLO Kotlin reply decoder: typed pages, explicit choices, listing privacy and one-shot network safety OK")
 }
