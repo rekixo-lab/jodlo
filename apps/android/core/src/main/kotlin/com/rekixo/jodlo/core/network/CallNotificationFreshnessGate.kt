@@ -18,6 +18,9 @@ class CallNotificationFreshnessGate {
     )
 
     private var displayed: Displayed? = null
+    // Only until NotificationManager confirms the corresponding post.
+    // A failed replacement must not discard a previously verified alert.
+    private var replacedByUnposted: Displayed? = null
 
     @Synchronized
     fun accept(wakeup: IncomingCallWakeup, verified: Boolean, nowMs: Long): Boolean {
@@ -40,13 +43,37 @@ class CallNotificationFreshnessGate {
                     (previous.serverVerified && !verified)) return false
             }
         }
+        replacedByUnposted = displayed
         displayed = Displayed(wakeup.invitationId, wakeup.expiresAtMs, verified)
         return true
+    }
+
+    /** NotificationManager.notify completed without throwing. Discard the
+     * rollback snapshot. Caller serializes accept/post/failure under one
+     * notification monitor; this is not proof of on-device delivery.
+     */
+    @Synchronized
+    fun notificationPosted(wakeup: IncomingCallWakeup, verified: Boolean) {
+        if (displayed == Displayed(wakeup.invitationId, wakeup.expiresAtMs, verified)) {
+            replacedByUnposted = null
+        }
+    }
+
+    /** OS failed before confirming the replacement: preserve the old
+     * verified notification's priority, not an empty/stale gate.
+     */
+    @Synchronized
+    fun notificationPostFailed(wakeup: IncomingCallWakeup, verified: Boolean) {
+        if (displayed == Displayed(wakeup.invitationId, wakeup.expiresAtMs, verified)) {
+            displayed = replacedByUnposted
+            replacedByUnposted = null
+        }
     }
 
     @Synchronized
     fun clear() {
         displayed = null
+        replacedByUnposted = null
     }
 
     override fun toString() = "CallNotificationFreshnessGate(<redacted>)"
