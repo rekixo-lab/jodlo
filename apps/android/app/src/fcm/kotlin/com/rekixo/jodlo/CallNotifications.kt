@@ -199,8 +199,8 @@ internal object CallNotifications {
             CHANNEL, context.getString(R.string.call_notification_channel), NotificationManager.IMPORTANCE_HIGH,
         ))
         if (!notificationsAllowed(context)) return
-        // One PendingIntent slot: a delayed older FCM event must not replace
-        // a newer invitation's notification or downgrade verified status.
+        // One visible notification ID. Per-call PendingIntent identity plus
+        // this priority gate prevent stale/unverified events retargeting it.
         if (!noticeGate.accept(wakeup, verified, System.currentTimeMillis())) return
         try {
             // Include PendingIntent creation in the failure boundary: an
@@ -208,6 +208,10 @@ internal object CallNotifications {
             // freshness gate believing this call was actually displayed.
             val intent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                // Android PendingIntent identity ignores extras. Distinguish
+                // each call by action so a failed new NotificationManager
+                // post cannot silently retarget the older visible alert.
+                action = INCOMING_CALL_ACTION_PREFIX + wakeup.invitationId
                 putExtra(INCOMING_CALL_EXTRA, wakeup.invitationId)
                 putExtra(INCOMING_CALL_EXPIRY_EXTRA, wakeup.expiresAtMs)
             }
@@ -226,10 +230,12 @@ internal object CallNotifications {
             .setAutoCancel(true)
             .setTimeoutAfter(remaining)
             .build())
+            noticeGate.notificationPosted(wakeup, verified)
         } catch (failure: RuntimeException) {
-            // A permission/OS error must not poison the one-slot freshness
-            // gate: the next valid push may retry showing the notice.
-            noticeGate.clear()
+            // Preserve the previous on-screen notification's verified status
+            // after an OS failure. Different call IDs use different PendingIntent
+            // identities, so the old tap target was never overwritten.
+            noticeGate.notificationPostFailed(wakeup, verified)
             throw failure
         }
     }
