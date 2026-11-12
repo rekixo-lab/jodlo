@@ -49,6 +49,7 @@ import com.rekixo.jodlo.core.network.HeadlessWorkerWriteScope
 import com.rekixo.jodlo.core.network.HttpsTransport
 import com.rekixo.jodlo.core.network.InMemorySessionCoordinator
 import com.rekixo.jodlo.core.network.IncomingCallWakeup
+import com.rekixo.jodlo.core.network.IncomingCallReadRecovery
 import com.rekixo.jodlo.core.network.SessionResult
 import com.rekixo.jodlo.core.network.NearbyPilotCity
 import com.rekixo.jodlo.core.network.Language
@@ -148,6 +149,7 @@ private fun JodloApp(activity: ComponentActivity, incomingCall: IncomingCallWake
     var section by rememberSaveable { mutableStateOf("home") }
     var loginRevision by remember { mutableIntStateOf(0) }
     var wakeupNotice by remember { mutableStateOf<Int?>(null) }
+    var wakeupRetryClicks by remember { mutableIntStateOf(0) }
     var callScreen by remember(session) { mutableStateOf<CallScreenRequest?>(null) }
     val onCall: ((String) -> Unit)? = if (BuildConfig.AGORA_ENABLED && session != null && !debugPreview) {
         { id -> if (callScreen == null) callScreen = CallScreenRequest.Outgoing(id) }
@@ -155,7 +157,7 @@ private fun JodloApp(activity: ComponentActivity, incomingCall: IncomingCallWake
     // An FCM event and exported Activity extras are unverified. In a newly
     // started process, show Account first: never ACK/accept/join on a push.
     // After explicit Google sign-in, GET the current owner's exact call state.
-    LaunchedEffect(session, incomingCall, loginRevision) {
+    LaunchedEffect(session, incomingCall, loginRevision, wakeupRetryClicks) {
         val wakeup = incomingCall ?: return@LaunchedEffect
         if (wakeup.remainingMs(System.currentTimeMillis()) == 0L ||
             !BuildConfig.AGORA_ENABLED || session == null) {
@@ -168,21 +170,37 @@ private fun JodloApp(activity: ComponentActivity, incomingCall: IncomingCallWake
             section = "account"
             return@LaunchedEffect
         }
+        wakeupNotice = null
         val status = try {
             withContext(Dispatchers.IO) { session.callSignal(owner, wakeup.invitationId) }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (_: Exception) {
-            null
+            null // The read is uncertain, not a call rejection.
         }
-        if (session.accountPrivateReadMarker() == owner &&
-            status is SessionResult.Success &&
+        if (session.accountPrivateReadMarker() != owner) {
+            // Never carry a wakeup across logout, another account or a write.
+            wakeupNotice = R.string.call_unavailable
+            clearIncoming()
+        } else if (status is SessionResult.Success &&
             wakeup.matchesAuthenticatedRing(status.value, System.currentTimeMillis()) &&
             callScreen == null) {
-            callScreen = CallScreenRequest.Incoming(wakeup.invitationId)
+            // One owner-bound GET already verified this exact ring and deadline.
+            // The call screen may show it immediately, then poll for changes.
+            callScreen = CallScreenRequest.Incoming(wakeup.invitationId, status.value.ringDeadlineMs)
             wakeupNotice = null
+            clearIncoming()
+        } else if (callScreen == null &&
+            wakeup.remainingMs(System.currentTimeMillis()) > 0L &&
+            IncomingCallReadRecovery.mayExplicitlyRetry(status)) {
+            // A transient failure is not "no call". Retain the expiring,
+            // untrusted reference only in memory for a user-requested GET.
+            // Never ACK, ACCEPT or automatically repeat the failed read.
+            wakeupNotice = R.string.call_status_unconfirmed
         } else {
-            wakeupNotice = R.string.call_unavailable
+            wakeupNotice = if (callScreen == null) R.string.call_unavailable else null
+            clearIncoming()
         }
-        clearIncoming()
     }
     if (session != null) callScreen?.let { CallScreen(activity, it, session) { callScreen = null } }
 
@@ -269,7 +287,8 @@ private fun JodloApp(activity: ComponentActivity, incomingCall: IncomingCallWake
             .background(MaterialTheme.colorScheme.background)
             .safeDrawingPadding(),
     ) {
-        if (incomingCall != null && section == "account") {
+        if (incomingCall != null && section == "account" &&
+            session?.accountPrivateReadMarker() == null) {
             Text(
                 stringResource(R.string.call_wakeup_sign_in),
                 modifier = Modifier.padding(horizontal = JodloSizes.ScreenPadding),
@@ -282,6 +301,21 @@ private fun JodloApp(activity: ComponentActivity, incomingCall: IncomingCallWake
                 modifier = Modifier.padding(horizontal = JodloSizes.ScreenPadding),
                 color = MaterialTheme.colorScheme.onBackground,
             )
+        }
+        if (wakeupNotice == R.string.call_status_unconfirmed &&
+            incomingCall != null && session?.accountPrivateReadMarker() != null) {
+            JodloButton(
+                onClick = {
+                    // Remove the button during the one explicit status GET.
+                    // A second tap is never an implicit ACK/ACCEPT mutation.
+                    wakeupNotice = null
+                    wakeupRetryClicks++
+                },
+                modifier = Modifier.padding(horizontal = JodloSizes.ScreenPadding),
+                enabled = incomingCall.remainingMs(System.currentTimeMillis()) > 0L,
+            ) {
+                Text(stringResource(R.string.call_check_incoming_status))
+            }
         }
         Row(
             Modifier.fillMaxWidth()
