@@ -455,6 +455,7 @@
     <string name="worker_details_invalid_private_text">Remove phone numbers, links, @ signs, markup and hidden control characters from the name or description.</string>
     <string name="worker_details_invalid_experience">Experience must be 0–80 whole years, or left blank.</string>
     <string name="worker_details_invalid_rate">Estimated rate must be a whole amount from ₹1 to ₹10,000,000, or left blank.</string>
+    <string name="worker_details_unsent_after_recheck">Server version checked. Your unsent edits are still only on this device. Review them before submitting again; nothing was automatically sent.</string>
     <string name="worker_details_failed">The server could not confirm the service profile. Reload it before making another change.</string>
     <string name="worker_details_removed">The service profile was removed.</string>
     <string name="worker_details_submitted">The service profile was sent for review.</string>

@@ -36,15 +36,17 @@ internal fun WorkerServicePhotoEditor(
 ) {
     if (session == null) return
     val scope = rememberCoroutineScope()
-    var loaded by remember(session, listingId) {
+    // A sign-in change must discard previous account's cached editor data.
+    val sessionEpoch = session.accountExportSessionMarker()
+    var loaded by remember(session, listingId, sessionEpoch) {
         mutableStateOf<Pair<AccountPrivateReadMarker, OwnServicePhoto>?>(null)
     }
-    var preview by remember(session, listingId) { mutableStateOf<PreparedServicePhoto?>(null) }
-    var pickerOwner by remember(session, listingId) { mutableStateOf<AccountPrivateReadMarker?>(null) }
-    var export by remember(session, listingId) { mutableStateOf<Pair<AccountPrivateReadMarker, String>?>(null) }
-    var removing by remember(session, listingId) { mutableStateOf(false) }
-    var busy by remember(session, listingId) { mutableStateOf(false) }
-    var notice by remember(session, listingId) { mutableStateOf(0) }
+    var preview by remember(session, listingId, sessionEpoch) { mutableStateOf<PreparedServicePhoto?>(null) }
+    var pickerOwner by remember(session, listingId, sessionEpoch) { mutableStateOf<AccountPrivateReadMarker?>(null) }
+    var export by remember(session, listingId, sessionEpoch) { mutableStateOf<Pair<AccountPrivateReadMarker, String>?>(null) }
+    var removing by remember(session, listingId, sessionEpoch) { mutableStateOf(false) }
+    var busy by remember(session, listingId, sessionEpoch) { mutableStateOf(false) }
+    var notice by remember(session, listingId, sessionEpoch) { mutableStateOf(0) }
     val marker = session.accountPrivateReadMarker()
     val photo = loaded?.takeIf { it.first == marker }?.second
 

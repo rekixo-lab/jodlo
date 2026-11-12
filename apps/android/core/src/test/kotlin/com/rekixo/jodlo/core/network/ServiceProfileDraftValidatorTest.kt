@@ -44,7 +44,36 @@ private fun verifyDrafts() {
     invalid(rate = "999999999999999999", issue = ServiceProfileDraftIssue.RATE)
 }
 
+private fun verifySafeDraftRecheck() {
+    val old = ServiceProfile("Existing name", "Old approved work description", 6, 300)
+    val edit = ServiceProfileDraftFields("Fresh repair", "A more detailed service description", "7", "350")
+    val changed = ServiceProfileDraftRecovery.afterConfirmedRead(edit, true, old)
+    check(changed.unsentLocalChanges && changed.fields == edit)
+    // A different approved/pending server version never overwrites unsent input.
+    check(ServiceProfileDraftRecovery.afterConfirmedRead(edit, true, null)
+        == ServiceProfileDraftRecheck(edit, true))
+    val invalid = edit.copy(description = "Call 9876543210 for details")
+    check(ServiceProfileDraftRecovery.afterConfirmedRead(invalid, true, old)
+        == ServiceProfileDraftRecheck(invalid, true))
+    // If an uncertain previous PUT DID commit, reloading the owner GET is
+    // sufficient reconciliation. Do not send a second (duplicate) write.
+    val committed = ServiceProfile("Fresh repair", "A more detailed service description", 7, 350)
+    check(ServiceProfileDraftRecovery.afterConfirmedRead(edit, true, committed)
+        == ServiceProfileDraftRecheck(ServiceProfileDraftFields.fromServer(committed), false))
+    val normalized = edit.copy(name = "  Fresh repair  ")
+    check(!ServiceProfileDraftRecovery.afterConfirmedRead(normalized, true, committed)
+        .unsentLocalChanges)
+    // Initial load or an unedited refresh always follows server authority.
+    check(ServiceProfileDraftRecovery.afterConfirmedRead(edit, false, old)
+        == ServiceProfileDraftRecheck(ServiceProfileDraftFields.fromServer(old), false))
+    check(ServiceProfileDraftRecovery.afterConfirmedRead(edit, false, null)
+        == ServiceProfileDraftRecheck(ServiceProfileDraftFields("", "", "", ""), false))
+    // A rejected/bad-response GET cannot call afterConfirmedRead: only the
+    // editor's exact account-marker/SessionResult.Success branch may do so.
+}
+
 fun main() {
     verifyDrafts()
-    println("JODLO Worker profile draft validation: PASS")
+    verifySafeDraftRecheck()
+    println("JODLO Worker profile draft validation and read-only recovery: PASS")
 }

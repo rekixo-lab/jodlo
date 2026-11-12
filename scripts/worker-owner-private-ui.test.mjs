@@ -414,3 +414,28 @@ test("Customer Feed and Saved recheck details without carrying over stale photo 
     assert.ok(photo.includes("if (repository == null || !card.hasPhoto) return"));
     for(const xml of [en,hi]) assert.ok(xml.includes('name="service_details_refresh_now"'));
 });
+
+
+test("Worker Service editors fence per-account local drafts and preserve unknown-write text on read-only recheck",()=>{
+    const details=read("apps/android/app/src/main/java/com/rekixo/jodlo/WorkerServiceDetailsEditor.kt");
+    const photo=read("apps/android/app/src/main/java/com/rekixo/jodlo/WorkerServicePhotoEditor.kt");
+    const area=read("apps/android/app/src/main/java/com/rekixo/jodlo/WorkerServiceAreaEditor.kt");
+    const helper=read("apps/android/core/src/main/kotlin/com/rekixo/jodlo/core/network/ServiceProfileDraftRecovery.kt");
+    const tests=read("apps/android/core/src/test/kotlin/com/rekixo/jodlo/core/network/ServiceProfileDraftValidatorTest.kt");
+    for (const editor of [details,photo,area]) {
+        assert.ok(editor.includes("val sessionEpoch = session.accountExportSessionMarker()"));
+        assert.ok(editor.includes("remember(session, listingId, sessionEpoch)"));
+        assert.ok(editor.includes("loaded?.takeIf { it.first == "));
+    }
+    assert.ok(details.includes("result is SessionResult.Success && session.accountPrivateReadMarker() == expected"));
+    assert.ok(details.includes("ServiceProfileDraftRecovery.afterConfirmedRead("));
+    assert.ok(details.includes("reconciled.unsentLocalChanges"));
+    assert.ok(details.includes("R.string.worker_details_unsent_after_recheck"));
+    assert.ok(details.includes("if (write && profile != null) edited = true"));
+    assert.ok(helper.includes("typed == null || typed != serverProfile"));
+    assert.ok(helper.includes("ServiceProfileDraftFields.fromServer(serverProfile)"));
+    assert.ok(tests.includes("verifySafeDraftRecheck()"));
+    assert.ok(!helper.includes("session.changeServiceDetails"));
+    for(const xml of [en,hi])
+        assert.ok(xml.includes('name="worker_details_unsent_after_recheck"'));
+});
