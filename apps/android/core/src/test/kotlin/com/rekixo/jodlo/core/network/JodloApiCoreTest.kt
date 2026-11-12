@@ -44,6 +44,15 @@ fun main() {
         !cursorSearch.resource.contains("includeChoices"))
     check(cursorSearch.headers()["Authorization"] == null)
     check(JodloRoutes.searchCursor("service", Language.EN).resource.contains("&cursor=1&limit=20"))
+    val citySearch = JodloRoutes.searchCursor("electric", Language.EN,
+        availableOnly = true, city = NearbyPilotCity.RAIPUR, limit = 1)
+    check(citySearch.method == HttpMethod.GET)
+    check(citySearch.resource ==
+        "/api/v1/catalog/search?lang=en&q=electric&cursor=1&limit=1&availableOnly=1&city=raipur")
+    check(citySearch.headers()["Authorization"] == null)
+    rejects("city-scoped Category Search cannot omit public availability") {
+        JodloRoutes.searchCursor("electric", Language.EN, city = NearbyPilotCity.BILASPUR)
+    }
     for (badCursor in listOf("00:plumber", "1000001:plumber",
         "-1:plumber", "8:../private", "8:नल", "8:plumber%0A")) {
         rejects("unsafe Search cursor") {
