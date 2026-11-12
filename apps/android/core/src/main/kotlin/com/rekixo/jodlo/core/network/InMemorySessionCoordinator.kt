@@ -536,6 +536,18 @@ class InMemorySessionCoordinator(
             consistentRead = true, expectedOwner = owner,
         )
 
+    /** One deliberate, owner-bound deletion. A lost reply is uncertain:
+     * NEVER automatically retry; user may explicitly refresh their history.
+     * Current account/write revision changes fence stale in-flight reads.
+     */
+    fun clearCallHistory(owner: AccountPrivateReadMarker): SessionResult<Boolean> =
+        withSession(
+            call = { token -> performOnce(JodloRoutes.clearCallHistory(token), authSender::send,
+                JodloReplyDecoder::callHistoryCleared) },
+            update = { reply, _ -> outcome(reply) },
+            mutation = true, expectedOwner = owner,
+        )
+
     fun callAudioGrant(owner: AccountPrivateReadMarker, id: String): SessionResult<CallAudioGrant> =
         withSession(
             call = { token -> performOnce(JodloRoutes.callAudioGrant(token, id), authSender::send) {
