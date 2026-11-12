@@ -681,7 +681,36 @@ private fun testReceiverAcceptRecoveryContract() {
         CallSignal(CallRole.RECEIVER, CallPhase.ENDED, deadline)))
 }
 
+/** A recovered ACCEPT must not leave media on-air after owner revocation.
+ * Temporary offline/provider faults are uncertain and cannot be interpreted
+ * as evidence the other participant or the session has ended.
+ */
+private fun testCallPollLocalMediaAuthorization() {
+    val accepted = SessionResult.Success(
+        CallSignal(CallRole.RECEIVER, CallPhase.ACCEPTED, 1_700_000_090_000L),
+    )
+    check(!CallPollSafety.mustStopLocalAudio(accepted))
+    check(!CallPollSafety.mustStopLocalAudio(null))
+    for (failure in listOf(
+        SessionFailure.SIGNED_OUT, SessionFailure.EXPIRED, SessionFailure.REPLACED,
+    )) check(CallPollSafety.mustStopLocalAudio(SessionResult.Failed(failure)))
+    for (denied in listOf(FailureKind.UNAUTHORIZED, FailureKind.FORBIDDEN, FailureKind.NOT_FOUND)) {
+        check(CallPollSafety.mustStopLocalAudio(
+            SessionResult.Failed(SessionFailure.REMOTE_FAILURE, denied)))
+    }
+    for (transient in listOf(
+        FailureKind.OFFLINE_OR_TIMEOUT, FailureKind.SERVICE_UNAVAILABLE,
+        FailureKind.BAD_RESPONSE, FailureKind.CONFLICT,
+    )) check(!CallPollSafety.mustStopLocalAudio(
+        SessionResult.Failed(SessionFailure.REMOTE_FAILURE, transient)))
+    for (local in listOf(
+        SessionFailure.OPERATION_IN_PROGRESS, SessionFailure.STALE_RESULT,
+        SessionFailure.CANCELLED,
+    )) check(!CallPollSafety.mustStopLocalAudio(SessionResult.Failed(local)))
+}
+
 fun main() {
+    testCallPollLocalMediaAuthorization()
     testReceiverAcceptRecoveryContract()
     testLostReceiverAnswerReconcilesByRead()
     testCallDeviceRegistrationGate()
