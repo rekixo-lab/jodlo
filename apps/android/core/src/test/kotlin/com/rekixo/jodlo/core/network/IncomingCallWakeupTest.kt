@@ -29,7 +29,33 @@ private fun testServerOwnedConfirmationOnly() {
     check(!pending.matchesAuthenticatedRing(CallSignal(CallRole.RECEIVER, CallPhase.RINGING, NOW + 29_999), NOW))
 }
 
+private fun testExplicitIncomingReadRecovery() {
+    val transient = SessionResult.Failed(
+        SessionFailure.REMOTE_FAILURE, FailureKind.SERVICE_UNAVAILABLE,
+    )
+    check(IncomingCallReadRecovery.mayExplicitlyRetry(transient))
+    check(IncomingCallReadRecovery.mayExplicitlyRetry(SessionResult.Failed(
+        SessionFailure.REMOTE_FAILURE, FailureKind.OFFLINE_OR_TIMEOUT,
+    )))
+    check(IncomingCallReadRecovery.mayExplicitlyRetry(SessionResult.Failed(
+        SessionFailure.OPERATION_IN_PROGRESS,
+    )))
+    check(IncomingCallReadRecovery.mayExplicitlyRetry(null))
+    for (denied in listOf(
+        SessionResult.Failed(SessionFailure.REMOTE_FAILURE, FailureKind.UNAUTHORIZED),
+        SessionResult.Failed(SessionFailure.REMOTE_FAILURE, FailureKind.FORBIDDEN),
+        SessionResult.Failed(SessionFailure.REMOTE_FAILURE, FailureKind.NOT_FOUND),
+        SessionResult.Failed(SessionFailure.REMOTE_FAILURE, FailureKind.BAD_RESPONSE),
+        SessionResult.Failed(SessionFailure.STALE_RESULT),
+        SessionResult.Failed(SessionFailure.REPLACED),
+    )) check(!IncomingCallReadRecovery.mayExplicitlyRetry(denied))
+    check(!IncomingCallReadRecovery.mayExplicitlyRetry(SessionResult.Success(
+        CallSignal(CallRole.RECEIVER, CallPhase.RINGING, NOW + 30_000),
+    )))
+}
+
 fun main() {
+    testExplicitIncomingReadRecovery()
     testCallNotificationFreshnessGate()
     testUnverifiedWakeupAdmission()
     testServerOwnedConfirmationOnly()

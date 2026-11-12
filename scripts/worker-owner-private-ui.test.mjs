@@ -131,12 +131,12 @@ test("Cold-start FCM wakeup stays generic until fresh same-owner server GET afte
     assert.match(main,/IncomingCallWakeup\.fromIntent\(/);
     assert.match(main,/intent\.removeExtra\(INCOMING_CALL_EXTRA\)/);
     assert.match(main,/intent\.removeExtra\(INCOMING_CALL_EXPIRY_EXTRA\)/);
-    assert.match(main,/LaunchedEffect\(session, incomingCall, loginRevision\)/);
+    assert.match(main,/LaunchedEffect\(session, incomingCall, loginRevision, wakeupRetryClicks\)/);
     assert.match(main,/section = "account"/);
     assert.match(main,/session\.callSignal\(owner, wakeup\.invitationId\)/);
-    assert.match(main,/session\.accountPrivateReadMarker\(\) == owner/);
+    assert.match(main,/session\.accountPrivateReadMarker\(\) != owner/);
     assert.match(main,/wakeup\.matchesAuthenticatedRing\(status\.value, System\.currentTimeMillis\(\)\)/);
-    assert.match(main,/CallScreenRequest\.Incoming\(wakeup\.invitationId\)/);
+    assert.match(main,/CallScreenRequest\.Incoming\(wakeup\.invitationId, status\.value\.ringDeadlineMs\)/);
     assert.match(main,/onSignInSuccess = \{ loginRevision\+\+ \}/);
     assert.match(account,/if \(result is SessionResult\.Success\) \{[\s\S]*?onSignInSuccess\(\)/);
     assert.match(gate,/signal\.role == CallRole\.RECEIVER/);
@@ -241,4 +241,32 @@ test("FCM callback never blocks on HTTPS ACK and bounds stale-call work separate
     assert.match(fcm,/override fun onMessageReceived\(message: RemoteMessage\) = CallNotifications\.ring/);
     assert.match(transport,/check\(Thread\.currentThread\(\)\.name != "main"\)/);
     assert.doesNotMatch(fcm,/SharedPreferences|DataStore|FileOutputStream|Log\./);
+});
+
+test("Notification-tap network uncertainty permits only explicit expiring same-owner GET retry",()=>{
+    const main=read("apps/android/app/src/main/java/com/rekixo/jodlo/MainActivity.kt");
+    const call=read("apps/android/app/src/main/java/com/rekixo/jodlo/CallScreen.kt");
+    const policy=read("apps/android/core/src/main/kotlin/com/rekixo/jodlo/core/network/IncomingCallWakeup.kt");
+    const coverage=read("apps/android/core/src/test/kotlin/com/rekixo/jodlo/core/network/IncomingCallWakeupTest.kt");
+    assert.match(main,/wakeupRetryClicks by remember/);
+    assert.match(main,/IncomingCallReadRecovery\.mayExplicitlyRetry\(status\)/);
+    assert.match(main,/wakeup\.remainingMs\(System\.currentTimeMillis\(\)\) > 0L/);
+    assert.match(main,/wakeupNotice = R\.string\.call_status_unconfirmed/);
+    assert.match(main,/wakeupRetryClicks\+\+/);
+    assert.match(main,/session\.callSignal\(owner, wakeup\.invitationId\)/);
+    assert.match(main,/session\.accountPrivateReadMarker\(\) != owner/);
+    assert.match(main,/wakeup\.matchesAuthenticatedRing\(status\.value, System\.currentTimeMillis\(\)\)/);
+    assert.match(main,/CallScreenRequest\.Incoming\(wakeup\.invitationId, status\.value\.ringDeadlineMs\)/);
+    assert.match(call,/val confirmedRingDeadlineMs: Long/);
+    assert.match(call,/if \(request is CallScreenRequest\.Incoming\) CallPhase\.RINGING else null/);
+    assert.match(call,/if \(!receiver\) requestMicrophone\(\)/);
+    assert.match(policy,/FailureKind\.OFFLINE_OR_TIMEOUT/);
+    assert.match(policy,/FailureKind\.SERVICE_UNAVAILABLE/);
+    assert.match(policy,/SessionFailure\.OPERATION_IN_PROGRESS/);
+    assert.match(coverage,/testExplicitIncomingReadRecovery\(\)/);
+    for (const xml of [en,hi])for (const key of [
+        "call_status_unconfirmed","call_check_incoming_status",
+    ]) assert.match(xml,new RegExp('name="'+key+'"'));
+    assert.doesNotMatch(main,/callSignal\(owner, wakeup\.invitationId, CallAction/);
+    assert.doesNotMatch(main,/rememberSaveable\s*\{\s*mutableStateOf<IncomingCallWakeup/);
 });

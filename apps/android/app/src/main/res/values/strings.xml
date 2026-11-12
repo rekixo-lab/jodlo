@@ -512,6 +512,8 @@
     <string name="call_keep_open">Go back to call</string>
     <string name="call_close_warning">The server has not confirmed the call ended. Closing here may leave the other person seeing a call.</string>
     <string name="call_unavailable">Call unavailable</string>
+    <string name="call_status_unconfirmed">Could not check the incoming call because the connection failed. The call may still be ringing.</string>
+    <string name="call_check_incoming_status">Check incoming call again</string>
     <string name="call_sign_in">Sign in to use calling</string>
     <string name="call_microphone_required">Allow microphone access to use voice calling</string>
     <string name="call_available_status">Available for calls</string>

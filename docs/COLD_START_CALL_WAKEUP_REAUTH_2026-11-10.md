@@ -1,3 +1,11 @@
+## Explicit notification-tap recovery — 12 November 2026 (code only)
+
+A transient offline/service failure during the **first owner-authenticated GET** when tapping an FCM incoming-call notification no longer becomes a false “Call unavailable”. JODLO offers **Check incoming call again** in English/Hindi. Only an explicit tap causes one more **read-only exact-ID GET**; no ACK, ACCEPT, invite, retry loop or additional provider call is triggered by the failure. The expiring untrusted wakeup stays process-memory only. Session generation/write marker must be unchanged; the server must return the receiver's **still-ringing** invitation with the exact original push deadline before the Call screen opens. Authentication/ownership/404/invalid-state errors are terminal and cannot be retried by that action. If the short ring window expires, retry cannot open the call.
+
+After this single server verification, the Call screen immediately renders the confirmed ringing state and remaining deadline instead of forcing a second blocking GET before the Answer button. Ongoing read-only polling and server-enforced ACCEPT/Agora grants still check current state, role and consent; no push, caller identity or untrusted intent alone authorizes audio.
+
+Regression coverage: Kotlin recovery policy tests distinguish temporary failures from unauthorized/missing/stale states; native source wiring checks require the actual verified notification-tap → UI button → second authenticated GET → confirmed incoming screen. The real Android JDK17/21 and optional FCM+Agora compilation is the release-quality source check. No secret, production deployment, D1 migration, physical phone test or Finworkar change occurred. Real FCM sender setup, connected two-device calling and one final integrated acceptance are still pending.
+
 # JODLO cold-start call wakeup and explicit reauthentication — 2026-11-10
 
 ## What the Android source now does
