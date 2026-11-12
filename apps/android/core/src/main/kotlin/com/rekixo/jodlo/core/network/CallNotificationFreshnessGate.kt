@@ -24,15 +24,20 @@ class CallNotificationFreshnessGate {
         if (wakeup.remainingMs(nowMs) == 0L) return false
         val previous = displayed?.takeIf { it.expiresAtMs > nowMs }
         if (previous != null) {
-            if (previous.invitationId == wakeup.invitationId &&
-                previous.expiresAtMs == wakeup.expiresAtMs) {
-                // Only the same call's promotion from generic to confirmed
-                // is allowed. In particular, never downgrade a verified ring.
-                if (previous.serverVerified || !verified) return false
-            } else if (wakeup.expiresAtMs <= previous.expiresAtMs) {
-                // Different but older/equal-expiry events must not replace
-                // the newer single PendingIntent in the notification tray.
-                return false
+            if (previous.invitationId == wakeup.invitationId) {
+                // The server fixes a ring deadline once per invitation. A
+                // differently timed FCM copy must never reset the PendingIntent
+                // or downgrade an already server-verified notification.
+                if (previous.expiresAtMs != wakeup.expiresAtMs ||
+                    previous.serverVerified || !verified) return false
+                // The ONLY same-call update: generic -> server-verified.
+            } else {
+                // Two different invitations can share the single Android
+                // notification slot, but an unverified FCM event cannot
+                // displace a still-live, server-confirmed ring even if its
+                // claimed deadline is later. A fresh authenticated ACK may.
+                if (wakeup.expiresAtMs <= previous.expiresAtMs ||
+                    (previous.serverVerified && !verified)) return false
             }
         }
         displayed = Displayed(wakeup.invitationId, wakeup.expiresAtMs, verified)
