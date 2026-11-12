@@ -399,8 +399,26 @@ private fun CallPreferenceControls(
     availability: Boolean = false,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    // OS permission/channel state is NOT proof of Firebase delivery or
+    // server-side registration. Re-read it after returning from Settings.
+    var localNotificationsReady by remember(session) {
+        mutableStateOf(CallNotifications.areLocalNoticesAllowed(context))
+    }
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        localNotificationsReady = CallNotifications.areLocalNoticesAllowed(context)
         CallNotifications.sync(context.applicationContext)
+    }
+    DisposableEffect(context, session) {
+        val activity = context as? ComponentActivity
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                localNotificationsReady = CallNotifications.areLocalNoticesAllowed(context)
+                // The existing foreground sync rechecks server consent, OS
+                // permission and current owner before registering a device.
+            }
+        }
+        activity?.lifecycle?.addObserver(observer)
+        onDispose { activity?.lifecycle?.removeObserver(observer) }
     }
     val scope = rememberCoroutineScope()
     var checked by remember(session) {
@@ -468,6 +486,35 @@ private fun CallPreferenceControls(
                 preference.enabled -> R.string.account_voice_disable
                 else -> R.string.account_voice_enable
             }))
+        }
+        if (!availability && BuildConfig.FCM_ENABLED && preference.enabled &&
+            !localNotificationsReady) {
+            // Consent and Android's alert permission are independent. Never
+            // claim alerts are deliverable merely because D1 opt-in is true.
+            Text(stringResource(R.string.call_notifications_blocked_warning),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error)
+            JodloTextAction(onClick = {
+                // The user explicitly chooses OS settings. Do not change
+                // consent, send FCM, or infer that permission was granted.
+                val appSettings = android.content.Intent(
+                    android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS,
+                ).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
+                try {
+                    context.startActivity(appSettings)
+                } catch (_: RuntimeException) {
+                    // Some devices omit the dedicated notifications screen.
+                    // Open app details instead, where permissions can be managed.
+                    runCatching {
+                        context.startActivity(android.content.Intent(
+                            android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                            android.net.Uri.fromParts("package", context.packageName, null),
+                        ))
+                    }
+                }
+            }) {
+                Text(stringResource(R.string.call_open_notification_settings))
+            }
         }
     } else {
         JodloTextAction(onClick = { request(null) }, enabled = canRequest) {

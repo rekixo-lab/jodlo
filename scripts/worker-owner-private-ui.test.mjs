@@ -307,3 +307,27 @@ test("Resolved Answer restarts authenticated polling; lost/denied session stops 
     assert.match(coreTests,/testCallPollLocalMediaAuthorization\(\)/);
     assert.doesNotMatch(ui,/if \(sessionLost\) \{\s*session\.callSignal/);
 });
+
+test("Account shows actionable local OS call-notice block only for opted-in FCM Worker",()=>{
+    const account=read("apps/android/app/src/main/java/com/rekixo/jodlo/AccountDashboard.kt");
+    const fcm=read("apps/android/app/src/fcm/kotlin/com/rekixo/jodlo/CallNotifications.kt");
+    const noFcm=read("apps/android/app/src/noFcm/kotlin/com/rekixo/jodlo/CallNotifications.kt");
+    assert.match(account,/var localNotificationsReady by remember\(session\)/);
+    assert.match(account,/CallNotifications\.areLocalNoticesAllowed\(context\)/);
+    assert.match(account,/Lifecycle\.Event\.ON_RESUME/);
+    assert.match(account,/if \(!availability && BuildConfig\.FCM_ENABLED && preference\.enabled &&\s*!localNotificationsReady\)/);
+    assert.match(account,/R\.string\.call_notifications_blocked_warning/);
+    assert.match(account,/R\.string\.call_open_notification_settings/);
+    assert.match(account,/Settings\.ACTION_APP_NOTIFICATION_SETTINGS/);
+    assert.match(account,/Settings\.ACTION_APPLICATION_DETAILS_SETTINGS/);
+    assert.match(account,/Settings\.EXTRA_APP_PACKAGE/);
+    assert.match(account,/CallNotifications\.sync\(context\.applicationContext\)/);
+    assert.match(fcm,/fun areLocalNoticesAllowed\(context: Context\): Boolean/);
+    assert.match(fcm,/notices\.areNotificationsEnabled\(\)/);
+    assert.match(fcm,/getNotificationChannel\(CHANNEL\)\?\.importance != NotificationManager\.IMPORTANCE_NONE/);
+    assert.match(noFcm,/fun areLocalNoticesAllowed\(context: Context\): Boolean = false/);
+    for(const xml of [en,hi])for(const key of [
+        "call_notifications_blocked_warning","call_open_notification_settings"
+    ])assert.match(xml,new RegExp('name="'+key+'"'));
+    assert.doesNotMatch(account,/setCallDevice\(/);
+});

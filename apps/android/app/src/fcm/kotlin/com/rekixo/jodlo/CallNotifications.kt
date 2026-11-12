@@ -77,6 +77,12 @@ internal object CallNotifications {
             notices.getNotificationChannel(CHANNEL)?.importance != NotificationManager.IMPORTANCE_NONE
     }
 
+    /** OS-only diagnostic, not server consent, token registration, or proof of
+     * actual FCM delivery. Exposes no token or owner identity to Compose.
+     */
+    fun areLocalNoticesAllowed(context: Context): Boolean =
+        try { notificationsAllowed(context) } catch (_: RuntimeException) { false }
+
     /** Local-only disclosure clear on account replacement, logout or erasure.
      * Session revocation / device row deletion remain server-owned. */
     fun clearLocal(context: Context) {

@@ -20,6 +20,12 @@ The JDK 21 Android job now generates a **synthetic, non-secret `google-services.
 
 Existing executable Kotlin JVM session suite tests token-rotation dedup, account-generation binding, and in-memory clear/retry rules. Existing Node private UI suite enforces actual native FCM call/permission/login/logout wiring and CI graph; Android compile checks the real optional sources.
 
+## 12 November 2026 — Account explains blocked Android call notifications
+
+A Worker can deliberately enable **server-side incoming-call consent** while Android 13+ permission, the app's notifications switch, or the existing **Incoming calls** channel is blocked. Previously the Account screen only showed *consent is on*; Firebase registration would be suppressed but the Worker had no local explanation or route to fix their phone settings. For the optional FCM-enabled build, Account now shows a clear **bilingual warning only when current authenticated consent is ON and Android notifications are OFF/blocked**, with an explicit **Open notification settings** action (fallback to app settings if the OS does not expose its notification panel). The read is **local OS state only**: no FCM token, device binding, provider call or D1 write is issued by the diagnostic. Android settings return/permission callbacks refresh the warning; existing foreground sync separately rechecks live owner and consent. The no-FCM build reports no delivery support and never shows misleading FCM setup. Turning consent OFF still works independently of notification settings.
+
+This does NOT imply a green Android switch guarantees Firebase delivery. Cold start, killed processes, bearer restoration, real provider credentials and two-device QA remain separate release gates. Source and English/Hindi UI strings plus JDK17/21 compiled native variants are the available proof until final phone testing.
+
 ## Explicit remaining release gates
 - **Cold-start FCM receiving is still NOT supported:** server sessions intentionally exist only in process memory. A FirebaseMessagingService started after process death has no authenticated Worker coordinator and cannot verify or ACK a call; persistent secure session restoration needs a separate founder-approved security/privacy design. Do not claim calls ring when the app is killed.
 - Real Firebase project files/FCM credentials, real Android notification permission, provider delivery/ACK, two-device Agora and network transitions remain unverified without an operator-controlled provider setup and the **one final consolidated physical-phone QA**.
