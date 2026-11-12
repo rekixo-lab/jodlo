@@ -1,5 +1,7 @@
 ## 2026-11-12 — Customer city Search hides Categories without a current city Service (source only)
 
+**Continuity:** The independently verified **2026-11-05 Worker/Customer source baseline** remains part of this product; this new city Search does not replace its release gates or establish real-device acceptance. See the [dated evidence ledger](CURRENT_STATE.md) for the older live-provider observations and the still-unapproved Catalog.
+
 In the **Raipur/Bilaspur** Customer Feed, explicit Hindi/English Category Search now filters approved Categories by actual server-authorized, published Worker Service Listings with that declared city; global taxonomy Search remains unchanged. City-specific keyset pagination and anchor recheck fail closed if a city Listing is withdrawn or moderated. A Category result is not proof of proximity, Worker availability or callable status, and a fresh public Listing/Detail GET is still required. Local HTTP/D1 + Kotlin/Android source verification, no new migration, production activation, GPS, provider operation or Category approval. [Details](CUSTOMER_CITY_CATEGORY_SEARCH_2026-11-10.md).
 
 ## 2026-11-12 — Worker can check exact server-side call-device registration (source only)
