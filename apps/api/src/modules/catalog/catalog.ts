@@ -103,6 +103,8 @@ export interface CatalogBrowseOptions {
   availableOnly: boolean;
   limit: number | null;
   after: { sortOrder: number; id: string } | null;
+  /** Explicit Worker-declared pilot city, not user GPS or account city. */
+  city?: ServiceCity | null;
 }
 
 export type CatalogBrowsePage = {
@@ -121,7 +123,7 @@ function parsePublicCategoryCursor(raw: string): {sortOrder:number;id:string} | 
  * personal identifier. Server still independently filters active/eligible rows.
  */
 export function parseCatalogBrowse(params: URLSearchParams): CatalogBrowseOptions | null {
-  const allowed = new Set(["lang","availableOnly","limit","after"]);
+  const allowed = new Set(["lang","availableOnly","limit","after","city"]);
   let invalid = false;
   params.forEach((_value,key) => {
     if (!allowed.has(key) || params.getAll(key).length !== 1) invalid = true;
@@ -133,6 +135,11 @@ export function parseCatalogBrowse(params: URLSearchParams): CatalogBrowseOption
   if (availability !== null && availability !== "1") return null;
   const limitRaw = params.get("limit");
   const afterRaw = params.get("after");
+  const cityRaw = params.get("city");
+  // A global/unpaged/Category-only browse must never silently claim city
+  // availability. Require an explicit, bounded available-only page.
+  if (cityRaw !== null && (availability !== "1" || limitRaw === null ||
+      !validServiceCity(cityRaw))) return null;
   if (limitRaw === null && afterRaw !== null) return null;
   if (limitRaw !== null && !/^(?:[1-9]|1[0-9]|2[0-5])$/.test(limitRaw)) return null;
   let after: CatalogBrowseOptions["after"] = null;
@@ -141,14 +148,16 @@ export function parseCatalogBrowse(params: URLSearchParams): CatalogBrowseOption
     if(!after)return null;
   }
   return {language,availableOnly:availability === "1",
-    limit:limitRaw === null ? null : Number(limitRaw),after};
+    limit:limitRaw === null ? null : Number(limitRaw),after,
+    city:cityRaw===null?null:cityRaw as ServiceCity};
 }
 
 const PUBLIC_PAGE_FIELDS = PUBLIC_CATEGORY_FIELDS.trimEnd() + ", sort_order AS sortOrder ";
-function browsePageSql(availableOnly: boolean, hasCursor: boolean): string {
+function browsePageSql(availableOnly: boolean, hasCursor: boolean,
+                       city:ServiceCity|null=null): string {
   return PUBLIC_PAGE_FIELDS + "FROM categories WHERE is_active = 1 " +
-    (availableOnly ? "AND " + ELIGIBLE_LISTING_EXISTS + " " : "") +
-    (hasCursor ? "AND " + currentAnchorSql(availableOnly,0) + " " +
+    (availableOnly ? "AND " + cityEligibleCategoryExists("categories",city) + " " : "") +
+    (hasCursor ? "AND " + currentAnchorSql(availableOnly,0,city) + " " +
       "AND (sort_order > ? OR (sort_order = ? AND id > ?)) " : "") +
     "ORDER BY sort_order ASC, id ASC LIMIT ?";
 }
@@ -157,6 +166,9 @@ function browsePageSql(availableOnly: boolean, hasCursor: boolean): string {
 export async function browsePublicCategories(
   db:D1Database,opts:CatalogBrowseOptions,
 ):Promise<CatalogBrowsePage> {
+  const city=opts.city??null;
+  if (city!==null && (opts.limit===null || !opts.availableOnly ||
+      !validServiceCity(city))) throw new Error("Invalid city-qualified public browse");
   if (opts.limit === null) {
     return {categories:await listPublicCategories(db,opts.language,opts.availableOnly),nextCursor:null};
   }
@@ -164,11 +176,16 @@ export async function browsePublicCategories(
   // a category disabled between two previous independent reads cannot skip
   // the current active result set.
   const args: (string | number)[] = [opts.language];
-  if(opts.after) args.push(opts.after.id,opts.after.sortOrder,
-    opts.after.sortOrder,opts.after.sortOrder,opts.after.id);
+  if (city!==null) args.push(city);
+  if(opts.after) {
+    args.push(opts.after.id,opts.after.sortOrder);
+    if (city!==null) args.push(city);
+    args.push(opts.after.sortOrder,opts.after.sortOrder,opts.after.id);
+  }
   args.push(opts.limit + 1);
-  const {results} = await db.prepare(browsePageSql(opts.availableOnly,opts.after !== null))
-    .bind(...args).all<PublicCategory & {sortOrder:number}>();
+  const {results} = await db.prepare(browsePageSql(
+    opts.availableOnly,opts.after !== null,city,
+  )).bind(...args).all<PublicCategory & {sortOrder:number}>();
   const selected = results.slice(0,opts.limit);
   const last = selected[selected.length-1];
   return {
