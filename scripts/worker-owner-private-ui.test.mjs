@@ -66,7 +66,7 @@ test("Call UI never claims server termination on a lost POST and explicitly reco
     assert.match(ui,/session\.startCall\(owner, outgoing\.listingId, outgoing\.attemptKey\)/);
     assert.match(ui,/dialUncertain = true/);
     assert.match(ui,/ending != null \|\| acceptUncertain \|\| \(invitationId == null && dialUncertain\)/);
-    assert.match(ui,/LaunchedEffect\(invitationId, phase, ending\)/);
+    assert.match(ui,/LaunchedEffect\(invitationId, phase, ending, sessionLost\)/);
     assert.match(ui,/phase == CallPhase\.ACCEPTED && ending == null/);
     assert.match(core,/object CallEndProtocol/);
     assert.match(core,/signal\.role == expectedRole/);
