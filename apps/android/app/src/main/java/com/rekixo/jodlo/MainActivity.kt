@@ -99,6 +99,11 @@ class MainActivity : ComponentActivity() {
         // Do not persist invitation references in task history or saved state.
         intent.removeExtra(INCOMING_CALL_EXTRA)
         intent.removeExtra(INCOMING_CALL_EXPIRY_EXTRA)
+        // The action distinguishes Android PendingIntent identities only;
+        // it is untrusted and must not linger on a resumed Activity intent.
+        if (intent.action?.startsWith(INCOMING_CALL_ACTION_PREFIX) == true) {
+            intent.action = null
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
