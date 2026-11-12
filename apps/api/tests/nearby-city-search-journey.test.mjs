@@ -85,6 +85,26 @@ test("Worker publish -> Category Search -> explicit city+trade selection -> revi
       {id:"cat-electrician",slug:"cat-electrician",name:"Electrician"},
     ]);
 
+    // Full city trade BROWSE no longer requires the Customer to type. Only
+    // current approved Categories with published eligible city services appear.
+    const firstCityBrowse=await f.send("catalog?lang=hi&availableOnly=1&city=raipur&limit=1");
+    assert.equal(firstCityBrowse.status,200);
+    assert.deepEqual(firstCityBrowse.payload.data.categories,[category]);
+    assert.equal(firstCityBrowse.payload.data.nextCursor,"10:cat-plumber");
+    const nextCityBrowse=await f.send("catalog?lang=hi&availableOnly=1&city=raipur&limit=1&after="+
+      encodeURIComponent(firstCityBrowse.payload.data.nextCursor));
+    assert.deepEqual(nextCityBrowse.payload.data.categories,[
+      {id:"cat-electrician",slug:"cat-electrician",name:"इलेक्ट्रीशियन"},
+    ]);
+    assert.equal(nextCityBrowse.payload.data.nextCursor,null);
+    const bilaspurBrowse=await f.send("catalog?lang=hi&availableOnly=1&city=bilaspur&limit=20");
+    assert.deepEqual(bilaspurBrowse.payload.data.categories,[category]);
+    assert.equal(bilaspurBrowse.payload.data.nextCursor,null);
+    // Legacy public catalog remains global, including approved categories
+    // without a matching Worker city. City-filtered browse is opt-in only.
+    const globalBrowse=await f.send("catalog?lang=hi&availableOnly=1&limit=20");
+    assert.equal(globalBrowse.payload.data.categories.length,2);
+
     // Same native localizedPublicListings call after deliberate Category tap.
     const raipurFeed="listings?feed=service&limit=20&lang=hi&city=raipur&categoryId="+category.id;
     const raipur=await f.send(raipurFeed);
@@ -119,6 +139,16 @@ test("Worker publish -> Category Search -> explicit city+trade selection -> revi
       .run(selected.id);
     assert.deepEqual((await f.send(raipurFeed)).payload.data.listings,[]);
     assert.equal((await f.send(detail)).status,404);
+    // A formerly eligible city browse cursor can no longer skip a revoked
+    // anchor: the current-city anchor and current city list are rechecked.
+    const staleCityBrowse=await f.send("catalog?lang=hi&availableOnly=1&city=raipur&limit=1&after="+
+      encodeURIComponent(firstCityBrowse.payload.data.nextCursor));
+    assert.deepEqual(staleCityBrowse.payload.data.categories,[]);
+    assert.equal(staleCityBrowse.payload.data.nextCursor,null);
+    const refreshedCityBrowse=await f.send("catalog?lang=hi&availableOnly=1&city=raipur&limit=20");
+    assert.deepEqual(refreshedCityBrowse.payload.data.categories,[
+      {id:"cat-electrician",slug:"cat-electrician",name:"इलेक्ट्रीशियन"},
+    ]);
     assert.deepEqual((await f.send("catalog/search?lang=hi&q="+
       encodeURIComponent("प्लंबिंग")+"&cursor=1&limit=20&availableOnly=1&city=raipur"))
       .payload.data.categories,[],"removed city Listing must revoke matching Category");
@@ -136,6 +166,12 @@ test("Worker publish -> Category Search -> explicit city+trade selection -> revi
       "catalog/search?lang=en&q=Electrician&cursor=1&availableOnly=1&city=mumbai",
       "catalog/search?lang=en&q=Electrician&cursor=1&availableOnly=1&city=raipur&city=bilaspur",
       "catalog/search?lang=en&q=Electrician&cursor=1&availableOnly=1&city=raipur&accountId=private",
+      "catalog?lang=hi&city=raipur",
+      "catalog?lang=hi&availableOnly=1&city=raipur",
+      "catalog?lang=hi&limit=20&city=raipur",
+      "catalog?lang=hi&availableOnly=1&limit=20&city=delhi",
+      "catalog?lang=hi&availableOnly=1&limit=20&city=raipur&city=bilaspur",
+      "catalog?lang=hi&availableOnly=1&limit=20&city=raipur&workerId=private",
     ]) {
       assert.equal((await f.send(query)).status,400,query);
     }
