@@ -201,7 +201,7 @@ test("Receiver Answer response loss stays uncertain until explicit authenticated
     assert.match(ui,/if \(!terminalRequest\) acceptUncertain = true/);
     assert.match(ui,/CallAcceptRecovery\.confirmed\(confirmed\)/);
     assert.match(ui,/fun checkAcceptance\(\) \{/);
-    assert.match(ui,/if \(!acceptUncertain \|\| busy \|\| owner == null\) return/);
+    assert.match(ui,/if \(sessionLost \|\| !acceptUncertain \|\| busy\) return/);
     assert.match(ui,/session\.callSignal\(owner, id\)/);
     assert.match(ui,/session\.accountPrivateReadMarker\(\) == owner/);
     assert.match(ui,/CallAcceptRecovery\.confirmed\(signal\)/);
