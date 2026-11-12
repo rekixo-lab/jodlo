@@ -285,3 +285,25 @@ test("Notification-tap network uncertainty permits only explicit expiring same-o
     assert.doesNotMatch(main,/callSignal\(owner, wakeup\.invitationId, CallAction/);
     assert.doesNotMatch(main,/rememberSaveable\s*\{\s*mutableStateOf<IncomingCallWakeup/);
 });
+
+// Source-wiring regression for REAL Compose call recovery, not a screenshot.
+test("Resolved Answer restarts authenticated polling; lost/denied session stops local audio without fake hangup",()=>{
+    const ui=read("apps/android/app/src/main/java/com/rekixo/jodlo/CallScreen.kt");
+    const policy=read("apps/android/core/src/main/kotlin/com/rekixo/jodlo/core/network/CallSignal.kt");
+    const coreTests=read("apps/android/core/src/test/kotlin/com/rekixo/jodlo/core/network/InMemorySessionCoordinatorTest.kt");
+    assert.match(ui,/LaunchedEffect\(invitationId, error, ending, sessionLost\)/);
+    assert.match(ui,/fun checkAcceptance\(\) \{/);
+    assert.match(ui,/CallAcceptRecovery\.confirmed\(signal\)[\s\S]*?acceptUncertain = false[\s\S]*?error = null/);
+    assert.match(ui,/if \(!busy && error == null && ending == null\) \{/);
+    assert.match(ui,/withContext\(Dispatchers\.IO\) \{ session\.callSignal\(owner, id\) \}/);
+    assert.match(ui,/CallPollSafety\.mustStopLocalAudio\(result\)/);
+    assert.match(ui,/fun markLocalSessionUnavailable\(\) \{\s*audio\.close\(\)[\s\S]*?sessionLost = true/);
+    assert.match(ui,/if \(sessionLost\) return@LaunchedEffect/);
+    assert.match(ui,/LaunchedEffect\(invitationId, phase, ending, sessionLost\)/);
+    assert.match(ui,/sessionLost -> R\.string\.call_close_warning/);
+    assert.match(ui,/sessionLost -> \{[\s\S]*?R\.string\.call_close_local/);
+    assert.match(policy,/SessionFailure\.EXPIRED/);
+    assert.match(policy,/FailureKind\.UNAUTHORIZED, FailureKind\.FORBIDDEN, FailureKind\.NOT_FOUND/);
+    assert.match(coreTests,/testCallPollLocalMediaAuthorization\(\)/);
+    assert.doesNotMatch(ui,/if \(sessionLost\) \{\s*session\.callSignal/);
+});
