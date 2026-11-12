@@ -38,3 +38,20 @@ data class IncomingCallWakeup private constructor(
         }
     }
 }
+
+// No automatic repeat on a failed notification-tap GET. Only temporary
+// transport/service failures permit an explicit, still-unexpired user retry.
+// A 401/403/404, stale owner, wrong role or invalid response never proves a call.
+object IncomingCallReadRecovery {
+    fun mayExplicitlyRetry(result: SessionResult<CallSignal>?): Boolean = when (result) {
+        null -> true // The transport threw before returning an API result.
+        is SessionResult.Success -> false
+        is SessionResult.Failed ->
+            result.reason == SessionFailure.OPERATION_IN_PROGRESS ||
+                (result.reason == SessionFailure.REMOTE_FAILURE &&
+                    result.networkKind in setOf(
+                        FailureKind.OFFLINE_OR_TIMEOUT,
+                        FailureKind.SERVICE_UNAVAILABLE,
+                    ))
+    }
+}
