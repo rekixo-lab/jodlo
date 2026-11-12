@@ -423,6 +423,13 @@
     <string name="nearby_city_disclosure">Results include only public services whose Worker chose this city. City selection is not a live location or a distance estimate.</string>
     <string name="nearby_city_results">Public services in %1$s</string>
     <string name="nearby_city_empty">No public services match this city and category filter yet.</string>
+    <string name="nearby_browse_city_categories">Browse service categories in this city</string>
+    <string name="nearby_refresh_city_categories">Refresh this city\'s service categories</string>
+    <string name="nearby_hide_city_categories">Hide city categories</string>
+    <string name="nearby_city_categories_heading">Categories with public services in this city</string>
+    <string name="nearby_city_category_disclosure">Only categories with currently public Worker-declared city services are listed. This does not verify distance, online status or call availability. Opening a service checks it again.</string>
+    <string name="nearby_city_no_categories">No approved categories currently have public services in this city.</string>
+    <string name="nearby_city_categories_failed">Could not confirm the city\'s categories. Refresh or try again; previous category choices may have changed.</string>
     <string name="worker_area_load">Manage public service city</string>
     <string name="worker_area_consent">Saving a city lets customers find this service in that city. Choose No city to remove it from city search. No address or GPS is shared.</string>
     <string name="worker_area_none">No city</string>
