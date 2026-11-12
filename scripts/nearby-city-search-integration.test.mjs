@@ -35,3 +35,30 @@ test("City and language changes invalidate page/search generations and current d
   assert.match(feed,/repository\.reviewedServiceDetail\(row\.id, row\.categoryId, lang, city\)/);
   assert.match(feed,/CustomerServiceCard\.publicWhenChecked\(selectedListing, language, verified\)/);
 });
+
+test("Customer city trade Browse is an explicit no-query public-only page and never a GPS/Worker search",()=>{
+  const catalog=readFileSync(new URL(
+    "../apps/api/src/modules/catalog/catalog.ts",import.meta.url),"utf8");
+  assert.match(feed,/fun loadCityCategories\(after: String\? = null\)/);
+  assert.match(feed,/repository\.cityBrowse\(lang, selectedCity, limit = 20, after = after\)/);
+  assert.match(feed,/generation != cityBrowseRevision \|\| city != selectedCity/);
+  assert.match(feed,/resetCityBrowse\(\)/);
+  assert.match(feed,/R\.string\.nearby_browse_city_categories/);
+  assert.match(feed,/R\.string\.nearby_city_no_categories/);
+  assert.match(feed,/R\.string\.nearby_city_categories_failed/);
+  assert.match(repo,/fun cityBrowse\(language: Language, city: NearbyPilotCity/);
+  assert.match(routes,/city: NearbyPilotCity\? = null\): ApiCall/);
+  assert.match(catalog,/function browsePageSql\(availableOnly: boolean, hasCursor: boolean,\s*city:ServiceCity\|null=null\)/);
+  assert.match(catalog,/cityEligibleCategoryExists\("categories",city\)/);
+  assert.match(catalog,/currentAnchorSql\(availableOnly,0,city\)/);
+  assert.match(catalog,/cityRaw !== null && \(availability !== "1" \|\| limitRaw === null/);
+  for(const lang of ["values","values-hi"]){
+    const xml=readFileSync(new URL("../apps/android/app/src/main/res/"+lang+"/strings.xml",
+      import.meta.url),"utf8");
+    for(const key of ["nearby_browse_city_categories","nearby_refresh_city_categories",
+      "nearby_hide_city_categories","nearby_city_categories_heading",
+      "nearby_city_category_disclosure","nearby_city_no_categories",
+      "nearby_city_categories_failed"])assert.match(xml,new RegExp('name="'+key+'"'));
+  }
+  assert.doesNotMatch(feed,/requestLocation|LocationManager|ACCESS_FINE_LOCATION/);
+});
