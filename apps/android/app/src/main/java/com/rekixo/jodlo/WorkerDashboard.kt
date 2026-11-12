@@ -1018,7 +1018,7 @@ internal fun WorkerDashboard(
                                                 // Rechecking the same Service resets old bitmap
                                                 // state: photo revision may have been revoked.
                                                 key(previewRevision) {
-                                                    ApprovedServicePhoto(catalog, card)
+                                                    ApprovedServicePhoto(catalog, card, previewRevision)
                                                 }
                                                 Text(stringResource(
                                                     R.string.worker_customer_preview_approved_label))

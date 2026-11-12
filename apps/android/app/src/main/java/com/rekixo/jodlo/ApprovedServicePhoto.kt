@@ -23,12 +23,25 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
-internal fun ApprovedServicePhoto(repository: RemoteCatalogRepository?, card: CustomerServiceCard) {
+internal fun ApprovedServicePhoto(
+    repository: RemoteCatalogRepository?,
+    card: CustomerServiceCard,
+    checkedDetailRevision: Int,
+) {
     if (repository == null || !card.hasPhoto) return
     val scope = rememberCoroutineScope()
-    var bitmap by remember(repository, card.listing, card.city) { mutableStateOf<Bitmap?>(null) }
-    var busy by remember(repository, card.listing, card.city) { mutableStateOf(false) }
-    var failed by remember(repository, card.listing, card.city) { mutableStateOf(false) }
+    // The exact public detail is revalidated on explicit Customer request.
+    // An older approved photo must never survive that recheck merely because
+    // the Listing ID/city stayed the same. Failed reads also stay scoped to it.
+    var bitmap by remember(repository, card.listing, card.city, checkedDetailRevision) {
+        mutableStateOf<Bitmap?>(null)
+    }
+    var busy by remember(repository, card.listing, card.city, checkedDetailRevision) {
+        mutableStateOf(false)
+    }
+    var failed by remember(repository, card.listing, card.city, checkedDetailRevision) {
+        mutableStateOf(false)
+    }
 
     Column(verticalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
         if (bitmap == null) {

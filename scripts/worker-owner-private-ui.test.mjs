@@ -389,3 +389,28 @@ test("Native Worker profile editor rejects unsafe drafts before a moderated writ
         "name","description","private_text","experience","rate"
     ]) assert.ok(xml.includes('name="worker_details_invalid_'+field+'"'));
 });
+
+// A fresh anonymous Detail GET is required before showing formerly approved
+// Worker copy or images after the user presses Recheck (not just for Save).
+test("Customer Feed and Saved recheck details without carrying over stale photo state",()=>{
+    const feed=read("apps/android/app/src/main/java/com/rekixo/jodlo/PublicServicesFeed.kt");
+    const saved=read("apps/android/app/src/main/java/com/rekixo/jodlo/SavedServicesDashboard.kt");
+    const photo=read("apps/android/app/src/main/java/com/rekixo/jodlo/ApprovedServicePhoto.kt");
+    assert.ok(feed.includes("R.string.service_details_refresh_now"));
+    assert.ok(feed.includes("onClick = { selected?.let(::inspect) }"));
+    assert.ok(feed.includes("item { ApprovedServicePhoto(repository, safeCard, revision) }"));
+    assert.ok(saved.includes("item { ApprovedServicePhoto(repository, currentCard, revision) }"));
+    assert.ok(saved.includes("R.string.saved_check_now"));
+    const categoryDetail=read("apps/android/app/src/main/java/com/rekixo/jodlo/MainActivity.kt");
+    const workerPreview=read("apps/android/app/src/main/java/com/rekixo/jodlo/WorkerDashboard.kt");
+    assert.ok(categoryDetail.includes("ApprovedServicePhoto(repository, card, requestRevision)"));
+    assert.ok(categoryDetail.includes("R.string.service_details_refresh_now"));
+    assert.ok(categoryDetail.includes("detailRequested?.let(::showListingDetail)"));
+    assert.ok(workerPreview.includes("ApprovedServicePhoto(catalog, card, previewRevision)"));
+    assert.ok(feed.includes("verified = null"));
+    assert.ok(saved.includes("verified=null"));
+    assert.ok(photo.includes("checkedDetailRevision: Int"));
+    assert.ok(photo.includes("remember(repository, card.listing, card.city, checkedDetailRevision)"));
+    assert.ok(photo.includes("if (repository == null || !card.hasPhoto) return"));
+    for(const xml of [en,hi]) assert.ok(xml.includes('name="service_details_refresh_now"'));
+});

@@ -130,8 +130,44 @@ test("city consent, private profile review, and reviewed photo reach only eligib
     assert.equal(publicData.hasPhoto, true);
     assert.equal((await f.send(publicPhoto)).data.jpeg, JPEG);
     assert.equal((await f.send(photoPath + "&download=1", {bearer:f.customerToken})).status, 404);
+
+    // Customer explicitly rechecks after a previously approved Worker edit:
+    // the old approved text must disappear immediately while the new revision
+    // is private/pending. The independently approved photo remains public.
+    const revised = {...profile, displayName:"Repair Service",
+      description:"Updated household repair and maintenance options."};
+    assert.equal((await f.send(detailsPath + "&revision=2",
+      {...owner,method:"PUT",body:revised})).status, 200);
+    const pending = (await f.send(publicDetail + "&city=raipur")).data;
+    assert.equal(pending.profile, null, "no stale previously approved profile text");
+    assert.equal(pending.hasPhoto, true, "independent still-approved photo remains");
+    assert.equal((await f.send("moderation/service-details?id=" + id +
+      "&revision=3&decision=approved", {...moderator,method:"PUT"})).status, 200);
+    assert.deepEqual((await f.send(publicDetail + "&city=raipur")).data.profile, revised);
+
+    // A second upload supersedes the formerly approved image. The public
+    // hasPhoto hint and exact photo endpoint must both revoke it until review.
+    assert.equal((await f.send(photoPath + "&revision=2",
+      {...owner,method:"PUT",body:{jpeg:JPEG}})).status, 200);
+    assert.equal((await f.send(publicDetail + "&city=raipur")).data.hasPhoto, false);
+    assert.equal((await f.send(publicPhoto)).status, 404);
+    assert.equal((await f.send("moderation/service-photo?id=" + id +
+      "&revision=3&decision=approved", {...moderator,method:"PUT"})).status, 200);
+    assert.equal((await f.send(publicDetail + "&city=raipur")).data.hasPhoto, true);
+    assert.equal((await f.send(publicPhoto)).data.jpeg, JPEG);
+
+    // A city change invalidates an old city's previously checked view, even
+    // when the profile and photo are still independently approved.
+    assert.equal((await f.send(cityPath + "&revision=1",
+      {...owner,method:"PUT",body:{city:"bilaspur"}})).status, 200);
+    assert.equal((await f.send(publicDetail + "&city=raipur")).status, 404);
+    assert.equal((await f.send(publicPhoto)).status, 404);
+    assert.deepEqual((await f.send(publicDetail + "&city=bilaspur")).data.profile, revised);
+    assert.equal((await f.send(cityPath + "&revision=2",
+      {...owner,method:"PUT",body:{city:"raipur"}})).status, 200);
     assert.equal((await f.send("me/data-export?version=3", owner)).data.servicePhotos[0].listingId, id);
-    assert.equal((await f.send(photoPath + "&revision=2", {...owner,method:"DELETE"})).status, 200);
+    assert.equal((await f.send(photoPath + "&revision=4", {...owner,method:"DELETE"})).status, 200);
+    assert.equal((await f.send(publicDetail + "&city=raipur")).data.hasPhoto, false);
     assert.equal((await f.send(publicPhoto)).status, 404);
   } finally { f.db.close(); }
 });

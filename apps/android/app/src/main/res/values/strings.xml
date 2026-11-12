@@ -463,6 +463,7 @@
     <string name="service_details_review_disclaimer">The Worker supplied these details. Review does not verify credentials or guarantee the rate.</string>
     <string name="service_details_city_public">Service city: %1$s</string>
     <string name="service_photo_image">Photo of the service</string>
+    <string name="service_details_refresh_now">Recheck current Service details and photo</string>
     <string name="service_photo_view">Show approved photo</string>
     <string name="service_photo_unavailable">This photo is no longer available or could not be loaded.</string>
     <string name="worker_photo_manage">Manage service photo</string>

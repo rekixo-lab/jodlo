@@ -421,7 +421,7 @@ internal fun SavedServicesDashboard(
             }
             if (currentCard != null) {
                 item { SafePublicProfileFacts(currentCard.profile, currentCard.city) }
-                item { ApprovedServicePhoto(repository, currentCard) }
+                item { ApprovedServicePhoto(repository, currentCard, revision) }
                 item { ServiceCallButton(onCall, currentCard.listing.id) }
                 item { ContactBlockControls(contactSession, currentCard.listing.id) }
                 item { ReportServiceControls(contactSession, currentCard.listing.id) }
