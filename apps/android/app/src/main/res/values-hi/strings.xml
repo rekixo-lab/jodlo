@@ -116,6 +116,8 @@
     <string name="account_voice_enable">आने वाली कॉल की अनुमति दें</string>
     <string name="account_voice_disable">आने वाली कॉल बंद करें</string>
     <string name="account_voice_failed">कॉल की सेटिंग की पुष्टि नहीं हुई। दोबारा जाँचें।</string>
+    <string name="call_notifications_blocked_warning">आने वाली कॉल की सहमति चालू है, लेकिन Android पर JODLO की कॉल सूचनाएँ बंद हैं। आपकी कॉल छूट सकती है। फोन की सेटिंग में सूचनाओं की अनुमति दें। ऐप बंद होने पर सूचना मिलना सुनिश्चित नहीं है।</string>
+    <string name="call_open_notification_settings">सूचनाओं की सेटिंग खोलें</string>
     <string name="account_logout_all">सभी फ़ोन पर सत्र समाप्त करें</string>
     <string name="account_logged_out_all">सर्वर ने सभी सक्रिय सत्र समाप्त करने की पुष्टि की।</string>
     <string name="account_logged_out_uncertain">इस फ़ोन से बाहर निकल गए। दूसरे फ़ोन पर सत्र समाप्त होने की पुष्टि नहीं हुई।</string>
