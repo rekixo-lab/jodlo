@@ -18,6 +18,7 @@ import com.rekixo.jodlo.core.network.CallHistoryPage
 import com.rekixo.jodlo.core.network.CallHistoryTimeline
 import com.rekixo.jodlo.core.network.InMemorySessionCoordinator
 import com.rekixo.jodlo.core.network.SessionResult
+import com.rekixo.jodlo.ui.theme.JodloButton
 import com.rekixo.jodlo.ui.theme.JodloSizes
 import com.rekixo.jodlo.ui.theme.JodloTextAction
 import java.util.Date
@@ -36,7 +37,12 @@ internal fun CallHistorySection(session: InMemorySessionCoordinator, accountBusy
         mutableStateOf<Pair<AccountPrivateReadMarker, CallHistoryPage>?>(null)
     }
     var failed by remember(session, marker) { mutableStateOf(false) }
+    var clearUncertainMarker by remember(session) {
+        mutableStateOf<AccountPrivateReadMarker?>(null)
+    }
     var busy by remember(session, marker) { mutableStateOf(false) }
+    var clearReview by remember(session, marker) { mutableStateOf(false) }
+    var clearedMarker by remember(session) { mutableStateOf<AccountPrivateReadMarker?>(null) }
     val page = loaded?.takeIf { it.first == marker }?.second
 
     fun load(owner: AccountPrivateReadMarker, after: String?) {
@@ -44,6 +50,9 @@ internal fun CallHistorySection(session: InMemorySessionCoordinator, accountBusy
         val earlier = loaded?.takeIf { it.first == owner }?.second
         if (after != null && (earlier == null || earlier.nextCursor != after)) return
         if (after == null) loaded = null // Explicit refresh hides stale rows immediately.
+        clearReview = false
+        clearedMarker = null
+        clearUncertainMarker = null
         busy = true
         failed = false
         scope.launch {
@@ -65,12 +74,52 @@ internal fun CallHistorySection(session: InMemorySessionCoordinator, accountBusy
         }
     }
 
+    fun clearOwnHistory() {
+        val owner = marker ?: return
+        if (busy || accountBusy || !clearReview || page?.items?.isEmpty() != false) return
+        // A lost DELETE reply can mean the data was removed. Never retry it
+        // implicitly and never keep the old history visible as authoritative.
+        loaded = null
+        clearReview = false
+        clearedMarker = null
+        busy = true
+        failed = false
+        clearUncertainMarker = null
+        scope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) { session.clearCallHistory(owner) }
+                val current = session.accountPrivateReadMarker()
+                val expected = owner.copy(writeRevision = owner.writeRevision + 1)
+                if (result is SessionResult.Success && result.value && current == expected) {
+                    clearedMarker = expected
+                } else if (current == owner || current == expected) {
+                    clearUncertainMarker = current
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                val current = session.accountPrivateReadMarker()
+                if (current == owner || current == owner.copy(writeRevision = owner.writeRevision + 1)) {
+                    clearUncertainMarker = current
+                }
+            } finally {
+                busy = false
+            }
+        }
+    }
+
     Column(verticalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
         Text(stringResource(R.string.call_history_title), style = MaterialTheme.typography.titleMedium)
         JodloTextAction({ marker?.let { load(it, null) } }, enabled = !busy && !accountBusy && marker != null) {
             Text(stringResource(R.string.call_history_read))
         }
-        if (failed) Text(stringResource(R.string.call_unavailable), color = MaterialTheme.colorScheme.error)
+        if (failed) Text(stringResource(R.string.call_unavailable),
+            color = MaterialTheme.colorScheme.error)
+        if (marker != null && clearUncertainMarker == marker)
+            Text(stringResource(R.string.call_history_clear_uncertain),
+            color = MaterialTheme.colorScheme.error)
+        if (marker != null && clearedMarker == marker)
+            Text(stringResource(R.string.call_history_cleared))
         page?.let { page ->
             if (page.items.isEmpty()) Text(stringResource(R.string.call_history_empty))
             for (entry in page.items) {
@@ -86,6 +135,24 @@ internal fun CallHistorySection(session: InMemorySessionCoordinator, accountBusy
                 val date = android.text.format.DateFormat.getMediumDateFormat(context)
                     .format(Date(entry.endedAtSeconds * 1_000))
                 Text(stringResource(R.string.call_history_entry, direction, outcome, date))
+            }
+            if (page.items.isNotEmpty()) {
+                if (clearReview) {
+                    Text(stringResource(R.string.call_history_clear_scope),
+                        style = MaterialTheme.typography.bodySmall)
+                    JodloTextAction(onClick = { clearReview = false }, enabled = !busy) {
+                        Text(stringResource(R.string.guided_post_back))
+                    }
+                    JodloButton(onClick = ::clearOwnHistory,
+                        enabled = !busy && !accountBusy && marker != null) {
+                        Text(stringResource(R.string.call_history_clear_confirm))
+                    }
+                } else {
+                    JodloTextAction(onClick = { clearReview = true },
+                        enabled = !busy && !accountBusy && marker != null) {
+                        Text(stringResource(R.string.call_history_clear_action))
+                    }
+                }
             }
             page.nextCursor?.let { cursor ->
                 JodloTextAction({ marker?.let { load(it, cursor) } }, enabled = !busy && !accountBusy && marker != null) {

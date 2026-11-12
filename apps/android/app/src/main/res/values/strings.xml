@@ -529,4 +529,9 @@
     <string name="call_history_failed">Failed</string>
     <string name="call_history_entry">%1$s · %2$s · %3$s</string>
     <string name="call_history_cancelled">Cancelled</string>
+    <string name="call_history_clear_action">Clear call history</string>
+    <string name="call_history_clear_scope">Confirm to erase your own JODLO account call history. This does not erase another participant\'s history, external provider records or backups. It cannot be undone.</string>
+    <string name="call_history_clear_confirm">Yes, clear my call history</string>
+    <string name="call_history_cleared">Your JODLO call history was cleared.</string>
+    <string name="call_history_clear_uncertain">Could not confirm whether history was cleared. Check history again; JODLO will not retry deletion automatically.</string>
 </resources>

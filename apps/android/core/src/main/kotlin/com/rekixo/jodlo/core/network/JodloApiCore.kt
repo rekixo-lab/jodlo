@@ -375,6 +375,10 @@ object JodloRoutes {
         return ApiCall.getOwned(if (after == null) path else "$path?after=$after", token)
     }
 
+    /** Early call-history erasure: explicit account action, never automatic. */
+    fun clearCallHistory(token: String): ApiCall =
+        ApiCall.delete("/api/v1/me/call-history", token)
+
     fun callAudioGrant(token: String, id: String): ApiCall {
         requireListingId(id)
         return ApiCall.post("/api/v1/me/call-media?id=$id", token)

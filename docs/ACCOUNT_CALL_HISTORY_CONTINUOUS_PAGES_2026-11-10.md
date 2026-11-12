@@ -1,3 +1,9 @@
+## Early owner-initiated clearing — 12 November 2026 (source only)
+
+A signed-in JODLO account may now deliberately **Clear call history** from the existing Account history section after a separate bilingual, non-reversible confirmation. The private `DELETE /api/v1/me/call-history` route is behind the **existing default-OFF CALL_HISTORY_ENABLED** flag, requires a current session, rejects all query/body input and deletes only the matching active owner's terminal call-history summaries in D1. No other participant's history is touched. A second clear is idempotent. A lost response is **not** silently retried; previous page data is hidden and the user can explicitly reread.
+
+This is narrower than full erasure: active calls, account identity, call admission/rate counters, external Agora/FCM/Play records, remote copies, legal holds and D1 backups are **not** deleted. The existing 90-day automatic retention remains. No new migration, credentials, default-on flag, production Worker release, email or device QA. It becomes usable against a real API only after the existing controlled migration/deployment/retention/rollback gates and a configured Android build have been verified.
+
 # JODLO Account Call History — continuous reviewed pages (2026-11-10)
 
 ## User-visible change

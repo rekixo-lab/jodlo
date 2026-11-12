@@ -767,6 +767,12 @@ object JodloReplyDecoder {
         CallHistoryPage(entries, cursor)
     }
 
+    fun callHistoryCleared(reply: TransportReply): ApiOutcome<Boolean> = decode(reply) { data ->
+        data.keysOnly(setOf("cleared"))
+        if (!data.required("cleared").bool()) bad()
+        true
+    }
+
     fun callAudioGrant(reply: TransportReply, invitationId: String): ApiOutcome<CallAudioGrant> =
         decode(reply) { data ->
             data.keysOnly(setOf("appId", "channel", "uid", "token", "expiresInSeconds"))

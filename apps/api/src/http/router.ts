@@ -19,7 +19,7 @@ import { appealServiceCase, decideServiceCase, ownReportStatus, ownServiceAppeal
 import { changeOwnServiceArea, readOwnServiceArea, validServiceCity } from "../modules/workers/service-area.ts";
 import { optInAsWorker, ownWorkerDraft } from "../modules/workers/profile.ts";
 import { readOwnWorkerAgoraCallPreference, setOwnWorkerAgoraCallPreference } from "../modules/workers/agora-call-preference.ts";
-import { readOwnCallHistory } from "../modules/interactions/call-history.ts";
+import { clearOwnCallHistory, readOwnCallHistory } from "../modules/interactions/call-history.ts";
 import { readOwnAgoraListingBlock, changeOwnAgoraListingBlock, readOwnContactBlocks, removeOwnContactBlock, validBlockManagementId } from "../modules/interactions/agora-listing-blocks.ts";
 import { prepareAccountErasure, eraseOwnD1Account } from "../modules/identity/account-erasure.ts";
 import { ownAccountOverview, exportOwnAccountData } from "../modules/identity/account-self-service.ts";
@@ -333,17 +333,21 @@ export async function handleRequest(
     }
   }
 
-  // The Finworkar account/dashboard behavior is reconstructed with JODLO's
-  // own active-account D1 records. Both routes are private, read-only and
-  // require a current server-issued session; neither accepts a client owner ID.
+  // Private active-account JODLO history: GET is read-only; explicit DELETE
+  // deletes ONLY that same current owner's terminal history summaries.
+  // Neither route accepts a client owner ID; both require a live session.
   if (url.pathname === "/api/v1/me/call-history") {
     if (env.CALL_HISTORY_ENABLED !== "1") {
       return json({ok:false,error:{code:"NOT_FOUND",message:"Endpoint not found"}},404);
     }
-    const methodError = getOnly(request);
-    if (methodError) return methodError;
+    if (request.method !== "GET" && request.method !== "DELETE") {
+      return json({ok:false,error:{code:"METHOD_NOT_ALLOWED",message:"Method not allowed"}},405,
+        {Allow:"GET, DELETE"});
+    }
     const after = url.searchParams.get("after");
-    if ((url.searchParams.size !== 0 && (url.searchParams.size !== 1 || !validOpaqueId(after))) ||
+    if ((request.method === "DELETE" && url.searchParams.size !== 0) ||
+        (request.method === "GET" && url.searchParams.size !== 0 &&
+          (url.searchParams.size !== 1 || !validOpaqueId(after))) ||
         !(await hasEmptyBody(request))) {
       return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid call history input"}},400);
     }
@@ -355,6 +359,14 @@ export async function handleRequest(
       return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Call history unavailable"}},503);
     }
     try {
+      if (request.method === "DELETE") {
+        if (!(await makeSessionVerifier(env.DB).verify(token))) {
+          return json({ok:false,error:{code:"UNAUTHORIZED",message:"Authentication required"}},401);
+        }
+        const cleared = await clearOwnCallHistory(env.DB, token);
+        return cleared ? json({ok:true,data:{cleared:true}})
+          : json({ok:false,error:{code:"UNAUTHORIZED",message:"Authentication required"}},401);
+      }
       const history = await readOwnCallHistory(env.DB, token, after);
       return history ? json({ok:true,data:history})
         : json({ok:false,error:{code:"UNAUTHORIZED",message:"Authentication required"}},401);
