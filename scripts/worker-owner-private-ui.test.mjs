@@ -401,6 +401,12 @@ test("Customer Feed and Saved recheck details without carrying over stale photo 
     assert.ok(feed.includes("item { ApprovedServicePhoto(repository, safeCard, revision) }"));
     assert.ok(saved.includes("item { ApprovedServicePhoto(repository, currentCard, revision) }"));
     assert.ok(saved.includes("R.string.saved_check_now"));
+    const categoryDetail=read("apps/android/app/src/main/java/com/rekixo/jodlo/MainActivity.kt");
+    const workerPreview=read("apps/android/app/src/main/java/com/rekixo/jodlo/WorkerDashboard.kt");
+    assert.ok(categoryDetail.includes("ApprovedServicePhoto(repository, card, requestRevision)"));
+    assert.ok(categoryDetail.includes("R.string.service_details_refresh_now"));
+    assert.ok(categoryDetail.includes("detailRequested?.let(::showListingDetail)"));
+    assert.ok(workerPreview.includes("ApprovedServicePhoto(catalog, card, previewRevision)"));
     assert.ok(feed.includes("verified = null"));
     assert.ok(saved.includes("verified=null"));
     assert.ok(photo.includes("checkedDetailRevision: Int"));

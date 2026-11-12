@@ -1132,7 +1132,15 @@ private fun GuestDiscovery(
                     }
                     if (card?.evidence == CustomerServiceCardEvidence.PUBLIC_WHEN_CHECKED) {
                         item { SafePublicProfileFacts(card.profile, card.city) }
-                        item { ApprovedServicePhoto(repository, card) }
+                        item { ApprovedServicePhoto(repository, card, requestRevision) }
+                        if (liveApiConfigured) item {
+                            JodloTextAction(
+                                onClick = { detailRequested?.let(::showListingDetail) },
+                                enabled = !loading,
+                            ) {
+                                Text(stringResource(R.string.service_details_refresh_now))
+                            }
+                        }
                         if (liveApiConfigured) item { ServiceCallButton(onCall, card.listing.id) }
                         item { ContactBlockControls(contactSession, card.listing.id) }
                         item { ReportServiceControls(contactSession, card.listing.id) }

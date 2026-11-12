@@ -12,8 +12,9 @@ new server check; an old image must not survive that new check as local UI state
 
 - Feed now offers a clearly labelled **Recheck current Service details and
   photo** action, with Hindi text. Saved already has an explicit Check Now.
-- Both entry points clear the checked detail *before* the authenticated or
-  anonymous (as appropriate) exact public detail GET returns. While loading,
+- All Customer detail entry points (Feed, Category, Saved) clear the checked
+  detail *before* their new anonymous exact public detail GET returns. The
+  Worker Customer Preview has its own explicit recheck and generation fence. While loading,
   no formerly approved name, rate, photo or permission can be displayed as
   currently checked. A not-found/failed response leaves no old detail visible.
 - ApprovedServicePhoto ties decoded Bitmap, request-in-progress and failure to
