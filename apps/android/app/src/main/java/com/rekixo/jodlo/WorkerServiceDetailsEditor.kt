@@ -20,6 +20,8 @@ import com.rekixo.jodlo.core.network.ServiceProfile
 import com.rekixo.jodlo.core.network.ServiceProfileStatus
 import com.rekixo.jodlo.core.network.ServiceProfileDraftIssue
 import com.rekixo.jodlo.core.network.ServiceProfileDraftValidator
+import com.rekixo.jodlo.core.network.ServiceProfileDraftFields
+import com.rekixo.jodlo.core.network.ServiceProfileDraftRecovery
 import com.rekixo.jodlo.core.network.SessionResult
 import com.rekixo.jodlo.ui.theme.JodloButton
 import com.rekixo.jodlo.ui.theme.JodloSearchField
@@ -37,17 +39,22 @@ internal fun WorkerServiceDetailsEditor(
 ) {
     if (session == null) return
     val scope = rememberCoroutineScope()
-    var loaded by remember(session, listingId) {
+    // Do not show or reuse form inputs from a previous signed-in account.
+    // The write revision changes after every mutation, so key on session
+    // generation rather than the full account-private read marker.
+    val sessionEpoch = session.accountExportSessionMarker()
+    var loaded by remember(session, listingId, sessionEpoch) {
         mutableStateOf<Pair<AccountPrivateReadMarker, OwnServiceDetails>?>(null)
     }
-    var name by remember(session, listingId) { mutableStateOf("") }
-    var description by remember(session, listingId) { mutableStateOf("") }
-    var experience by remember(session, listingId) { mutableStateOf("") }
-    var rate by remember(session, listingId) { mutableStateOf("") }
-    var clearReview by remember(session, listingId) { mutableStateOf(false) }
-    var busy by remember(session, listingId) { mutableStateOf(false) }
-    var failed by remember(session, listingId) { mutableStateOf(false) }
-    var edited by remember(session, listingId) { mutableStateOf(false) }
+    var name by remember(session, listingId, sessionEpoch) { mutableStateOf("") }
+    var description by remember(session, listingId, sessionEpoch) { mutableStateOf("") }
+    var experience by remember(session, listingId, sessionEpoch) { mutableStateOf("") }
+    var rate by remember(session, listingId, sessionEpoch) { mutableStateOf("") }
+    var clearReview by remember(session, listingId, sessionEpoch) { mutableStateOf(false) }
+    var busy by remember(session, listingId, sessionEpoch) { mutableStateOf(false) }
+    var failed by remember(session, listingId, sessionEpoch) { mutableStateOf(false) }
+    var edited by remember(session, listingId, sessionEpoch) { mutableStateOf(false) }
+    var unsentAfterRecheck by remember(session, listingId, sessionEpoch) { mutableStateOf(false) }
     val marker = session.accountPrivateReadMarker()
     val snapshot = loaded?.takeIf { it.first == marker }?.second
     val draft = ServiceProfileDraftValidator.validate(name, description, experience, rate)
@@ -61,6 +68,7 @@ internal fun WorkerServiceDetailsEditor(
         clearReview = false
         busy = true
         failed = false
+        unsentAfterRecheck = false
         scope.launch {
             var notice = R.string.worker_details_failed
             try {
@@ -73,14 +81,36 @@ internal fun WorkerServiceDetailsEditor(
                 if (result is SessionResult.Success && session.accountPrivateReadMarker() == expected) {
                     val details = result.value
                     loaded = expected to details
-                    name = details.profile?.displayName.orEmpty()
-                    description = details.profile?.description.orEmpty()
-                    experience = details.profile?.experienceYears?.toString().orEmpty()
-                    rate = details.profile?.visitRateInr?.toString().orEmpty()
-                    edited = false
+                    if (write) {
+                        val confirmed = ServiceProfileDraftFields.fromServer(details.profile)
+                        name = confirmed.name
+                        description = confirmed.description
+                        experience = confirmed.experience
+                        rate = confirmed.rate
+                        edited = false
+                    } else {
+                        // Unknown prior writes may already be committed. Fetch
+                        // the server's current revision first, then either
+                        // recognize the matching draft or preserve unsent edits
+                        // for an explicit new submit; NEVER automatically POST.
+                        val reconciled = ServiceProfileDraftRecovery.afterConfirmedRead(
+                            ServiceProfileDraftFields(name, description, experience, rate),
+                            edited,
+                            details.profile,
+                        )
+                        name = reconciled.fields.name
+                        description = reconciled.fields.description
+                        experience = reconciled.fields.experience
+                        rate = reconciled.fields.rate
+                        edited = reconciled.unsentLocalChanges
+                        unsentAfterRecheck = reconciled.unsentLocalChanges
+                    }
                     notice = if (profile == null) R.string.worker_details_removed
                         else R.string.worker_details_submitted
-                } else failed = true
+                } else if (session.accountExportSessionMarker() == owner.sessionGeneration) {
+                    failed = true
+                    if (write && profile != null) edited = true
+                }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
@@ -108,6 +138,11 @@ internal fun WorkerServiceDetailsEditor(
             }
             Text(stringResource(R.string.worker_details_disclosure),
                 style = MaterialTheme.typography.bodySmall)
+            if (unsentAfterRecheck) {
+                Text(stringResource(R.string.worker_details_unsent_after_recheck),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall)
+            }
             JodloSearchField(name, { name = it.take(60); edited = true },
                 label = { Text(stringResource(R.string.worker_details_name)) },
                 modifier = Modifier.fillMaxWidth())

@@ -41,12 +41,14 @@ internal fun WorkerServiceAreaEditor(
 ) {
     if (session == null) return
     val scope = rememberCoroutineScope()
-    var loaded by remember(session, listingId) {
+    // A sign-in change must discard previous account's cached editor data.
+    val sessionEpoch = session.accountExportSessionMarker()
+    var loaded by remember(session, listingId, sessionEpoch) {
         mutableStateOf<Pair<AccountPrivateReadMarker, OwnServiceArea>?>(null)
     }
-    var proposed by remember(session, listingId) { mutableStateOf<NearbyPilotCity?>(null) }
-    var busy by remember(session, listingId) { mutableStateOf(false) }
-    var failed by remember(session, listingId) { mutableStateOf(false) }
+    var proposed by remember(session, listingId, sessionEpoch) { mutableStateOf<NearbyPilotCity?>(null) }
+    var busy by remember(session, listingId, sessionEpoch) { mutableStateOf(false) }
+    var failed by remember(session, listingId, sessionEpoch) { mutableStateOf(false) }
     val owner = session.accountPrivateReadMarker()
     val area = loaded?.takeIf { it.first == owner }?.second
 
