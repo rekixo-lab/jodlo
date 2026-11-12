@@ -1,3 +1,11 @@
+## 12 November 2026 — City-qualified Search now excludes empty city Categories
+
+A user who deliberately picks **Raipur** or **Bilaspur** and searches for an approved trade now uses the same `GET /api/v1/catalog/search` with opt-in `cursor=1&availableOnly=1&city=raipur|bilaspur`. Search returns only approved/active Categories with at least one **currently published, moderation-allowed, active Worker Listing declaring that city**. This is evaluated atomically in D1 with the same public eligibility predicate as city-filtered `/listings`; it does **not** infer GPS or Worker presence. Selecting the result still requires a fresh city+Category feed and exact public Detail read before any Customer action.
+
+The older global Category Search and legacy offset/curated choice response remain unchanged. `city` is rejected unless both cursor mode and `availableOnly=1` are explicit; foreign cities, duplicate city keys and extra owner filters are rejected. This avoids a global Category shown as if a Worker were available in a city. Exact city predicate is applied to the current cursor anchor, conflicting curated aliases and page query—losing the only city Listing invalidates continuation. No new migration, permissions or user tracking.
+
+Real local HTTP/D1 regressions cover two cities, distinct trades, moderation removal, invalid input, multi-page city results and stale anchor. Kotlin route and actual Compose source wiring tests enforce the new mode. Source-only: neither qualified human Catalog approvals nor actual real Worker availability, Firebase/Agora or final physical-device QA is evidenced here.
+
 # JODLO Customer city + approved Category search (source-only, 10 November 2026)
 
 ## What actually changes
