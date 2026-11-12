@@ -423,6 +423,13 @@
     <string name="nearby_city_disclosure">यहाँ केवल वे सार्वजनिक सेवाएँ दिखती हैं जिनके वर्कर ने यह शहर चुना है। इससे किसी की मौजूदा लोकेशन या दूरी पता नहीं चलती।</string>
     <string name="nearby_city_results">%1$s में सार्वजनिक सेवाएँ</string>
     <string name="nearby_city_empty">अभी इस शहर और श्रेणी से मेल खाने वाली सार्वजनिक सेवाएँ नहीं हैं।</string>
+    <string name="nearby_browse_city_categories">इस शहर की सेवा श्रेणियाँ देखें</string>
+    <string name="nearby_refresh_city_categories">इस शहर की सेवा श्रेणियाँ फिर से जाँचें</string>
+    <string name="nearby_hide_city_categories">शहर की श्रेणियाँ छिपाएँ</string>
+    <string name="nearby_city_categories_heading">इस शहर में सार्वजनिक सेवाओं वाली श्रेणियाँ</string>
+    <string name="nearby_city_category_disclosure">केवल वे श्रेणियाँ दिखाई जाती हैं जिनके लिए वर्कर ने यह शहर चुना है और वर्तमान में सार्वजनिक सेवा उपलब्ध है। इससे दूरी, ऑनलाइन स्थिति या कॉल की उपलब्धता सत्यापित नहीं होती। सेवा खोलते समय नई जाँच होती है।</string>
+    <string name="nearby_city_no_categories">इस शहर में अभी किसी स्वीकृत श्रेणी की सार्वजनिक सेवा नहीं मिली।</string>
+    <string name="nearby_city_categories_failed">इस शहर की सेवा श्रेणियों की पुष्टि नहीं हुई। दोबारा जाँचें; पहले देखी गई श्रेणियाँ बदल सकती हैं।</string>
     <string name="worker_area_load">सेवा का सार्वजनिक शहर बदलें</string>
     <string name="worker_area_consent">शहर सहेजने पर ग्राहक उस शहर में यह सेवा खोज सकेंगे। शहर की खोज से हटाने के लिए कोई शहर नहीं चुनें। पता या GPS साझा नहीं होगा।</string>
     <string name="worker_area_none">कोई शहर नहीं</string>

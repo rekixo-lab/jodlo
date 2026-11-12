@@ -94,6 +94,70 @@ internal fun PublicServicesFeed(
     var categorySearchFailed by remember { mutableStateOf(false) }
     var invalidCategoryQuery by remember { mutableStateOf(false) }
     var categorySearchRevision by remember { mutableIntStateOf(0) }
+    // Opt-in city trade browse (NO typed query), kept separate from Search.
+    // Only currently eligible public Categories, read from D1 in bounded pages.
+    var cityCategories by remember { mutableStateOf<List<PublicCategory>>(emptyList()) }
+    var cityBrowseCursor by remember { mutableStateOf<String?>(null) }
+    var cityBrowseOpen by remember { mutableStateOf(false) }
+    var cityBrowseBusy by remember { mutableStateOf(false) }
+    var cityBrowseFailed by remember { mutableStateOf(false) }
+    var cityBrowseRevision by remember { mutableIntStateOf(0) }
+
+    fun resetCityBrowse() {
+        cityBrowseRevision++
+        cityBrowseOpen = false
+        cityBrowseBusy = false
+        cityBrowseFailed = false
+        cityBrowseCursor = null
+        cityCategories = emptyList()
+    }
+
+    fun loadCityCategories(after: String? = null) {
+        val selectedCity = city ?: return
+        if (cityBrowseBusy || busy || selected != null || categorySearchBusy) return
+        if (after != null && (!cityBrowseOpen || after != cityBrowseCursor)) return
+        val lang = language
+        val generation = ++cityBrowseRevision
+        if (after == null) {
+            cityCategories = emptyList()
+            cityBrowseCursor = null
+        }
+        cityBrowseOpen = true
+        cityBrowseBusy = true
+        cityBrowseFailed = false
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                try { repository.cityBrowse(lang, selectedCity, limit = 20, after = after) }
+                catch (cancelled: kotlin.coroutines.cancellation.CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    ApiOutcome.Failed(FailureKind.BAD_RESPONSE, false)
+                }
+            }
+            // A stale city, language, selected Detail or generation can never
+            // restore a former city's Categories after navigation.
+            if (generation != cityBrowseRevision || city != selectedCity ||
+                language != lang || selected != null) return@launch
+            cityBrowseBusy = false
+            when (result) {
+                is ApiOutcome.Failed -> cityBrowseFailed = true
+                is ApiOutcome.Ok -> {
+                    val page = result.value
+                    val prior = cityCategories.mapTo(mutableSetOf()) { it.id }
+                    if ((after != null && page.categories.isEmpty()) ||
+                        page.categories.map { it.id }.toSet().size != page.categories.size ||
+                        page.categories.any { it.id in prior }) {
+                        cityBrowseCursor = null
+                        cityBrowseFailed = true
+                    } else {
+                        cityCategories = if (after == null) page.categories
+                            else cityCategories + page.categories
+                        cityBrowseCursor = page.nextCursor
+                    }
+                }
+            }
+        }
+    }
 
     fun clearCategorySearch() {
         categorySearchRevision++
@@ -261,7 +325,10 @@ internal fun PublicServicesFeed(
         if (language == nextLanguage && categoryFilter == nextCategory) return
         leaveDetail()
         clearCategorySearch()
-        if (language != nextLanguage) filterNames = emptyMap()
+        if (language != nextLanguage) {
+            filterNames = emptyMap()
+            resetCityBrowse()
+        }
         language = nextLanguage
         categoryFilter = nextCategory
         loadPage()
@@ -272,6 +339,7 @@ internal fun PublicServicesFeed(
     LaunchedEffect(repository, city) {
         leaveDetail()
         clearCategorySearch()
+        resetCityBrowse()
         listings = emptyList()
         categoryNames = emptyMap()
         nextCursor = null
@@ -312,6 +380,64 @@ internal fun PublicServicesFeed(
                         onClick = { if (language != Language.EN) changeScope(Language.EN, null) },
                         label = { Text(stringResource(R.string.language_english)) })
                 }
+            }
+            if (city != null) {
+                item {
+                    JodloTextAction(
+                        onClick = { loadCityCategories() },
+                        enabled = !busy && !cityBrowseBusy && !categorySearchBusy,
+                    ) {
+                        Text(stringResource(if (cityBrowseOpen)
+                            R.string.nearby_refresh_city_categories
+                            else R.string.nearby_browse_city_categories))
+                    }
+                    if (cityBrowseOpen) {
+                        Text(stringResource(R.string.nearby_city_category_disclosure),
+                            style = MaterialTheme.typography.bodySmall)
+                        JodloTextAction(onClick = { resetCityBrowse() },
+                            enabled = !cityBrowseBusy) {
+                            Text(stringResource(R.string.nearby_hide_city_categories))
+                        }
+                    }
+                }
+                if (cityBrowseOpen && cityCategories.isNotEmpty()) item {
+                    Text(stringResource(R.string.nearby_city_categories_heading),
+                        style = MaterialTheme.typography.titleSmall)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
+                        items(cityCategories, key = { "city-browse-" + it.id }) { category ->
+                            JodloChip(
+                                selected = categoryFilter == category.id,
+                                enabled = !busy && !cityBrowseBusy,
+                                onClick = {
+                                    filterNames = filterNames + (category.id to category.name)
+                                    changeScope(language, category.id)
+                                },
+                                label = { Text(category.name) },
+                            )
+                        }
+                    }
+                }
+                if (cityBrowseOpen && cityCategories.isEmpty() &&
+                    !cityBrowseBusy && !cityBrowseFailed) item {
+                    Text(stringResource(R.string.nearby_city_no_categories),
+                        style = MaterialTheme.typography.bodySmall)
+                }
+                if (cityBrowseOpen && cityBrowseCursor != null) item {
+                    JodloTextAction(onClick = { loadCityCategories(cityBrowseCursor) },
+                        enabled = !busy && !cityBrowseBusy) {
+                        Text(stringResource(R.string.customer_more_categories))
+                    }
+                }
+                if (cityBrowseFailed) item {
+                    Text(stringResource(R.string.nearby_city_categories_failed),
+                        color = MaterialTheme.colorScheme.error)
+                    JodloTextAction(onClick = {
+                        loadCityCategories(if (cityCategories.isEmpty()) null else cityBrowseCursor)
+                    }, enabled = !busy && !cityBrowseBusy) {
+                        Text(stringResource(R.string.retry_action))
+                    }
+                }
+                if (cityBrowseBusy) item { CircularProgressIndicator() }
             }
             item {
                 JodloSearchField(

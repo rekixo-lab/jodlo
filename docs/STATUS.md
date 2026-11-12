@@ -1,3 +1,7 @@
+## 2026-11-12 — Customer can browse current public city Categories without typing (source only)
+
+**Continuity:** The verified **2026-11-05 Worker** baseline remains in [Current State](CURRENT_STATE.md). In selected Raipur/Bilaspur the Customer Feed now offers an explicitly initiated, paginated Hindi/English list of approved Categories with *currently eligible city-declared public Worker Service Listings*. D1 applies the same published/moderation/account/Worker/Category guards and city predicate to each page and current keyset anchor. Unknown/duplicate city and global/unpaged city requests fail closed; existing global browsing stays unchanged. UI supports refresh, next page, retry, language/city invalidation and current city+Category Listing detail recheck. This is not GPS, live Worker availability, service approval, provider delivery or production deployment. [Contract](CUSTOMER_CITY_CATEGORY_SEARCH_2026-11-10.md).
+
 ## 2026-11-12 — Customer city Search hides Categories without a current city Service (source only)
 
 **Continuity:** The independently verified **2026-11-05 Worker/Customer source baseline** remains part of this product; this new city Search does not replace its release gates or establish real-device acceptance. See the [dated evidence ledger](CURRENT_STATE.md) for the older live-provider observations and the still-unapproved Catalog.

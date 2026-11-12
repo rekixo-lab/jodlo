@@ -221,6 +221,24 @@ class RemoteCatalogRepository(private val sender: RequestSender) :
             }
     }
 
+    /** Manual, city-scoped public Category browse. A Category is included
+     * only if the server currently has an eligible published Listing there.
+     * Public data only; it does not verify proximity or Worker presence.
+     */
+    fun cityBrowse(language: Language, city: NearbyPilotCity, limit: Int = 20,
+                   after: String? = null): ApiOutcome<CatalogBrowse> {
+        val call = JodloRoutes.browse(language, availableOnly = true, limit = limit,
+            after = after, city = city)
+        return performOnce(call, sender::send, JodloReplyDecoder::browse)
+            .validated { dto ->
+                dto.language == language && dto.categories.size <= limit &&
+                    (dto.nextCursor == null ||
+                        (dto.categories.size == limit &&
+                            dto.categories.lastOrNull()?.id == dto.nextCursor.substringAfter(':') &&
+                            browseCursorAdvances(after, dto.nextCursor)))
+            }
+    }
+
     override fun search(query: String, language: Language, availableOnly: Boolean,
                         includeChoices: Boolean, limit: Int, offset: Int): ApiOutcome<CatalogSearch> {
         val call = JodloRoutes.search(query, language, availableOnly, includeChoices, limit, offset)

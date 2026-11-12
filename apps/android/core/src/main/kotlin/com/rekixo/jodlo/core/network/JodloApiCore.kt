@@ -78,14 +78,19 @@ object JodloRoutes {
         require(LISTING.matches(id)) { "Invalid opaque Listing ID" }
 
     fun browse(lang: Language, availableOnly: Boolean = false,
-               limit: Int? = null, after: String? = null): ApiCall {
+               limit: Int? = null, after: String? = null,
+               city: NearbyPilotCity? = null): ApiCall {
         require(limit == null || limit in 1..25) { "Invalid page size" }
         require(after == null || (limit != null && CURSOR.matches(after) &&
                 after.substringBefore(':').toInt() <= 1_000_000)) { "Invalid cursor" }
+        require(city == null || (availableOnly && limit != null)) {
+            "City browse needs explicit available-only bounded page"
+        }
         val p = mutableListOf("lang=${lang.code}")
         if (availableOnly) p += "availableOnly=1"
         if (limit != null) p += "limit=$limit"
         if (after != null) p += "after=${enc(after)}"
+        if (city != null) p += "city=${city.wire}"
         return ApiCall.get("/api/v1/catalog?${p.joinToString("&")}")
     }
 

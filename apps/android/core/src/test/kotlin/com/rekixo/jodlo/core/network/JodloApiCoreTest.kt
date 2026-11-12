@@ -68,6 +68,18 @@ fun main() {
         JodloRoutes.searchCursor("plumb\u0000repair", Language.EN)
     }
 
+    val cityBrowse = JodloRoutes.browse(Language.HI, availableOnly = true,
+        limit = 20, after = "8:plumber", city = NearbyPilotCity.BILASPUR)
+    check(cityBrowse.method == HttpMethod.GET)
+    check(cityBrowse.resource ==
+        "/api/v1/catalog?lang=hi&availableOnly=1&limit=20&after=8%3Aplumber&city=bilaspur")
+    check(cityBrowse.headers()["Authorization"] == null)
+    rejects("city browse requires available-only") {
+        JodloRoutes.browse(Language.EN, limit = 20, city = NearbyPilotCity.RAIPUR)
+    }
+    rejects("city browse cannot use legacy unpaged Catalog") {
+        JodloRoutes.browse(Language.EN, availableOnly = true, city = NearbyPilotCity.RAIPUR)
+    }
     val browse = JodloRoutes.browse(Language.EN, availableOnly = true,
         limit = 20, after = "0:plumber")
     check(browse.resource == "/api/v1/catalog?lang=en&availableOnly=1&limit=20&after=0%3Aplumber")
