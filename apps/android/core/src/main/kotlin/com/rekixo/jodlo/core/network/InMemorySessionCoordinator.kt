@@ -512,6 +512,17 @@ class InMemorySessionCoordinator(
      * A response overtaken by logout, account replacement or a Worker write
      * cannot be accepted in the UI.
      */
+    /** Manual, read-only diagnostic of the current session's FCM device row.
+     * This cannot prove Android delivery, FCM transport or receiver presence.
+     */
+    fun ownCallDevice(owner: AccountPrivateReadMarker): SessionResult<Boolean> =
+        withSession(
+            call = { token -> performOnce(JodloRoutes.ownCallDevice(token), authSender::send,
+                JodloReplyDecoder::callDevice) },
+            update = { reply, _ -> outcome(reply) },
+            consistentRead = true, expectedOwner = owner,
+        )
+
     fun setCallDevice(owner: AccountPrivateReadMarker, registrationToken: String?): SessionResult<Boolean> =
         withSession(
             call = { token -> performOnce(JodloRoutes.callDevice(token, registrationToken), authSender::send,
