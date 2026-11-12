@@ -250,5 +250,11 @@ fun main() {
     check(readBoundedUtf8Reply(almostDeadline) { completeClock } == "z")
 
     check(!TransportReply(200, "secret-user-data").toString().contains("secret-user-data"))
+    // Deliberate account-only deletion, no owner ID or query/body in the URL.
+    val clearHistory = JodloRoutes.clearCallHistory(TOKEN)
+    check(clearHistory.method == HttpMethod.DELETE)
+    check(clearHistory.resource == "/api/v1/me/call-history")
+    check(clearHistory.headers()["Authorization"] == "Bearer $TOKEN")
+
     println("JODLO Android headless Kotlin: bilingual Unicode, routes, privacy and publication safety OK")
 }
