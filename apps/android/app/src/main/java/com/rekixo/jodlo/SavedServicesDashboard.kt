@@ -62,6 +62,8 @@ internal fun SavedServicesDashboard(
     onHide: (String) -> Boolean,
     contactSession: InMemorySessionCoordinator?,
     onCall: ((String) -> Unit)? = null,
+    openHidden: () -> Unit,
+    openLocalData: () -> Unit,
 ) {
     // A hidden bookmark remains durable but is not displayed or sent to
     // explicit review/Category-name HTTP reads until the user unhides it.
@@ -85,7 +87,8 @@ internal fun SavedServicesDashboard(
     var reviewRevision by remember { mutableIntStateOf(0) }
     // A Saved reference is private to this phone. Explicitly fetching only
     // its distinct *Category IDs* reveals neither a Listing ID nor account.
-    var categoryLanguage by remember { mutableStateOf(Language.HI) }
+    val appLanguage = LocalJodloLanguage.current
+    var categoryLanguage by remember { mutableStateOf(appLanguage) }
     var categoryNames by remember { mutableStateOf<ApprovedCategoryNameSnapshot?>(null) }
     var categoryNamesBusy by remember { mutableStateOf(false) }
     var categoryNamesFailed by remember { mutableStateOf(false) }
@@ -231,6 +234,14 @@ internal fun SavedServicesDashboard(
         contentPadding=androidx.compose.foundation.layout.PaddingValues(JodloSizes.ScreenPadding),
         verticalArrangement=Arrangement.spacedBy(JodloSizes.Gap),
     ) {
+        if (selected == null) item {
+            JodloTextAction(onClick = openHidden, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.hidden_tab))
+            }
+            JodloTextAction(onClick = openLocalData, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.local_backup_tab))
+            }
+        }
         item {
             Text(stringResource(R.string.saved_heading),
                 style=MaterialTheme.typography.headlineSmall)
@@ -423,8 +434,12 @@ internal fun SavedServicesDashboard(
                 item { SafePublicProfileFacts(currentCard.profile, currentCard.city) }
                 item { ApprovedServicePhoto(repository, currentCard, revision) }
                 item { ServiceCallButton(onCall, currentCard.listing.id) }
-                item { ContactBlockControls(contactSession, currentCard.listing.id) }
-                item { ReportServiceControls(contactSession, currentCard.listing.id) }
+                item {
+                    ServiceSafetyPanel {
+                        ContactBlockControls(contactSession, currentCard.listing.id)
+                        ReportServiceControls(contactSession, currentCard.listing.id)
+                    }
+                }
             }
             item {
                 JodloTextAction(onClick={

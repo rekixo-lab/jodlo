@@ -64,7 +64,8 @@ internal fun PublicServicesFeed(
     onBackToCityPicker: (() -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
-    var language by remember { mutableStateOf(Language.HI) }
+    val appLanguage = LocalJodloLanguage.current
+    var language by remember { mutableStateOf(appLanguage) }
     var listings by remember { mutableStateOf<List<PublicListing>>(emptyList()) }
     var nextCursor by remember { mutableStateOf<String?>(null) }
     var categoryNames by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
@@ -348,7 +349,7 @@ internal fun PublicServicesFeed(
         loadPage()
     }
     val selectedListing = selected
-    BackHandler(enabled = selectedListing != null || onBackToCityPicker != null) {
+    BackHandler(enabled = selectedListing != null || (city != null && onBackToCityPicker != null)) {
         if (selectedListing != null) leaveDetail() else onBackToCityPicker?.invoke()
     }
     LazyColumn(
@@ -365,11 +366,10 @@ internal fun PublicServicesFeed(
                 style = MaterialTheme.typography.bodySmall)
         }
         if (selectedListing == null) {
-            if (city != null) item {
-                Text(stringResource(R.string.nearby_city_results, stringResource(cityLabel(city))))
-                onBackToCityPicker?.let { back ->
-                    JodloTextAction(onClick = back) { Text(stringResource(R.string.nearby_choose_city)) }
-                }
+            if (onBackToCityPicker != null) item {
+                JodloChip(selected = city != null, onClick = onBackToCityPicker,
+                    label = { Text(stringResource(city?.let(::cityLabel)
+                        ?: R.string.navigation_all_cities)) })
             }
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
@@ -605,8 +605,12 @@ internal fun PublicServicesFeed(
                 item { SafePublicProfileFacts(safeCard.profile, safeCard.city) }
                 item { ApprovedServicePhoto(repository, safeCard, revision) }
                 item { ServiceCallButton(onCall, safeCard.listing.id) }
-                item { ContactBlockControls(contactSession, safeCard.listing.id) }
-                item { ReportServiceControls(contactSession, safeCard.listing.id) }
+                item {
+                    ServiceSafetyPanel {
+                        ContactBlockControls(contactSession, safeCard.listing.id)
+                        ReportServiceControls(contactSession, safeCard.listing.id)
+                    }
+                }
                 item {
                     JodloButton(onClick = {
                         savingFailure = !onSaveToggle(safeCard.listing)

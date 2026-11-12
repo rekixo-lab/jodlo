@@ -29,7 +29,7 @@ import androidx.compose.ui.unit.dp
 import com.rekixo.jodlo.R
 
 @Composable
-internal fun JodloBrandHeading(title: String) {
+internal fun JodloBrandHeading(title: String, compact: Boolean = false) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap),
@@ -37,9 +37,9 @@ internal fun JodloBrandHeading(title: String) {
         Image(
             painter = painterResource(R.drawable.jodlo_mark),
             contentDescription = null,
-            modifier = Modifier.size(JodloSizes.BrandMark),
+            modifier = Modifier.size(if (compact) JodloSizes.TopBarMark else JodloSizes.BrandMark),
         )
-        Text(title, style = MaterialTheme.typography.headlineLarge)
+        Text(title, style = if (compact) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineLarge)
     }
 }
 
@@ -59,8 +59,8 @@ fun JodloButton(
         border = BorderStroke(JodloSizes.Stroke, if (enabled)
             JodloPalette.AccentOutline else JodloPalette.Outline),
         colors = ButtonDefaults.outlinedButtonColors(
-            containerColor = JodloPalette.Canvas,
-            contentColor = JodloPalette.Text,
+            containerColor = JodloPalette.ActiveSurface,
+            contentColor = JodloPalette.Accent,
             disabledContainerColor = JodloPalette.Canvas,
             disabledContentColor = JodloPalette.MutedText,
         ),

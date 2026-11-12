@@ -17,24 +17,25 @@ import com.rekixo.jodlo.ui.theme.JodloSizes
 /** Review covers publication of the supplied text, not the worker's credentials. */
 @Composable
 internal fun SafePublicProfileFacts(profile: ServiceProfile?, city: NearbyPilotCity?) {
-    JodloCard(modifier = Modifier.fillMaxWidth()) {
+    JodloCard(modifier = Modifier.fillMaxWidth(), selected = profile != null) {
         Column(
             modifier = Modifier.padding(JodloSizes.CardPadding),
             verticalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap),
         ) {
-            Text(stringResource(R.string.service_profile_heading),
-                style = MaterialTheme.typography.titleMedium)
             if (profile == null) {
+                Text(stringResource(R.string.service_profile_heading),
+                    style = MaterialTheme.typography.titleMedium)
                 Text(stringResource(R.string.service_profile_identity),
                     style = MaterialTheme.typography.bodySmall)
             } else {
-                Text(profile.displayName, style = MaterialTheme.typography.titleMedium)
+                Text(profile.displayName, style = MaterialTheme.typography.headlineLarge)
                 Text(profile.description)
                 profile.experienceYears?.let {
                     Text(stringResource(R.string.service_details_experience_public, it))
                 }
                 profile.visitRateInr?.let {
-                    Text(stringResource(R.string.service_details_rate_public, it))
+                    Text(stringResource(R.string.service_details_rate_public, it),
+                        style = MaterialTheme.typography.titleMedium)
                 }
                 Text(stringResource(R.string.service_details_review_disclaimer),
                     style = MaterialTheme.typography.bodySmall)
@@ -42,6 +43,19 @@ internal fun SafePublicProfileFacts(profile: ServiceProfile?, city: NearbyPilotC
             if (city != null) {
                 Text(stringResource(R.string.service_details_city_public, stringResource(cityLabel(city))))
             }
+        }
+    }
+}
+
+@Composable
+internal fun ServiceSafetyPanel(content: @Composable () -> Unit) {
+    JodloCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(JodloSizes.CardPadding),
+            verticalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap),
+        ) {
+            Text(stringResource(R.string.navigation_service_safety),
+                style = MaterialTheme.typography.titleMedium)
+            content()
         }
     }
 }

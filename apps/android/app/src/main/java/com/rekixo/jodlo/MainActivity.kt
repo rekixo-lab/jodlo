@@ -39,6 +39,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.painterResource
+import androidx.compose.material3.Icon
 import androidx.compose.ui.unit.dp
 import com.rekixo.jodlo.core.network.ApiOutcome
 import com.rekixo.jodlo.core.network.FailureKind
@@ -63,7 +65,10 @@ import com.rekixo.jodlo.core.network.RemoteWorkerRepository
 import com.rekixo.jodlo.core.network.SavedPublicServices
 import com.rekixo.jodlo.core.network.HiddenPublicServices
 import com.rekixo.jodlo.core.network.asRequestSender
-import com.rekixo.jodlo.ui.theme.JodloBrandHeading
+import com.rekixo.jodlo.ui.theme.JodloAppBar
+import com.rekixo.jodlo.ui.theme.JodloDestination
+import com.rekixo.jodlo.ui.theme.JodloNavigation
+import com.rekixo.jodlo.ui.theme.JodloSquareAction
 import com.rekixo.jodlo.ui.theme.JodloPalette
 import com.rekixo.jodlo.ui.theme.JodloTheme
 import com.rekixo.jodlo.ui.theme.JodloButton
@@ -127,13 +132,24 @@ class MainActivity : ComponentActivity() {
         )
         setContent {
             val incoming by incomingCall.collectAsState()
-            JodloTheme { JodloApp(this, incoming) { incomingCall.value = null } }
+            JodloLanguage(this) { firstRun, chooseLanguage ->
+                JodloTheme {
+                    JodloApp(this, incoming, firstRun, chooseLanguage) { incomingCall.value = null }
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun JodloApp(activity: ComponentActivity, incomingCall: IncomingCallWakeup?, clearIncoming: () -> Unit) {
+private fun JodloApp(
+    activity: ComponentActivity,
+    incomingCall: IncomingCallWakeup?,
+    firstRun: Boolean,
+    chooseLanguage: (Language) -> Unit,
+    clearIncoming: () -> Unit,
+) {
+    val activeJodloLanguage = LocalJodloLanguage.current
     val sender = remember {
         BuildConfig.API_ORIGIN.takeIf { it.isNotBlank() }?.let {
             HttpsTransport(it).asRequestSender()
@@ -151,7 +167,9 @@ private fun JodloApp(activity: ComponentActivity, incomingCall: IncomingCallWake
     val session = remember(sender) {
         sender?.let { InMemorySessionCoordinator(RemoteWorkerRepository(it), it) }
     }
-    var section by rememberSaveable { mutableStateOf("home") }
+    var section by rememberSaveable { mutableStateOf(if (firstRun) "welcome" else "home") }
+    var languageBack by rememberSaveable { mutableStateOf("home") }
+    var accountFromAlerts by rememberSaveable { mutableStateOf(false) }
     var loginRevision by remember { mutableIntStateOf(0) }
     var wakeupNotice by remember { mutableStateOf<Int?>(null) }
     var wakeupRetryClicks by remember { mutableIntStateOf(0) }
@@ -334,56 +352,39 @@ private fun JodloApp(activity: ComponentActivity, incomingCall: IncomingCallWake
                 Text(stringResource(R.string.call_check_incoming_status))
             }
         }
-        Row(
-            Modifier.fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = JodloSizes.ScreenPadding),
-            horizontalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap),
-        ) {
-            JodloChip(
-                selected = section == "home",
-                onClick = { homeCategory = null; section = "home" },
-                label = { Text(stringResource(R.string.tab_home)) },
-            )
-            JodloChip(
-                selected = section == "customer",
-                onClick = { homeCategory = null; section = "customer" },
-                label = { Text(stringResource(R.string.tab_customer)) },
-            )
-            if (catalog != null) {
-                JodloChip(
-                    selected = section == "feed",
-                    onClick = { section = "feed" },
-                    label = { Text(stringResource(R.string.tab_feed)) },
-                )
-            }
-            JodloChip(
-                selected = section == "worker",
-                onClick = { section = "worker" },
-                label = { Text(stringResource(R.string.tab_worker)) },
-            )
-            JodloChip(
-                selected = section == "account",
-                onClick = { section = "account" },
-                label = { Text(stringResource(R.string.tab_account)) },
-            )
-            JodloChip(
-                selected = section == "saved",
-                onClick = { section = "saved" },
-                label = { Text(stringResource(R.string.tab_saved)) },
-            )
-            JodloChip(
-                selected = section == "hidden",
-                onClick = { section = "hidden" },
-                label = { Text(stringResource(R.string.hidden_tab)) },
-            )
-            JodloChip(
-                selected = section == "local-data",
-                onClick = { section = "local-data" },
-                label = { Text(stringResource(R.string.local_backup_tab)) },
-            )
+        val primary = if (section == "city-feed") JodloDestination.SERVICES
+            else JodloDestination.entries.firstOrNull { it.route == section }
+        val previous = when (section) {
+            "home" -> null
+            "welcome" -> languageBack
+            "hidden", "local-data" -> "saved"
+            "city-feed" -> "nearby"
+            else -> "home"
         }
-        if (BuildConfig.DEBUG && sender == null && section == "customer") {
+        val back: (() -> Unit)? = previous?.let { route -> { section = route } }
+        BackHandler(enabled = back != null) { back?.invoke() }
+        if (section != "welcome") {
+            val title = when (section) {
+                "home" -> null
+                "customer" -> R.string.navigation_search_work
+                "nearby" -> R.string.home_nearby_action
+                "city-feed" -> R.string.tab_feed
+                "hierarchy" -> R.string.navigation_categories
+                "hidden" -> R.string.hidden_tab
+                "local-data" -> R.string.local_backup_tab
+                "help" -> R.string.help_heading
+                "alerts" -> R.string.navigation_notifications
+                "worker" -> R.string.navigation_worker_title
+                else -> primary?.title
+            }
+            JodloAppBar(title?.let { stringResource(it) }, onBack = back.takeIf { primary == null }) {
+                if (section == "home") JodloSquareAction(onClick = { section = "alerts" }) {
+                    Icon(painterResource(R.drawable.jodlo_nav_bell),
+                        stringResource(R.string.navigation_notifications))
+                }
+            }
+        }
+        if (BuildConfig.DEBUG && sender == null && section in setOf("customer", "feed")) {
             JodloTextAction(
                 onClick = { debugPreview = !debugPreview },
                 modifier = Modifier.padding(horizontal = JodloSizes.ScreenPadding),
@@ -415,6 +416,22 @@ private fun JodloApp(activity: ComponentActivity, incomingCall: IncomingCallWake
                 return@Box
             }
             when (section) {
+                "welcome" -> WelcomeScreen(
+                    chooseLanguage = chooseLanguage,
+                    openHome = {
+                        chooseLanguage(activeJodloLanguage)
+                        section = languageBack
+                    },
+                    openAccount = {
+                        chooseLanguage(activeJodloLanguage)
+                        accountFromAlerts = false
+                        section = "account"
+                    },
+                )
+                "alerts" -> CallAlertsScreen(openSettings = {
+                    accountFromAlerts = true
+                    section = "account"
+                })
                 "home" -> CustomerHome(
                     repository = catalog,
                     openCategory = { category, language ->
@@ -423,20 +440,23 @@ private fun JodloApp(activity: ComponentActivity, incomingCall: IncomingCallWake
                     },
                     openBrowse = { homeCategory = null; section = "customer" },
                     openHierarchy = { section = "hierarchy" },
-                    openServices = { if (catalog != null) section = "feed" },
+                    openServices = {
+                        if (catalog != null) section = if (discoveryCity != null) "city-feed" else "feed"
+                    },
                     openNearby = { section = "nearby" },
-                    openSaved = { section = "saved" },
-                    openWorker = { section = "worker" },
+                    chosenCity = discoveryCity,
                     openHelp = { section = "help" },
                 )
                 "nearby" -> ManualNearbyDiscovery(
                     onBrowseAll = {
                         homeCategory = null
+                        discoveryCity = null
                         section = if (catalog != null) "feed" else "customer"
                     },
                     onSearchCity = { discoveryCity = it; section = "city-feed" },
                     canSearch = catalog != null,
                     onHome = { section = "home" },
+                    selectedCity = discoveryCity,
                 )
                 "hierarchy" -> CustomerHierarchy(
                     repository = catalog,
@@ -456,6 +476,8 @@ private fun JodloApp(activity: ComponentActivity, incomingCall: IncomingCallWake
                 "saved" -> SavedServicesDashboard(
                     catalog, savedServices, ::removeSaved, ::clearSaved,
                     hiddenServices, ::hideService, contactSession = session, onCall = onCall,
+                    openHidden = { section = "hidden" },
+                    openLocalData = { section = "local-data" },
                 )
                 "hidden" -> HiddenServicesDashboard(
                     hiddenServices, ::unhideService, ::clearHidden,
@@ -487,8 +509,17 @@ private fun JodloApp(activity: ComponentActivity, incomingCall: IncomingCallWake
                     hiddenServices, ::hideService,
                     onBrowseCategories = { homeCategory = null; section = "customer" },
                     contactSession = session, onCall = onCall,
+                    onBackToCityPicker = { section = "nearby" },
+                ) else GuestDiscovery(
+                    customerCatalog, liveApiConfigured = false,
+                    saved = savedServices, onSaveToggle = ::toggleSaved,
+                    hidden = hiddenServices, onHide = ::hideService,
+                    contactSession = session, onCall = null,
                 )
-                "worker" -> WorkerDashboard(activity, session, writes, catalog)
+                "worker" -> WorkerDashboard(activity, session, writes, catalog, openCallSettings = {
+                    accountFromAlerts = true
+                    section = "account"
+                })
                 "help" -> HelpAndPrivacyDashboard(
                     onHome = { section = "home" },
                     onBrowse = { homeCategory = null; section = "customer" },
@@ -501,7 +532,19 @@ private fun JodloApp(activity: ComponentActivity, incomingCall: IncomingCallWake
                 else -> AccountDashboard(
                     activity, session, openHelp = { section = "help" },
                     onSignInSuccess = { loginRevision++ },
+                    openLanguage = { languageBack = "account"; section = "welcome" },
+                    openWorker = { section = "worker" },
+                    openHome = { section = "home" },
+                    startAtCallSettings = accountFromAlerts,
                 )
+            }
+        }
+        if (primary != null) JodloNavigation(primary) { destination ->
+            if (destination != primary) {
+                homeCategory = null
+                accountFromAlerts = false
+                section = if (destination == JodloDestination.SERVICES && discoveryCity != null)
+                    "city-feed" else destination.route
             }
         }
     }
@@ -539,7 +582,8 @@ private fun GuestDiscovery(
     onCall: ((String) -> Unit)?,
 ) {
     val scope = rememberCoroutineScope()
-    var language by remember { mutableStateOf(homeCategory?.language ?: Language.HI) }
+    val appLanguage = LocalJodloLanguage.current
+    var language by remember { mutableStateOf(homeCategory?.language ?: appLanguage) }
     var homeEntryPending by remember(homeCategory) {
         mutableStateOf(homeCategory != null)
     }
@@ -917,9 +961,6 @@ private fun GuestDiscovery(
             verticalArrangement = Arrangement.spacedBy(JodloSizes.Gap),
         ) {
             item {
-                JodloBrandHeading(stringResource(R.string.app_name))
-            }
-            item {
                 Text(
                     stringResource(R.string.discovery_subtitle),
                     style = MaterialTheme.typography.bodyMedium,
@@ -1142,8 +1183,12 @@ private fun GuestDiscovery(
                             }
                         }
                         if (liveApiConfigured) item { ServiceCallButton(onCall, card.listing.id) }
-                        item { ContactBlockControls(contactSession, card.listing.id) }
-                        item { ReportServiceControls(contactSession, card.listing.id) }
+                        item {
+                            ServiceSafetyPanel {
+                                ContactBlockControls(contactSession, card.listing.id)
+                                ReportServiceControls(contactSession, card.listing.id)
+                            }
+                        }
                     }
                     if (detail != null && card == null) item {
                         Text(stringResource(R.string.request_failed),

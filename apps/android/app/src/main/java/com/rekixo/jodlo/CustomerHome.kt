@@ -3,12 +3,13 @@ package com.rekixo.jodlo
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -19,15 +20,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import com.rekixo.jodlo.core.network.ApiOutcome
 import com.rekixo.jodlo.core.network.FailureKind
 import com.rekixo.jodlo.core.network.HomeCategorySnapshot
 import com.rekixo.jodlo.core.network.Language
+import com.rekixo.jodlo.core.network.NearbyPilotCity
 import com.rekixo.jodlo.core.network.PublicCategory
 import com.rekixo.jodlo.core.network.RemoteCatalogRepository
-import com.rekixo.jodlo.ui.theme.JodloBrandHeading
 import com.rekixo.jodlo.ui.theme.JodloButton
 import com.rekixo.jodlo.ui.theme.JodloCard
 import com.rekixo.jodlo.ui.theme.JodloChip
@@ -55,12 +58,12 @@ internal fun CustomerHome(
     openHierarchy: () -> Unit,
     openServices: () -> Unit,
     openNearby: () -> Unit,
-    openSaved: () -> Unit,
-    openWorker: () -> Unit,
+    chosenCity: NearbyPilotCity?,
     openHelp: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    var language by remember { mutableStateOf(Language.HI) }
+    val appLanguage = LocalJodloLanguage.current
+    val language = appLanguage
     var publishedOnly by remember { mutableStateOf(false) }
     var page by remember { mutableStateOf(HomeCategorySnapshot.empty(language, publishedOnly)) }
     var busy by remember { mutableStateOf(false) }
@@ -133,98 +136,76 @@ internal fun CustomerHome(
         verticalArrangement = Arrangement.spacedBy(JodloSizes.Gap),
     ) {
         item {
-            JodloBrandHeading(stringResource(R.string.home_heading))
-            Text(stringResource(R.string.home_intro),
-                style = MaterialTheme.typography.bodyMedium)
-        }
-        item {
-            JodloButton(onClick = openBrowse, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.home_browse_action))
+            JodloCard(Modifier.fillMaxWidth(), selected = true) {
+                Column(
+                    Modifier.padding(JodloSizes.CardPadding),
+                    verticalArrangement = Arrangement.spacedBy(JodloSizes.Gap),
+                ) {
+                    Text(stringResource(R.string.navigation_find_work),
+                        style = MaterialTheme.typography.headlineLarge)
+                    JodloButton(onClick = openBrowse, modifier = Modifier.fillMaxWidth()) {
+                        Icon(painterResource(R.drawable.jodlo_nav_search), contentDescription = null)
+                        Text(stringResource(R.string.navigation_search_work),
+                            Modifier.padding(start = JodloSizes.SmallGap))
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
+                        JodloChip(selected = chosenCity != null, onClick = openNearby,
+                            modifier = Modifier.weight(1f),
+                            label = {
+                                Icon(painterResource(R.drawable.jodlo_nav_city), contentDescription = null,
+                                    modifier = Modifier.padding(end = JodloSizes.SmallGap))
+                                Text(stringResource(chosenCity?.let(::cityLabel)
+                                    ?: R.string.navigation_all_cities))
+                            })
+                        JodloChip(selected = false, onClick = openServices,
+                            enabled = repository != null, modifier = Modifier.weight(1f),
+                            label = { Text(stringResource(R.string.tab_feed)) })
+                    }
+                }
             }
         }
         item {
-            JodloTextAction(onClick = openHierarchy, enabled = repository != null,
-                modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.home_hierarchy_action))
-            }
-        }
-        item {
-            JodloTextAction(onClick = openServices, enabled = repository != null,
-                modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.home_services_action))
-            }
-        }
-        item {
-            JodloTextAction(onClick = openNearby, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.home_nearby_action))
-            }
-        }
-        item {
-            JodloTextAction(onClick = openSaved, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.home_saved_action))
-            }
-        }
-        item {
-            JodloTextAction(onClick = openWorker, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.home_worker_action))
-            }
-        }
-        item {
-            JodloTextAction(onClick = openHelp, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.help_home_action))
-            }
-        }
-        item {
-            Text(stringResource(R.string.home_category_heading),
-                style = MaterialTheme.typography.titleMedium)
-            Text(stringResource(R.string.home_category_notice),
-                style = MaterialTheme.typography.bodySmall)
-        }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
-                JodloChip(selected = language == Language.HI,
-                    onClick = { language = Language.HI },
-                    label = { Text(stringResource(R.string.language_hindi)) })
-                JodloChip(selected = language == Language.EN,
-                    onClick = { language = Language.EN },
-                    label = { Text(stringResource(R.string.language_english)) })
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
+                Text(stringResource(R.string.navigation_categories), Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleMedium)
+                JodloTextAction(onClick = openHierarchy, enabled = repository != null) {
+                    Text(stringResource(R.string.navigation_view_all))
+                }
             }
         }
         if (repository != null) {
-            item {
-                JodloChip(selected = publishedOnly,
-                    onClick = { publishedOnly = !publishedOnly },
-                    label = { Text(stringResource(R.string.filter_published_services)) })
-            }
-            item {
+            if (failed) item {
+                Text(stringResource(R.string.request_failed), color = MaterialTheme.colorScheme.error)
                 JodloTextAction(onClick = { fetchPage() }, enabled = !busy) {
                     Text(stringResource(R.string.home_refresh))
                 }
             }
-            if (failed) item {
-                Text(stringResource(R.string.request_failed),
-                    color = MaterialTheme.colorScheme.error)
-            }
             if (page.categories.isEmpty() && !busy && !failed) item {
                 Text(stringResource(R.string.empty_catalog))
             }
-            items(page.categories, key = { "home-category-" + it.id }) { category ->
-                JodloCard(
-                    onClick = {
-                        val selected = page.select(language, publishedOnly, category)
-                        if (!busy && selected != null) openCategory(selected, language)
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Column(
-                        modifier = Modifier.padding(JodloSizes.CardPadding),
-                        verticalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap),
-                    ) {
-                        Text(category.name,
-                            style = MaterialTheme.typography.titleMedium)
-                        Text(stringResource(R.string.home_open_category),
-                            style = MaterialTheme.typography.bodySmall)
+            for (row in page.categories.chunked(2)) item(key = row.first().id) {
+                Row(Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
+                    for (category in row) {
+                        JodloCard(
+                            onClick = {
+                                val selected = page.select(language, publishedOnly, category)
+                                if (!busy && selected != null) openCategory(selected, language)
+                            },
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Column(
+                                Modifier.padding(JodloSizes.CardPadding),
+                                verticalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap),
+                            ) {
+                                Icon(painterResource(R.drawable.jodlo_nav_services), null,
+                                    tint = MaterialTheme.colorScheme.primary)
+                                Text(category.name, style = MaterialTheme.typography.titleMedium)
+                            }
+                        }
                     }
+                    if (row.size == 1) Spacer(Modifier.weight(1f))
                 }
             }
             if (page.nextCursor != null) item {
@@ -243,6 +224,16 @@ internal fun CustomerHome(
             item {
                 Text(stringResource(R.string.home_no_live_api),
                     style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+        if (repository != null) item {
+            JodloChip(selected = publishedOnly,
+                onClick = { publishedOnly = !publishedOnly },
+                label = { Text(stringResource(R.string.filter_published_services)) })
+        }
+        item {
+            JodloTextAction(onClick = openHelp, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.help_home_action))
             }
         }
         if (busy) item { CircularProgressIndicator() }

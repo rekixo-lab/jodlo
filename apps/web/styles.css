@@ -1,12 +1,16 @@
 :root {
   color-scheme: dark;
-  --canvas: #070b09;
-  --surface: #101712;
-  --border: #28362d;
-  --text: #f4f8f2;
-  --muted: #b0beb1;
-  --accent: #78f09a;
-  --focus: #d5ff7c;
+  --canvas: #000000;
+  --surface: #080808;
+  --border: #262626;
+  --text: #ededed;
+  --muted: #a0a0a0;
+  --accent: #40c877;
+  --active-surface: #061009;
+  --active-outline: #08391a;
+  --card-radius: 10px;
+  --action-radius: 12px;
+  --focus: #40c877;
   font-family: system-ui, -apple-system, "Noto Sans Devanagari", "Nirmala UI", sans-serif;
   font-synthesis: none;
 }
@@ -22,20 +26,19 @@ a:focus-visible, button:focus-visible { outline: 3px solid var(--focus); outline
 .brand { display: flex; align-items: center; gap: 8px; font-size: 1.6rem; font-weight: 850; letter-spacing: 0.13em; }
 .brand img { flex: none; }
 .language-switch { display: flex; gap: 6px; padding: 4px; border: 1px solid var(--border); background: var(--surface); }
-.language-switch button { cursor: pointer; color: var(--muted); background: transparent; border: none; border-radius: 0; padding: 9px 15px; font: inherit; font-size: .9rem; font-weight: 650; }
-.language-switch button[aria-pressed="true"] { background: var(--accent); color: #07180c; }
+.language-switch button { cursor: pointer; color: var(--muted); background: transparent; border: none; border-radius: var(--action-radius); padding: 9px 15px; font: inherit; font-size: .9rem; font-weight: 650; }
+.language-switch button[aria-pressed="true"] { background: var(--active-surface); color: var(--accent); }
 main { width: min(1120px, calc(100% - 40px)); margin: auto; }
-.hero { padding: clamp(44px, 7vw, 106px) 0 clamp(28px, 5vw, 65px); }
+.hero { padding: 16px 0; }
 .eyebrow { color: var(--accent); font-weight: 750; letter-spacing: .12em; text-transform: uppercase; font-size: .8rem; }
-h1 { font-size: clamp(2.5rem, 5.7vw, 5.4rem); letter-spacing: -.055em; line-height: 1.17; margin: 20px 0; font-weight: 800; max-width: 1000px; }
+h1 { font-size: clamp(1.65rem, 4.2vw, 2.6rem); letter-spacing: -.055em; line-height: 1.17; margin: 20px 0; font-weight: 800; max-width: 1000px; }
 h1 span { color: var(--accent); }
 .lead { color: var(--muted); font-size: clamp(1rem, 1.7vw, 1.18rem); max-width: 710px; line-height: 1.9; }
 .status { display: flex; align-items: flex-start; gap: 12px; width: fit-content; padding: 12px 15px; margin-top: 26px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); font-size: .89rem; }
 .status-dot { flex: 0 0 9px; margin-top: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
 .content { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-.tile { border: 1px solid var(--border); background: var(--surface); padding: clamp(22px, 3vw, 36px); min-width: 0; }
+.tile { border: 1px solid var(--border); border-radius: var(--card-radius); background: var(--canvas); padding: 16px; min-width: 0; }
 .tile-wide { grid-column: 1 / -1; }
-.index { color: var(--accent); font-size: .86rem; font-weight: 800; letter-spacing: .12em; }
 h2 { margin: 17px 0 12px; font-size: clamp(1.18rem, 2vw, 1.48rem); line-height: 1.45; }
 .tile p { color: var(--muted); margin: 0; font-size: .98rem; }
 .tile strong { color: var(--text); }
@@ -53,3 +56,37 @@ h2 { margin: 17px 0 12px; font-size: clamp(1.18rem, 2vw, 1.48rem); line-height: 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
 }
+
+.page-nav, .page-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+.page-links { display: grid; }
+.page-nav a, .page-links a, .action {
+  display: inline-flex;
+  align-items: center;
+  min-height: 48px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--action-radius);
+  text-decoration: none;
+  color: var(--text);
+}
+.page-nav a[aria-current="page"], .action {
+  background: var(--active-surface);
+  border-color: var(--active-outline);
+  color: var(--accent);
+}
+[data-page-panel] { margin: 12px 0 32px; }
+[data-page-panel] > .tile { margin-bottom: 12px; }
+.hero-outline {
+  padding: 16px;
+  border: 1px solid var(--active-outline);
+  border-radius: var(--card-radius);
+  background: var(--active-surface);
+}
+.hero-outline h1 { margin-top: 0; }
+.tile h2:first-child { margin-top: 0; }
+.tile p + p { margin-top: 8px; }
