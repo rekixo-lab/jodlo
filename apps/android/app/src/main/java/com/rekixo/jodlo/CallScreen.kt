@@ -68,7 +68,9 @@ internal enum class AgoraAudioState { IDLE, JOINING, CONNECTED, RECONNECTING, EN
 
 internal sealed interface CallScreenRequest {
     data class Outgoing(val listingId: String, val attemptKey: String = UUID.randomUUID().toString()) : CallScreenRequest
-    data class Incoming(val invitationId: String) : CallScreenRequest
+    data class Incoming(
+        val invitationId: String, val confirmedRingDeadlineMs: Long,
+    ) : CallScreenRequest
 }
 
 @Composable
@@ -94,8 +96,20 @@ internal fun CallScreen(
     val expectedRole = if (receiver) CallRole.RECEIVER else CallRole.CALLER
     val epoch = remember(request, session) { session.accountExportSessionMarker() }
     var invitationId by remember(request) { mutableStateOf((request as? CallScreenRequest.Incoming)?.invitationId) }
-    var ringUntil by remember(request) { mutableStateOf<Long?>(null) }
-    var phase by remember(request) { mutableStateOf<CallPhase?>(null) }
+    // This ring was already verified by a current-owner GET after tapping
+    // the FCM notice. Avoid a second initial GET before rendering Answer.
+    // Later polling and every ACCEPT still revalidate live server state.
+    var ringUntil by remember(request) {
+        mutableStateOf((request as? CallScreenRequest.Incoming)?.let {
+            SystemClock.elapsedRealtime() +
+                (it.confirmedRingDeadlineMs - System.currentTimeMillis()).coerceIn(0L, 90_000L)
+        })
+    }
+    var phase by remember(request) {
+        mutableStateOf<CallPhase?>(
+            if (request is CallScreenRequest.Incoming) CallPhase.RINGING else null,
+        )
+    }
     var error by remember(request) { mutableStateOf<Int?>(null) }
     var busy by remember(request) { mutableStateOf(false) }
     var muted by remember(request) { mutableStateOf(false) }
