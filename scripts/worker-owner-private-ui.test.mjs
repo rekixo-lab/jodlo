@@ -371,3 +371,21 @@ test("Worker Account manual session device readiness spans API, Kotlin and gated
         "call_retry_device_registration","call_device_registration_requested","call_device_status_failed",
     ])assert.match(xml,new RegExp('name="'+key+'"'));
 });
+
+test("Native Worker profile editor rejects unsafe drafts before a moderated write",()=>{
+    const editor=read("apps/android/app/src/main/java/com/rekixo/jodlo/WorkerServiceDetailsEditor.kt");
+    const validator=read("apps/android/core/src/main/kotlin/com/rekixo/jodlo/core/network/ServiceProfileDraftValidator.kt");
+    const kotlinTests=read("apps/android/core/src/test/kotlin/com/rekixo/jodlo/core/network/ServiceProfileDraftValidatorTest.kt");
+    assert.ok(editor.includes("ServiceProfileDraftValidator.validate(name, description, experience, rate)"));
+    assert.ok(editor.includes(".profile?.let { request(true, it) }"));
+    assert.ok(editor.includes("draft.profile != null && !clearReview"));
+    assert.ok(editor.includes("if (edited && !clearReview && draft.issue != null)"));
+    assert.ok(editor.includes("loaded?.takeIf { it.first == marker }"));
+    assert.ok(validator.includes("Normalizer.normalize"));
+    assert.ok(validator.includes("RESTRICTED_TEXT"));
+    assert.ok(validator.includes("codePointCount"));
+    assert.ok(kotlinTests.includes("fun main()"));
+    for (const xml of [en,hi]) for(const field of [
+        "name","description","private_text","experience","rate"
+    ]) assert.ok(xml.includes('name="worker_details_invalid_'+field+'"'));
+});
