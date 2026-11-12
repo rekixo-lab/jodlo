@@ -348,9 +348,9 @@ internal fun AccountDashboard(
             }
             if (session != null && ((login as? LoginState.SignedIn)?.worker == WorkerState.DRAFT ||
                     confirmedOverview?.workerEnabled == true)) {
-                CallPreferenceControls(session, busy, ::refresh)
+                CallPreferenceControls(activity, session, busy, ::refresh)
                 if (BuildConfig.AGORA_ENABLED) {
-                    CallPreferenceControls(session, busy, ::refresh, availability = true)
+                    CallPreferenceControls(activity, session, busy, ::refresh, availability = true)
                 }
             }
             if (session != null) {
@@ -393,6 +393,7 @@ internal fun AccountDashboard(
 
 @Composable
 private fun CallPreferenceControls(
+    activity: ComponentActivity,
     session: InMemorySessionCoordinator,
     accountBusy: Boolean,
     onChanged: () -> Unit,
@@ -404,21 +405,33 @@ private fun CallPreferenceControls(
     var localNotificationsReady by remember(session) {
         mutableStateOf(CallNotifications.areLocalNoticesAllowed(context))
     }
+    // Exact-session, user-requested backend evidence; never persist this
+    // registration status or treat it as proof of FCM push delivery.
+    var deviceStatus by remember(session) {
+        mutableStateOf<Pair<AccountPrivateReadMarker, Boolean>?>(null)
+    }
+    var deviceBusy by remember(session) { mutableStateOf(false) }
+    var deviceFailed by remember(session) { mutableStateOf(false) }
+    var deviceRetryRequested by remember(session) { mutableStateOf(false) }
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         localNotificationsReady = CallNotifications.areLocalNoticesAllowed(context)
+        deviceStatus = null
+        deviceRetryRequested = false
         CallNotifications.sync(context.applicationContext)
     }
-    DisposableEffect(context, session) {
-        val activity = context as? ComponentActivity
+    // The current Activity is passed explicitly: Compose's LocalContext can
+    // be wrapped and need not cast directly to ComponentActivity.
+    DisposableEffect(activity, session) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 localNotificationsReady = CallNotifications.areLocalNoticesAllowed(context)
-                // The existing foreground sync rechecks server consent, OS
-                // permission and current owner before registering a device.
+                deviceStatus = null
+                deviceRetryRequested = false
+                // Existing Activity.onResume sync handles registration.
             }
         }
-        activity?.lifecycle?.addObserver(observer)
-        onDispose { activity?.lifecycle?.removeObserver(observer) }
+        activity.lifecycle.addObserver(observer)
+        onDispose { activity.lifecycle.removeObserver(observer) }
     }
     val scope = rememberCoroutineScope()
     var checked by remember(session) {
@@ -431,8 +444,11 @@ private fun CallPreferenceControls(
 
     fun request(change: OwnCallPreference?) {
         val captured = session.accountPrivateReadMarker() ?: return
-        if (busy || accountBusy || (change != null && checked != (captured to change))) return
+        if (busy || deviceBusy || accountBusy || (change != null && checked != (captured to change))) return
         checked = null
+        deviceStatus = null
+        deviceFailed = false
+        deviceRetryRequested = false
         failed = false
         busy = true
         scope.launch {
@@ -470,7 +486,52 @@ private fun CallPreferenceControls(
         }
     }
 
-    val canRequest = owner != null && !busy && !accountBusy
+    fun checkDevice() {
+        if (availability || !BuildConfig.FCM_ENABLED || busy || deviceBusy || accountBusy ||
+            !localNotificationsReady) return
+        val captured = session.accountPrivateReadMarker() ?: return
+        if (checked?.first != captured || checked?.second?.enabled != true) return
+        deviceBusy = true
+        deviceFailed = false
+        deviceRetryRequested = false
+        deviceStatus = null
+        scope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    session.ownCallDevice(captured)
+                }
+                // No stale or cross-owner result may reach the Worker UI.
+                if (session.accountPrivateReadMarker() == captured &&
+                    checked?.first == captured && checked?.second?.enabled == true) {
+                    if (result is SessionResult.Success)
+                        deviceStatus = captured to result.value
+                    else deviceFailed = true
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                if (session.accountPrivateReadMarker() == captured) deviceFailed = true
+            } finally {
+                deviceBusy = false
+            }
+        }
+    }
+
+    fun retryDeviceRegistration() {
+        if (availability || !BuildConfig.FCM_ENABLED || busy || deviceBusy || accountBusy ||
+            !localNotificationsReady) return
+        val captured = session.accountPrivateReadMarker() ?: return
+        if (checked?.first != captured || checked?.second?.enabled != true ||
+            deviceStatus != (captured to false)) return
+        // Schedule only a fresh owner/consent/permission-gated registration;
+        // no device token leaves the app and no success is asserted here.
+        deviceStatus = null
+        deviceFailed = false
+        deviceRetryRequested = true
+        CallNotifications.retryCurrentDeviceRegistration(context.applicationContext)
+    }
+
+    val canRequest = owner != null && !busy && !deviceBusy && !accountBusy
     if (preference != null) {
         Text(stringResource(when {
             availability && preference.enabled -> R.string.call_available_status
@@ -486,6 +547,36 @@ private fun CallPreferenceControls(
                 preference.enabled -> R.string.account_voice_disable
                 else -> R.string.account_voice_enable
             }))
+        }
+        if (!availability && BuildConfig.FCM_ENABLED && preference.enabled &&
+            localNotificationsReady) {
+            JodloTextAction(onClick = ::checkDevice,
+                enabled = canRequest) {
+                Text(stringResource(R.string.call_check_device_registration))
+            }
+            val currentDevice = deviceStatus?.takeIf { it.first == owner }?.second
+            if (currentDevice == true) {
+                Text(stringResource(R.string.call_device_registered),
+                    style = MaterialTheme.typography.bodySmall)
+            } else if (currentDevice == false) {
+                Text(stringResource(R.string.call_device_not_registered),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error)
+                JodloTextAction(onClick = ::retryDeviceRegistration,
+                    enabled = canRequest) {
+                    Text(stringResource(R.string.call_retry_device_registration))
+                }
+            }
+            if (deviceBusy) CircularProgressIndicator()
+            if (deviceFailed) {
+                Text(stringResource(R.string.call_device_status_failed),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error)
+            }
+            if (deviceRetryRequested) {
+                Text(stringResource(R.string.call_device_registration_requested),
+                    style = MaterialTheme.typography.bodySmall)
+            }
         }
         if (!availability && BuildConfig.FCM_ENABLED && preference.enabled &&
             !localNotificationsReady) {
