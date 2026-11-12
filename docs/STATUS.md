@@ -1,3 +1,7 @@
+## 2026-11-12 — Deliberate call-history clear (source-only)
+
+Added explicit bilingual Account confirmation and account/session-scoped D1 call-history deletion behind existing default-OFF `CALL_HISTORY_ENABLED`. Strict empty-body and no-query guard, no cross-account deletion or automatic retry after an uncertain result. The other caller's history, non-history call counters, providers and backups remain untouched. Existing 90-day cleanup unchanged. See [history contract](ACCOUNT_CALL_HISTORY_CONTINUOUS_PAGES_2026-11-10.md). Source changes alone do not prove live rollout, production migration or phone acceptance.
+
 ## 2026-11-11 — Optional Play Billing restore: fail-closed safety
 
 The optional Android Billing 9.1 read-only adapter now requires an immutable approved SKU list, filters mixed/foreign purchase data, distinguishes Play service failures from a confirmed empty purchase list and suppresses closed-client callbacks. Product IDs, checkout, credit and live provider integration remain unconfigured and disabled. [Details](ANDROID_PLAY_BILLING_READINESS_2026-11-11.md). No real provider/Cloudflare/Finworkar writes or phone QA.
