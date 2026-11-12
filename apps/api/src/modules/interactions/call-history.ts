@@ -48,3 +48,21 @@ export async function purgeExpiredCallHistory(db: D1Database, now: number): Prom
   }
   return removed;
 }
+
+/** Deliberate owner-requested EARLY deletion of call-history summaries only.
+ * Not call recordings, provider records, backed-up data or another participant's
+ * history. The same SQL statement revalidates the live session and account so
+ * an account/logout race cannot erase another actor's records.
+ */
+export async function clearOwnCallHistory(
+  db: D1Database, bearer: string, now = Math.floor(Date.now() / 1000),
+): Promise<boolean> {
+  if (!validSessionToken(bearer) || !Number.isSafeInteger(now) || now <= 0) return false;
+  await db.prepare(
+    "DELETE FROM call_history WHERE account_id=(" +
+    "SELECT s.account_id FROM auth_sessions AS s " +
+    "JOIN accounts AS a ON a.id=s.account_id AND a.status='active' " +
+    "WHERE s.token_hash=? AND s.expires_at>?)",
+  ).bind(await sessionHash(bearer), now).run();
+  return true; // Already empty is an idempotent success, never a failure.
+}
