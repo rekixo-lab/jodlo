@@ -58,3 +58,49 @@ test("call history only exposes the signed-in owner's unexpired summaries", asyn
     db.close();
   }
 });
+
+test("opt-in account call-history DELETE clears only current account after explicit request",async()=>{
+  const {db,adapter}=openLocalDatabase();
+  try {
+    const owner="clear-call-owner",other="clear-call-other";
+    await ensureAccount(adapter,owner);
+    await ensureAccount(adapter,other);
+    const {accessToken:token}=await issueSession(adapter,owner);
+    const {accessToken:otherToken}=await issueSession(adapter,other);
+    const now=Math.floor(Date.now()/1000);
+    for(const [id,account] of [[crypto.randomUUID(),owner],[crypto.randomUUID(),owner],
+       [crypto.randomUUID(),other]]) {
+      db.prepare("INSERT INTO call_history VALUES(?,?,?,?,?,?)")
+        .run(id,account,"outgoing","ended",now-10,0);
+    }
+    const url="https://jodlo.test/api/v1/me/call-history";
+    const env={DB:adapter,CALL_HISTORY_ENABLED:"1"};
+    const send=(method,uri=url,bearer=token,body)=>worker.fetch(new Request(uri,{
+      method,headers:{Authorization:"Bearer "+bearer},
+      ...(body===undefined?{}:{body}),
+    }),env);
+    assert.equal((await send("DELETE",url+"?after=other")).status,400);
+    assert.equal((await send("DELETE",url,token,"{}")).status,400);
+    assert.equal((await send("POST")).status,405);
+    assert.equal((await send("DELETE",url,"wrong")).status,401);
+    assert.equal((await worker.fetch(new Request(url,{method:"DELETE",headers:{
+      Authorization:"Bearer "+token,
+    }}),{DB:adapter})).status,404);
+    assert.equal(db.prepare("SELECT count(*) AS n FROM call_history WHERE account_id=?")
+      .get(owner).n,2);
+    const deleted=await send("DELETE");
+    assert.equal(deleted.status,200);
+    assert.deepEqual((await deleted.json()).data,{cleared:true});
+    assert.equal(db.prepare("SELECT count(*) AS n FROM call_history WHERE account_id=?")
+      .get(owner).n,0);
+    assert.equal(db.prepare("SELECT count(*) AS n FROM call_history WHERE account_id=?")
+      .get(other).n,1);
+    assert.deepEqual((await (await send("GET")).json()).data,{items:[],nextCursor:null});
+    assert.deepEqual((await (await send("GET",url,otherToken)).json()).data.items.length,1);
+    assert.equal((await send("DELETE")).status,200,"already empty is safe and idempotent");
+    db.prepare("DELETE FROM auth_sessions WHERE account_id=?").run(owner);
+    assert.equal((await send("DELETE")).status,401,"revoked session cannot delete");
+    assert.equal(db.prepare("SELECT count(*) AS n FROM call_history WHERE account_id=?")
+      .get(other).n,1);
+  } finally {db.close();}
+});
