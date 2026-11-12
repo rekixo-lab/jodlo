@@ -120,8 +120,9 @@ internal fun WorkerServiceDetailsEditor(
             JodloSearchField(rate, { rate = it.filter(Char::isDigit).take(8); edited = true },
                 label = { Text(stringResource(R.string.worker_details_rate)) },
                 modifier = Modifier.fillMaxWidth())
-            if (edited && !clearReview && draft.issue != null) {
-                val issueLabel = when (draft.issue) {
+            val draftIssue = draft.issue
+            if (edited && !clearReview && draftIssue != null) {
+                val issueLabel = when (draftIssue) {
                     ServiceProfileDraftIssue.NAME_LENGTH -> R.string.worker_details_invalid_name
                     ServiceProfileDraftIssue.DESCRIPTION_LENGTH -> R.string.worker_details_invalid_description
                     ServiceProfileDraftIssue.RESTRICTED_TEXT -> R.string.worker_details_invalid_private_text

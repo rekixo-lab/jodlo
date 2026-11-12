@@ -379,7 +379,7 @@ test("Native Worker profile editor rejects unsafe drafts before a moderated writ
     assert.ok(editor.includes("ServiceProfileDraftValidator.validate(name, description, experience, rate)"));
     assert.ok(editor.includes(".profile?.let { request(true, it) }"));
     assert.ok(editor.includes("draft.profile != null && !clearReview"));
-    assert.ok(editor.includes("if (edited && !clearReview && draft.issue != null)"));
+    assert.ok(editor.includes("if (edited && !clearReview && draftIssue != null)"));
     assert.ok(editor.includes("loaded?.takeIf { it.first == marker }"));
     assert.ok(validator.includes("Normalizer.normalize"));
     assert.ok(validator.includes("RESTRICTED_TEXT"));
