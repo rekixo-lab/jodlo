@@ -202,14 +202,17 @@ internal object CallNotifications {
         // One PendingIntent slot: a delayed older FCM event must not replace
         // a newer invitation's notification or downgrade verified status.
         if (!noticeGate.accept(wakeup, verified, System.currentTimeMillis())) return
-        val intent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-            putExtra(INCOMING_CALL_EXTRA, wakeup.invitationId)
-            putExtra(INCOMING_CALL_EXPIRY_EXTRA, wakeup.expiresAtMs)
-        }
-        val open = PendingIntent.getActivity(context, 0, intent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         try {
+            // Include PendingIntent creation in the failure boundary: an
+            // Android OS/runtime error before notify must not leave the
+            // freshness gate believing this call was actually displayed.
+            val intent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                putExtra(INCOMING_CALL_EXTRA, wakeup.invitationId)
+                putExtra(INCOMING_CALL_EXPIRY_EXTRA, wakeup.expiresAtMs)
+            }
+            val open = PendingIntent.getActivity(context, 0, intent,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
             manager.notify(NOTICE, Notification.Builder(context, CHANNEL)
             .setSmallIcon(android.R.drawable.stat_sys_phone_call)
             .setContentTitle(context.getString(if (verified)
