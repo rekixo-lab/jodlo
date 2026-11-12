@@ -159,7 +159,7 @@ test("FCM single notification refuses delayed older call and catches provider/pe
     const runner=read("apps/android/core/src/test/kotlin/com/rekixo/jodlo/core/network/IncomingCallWakeupTest.kt");
     assert.match(fcm,/val noticeGate = CallNotificationFreshnessGate\(\)/);
     assert.match(fcm,/@Synchronized\s+private fun showNotice/);
-    assert.match(fcm,/catch \(failure: RuntimeException\) \{[\s\S]*?noticeGate\.clear\(\)/);
+    assert.match(fcm,/catch \(failure: RuntimeException\) \{[\s\S]*?noticeGate\.notificationPostFailed\(wakeup, verified\)/);
     assert.match(fcm,/if \(!noticeGate\.accept\(wakeup, verified, System\.currentTimeMillis\(\)\)\) return/);
     assert.match(fcm,/fun clearLocal\(context: Context\) \{\s*cancelNotice\(context, suppressGeneric = true\)/);
     assert.match(fcm,/if \(!enabled\) \{\s*cancelNotice\(context, suppressGeneric = true\)/);
@@ -171,6 +171,15 @@ test("FCM single notification refuses delayed older call and catches provider/pe
     assert.match(gate,/previous\.serverVerified \|\| !verified/);
     assert.match(gate,/previous\.expiresAtMs != wakeup\.expiresAtMs/);
     assert.match(gate,/previous\.serverVerified && !verified/);
+    assert.match(gate,/fun notificationPosted\(wakeup: IncomingCallWakeup, verified: Boolean\)/);
+    assert.match(gate,/fun notificationPostFailed\(wakeup: IncomingCallWakeup, verified: Boolean\)/);
+    assert.match(test,/testFailedPostRestoresPreviousVerifiedNotification\(\)/);
+    assert.match(fcm,/action = INCOMING_CALL_ACTION_PREFIX \+ wakeup\.invitationId/);
+    assert.match(fcm,/noticeGate\.notificationPosted\(wakeup, verified\)/);
+    assert.match(fcm,/noticeGate\.notificationPostFailed\(wakeup, verified\)/);
+    const activity=read("apps/android/app/src/main/java/com/rekixo/jodlo/MainActivity.kt");
+    assert.match(activity,/intent\.action\?\.startsWith\(INCOMING_CALL_ACTION_PREFIX\) == true/);
+    assert.match(activity,/intent\.action = null/);
     assert.match(test,/testVerifiedNoticeCannotBeReplacedByUnverifiedNewerDeadline\(\)/);
     assert.match(test,/check\(!gate\.accept\(laterUnverified, verified = false/);
     assert.match(test,/check\(gate\.accept\(laterUnverified, verified = true/);
