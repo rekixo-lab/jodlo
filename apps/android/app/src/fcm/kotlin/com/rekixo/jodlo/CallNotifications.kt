@@ -129,6 +129,20 @@ internal object CallNotifications {
         }
     }
 
+    /** Manual account action. Retains last confirmed token evidence for
+     * opt-out cleanup while rechecking all owner/consent/permission gates.
+     * Does not claim registration succeeded or send an FCM push.
+     */
+    fun retryCurrentDeviceRegistration(context: Context) {
+        val app = context.applicationContext
+        work.execute {
+            val session = coordinator ?: return@execute
+            val generation = session.accountExportSessionMarker() ?: return@execute
+            registered.requestRefresh(generation)
+            sync(app)
+        }
+    }
+
     fun sync(context: Context, refreshedToken: String? = null) {
         val app = context.applicationContext
         work.execute {
