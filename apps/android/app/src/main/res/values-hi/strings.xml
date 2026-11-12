@@ -512,6 +512,8 @@
     <string name="call_keep_open">कॉल पर वापस जाएँ</string>
     <string name="call_close_warning">सर्वर से कॉल समाप्त होने की पुष्टि नहीं हुई है। यहाँ बंद करने के बाद भी दूसरी तरफ कॉल दिखाई दे सकती है।</string>
     <string name="call_unavailable">कॉल उपलब्ध नहीं है</string>
+    <string name="call_status_unconfirmed">कनेक्शन की समस्या के कारण आने वाली कॉल की पुष्टि नहीं हो सकी। कॉल अभी बज रही हो सकती है।</string>
+    <string name="call_check_incoming_status">आने वाली कॉल दोबारा जाँचें</string>
     <string name="call_sign_in">कॉल करने के लिए साइन इन करें</string>
     <string name="call_microphone_required">वॉइस कॉल के लिए माइक की अनुमति दें</string>
     <string name="call_available_status">कॉल लेने के लिए उपलब्ध</string>
