@@ -597,8 +597,13 @@ internal fun PublicServicesFeed(
                     color = MaterialTheme.colorScheme.error)
             }
             if (safeCard != null) {
+                item {
+                    JodloTextAction(onClick = { selected?.let(::inspect) }, enabled = !busy) {
+                        Text(stringResource(R.string.service_details_refresh_now))
+                    }
+                }
                 item { SafePublicProfileFacts(safeCard.profile, safeCard.city) }
-                item { ApprovedServicePhoto(repository, safeCard) }
+                item { ApprovedServicePhoto(repository, safeCard, revision) }
                 item { ServiceCallButton(onCall, safeCard.listing.id) }
                 item { ContactBlockControls(contactSession, safeCard.listing.id) }
                 item { ReportServiceControls(contactSession, safeCard.listing.id) }

@@ -463,6 +463,7 @@
     <string name="service_details_review_disclaimer">ये जानकारी वर्कर ने दी है। समीक्षा से योग्यता की पुष्टि या रेट की गारंटी नहीं मिलती।</string>
     <string name="service_details_city_public">सेवा का शहर: %1$s</string>
     <string name="service_photo_image">सेवा की फ़ोटो</string>
+    <string name="service_details_refresh_now">सेवा का मौजूदा विवरण और फ़ोटो फिर जाँचें</string>
     <string name="service_photo_view">मंज़ूर फ़ोटो दिखाएँ</string>
     <string name="service_photo_unavailable">यह फ़ोटो अब उपलब्ध नहीं है या लोड नहीं हो सकी।</string>
     <string name="worker_photo_manage">सेवा की फ़ोटो बदलें</string>
