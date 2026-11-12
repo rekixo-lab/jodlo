@@ -127,10 +127,14 @@ internal fun PublicServicesFeed(
             submittedCategoryQuery = query
         }
         scope.launch {
-            // Category Search has NO city predicate. Only the subsequent
-            // listing request is scoped to an explicitly selected city.
+            // A selected city filters against currently public, worker-declared
+            // Service cities in D1, never a global Category-only match.
+            // The eventual exact Listing GET still rechecks current eligibility.
             val result = withContext(Dispatchers.IO) {
-                try { repository.searchCursor(query, lang, limit = 20, after = after) }
+                try {
+                    if (city == null) repository.searchCursor(query, lang, limit = 20, after = after)
+                    else repository.citySearchCursor(query, lang, city, limit = 20, after = after)
+                }
                 catch (cancelled: kotlin.coroutines.cancellation.CancellationException) {
                     throw cancelled
                 } catch (_: Exception) {
