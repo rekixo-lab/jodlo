@@ -142,7 +142,7 @@ object JodloRoutes {
      * Caller passes only a previously returned cursor for the same filters.
      */
     fun searchCursor(raw: String, lang: Language, availableOnly: Boolean = false,
-                     limit: Int = 20, after: String? = null): ApiCall {
+                     limit: Int = 20, after: String? = null, city: NearbyPilotCity? = null): ApiCall {
         val q = Normalizer.normalize(raw.trim(), Normalizer.Form.NFC)
         require(q.codePointCount(0, q.length) in 2..64 &&
                 !CONTROL.containsMatchIn(q)) { "Invalid search query" }
@@ -151,10 +151,12 @@ object JodloRoutes {
                 after.substringBefore(':').toInt() <= 1_000_000)) {
             "Invalid Search cursor"
         }
+        require(city == null || availableOnly) { "City search requires real public Listings" }
         val p = mutableListOf("lang=${lang.code}", "q=${enc(q)}",
             "cursor=1", "limit=$limit")
         if (availableOnly) p += "availableOnly=1"
         if (after != null) p += "after=${enc(after)}"
+        if (city != null) p += "city=${city.wire}"
         return ApiCall.get("/api/v1/catalog/search?${p.joinToString("&")}")
     }
 

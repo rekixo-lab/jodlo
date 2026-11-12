@@ -69,6 +69,22 @@ test("Worker publish -> Category Search -> explicit city+trade selection -> revi
       [{id:"cat-plumber",slug:"cat-plumber",name:"प्लंबिंग"}]);
     const category=search.payload.data.categories[0];
 
+    // The new opt-in city Search returns ONLY trades with currently public,
+    // Worker-declared city Listings. Global legacy Category search still
+    // works independently and must not fabricate city availability.
+    const citySearch=await f.send("catalog/search?lang=hi&q="+
+      encodeURIComponent("प्लंबिंग")+"&cursor=1&limit=20&availableOnly=1&city=raipur");
+    assert.equal(citySearch.status,200);
+    assert.deepEqual(citySearch.payload.data.categories,[category]);
+    const noCityElectric=await f.send(
+      "catalog/search?lang=en&q=Electrician&cursor=1&availableOnly=1&city=bilaspur");
+    assert.deepEqual(noCityElectric.payload.data.categories,[]);
+    const yesCityElectric=await f.send(
+      "catalog/search?lang=en&q=Electrician&cursor=1&availableOnly=1&city=raipur");
+    assert.deepEqual(yesCityElectric.payload.data.categories,[
+      {id:"cat-electrician",slug:"cat-electrician",name:"Electrician"},
+    ]);
+
     // Same native localizedPublicListings call after deliberate Category tap.
     const raipurFeed="listings?feed=service&limit=20&lang=hi&city=raipur&categoryId="+category.id;
     const raipur=await f.send(raipurFeed);
@@ -103,12 +119,24 @@ test("Worker publish -> Category Search -> explicit city+trade selection -> revi
       .run(selected.id);
     assert.deepEqual((await f.send(raipurFeed)).payload.data.listings,[]);
     assert.equal((await f.send(detail)).status,404);
+    assert.deepEqual((await f.send("catalog/search?lang=hi&q="+
+      encodeURIComponent("प्लंबिंग")+"&cursor=1&limit=20&availableOnly=1&city=raipur"))
+      .payload.data.categories,[],"removed city Listing must revoke matching Category");
+    assert.deepEqual((await f.send("catalog/search?lang=hi&q="+
+      encodeURIComponent("प्लंबिंग")+"&cursor=1&limit=20&availableOnly=1&city=bilaspur"))
+      .payload.data.categories,[category],"other city remains independent");
     assert.equal((await f.send("catalog/search?lang=en&q=plumb&cursor=1&limit=20&availableOnly=1"))
       .status,200,"other city's eligible Worker still makes Category available globally");
 
     // Unknown/invalid cities and private account filters fail closed.
     for (const query of [raipurFeed+"&workerId=owner-raipur",
-      raipurFeed.replace("raipur","mumbai"),raipurFeed+"&city=bilaspur"]) {
+      raipurFeed.replace("raipur","mumbai"),raipurFeed+"&city=bilaspur",
+      "catalog/search?lang=en&q=Electrician&cursor=1&city=raipur",
+      "catalog/search?lang=en&q=Electrician&availableOnly=1&city=raipur",
+      "catalog/search?lang=en&q=Electrician&cursor=1&availableOnly=1&city=mumbai",
+      "catalog/search?lang=en&q=Electrician&cursor=1&availableOnly=1&city=raipur&city=bilaspur",
+      "catalog/search?lang=en&q=Electrician&cursor=1&availableOnly=1&city=raipur&accountId=private",
+    ]) {
       assert.equal((await f.send(query)).status,400,query);
     }
     const blob=JSON.stringify(raipur.payload);
@@ -117,4 +145,52 @@ test("Worker publish -> Category Search -> explicit city+trade selection -> revi
       assert.equal(blob.includes(secret),false,secret);
     }
   } finally { f.db.close(); }
+});
+
+
+test("City-qualified Category cursor rejects an anchor when its city Listing loses eligibility",async()=>{
+  const f=fixture();
+  try {
+    // Both existing trades intentionally share a user-submitted Search term
+    // so a one-item city page has a real second page. No worker metadata is
+    // exposed and the city is chosen manually rather than inferred from GPS.
+    f.db.prepare("UPDATE categories SET name_en='Repair Plumbing' WHERE id='cat-plumber'").run();
+    f.db.prepare("UPDATE categories SET name_en='Repair Electrician' WHERE id='cat-electrician'").run();
+    for(const [account,category,city] of owners) {
+      const token=(await issueSession(f.adapter,account)).accessToken;
+      assert.equal((await f.send("me/worker-profile",{method:"POST",token})).status,200);
+      const created=await f.send("me/listings",{method:"POST",token,body:{categoryId:category}});
+      assert.equal(created.status,200);
+      const id=created.payload.data.listing.id;
+      assert.equal((await f.send("me/service-area?id="+id+"&revision=0",{
+        method:"PUT",token,body:{city},
+      })).status,200);
+    }
+    const url="catalog/search?lang=en&q=Repair&cursor=1&availableOnly=1&city=raipur&limit=1";
+    const first=await f.send(url);
+    assert.equal(first.status,200);
+    assert.deepEqual(first.payload.data.categories,[
+      {id:"cat-plumber",slug:"cat-plumber",name:"Repair Plumbing"},
+    ]);
+    assert.equal(first.payload.data.nextCursor,"10:cat-plumber");
+    const second=await f.send(url+"&after="+encodeURIComponent(first.payload.data.nextCursor));
+    assert.deepEqual(second.payload.data.categories,[
+      {id:"cat-electrician",slug:"cat-electrician",name:"Repair Electrician"},
+    ]);
+    const inBilaspur=await f.send(url.replace("city=raipur","city=bilaspur"));
+    assert.deepEqual(inBilaspur.payload.data.categories,first.payload.data.categories);
+    assert.equal(inBilaspur.payload.data.nextCursor,null);
+    // Last allowed city Listing is removed; no stale anchor can authorize
+    // skipping ahead to unrelated currently-eligible Category results.
+    f.db.prepare("UPDATE worker_listings SET moderation_status='hidden' WHERE category_id='cat-plumber' AND service_city='raipur'").run();
+    const stale=await f.send(url+"&after="+encodeURIComponent(first.payload.data.nextCursor));
+    assert.equal(stale.status,200);
+    assert.deepEqual(stale.payload.data.categories,[]);
+    assert.equal(stale.payload.data.nextCursor,null);
+    const fresh=await f.send(url);
+    assert.deepEqual(fresh.payload.data.categories,[
+      {id:"cat-electrician",slug:"cat-electrician",name:"Repair Electrician"},
+    ]);
+    assert.equal(fresh.payload.data.nextCursor,null);
+  }finally{f.db.close();}
 });

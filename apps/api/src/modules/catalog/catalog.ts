@@ -1,6 +1,7 @@
 import type { D1Database } from "../../data/d1.ts";
 import { categoryIntentTerms } from "./search-phrases.ts";
 import { PUBLIC_LISTING_ELIGIBILITY } from "../workers/listings.ts";
+import { validServiceCity, type ServiceCity } from "../workers/service-area.ts";
 import { validCategoryId } from "../shared/identifiers.ts";
 import { ambiguousWorkCategoryIds, resolveConservativeWorkIntent } from "./intent-aliases.ts";
 
@@ -187,6 +188,8 @@ export interface CatalogSearchOptions {
   /** Keyset opt-in; keeps the old 0..100 offset path byte-for-byte compatible. */
   cursor: boolean;
   after: {sortOrder:number;id:string}|null;
+  /** Explicit city declared by published Workers, never GPS/nearby proximity. */
+  city?: ServiceCity | null;
 }
 export type CatalogSearchPage = {
   categories: PublicCategory[];
@@ -201,7 +204,7 @@ export type CatalogSearchPage = {
  * NFC retains correct Hindi search while eliminating equivalent Unicode spellings.
  */
 export function parseCatalogSearch(params: URLSearchParams): CatalogSearchOptions | null {
-  const allowed = new Set(["lang", "q", "limit", "offset", "availableOnly", "includeChoices", "cursor", "after"]);
+  const allowed = new Set(["lang", "q", "limit", "offset", "availableOnly", "includeChoices", "cursor", "after", "city"]);
   let unknown = false;
   params.forEach((_value, key) => {
     if (!allowed.has(key) || params.getAll(key).length !== 1) unknown = true;
@@ -219,6 +222,11 @@ export function parseCatalogSearch(params: URLSearchParams): CatalogSearchOption
   if(afterRaw!==null&&cursorRaw!=="1")return null;
   // The curated choice UI is a single explicit user decision, never paginated.
   if(cursorRaw==="1"&&(params.has("offset")||choices==="1"))return null;
+  // City lookup must ask for CURRENT published Services, not for a generic
+  // Catalog taxonomy: legacy offset/choice queries keep their old behavior.
+  const cityRaw=params.get("city");
+  if(cityRaw!==null && (cursorRaw!=="1" || availability!=="1" ||
+      !validServiceCity(cityRaw))) return null;
   const after=afterRaw===null?null:parsePublicCategoryCursor(afterRaw);
   if(afterRaw!==null&&!after)return null;
 
@@ -235,7 +243,8 @@ export function parseCatalogSearch(params: URLSearchParams): CatalogSearchOption
   return { language, query, limit: limitRaw === null ? 20 : Number(limitRaw),
     offset: offsetRaw === null ? 0 : Number(offsetRaw),
     availableOnly: availability === "1",
-    includeChoices: choices === "1",cursor:cursorRaw==="1",after };
+    includeChoices: choices === "1",cursor:cursorRaw==="1",after,
+    city:cityRaw===null?null:cityRaw as ServiceCity };
 }
 
 /** Search ONLY the approved public category taxonomy: no workers, contact,
@@ -255,9 +264,18 @@ const MATCH_PUBLIC_CATEGORY_TERM =
  * This subquery uses the alias 'anchor' so the eligibility EXISTS must be
  * scoped to anchor.id, rather than the outer candidate Category row.
  */
-function currentAnchorSql(availableOnly:boolean,termCount:number):string {
-  const eligibility = ELIGIBLE_LISTING_EXISTS.replace(
-    "wl.category_id=categories.id","wl.category_id=anchor.id");
+/** Same authoritative public Listing predicate as the feed, with a *bound*
+ * Worker-declared city. Never construct public availability by filtering a
+ * page of global Categories on the device.
+ */
+function cityEligibleCategoryExists(alias:string,city:ServiceCity|null):string {
+  const base=ELIGIBLE_LISTING_EXISTS.replace(
+    "wl.category_id=categories.id","wl.category_id="+alias+".id");
+  return city===null?base:base.slice(0,-1)+" AND wl.service_city=?)";
+}
+function currentAnchorSql(availableOnly:boolean,termCount:number,
+                          city:ServiceCity|null=null):string {
+  const eligibility = cityEligibleCategoryExists("anchor",city);
   return "EXISTS (SELECT 1 FROM categories AS anchor " +
     "WHERE anchor.id=? AND anchor.sort_order=? AND anchor.is_active=1" +
     (termCount ? " AND " +
@@ -282,11 +300,12 @@ export const SEARCH_AVAILABLE_PUBLIC_CATEGORIES_QUERY = searchQuery(1, true);
  * legacy Search offset=100 ceiling. Same active-only and availableOnly guards.
  * Every search term and cursor component is bound, never string-interpolated.
  */
-function searchCursorQuery(termCount:number,availableOnly:boolean,hasCursor:boolean):string {
+function searchCursorQuery(termCount:number,availableOnly:boolean,hasCursor:boolean,
+                           city:ServiceCity|null=null):string {
   return PUBLIC_PAGE_FIELDS+"FROM categories WHERE is_active = 1 AND "+
     Array(termCount).fill(MATCH_PUBLIC_CATEGORY_TERM).join(" AND ")+
-    (availableOnly?" AND "+ELIGIBLE_LISTING_EXISTS:"")+
-    (hasCursor?" AND "+currentAnchorSql(availableOnly,termCount)+
+    (availableOnly?" AND "+cityEligibleCategoryExists("categories",city):"")+
+    (hasCursor?" AND "+currentAnchorSql(availableOnly,termCount,city)+
       " AND (sort_order > ? OR (sort_order = ? AND id > ?))":"")+
     " ORDER BY sort_order ASC, id ASC LIMIT ?";
 }
@@ -295,19 +314,20 @@ function searchCursorQuery(termCount:number,availableOnly:boolean,hasCursor:bool
  * match anywhere in the full catalog, including beyond the current page.
  * Query is one bounded existence check; every term and ID is bound.
  */
-function searchCursorAliasConflictQuery(termCount:number,availableOnly:boolean):string {
+function searchCursorAliasConflictQuery(termCount:number,availableOnly:boolean,
+                                        city:ServiceCity|null=null):string {
   return "SELECT 1 AS conflict FROM categories WHERE is_active = 1 AND "+
     Array(termCount).fill(MATCH_PUBLIC_CATEGORY_TERM).join(" AND ")+
-    (availableOnly?" AND "+ELIGIBLE_LISTING_EXISTS:"")+
+    (availableOnly?" AND "+cityEligibleCategoryExists("categories",city):"")+
     " AND id <> ? LIMIT 1";
 }
 
 /** Alias resolution may only return an already active, backend-approved
  * category; optional listing availability uses the same public eligibility.
  */
-function curatedAliasQuery(availableOnly: boolean): string {
+function curatedAliasQuery(availableOnly: boolean,city:ServiceCity|null=null): string {
   return PUBLIC_CATEGORY_FIELDS + "FROM categories WHERE is_active = 1 AND id = ? " +
-    (availableOnly ? "AND " + ELIGIBLE_LISTING_EXISTS + " " : "") +
+    (availableOnly ? "AND " + cityEligibleCategoryExists("categories",city) + " " : "") +
     "ORDER BY sort_order ASC, id ASC LIMIT ? OFFSET ?";
 }
 
@@ -334,6 +354,9 @@ export async function searchPublicCategories(
     ? {categories:[],nextCursor:null}
     : {categories:[],nextOffset:null};
   const alias = resolveConservativeWorkIntent(opts.query);
+  const city=opts.city??null;
+  if(city!==null && (!opts.cursor || !opts.availableOnly))
+    throw new Error("City Search requires currently public Service availability");
   if(opts.cursor){
     // This is a separate optional transport for exhaustive large-catalog
     // Search, not a change to legacy offset pagination or choice confirmation.
@@ -349,22 +372,26 @@ export async function searchPublicCategories(
     // Explicit confirmation remains available through legacy includeChoices.
     let activeAlias:PublicCategory[]=[];
     if(alias.kind==="unique"){
-      const {results:aliasRows}=await db.prepare(curatedAliasQuery(opts.availableOnly))
-        .bind(opts.language,alias.categoryId,1,0).all<PublicCategory>();
+      const {results:aliasRows}=await db.prepare(curatedAliasQuery(opts.availableOnly,city))
+        .bind(opts.language,alias.categoryId,...(city===null?[]:[city]),1,0).all<PublicCategory>();
       activeAlias=aliasRows.map(({id,slug,name})=>({id,slug,name}));
       if(activeAlias.length){
         const {results:conflicts}=await db.prepare(
-          searchCursorAliasConflictQuery(terms.length,opts.availableOnly),
-        ).bind(...values,alias.categoryId).all<{conflict:number}>();
+          searchCursorAliasConflictQuery(terms.length,opts.availableOnly,city),
+        ).bind(...values,...(city===null?[]:[city]),alias.categoryId).all<{conflict:number}>();
         if(conflicts.length)return {categories:[],nextCursor:null};
       }
     }
     const args:(string|number)[]=[opts.language,...values];
-    if(opts.after)args.push(opts.after.id,opts.after.sortOrder,...values,
-      opts.after.sortOrder,opts.after.sortOrder,opts.after.id);
+    if(city!==null) args.push(city);
+    if(opts.after) {
+      args.push(opts.after.id,opts.after.sortOrder,...values);
+      if(city!==null) args.push(city);
+      args.push(opts.after.sortOrder,opts.after.sortOrder,opts.after.id);
+    }
     args.push(opts.limit+1);
     const {results}=await db.prepare(searchCursorQuery(
-      terms.length,opts.availableOnly,opts.after!==null,
+      terms.length,opts.availableOnly,opts.after!==null,city,
     )).bind(...args).all<PublicCategory&{sortOrder:number}>();
     if(results.length===0&&alias.kind==="unique"&&opts.after===null){
       // A curated suggestion can only return the active, eligibility-checked
