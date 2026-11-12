@@ -15,7 +15,10 @@ const routes = readFileSync(new URL(
 test("Nearby Search is an explicit approved-category lookup and city+trade selection, never owner search", () => {
   assert.match(feed,/JodloSearchField\(/);
   assert.match(feed,/onClick = \{ searchCategories\(\) \}/);
-  assert.match(feed,/repository\.searchCursor\(query, lang, limit = 20, after = after\)/);
+  assert.match(feed,/if \(city == null\) repository\.searchCursor\(query, lang, limit = 20, after = after\)/);
+  assert.match(feed,/else repository\.citySearchCursor\(query, lang, city, limit = 20, after = after\)/);
+  assert.match(repo,/JodloRoutes\.searchCursor\(query, language, availableOnly = true,/);
+  assert.match(routes,/if \(city != null\) p \+= "city=\$\{city\.wire\}"/);
   assert.match(feed,/onClick = \{\s*filterNames = filterNames \+ \(category\.id to category\.name\)\s*changeScope\(language, category\.id\)/);
   assert.match(feed,/repository\.localizedPublicListings\(lang, after = after, categoryId = filter, city = city\)/);
   assert.match(repo,/JodloRoutes\.publicAllListingPage\(limit, after, language, categoryId, city\)/);
