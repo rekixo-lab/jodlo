@@ -52,6 +52,25 @@ object CallEndProtocol {
     }
 }
 
+/** Call status is a read, not a remote hangup acknowledgement.
+ * Transient network errors leave a still-authorized call alone; loss of
+ * bearer/authorization or definitive call denial immediately stops LOCAL
+ * microphone/audio while the UI warns remote teardown was not confirmed.
+ */
+object CallPollSafety {
+    fun mustStopLocalAudio(result: SessionResult<CallSignal>?): Boolean = when (result) {
+        is SessionResult.Failed ->
+            result.reason == SessionFailure.SIGNED_OUT ||
+                result.reason == SessionFailure.EXPIRED ||
+                result.reason == SessionFailure.REPLACED ||
+                (result.reason == SessionFailure.REMOTE_FAILURE &&
+                    result.networkKind in setOf(
+                        FailureKind.UNAUTHORIZED, FailureKind.FORBIDDEN, FailureKind.NOT_FOUND,
+                    ))
+        else -> false
+    }
+}
+
 class CallAudioGrant internal constructor(
     val appId: String,
     val channel: String,
