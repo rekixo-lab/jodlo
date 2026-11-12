@@ -529,4 +529,9 @@
     <string name="call_history_failed">असफल</string>
     <string name="call_history_entry">%1$s · %2$s · %3$s</string>
     <string name="call_history_cancelled">रद्द हुई</string>
+    <string name="call_history_clear_action">कॉल हिस्ट्री साफ़ करें</string>
+    <string name="call_history_clear_scope">पुष्टि करने पर आपके JODLO अकाउंट की कॉल हिस्ट्री मिट जाएगी। दूसरे व्यक्ति की हिस्ट्री, बाहरी प्रदाता के रिकॉर्ड और बैकअप इससे नहीं मिटेंगे। यह कार्य वापस नहीं लिया जा सकता।</string>
+    <string name="call_history_clear_confirm">हाँ, मेरी कॉल हिस्ट्री साफ़ करें</string>
+    <string name="call_history_cleared">आपकी JODLO कॉल हिस्ट्री साफ़ हो गई है।</string>
+    <string name="call_history_clear_uncertain">कॉल हिस्ट्री साफ़ होने की पुष्टि नहीं मिली। नई हिस्ट्री जाँचें; अपने-आप दोबारा नहीं हटाया जाएगा।</string>
 </resources>
