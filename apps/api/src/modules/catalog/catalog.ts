@@ -147,9 +147,11 @@ export function parseCatalogBrowse(params: URLSearchParams): CatalogBrowseOption
     after=parsePublicCategoryCursor(afterRaw);
     if(!after)return null;
   }
+  // Preserve the exact previous options-object shape for global clients.
+  // Only city-mode adds the new field; null must not enter old snapshots.
   return {language,availableOnly:availability === "1",
     limit:limitRaw === null ? null : Number(limitRaw),after,
-    city:cityRaw===null?null:cityRaw as ServiceCity};
+    ...(cityRaw===null?{}:{city:cityRaw as ServiceCity})};
 }
 
 const PUBLIC_PAGE_FIELDS = PUBLIC_CATEGORY_FIELDS.trimEnd() + ", sort_order AS sortOrder ";
