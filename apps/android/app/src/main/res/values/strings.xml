@@ -116,6 +116,8 @@
     <string name="account_voice_enable">Allow incoming calls</string>
     <string name="account_voice_disable">Do not receive calls</string>
     <string name="account_voice_failed">Could not confirm your call preference. Check again.</string>
+    <string name="call_notifications_blocked_warning">Incoming call consent is on, but Android has blocked JODLO call notifications. You may miss incoming calls. Allow notifications in your phone settings. Delivery is not guaranteed when the app is closed.</string>
+    <string name="call_open_notification_settings">Open notification settings</string>
     <string name="account_logout_all">Sign out on all devices</string>
     <string name="account_logged_out_all">All active sessions were revoked by the server.</string>
     <string name="account_logged_out_uncertain">Signed out on this phone. Server-wide revocation could not be confirmed.</string>
