@@ -254,6 +254,26 @@ class RemoteCatalogRepository(private val sender: RequestSender) :
             }
     }
 
+    /** Search only approved trades having at least one currently published
+     * Service in the explicitly user-selected Worker-declared city. Never GPS.
+     * Separate from global search to preserve existing fake clients/contracts.
+     */
+    fun citySearchCursor(query: String, language: Language, city: NearbyPilotCity,
+                         limit: Int = 20, after: String? = null): ApiOutcome<CatalogSearchCursorPage> {
+        val call = JodloRoutes.searchCursor(query, language, availableOnly = true,
+            limit = limit, after = after, city = city)
+        val expected = Normalizer.normalize(query.trim(), Normalizer.Form.NFC)
+        return performOnce(call, sender::send, JodloReplyDecoder::searchCursor)
+            .validated { dto ->
+                dto.language == language && dto.query == expected &&
+                    dto.categories.size <= limit &&
+                    (dto.nextCursor == null ||
+                        (dto.categories.size == limit && dto.categories.isNotEmpty() &&
+                            dto.categories.last().id == dto.nextCursor.substringAfter(':') &&
+                            browseCursorAdvances(after, dto.nextCursor)))
+            }
+    }
+
     /** Reuse the exact two-field public Listing decoder. The only order
      * token is the last public Listing ID from the requested feed page.
      */
