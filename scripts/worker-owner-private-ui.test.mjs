@@ -169,6 +169,12 @@ test("FCM single notification refuses delayed older call and catches provider/pe
     assert.match(gate,/@Synchronized\s+fun accept/);
     assert.match(gate,/wakeup\.expiresAtMs <= previous\.expiresAtMs/);
     assert.match(gate,/previous\.serverVerified \|\| !verified/);
+    assert.match(gate,/previous\.expiresAtMs != wakeup\.expiresAtMs/);
+    assert.match(gate,/previous\.serverVerified && !verified/);
+    assert.match(test,/testVerifiedNoticeCannotBeReplacedByUnverifiedNewerDeadline\(\)/);
+    assert.match(test,/check\(!gate\.accept\(laterUnverified, verified = false/);
+    assert.match(test,/check\(gate\.accept\(laterUnverified, verified = true/);
+    assert.match(fcm,/try \{\s*\/\/ Include PendingIntent creation in the failure boundary:[\s\S]*?val open = PendingIntent\.getActivity/);
     assert.match(gate,/override fun toString\(\) = "CallNotificationFreshnessGate\(<redacted>\)"/);
     assert.match(test,/check\(!gate\.accept\(first, verified = true, nowMs = NOW \+ 6\)\)/);
     assert.match(runner,/testCallNotificationFreshnessGate\(\)/);
