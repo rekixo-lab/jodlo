@@ -49,6 +49,30 @@ private fun testVerifiedNoticeCannotBeReplacedByUnverifiedNewerDeadline() {
     check(gate.accept(afterExpiry, verified = false, nowMs = NOW + 70_000L))
 }
 
+private fun testFailedPostRestoresPreviousVerifiedNotification() {
+    val gate = CallNotificationFreshnessGate()
+    val first = IncomingCallWakeup.fromIntent(FIRST, NOW + 25_000L, NOW)!!
+    val second = IncomingCallWakeup.fromIntent(SECOND, NOW + 50_000L, NOW)!!
+    check(gate.accept(first, verified = false, nowMs = NOW))
+    gate.notificationPosted(first, verified = false)
+    check(gate.accept(first, verified = true, nowMs = NOW + 1))
+    gate.notificationPosted(first, verified = true)
+    check(gate.accept(second, verified = true, nowMs = NOW + 2))
+    // The Android OS rejected the newer notice. The existing verified
+    // PendingIntent must retain priority, not become a blank gate.
+    gate.notificationPostFailed(second, verified = true)
+    check(!gate.accept(first, verified = false, nowMs = NOW + 3))
+    check(!gate.accept(second, verified = false, nowMs = NOW + 4))
+    check(gate.accept(second, verified = true, nowMs = NOW + 5))
+    gate.notificationPosted(second, verified = true)
+    check(!gate.accept(first, verified = true, nowMs = NOW + 6))
+    // Initial post errors also leave no phantom notice behind.
+    gate.clear()
+    check(gate.accept(first, verified = false, nowMs = NOW + 7))
+    gate.notificationPostFailed(first, verified = false)
+    check(gate.accept(first, verified = false, nowMs = NOW + 8))
+}
+
 private fun testSameDeadlineOtherIdAndExpiry() {
     val gate = CallNotificationFreshnessGate()
     val first = IncomingCallWakeup.fromIntent(FIRST, NOW + 40_000, NOW)!!
@@ -65,5 +89,6 @@ private fun testSameDeadlineOtherIdAndExpiry() {
 internal fun testCallNotificationFreshnessGate() {
     testNotificationOrderingAndVerification()
     testVerifiedNoticeCannotBeReplacedByUnverifiedNewerDeadline()
+    testFailedPostRestoresPreviousVerifiedNotification()
     testSameDeadlineOtherIdAndExpiry()
 }
