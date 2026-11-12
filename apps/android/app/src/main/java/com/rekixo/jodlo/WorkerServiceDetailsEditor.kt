@@ -18,6 +18,8 @@ import com.rekixo.jodlo.core.network.InMemorySessionCoordinator
 import com.rekixo.jodlo.core.network.OwnServiceDetails
 import com.rekixo.jodlo.core.network.ServiceProfile
 import com.rekixo.jodlo.core.network.ServiceProfileStatus
+import com.rekixo.jodlo.core.network.ServiceProfileDraftIssue
+import com.rekixo.jodlo.core.network.ServiceProfileDraftValidator
 import com.rekixo.jodlo.core.network.SessionResult
 import com.rekixo.jodlo.ui.theme.JodloButton
 import com.rekixo.jodlo.ui.theme.JodloSearchField
@@ -45,16 +47,10 @@ internal fun WorkerServiceDetailsEditor(
     var clearReview by remember(session, listingId) { mutableStateOf(false) }
     var busy by remember(session, listingId) { mutableStateOf(false) }
     var failed by remember(session, listingId) { mutableStateOf(false) }
+    var edited by remember(session, listingId) { mutableStateOf(false) }
     val marker = session.accountPrivateReadMarker()
     val snapshot = loaded?.takeIf { it.first == marker }?.second
-    val trimmedName = name.trim()
-    val trimmedDescription = description.trim()
-    val years = experience.toIntOrNull()
-    val amount = rate.toIntOrNull()
-    val formValid = trimmedName.codePointCount(0, trimmedName.length) in 2..60 &&
-        trimmedDescription.codePointCount(0, trimmedDescription.length) in 10..400 &&
-        (experience.isEmpty() || years != null && years in 0..80) &&
-        (rate.isEmpty() || amount != null && amount in 1..10_000_000)
+    val draft = ServiceProfileDraftValidator.validate(name, description, experience, rate)
 
     fun request(write: Boolean, profile: ServiceProfile? = null) {
         val owner = session.accountPrivateReadMarker() ?: return
@@ -81,6 +77,7 @@ internal fun WorkerServiceDetailsEditor(
                     description = details.profile?.description.orEmpty()
                     experience = details.profile?.experienceYears?.toString().orEmpty()
                     rate = details.profile?.visitRateInr?.toString().orEmpty()
+                    edited = false
                     notice = if (profile == null) R.string.worker_details_removed
                         else R.string.worker_details_submitted
                 } else failed = true
@@ -111,22 +108,35 @@ internal fun WorkerServiceDetailsEditor(
             }
             Text(stringResource(R.string.worker_details_disclosure),
                 style = MaterialTheme.typography.bodySmall)
-            JodloSearchField(name, { name = it.take(60) },
+            JodloSearchField(name, { name = it.take(60); edited = true },
                 label = { Text(stringResource(R.string.worker_details_name)) },
                 modifier = Modifier.fillMaxWidth())
-            JodloSearchField(description, { description = it.take(400) },
+            JodloSearchField(description, { description = it.take(400); edited = true },
                 label = { Text(stringResource(R.string.worker_details_description)) },
                 modifier = Modifier.fillMaxWidth(), singleLine = false)
-            JodloSearchField(experience, { experience = it.filter(Char::isDigit).take(2) },
+            JodloSearchField(experience, { experience = it.filter(Char::isDigit).take(2); edited = true },
                 label = { Text(stringResource(R.string.worker_details_experience)) },
                 modifier = Modifier.fillMaxWidth())
-            JodloSearchField(rate, { rate = it.filter(Char::isDigit).take(8) },
+            JodloSearchField(rate, { rate = it.filter(Char::isDigit).take(8); edited = true },
                 label = { Text(stringResource(R.string.worker_details_rate)) },
                 modifier = Modifier.fillMaxWidth())
+            val draftIssue = draft.issue
+            if (edited && !clearReview && draftIssue != null) {
+                val issueLabel = when (draftIssue) {
+                    ServiceProfileDraftIssue.NAME_LENGTH -> R.string.worker_details_invalid_name
+                    ServiceProfileDraftIssue.DESCRIPTION_LENGTH -> R.string.worker_details_invalid_description
+                    ServiceProfileDraftIssue.RESTRICTED_TEXT -> R.string.worker_details_invalid_private_text
+                    ServiceProfileDraftIssue.EXPERIENCE -> R.string.worker_details_invalid_experience
+                    ServiceProfileDraftIssue.RATE -> R.string.worker_details_invalid_rate
+                }
+                Text(stringResource(issueLabel), color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall)
+            }
             val canEdit = enabled && !busy && snapshot.revision < Int.MAX_VALUE
             JodloButton(onClick = {
-                if (formValid) request(true, ServiceProfile(trimmedName, trimmedDescription, years, amount))
-            }, enabled = canEdit && formValid && !clearReview) {
+                ServiceProfileDraftValidator.validate(name, description, experience, rate)
+                    .profile?.let { request(true, it) }
+            }, enabled = canEdit && draft.profile != null && !clearReview) {
                 Text(stringResource(R.string.worker_details_submit))
             }
             if (snapshot.profile != null) {

@@ -234,3 +234,12 @@ tasks.register<JavaExec>("verifyHiddenServices") {
     classpath = sourceSets["test"].runtimeClasspath
     mainClass.set("com.rekixo.jodlo.core.network.HiddenPublicServicesTestKt")
 }
+
+// Executable JVM tests for native Worker service profile input safety.
+tasks.register<JavaExec>("verifyWorkerProfileDraft") {
+    group = "verification"
+    description = "Verify bilingual Worker profile draft matches server privacy rules"
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.rekixo.jodlo.core.network.ServiceProfileDraftValidatorTestKt")
+}

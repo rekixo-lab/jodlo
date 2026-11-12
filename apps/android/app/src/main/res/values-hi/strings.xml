@@ -450,6 +450,11 @@
     <string name="worker_details_remove_notice">इससे सेवा की प्रोफ़ाइल और रेट हटेंगे। सेवा की लिस्टिंग बनी रहेगी।</string>
     <string name="worker_details_remove_confirm">हटाने की पुष्टि करें</string>
     <string name="worker_details_remove">सेवा प्रोफ़ाइल हटाएँ</string>
+    <string name="worker_details_invalid_name">सार्वजनिक नाम 2 से 60 अक्षरों का होना चाहिए।</string>
+    <string name="worker_details_invalid_description">सेवा का विवरण 10 से 400 अक्षरों में लिखें।</string>
+    <string name="worker_details_invalid_private_text">नाम या विवरण से फ़ोन नंबर, लिंक, @ चिह्न, मार्कअप और छिपे नियंत्रण अक्षर हटाएँ।</string>
+    <string name="worker_details_invalid_experience">अनुभव 0 से 80 पूरे साल का हो या खाली छोड़ें।</string>
+    <string name="worker_details_invalid_rate">अनुमानित दर ₹1 से ₹1,00,00,000 तक पूर्ण संख्या हो या खाली छोड़ें।</string>
     <string name="worker_details_failed">सर्वर सेवा प्रोफ़ाइल की पुष्टि नहीं कर सका। फिर बदलने से पहले इसे दोबारा लोड करें।</string>
     <string name="worker_details_removed">सेवा प्रोफ़ाइल हटा दी गई।</string>
     <string name="worker_details_submitted">सेवा प्रोफ़ाइल समीक्षा के लिए भेज दी गई।</string>
