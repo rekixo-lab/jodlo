@@ -43,6 +43,7 @@ import com.rekixo.jodlo.core.network.CallAction
 import com.rekixo.jodlo.core.network.CallAcceptRecovery
 import com.rekixo.jodlo.core.network.CallEndProtocol
 import com.rekixo.jodlo.core.network.CallPhase
+import com.rekixo.jodlo.core.network.CallPollSafety
 import com.rekixo.jodlo.core.network.CallRole
 import com.rekixo.jodlo.core.network.InMemorySessionCoordinator
 import com.rekixo.jodlo.core.network.SessionResult
@@ -124,6 +125,16 @@ internal fun CallScreen(
     var acceptUncertain by remember(request) { mutableStateOf(false) }
     var ending by remember(request) { mutableStateOf<CallAction?>(null) }
     var reviewLocalClose by remember(request) { mutableStateOf(false) }
+    // The current bearer may be revoked, expired or replaced mid-call.
+    // Closing local audio is mandatory; remote termination is NOT confirmed.
+    var sessionLost by remember(request) { mutableStateOf(false) }
+
+    fun markLocalSessionUnavailable() {
+        audio.close()
+        sessionLost = true
+        reviewLocalClose = false
+        error = null
+    }
 
     fun setRingDeadline(deadline: Long) {
         if (ringUntil == null) {
@@ -132,7 +143,7 @@ internal fun CallScreen(
     }
 
     fun send(action: CallAction) {
-        if (busy) return
+        if (busy || sessionLost) return
         val id = invitationId ?: return
         val terminalRequest = action != CallAction.ACCEPT
         val owner = session.accountPrivateReadMarker()?.takeIf { it.sessionGeneration == epoch }
@@ -143,7 +154,7 @@ internal fun CallScreen(
             reviewLocalClose = false
         }
         if (owner == null) {
-            if (session.accountExportSessionMarker() != epoch) close()
+            if (session.accountExportSessionMarker() != epoch) markLocalSessionUnavailable()
             else {
                 if (!terminalRequest) acceptUncertain = true
                 error = if (terminalRequest) R.string.call_end_unconfirmed
@@ -156,9 +167,9 @@ internal fun CallScreen(
         scope.launch {
             try {
                 val result = withContext(Dispatchers.IO) { session.callSignal(owner, id, action) }
-                if (session.accountExportSessionMarker() != epoch) {
-                    audio.close()
-                    close()
+                if (session.accountExportSessionMarker() != epoch ||
+                    CallPollSafety.mustStopLocalAudio(result)) {
+                    markLocalSessionUnavailable()
                     return@launch
                 }
                 val confirmed = (result as? SessionResult.Success)?.value
@@ -185,7 +196,9 @@ internal fun CallScreen(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                if (session.accountExportSessionMarker() == epoch) {
+                if (session.accountExportSessionMarker() != epoch) {
+                    markLocalSessionUnavailable()
+                } else {
                     if (!terminalRequest) acceptUncertain = true
                     error = if (terminalRequest) R.string.call_end_unconfirmed
                         else R.string.call_accept_unconfirmed
@@ -197,18 +210,22 @@ internal fun CallScreen(
     }
 
     fun checkAcceptance() {
+        if (sessionLost || !acceptUncertain || busy) return
         val id = invitationId ?: return
         val owner = session.accountPrivateReadMarker()?.takeIf { it.sessionGeneration == epoch }
-        if (!acceptUncertain || busy || owner == null) return
+        if (owner == null) {
+            if (session.accountExportSessionMarker() != epoch) markLocalSessionUnavailable()
+            return
+        }
         busy = true
         scope.launch {
             try {
                 // No hidden second ACCEPT. The exact server-owned invitation
                 // is read without mutating it, under this same owner marker.
                 val result = withContext(Dispatchers.IO) { session.callSignal(owner, id) }
-                if (session.accountExportSessionMarker() != epoch) {
-                    audio.close()
-                    close()
+                if (session.accountExportSessionMarker() != epoch ||
+                    CallPollSafety.mustStopLocalAudio(result)) {
+                    markLocalSessionUnavailable()
                     return@launch
                 }
                 val signal = (result as? SessionResult.Success)?.value
@@ -237,7 +254,8 @@ internal fun CallScreen(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                error = R.string.call_accept_unconfirmed
+                if (session.accountExportSessionMarker() != epoch) markLocalSessionUnavailable()
+                else error = R.string.call_accept_unconfirmed
             } finally {
                 busy = false
             }
@@ -245,18 +263,23 @@ internal fun CallScreen(
     }
 
     fun checkEnding() {
+        if (sessionLost) return
         val requested = ending ?: return
         val id = invitationId ?: return
         val owner = session.accountPrivateReadMarker()?.takeIf { it.sessionGeneration == epoch }
-        if (busy || owner == null) return
+        if (busy) return
+        if (owner == null) {
+            if (session.accountExportSessionMarker() != epoch) markLocalSessionUnavailable()
+            return
+        }
         busy = true
         scope.launch {
             try {
                 // Read-only reconciliation, never an automatic second POST.
                 val result = withContext(Dispatchers.IO) { session.callSignal(owner, id) }
-                if (session.accountExportSessionMarker() != epoch) {
-                    audio.close()
-                    close()
+                if (session.accountExportSessionMarker() != epoch ||
+                    CallPollSafety.mustStopLocalAudio(result)) {
+                    markLocalSessionUnavailable()
                     return@launch
                 }
                 val signal = (result as? SessionResult.Success)?.value
@@ -273,7 +296,8 @@ internal fun CallScreen(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                error = R.string.call_end_unconfirmed
+                if (session.accountExportSessionMarker() != epoch) markLocalSessionUnavailable()
+                else error = R.string.call_end_unconfirmed
             } finally {
                 busy = false
             }
@@ -281,10 +305,12 @@ internal fun CallScreen(
     }
 
     fun dial() {
+        if (sessionLost) return
         val outgoing = request as? CallScreenRequest.Outgoing ?: return
         val owner = session.accountPrivateReadMarker()?.takeIf { it.sessionGeneration == epoch }
         if (owner == null) {
-            error = R.string.call_sign_in
+            if (session.accountExportSessionMarker() != epoch) markLocalSessionUnavailable()
+            else error = R.string.call_sign_in
             return
         }
         if (busy || invitationId != null) return
@@ -297,7 +323,7 @@ internal fun CallScreen(
                     session.startCall(owner, outgoing.listingId, outgoing.attemptKey)
                 }
                 if (session.accountExportSessionMarker() != epoch) {
-                    close()
+                    markLocalSessionUnavailable()
                     return@launch
                 }
                 if (result is SessionResult.Success) {
@@ -311,8 +337,11 @@ internal fun CallScreen(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                dialUncertain = true
-                error = R.string.call_dial_unconfirmed
+                if (session.accountExportSessionMarker() != epoch) markLocalSessionUnavailable()
+                else {
+                    dialUncertain = true
+                    error = R.string.call_dial_unconfirmed
+                }
             } finally {
                 busy = false
             }
@@ -328,6 +357,7 @@ internal fun CallScreen(
     }
 
     fun requestMicrophone() {
+        if (sessionLost) return
         if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
             useMicrophone()
         } else {
@@ -336,6 +366,11 @@ internal fun CallScreen(
     }
 
     fun endOrClose() {
+        if (sessionLost) {
+            audio.close()
+            close()
+            return
+        }
         if (busy) return
         if (reviewLocalClose) {
             reviewLocalClose = false
@@ -355,7 +390,8 @@ internal fun CallScreen(
 
     DisposableEffect(activity, audio) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP && phase == CallPhase.ACCEPTED && ending == null && !busy) {
+            if (event == Lifecycle.Event.ON_STOP && phase == CallPhase.ACCEPTED &&
+                ending == null && !busy && !sessionLost) {
                 audio.close()
                 send(CallAction.HANGUP)
             }
@@ -370,12 +406,15 @@ internal fun CallScreen(
         if (epoch == null) error = R.string.call_sign_in
         else if (!receiver) requestMicrophone()
     }
-    LaunchedEffect(invitationId) {
+    // An uncertain Answer/End stops automatic polling. Once an explicit
+    // server GET resolves the error, the poll must RESTART for this same call.
+    // error/ending are keys; the uncertain state never triggers silent retries.
+    LaunchedEffect(invitationId, error, ending, sessionLost) {
         val id = invitationId ?: return@LaunchedEffect
+        if (sessionLost) return@LaunchedEffect
         while (true) {
             if (session.accountExportSessionMarker() != epoch) {
-                audio.close()
-                error = R.string.call_sign_in
+                markLocalSessionUnavailable()
                 break
             }
             if (!busy && error == null && ending == null) {
@@ -389,7 +428,12 @@ internal fun CallScreen(
                     } catch (_: Exception) {
                         null // transient poll failure must not crash the call screen
                     }
-                    if (!busy && phase == observed && ending == null &&
+                    if (session.accountExportSessionMarker() != epoch ||
+                        CallPollSafety.mustStopLocalAudio(result)) {
+                        markLocalSessionUnavailable()
+                        break
+                    }
+                    if (!busy && phase == observed && ending == null && !sessionLost &&
                         session.accountExportSessionMarker() == epoch) {
                         if (result is SessionResult.Success && result.value.role == expectedRole) {
                             setRingDeadline(result.value.ringDeadlineMs)
@@ -404,17 +448,19 @@ internal fun CallScreen(
                 ringUntil?.let { SystemClock.elapsedRealtime() >= it } == true) {
                 phase = CallPhase.MISSED
             }
-            if (phase in terminalPhases || error != null || ending != null) break
+            if (sessionLost || phase in terminalPhases || error != null || ending != null) break
             delay(1_500)
         }
     }
-    LaunchedEffect(invitationId, phase, ending) {
-        if (phase == CallPhase.ACCEPTED && ending == null) {
-            if (activity.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+    LaunchedEffect(invitationId, phase, ending, sessionLost) {
+        if (phase == CallPhase.ACCEPTED && ending == null && !sessionLost) {
+            if (session.accountExportSessionMarker() != epoch) {
+                markLocalSessionUnavailable()
+            } else if (activity.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
                 invitationId?.let(audio::join)
             } else send(CallAction.HANGUP)
         }
-        if (phase in terminalPhases || ending != null) audio.close()
+        if (phase in terminalPhases || ending != null || sessionLost) audio.close()
     }
     LaunchedEffect(audioState) {
         if (audioState == AgoraAudioState.CONNECTED && connectedAt == null) connectedAt = SystemClock.elapsedRealtime()
@@ -427,6 +473,7 @@ internal fun CallScreen(
     }
 
     val status = when {
+        sessionLost -> R.string.call_close_warning
         reviewLocalClose -> R.string.call_close_warning
         ending != null && busy -> R.string.call_ending
         ending != null -> R.string.call_end_unconfirmed
@@ -470,6 +517,14 @@ internal fun CallScreen(
                 }
             }
             when {
+                sessionLost -> {
+                    // Do not claim to have hung up remotely after account
+                    // revocation or expiry. Audio is already stopped locally.
+                    JodloButton(onClick = { audio.close(); close() },
+                        modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(R.string.call_close_local))
+                    }
+                }
                 reviewLocalClose -> {
                     // Closing locally cannot prove the remote invitation ended.
                     JodloTextAction(onClick = { reviewLocalClose = false },

@@ -10,6 +10,14 @@ An HTTPS timeout or dropped reply after **Start call**, **Cancel**, **Decline**,
 - **Session safety:** current private markers are captured for each request, server results are fenced by the original account generation, and no Agora connection restarts while ending. The UI does not expose phone numbers, provider tokens, backend errors or another user's call.
 - All recovery actions and warnings have distinct Hindi and English strings.
 
+## 12 November 2026 — Restored polling after recovery and lost-session local-audio guard
+
+The native call dialog previously launched continuous authenticated status polling with only `invitationId` as its effect key. After an uncertain receiver **ACCEPT**, the error stopped that polling loop; a successful explicit **Check whether call was answered** cleared the error but did **not** restart the loop. The recovered call could therefore continue without reflecting a new server-side decline, cancellation or hangup. Polling now re-enters when an explicit recovery resolves the error, but never silently retries an uncertain mutation or auto-reconciles while an error/ending remains.
+
+A new pure Kotlin `CallPollSafety` policy and native call dialog distinguish **revoked, replaced or expired session** and definitive owner/call `401/403/404` denial from temporary service/offline failures. A lost session or definitive denial immediately stops **local microphone and Agora audio**, then shows the existing bilingual **remote teardown not confirmed** warning and a **Close locally** action. The dialog does not falsely claim that the other side stopped ringing or that a remote HANGUP succeeded. A temporary network timeout keeps the user's confirmed call state and polling; no hidden mutation retry or new provider grant is introduced. This also guards an ACCEPT/DECLINE/HANGUP reconciliation return and an async session replacement while the RTC join effect is scheduled.
+
+Coverage: executable Kotlin failures-vs-transient policy tests in the existing headless suite, native Compose source-wiring recovery test, opt-in Android FCM+Agora compile. Source-only change: not a substitute for production sender setup or a two-real-phone acceptance run.
+
 ## Regression evidence
 
 - Existing executable Kotlin reply decoder suite checks terminal vs accepted/ringing/pending server phases and role mismatches.
