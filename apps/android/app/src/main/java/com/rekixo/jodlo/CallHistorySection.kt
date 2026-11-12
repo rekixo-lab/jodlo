@@ -37,6 +37,7 @@ internal fun CallHistorySection(session: InMemorySessionCoordinator, accountBusy
         mutableStateOf<Pair<AccountPrivateReadMarker, CallHistoryPage>?>(null)
     }
     var failed by remember(session, marker) { mutableStateOf(false) }
+    var clearUncertain by remember(session, marker) { mutableStateOf(false) }
     var busy by remember(session, marker) { mutableStateOf(false) }
     var clearReview by remember(session, marker) { mutableStateOf(false) }
     var clearedMarker by remember(session) { mutableStateOf<AccountPrivateReadMarker?>(null) }
@@ -49,6 +50,7 @@ internal fun CallHistorySection(session: InMemorySessionCoordinator, accountBusy
         if (after == null) loaded = null // Explicit refresh hides stale rows immediately.
         clearReview = false
         clearedMarker = null
+        clearUncertain = false
         busy = true
         failed = false
         scope.launch {
@@ -80,6 +82,7 @@ internal fun CallHistorySection(session: InMemorySessionCoordinator, accountBusy
         clearedMarker = null
         busy = true
         failed = false
+        clearUncertain = false
         scope.launch {
             try {
                 val result = withContext(Dispatchers.IO) { session.clearCallHistory(owner) }
@@ -88,12 +91,12 @@ internal fun CallHistorySection(session: InMemorySessionCoordinator, accountBusy
                 if (result is SessionResult.Success && result.value && current == expected) {
                     clearedMarker = expected
                 } else if (current == owner || current == expected) {
-                    failed = true
+                    clearUncertain = true
                 }
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                if (session.accountPrivateReadMarker() == owner) failed = true
+                if (session.accountPrivateReadMarker() == owner) clearUncertain = true
             } finally {
                 busy = false
             }
@@ -105,7 +108,9 @@ internal fun CallHistorySection(session: InMemorySessionCoordinator, accountBusy
         JodloTextAction({ marker?.let { load(it, null) } }, enabled = !busy && !accountBusy && marker != null) {
             Text(stringResource(R.string.call_history_read))
         }
-        if (failed) Text(stringResource(R.string.call_history_clear_uncertain),
+        if (failed) Text(stringResource(R.string.call_unavailable),
+            color = MaterialTheme.colorScheme.error)
+        if (clearUncertain) Text(stringResource(R.string.call_history_clear_uncertain),
             color = MaterialTheme.colorScheme.error)
         if (clearedMarker == marker) Text(stringResource(R.string.call_history_cleared))
         page?.let { page ->
