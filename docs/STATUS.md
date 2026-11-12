@@ -1,3 +1,7 @@
+## 2026-11-12 — Notification tap: explicit recovery of transient incoming-call GET failures
+
+Native JODLO now retains only the bounded in-memory wakeup and offers a **bilingual user-tapped read-only retry** if initial notification-tap verification fails due to a temporary network/service error. Account changes, denial, wrong recipient and expired/mismatched deadlines still fail closed. On successful owner-bound verification, Incoming Call renders immediately from the confirmed ring instead of waiting on a redundant second initial GET; Answer and RTC remain server-gated. [Acceptance and limits](COLD_START_CALL_WAKEUP_REAUTH_2026-11-10.md). Source/CI only; real FCM, two phones and deployment remain unverified.
+
 ## 2026-11-12 — Deliberate call-history clear (source-only)
 
 Added explicit bilingual Account confirmation and account/session-scoped D1 call-history deletion behind existing default-OFF `CALL_HISTORY_ENABLED`. Strict empty-body and no-query guard, no cross-account deletion or automatic retry after an uncertain result. The other caller's history, non-history call counters, providers and backups remain untouched. Existing 90-day cleanup unchanged. See [history contract](ACCOUNT_CALL_HISTORY_CONTINUOUS_PAGES_2026-11-10.md). Source changes alone do not prove live rollout, production migration or phone acceptance.
