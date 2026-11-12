@@ -202,6 +202,18 @@ private fun JodloApp(activity: ComponentActivity, incomingCall: IncomingCallWake
             clearIncoming()
         }
     }
+    // A failed first GET is an uncertain, short-lived wakeup, not a durable
+    // inbox item. Hide its retry action when the ORIGINAL ring deadline passes.
+    LaunchedEffect(incomingCall, wakeupNotice) {
+        val pending = incomingCall ?: return@LaunchedEffect
+        if (wakeupNotice != R.string.call_status_unconfirmed) return@LaunchedEffect
+        val remaining = pending.remainingMs(System.currentTimeMillis())
+        if (remaining > 0L) delay(remaining)
+        if (incomingCall == pending && wakeupNotice == R.string.call_status_unconfirmed) {
+            wakeupNotice = R.string.call_unavailable
+            clearIncoming()
+        }
+    }
     if (session != null) callScreen?.let { CallScreen(activity, it, session) { callScreen = null } }
 
     LaunchedEffect(session) {
