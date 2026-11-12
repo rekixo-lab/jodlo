@@ -53,6 +53,30 @@ export async function registerOwnCallDevice(
   return results.length === 1 && results[0]?.registered === 1;
 }
 
+/**
+ * Read-only answer to "does THIS live authenticated session still have a
+ * server-bound incoming-call device?" Never returns registration tokens,
+ * Google/Worker identity, counts or the details of any other session.
+ * Consent OFF, account deletion, expired session and missing device all
+ * intentionally return the same Boolean false after router authentication.
+ */
+export async function hasOwnCallDevice(
+  db: D1Database, bearer: string, now = Math.floor(Date.now() / 1000),
+): Promise<boolean> {
+  if (!validSessionToken(bearer)) return false;
+  const hash = await sessionHash(bearer);
+  const {results} = await db.prepare(`
+    SELECT 1 AS registered
+    FROM auth_sessions AS s
+    JOIN accounts AS a ON a.id=s.account_id AND a.status='active'
+    JOIN worker_agora_call_preferences AS p ON p.account_id=a.id AND p.calls_enabled=1
+    JOIN private_call_devices AS d ON d.session_hash=s.token_hash
+    WHERE s.token_hash=? AND s.expires_at>?
+    LIMIT 1
+  `).bind(hash, now).all<{registered:number}>();
+  return results.length === 1 && results[0]?.registered === 1;
+}
+
 export async function removeOwnCallDevice(db: D1Database, bearer: string): Promise<void> {
   if (!validSessionToken(bearer)) return;
   await db.prepare("DELETE FROM private_call_devices WHERE session_hash=?")
