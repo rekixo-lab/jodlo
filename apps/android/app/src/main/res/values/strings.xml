@@ -589,4 +589,5 @@
     <string name="navigation_call_microphone">Allow microphone access</string>
     <string name="navigation_purchase_status">Purchase status</string>
     <string name="navigation_purchase_unavailable">Checking purchases is currently unavailable.</string>
+    <string name="navigation_manage_service">Manage service</string>
 </resources>

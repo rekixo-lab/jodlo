@@ -69,6 +69,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private enum class WorkerCatalogMode { BROWSE, SEARCH }
+private enum class WorkerServicePane(val title: Int) {
+    MANAGE(R.string.navigation_manage_service),
+    CUSTOMER(R.string.worker_customer_preview_heading),
+    DETAILS(R.string.worker_details_load),
+    CITY(R.string.worker_area_load),
+    PHOTO(R.string.worker_photo_manage),
+    APPEAL(R.string.case_worker_check),
+}
 private data class WorkerCategoryPage(val rows: List<PublicCategory>, val next: String?)
 
 /**
@@ -663,11 +671,13 @@ internal fun WorkerDashboard(
         }
     }
 
-    val listState = remember(creating, selectedListing, categoryEdit.source != null) { LazyListState() }
+    var servicePane by remember(selectedListing) { mutableStateOf(WorkerServicePane.MANAGE) }
+    val listState = remember(creating, selectedListing, servicePane, categoryEdit.source != null) { LazyListState() }
     fun backToServices() {
         if (busy) return
         when {
             categoryEdit.source != null -> categoryEdit = categoryEdit.reset()
+            servicePane != WorkerServicePane.MANAGE -> servicePane = WorkerServicePane.MANAGE
             guided.publishReviewOpen -> guided = guided.cancelPublicationReview()
             guided.selectedCategory != null && creating -> guided = guided.clearPublication()
             else -> {
@@ -1008,87 +1018,96 @@ internal fun WorkerDashboard(
                                 }
                             }
                         }
-                        if (selectedListing != null && displayedOwnListings.any {
+                        if (selectedListing != null && categoryEdit.source == null && displayedOwnListings.any {
                             it.id == selectedListing
                         }) item {
                             JodloCard(modifier = Modifier.fillMaxWidth()) {
                                 Column(Modifier.padding(JodloSizes.CardPadding),
                                     verticalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
-                                    Text(stringResource(R.string.worker_customer_preview_heading),
-                                        style = MaterialTheme.typography.titleMedium)
-                                    Text(stringResource(R.string.worker_customer_preview_explainer))
-                                    Row(horizontalArrangement=Arrangement.spacedBy(JodloSizes.SmallGap)) {
-                                        JodloChip(
-                                            selected=categoryLanguage==Language.HI,
-                                            onClick={
-                                                if(categoryLanguage!=Language.HI) {
-                                                    categoryLanguage=Language.HI
-                                                    clearCategoryResults()
+                                    Text(stringResource(servicePane.title),
+                                        style = MaterialTheme.typography.headlineMedium)
+                                    if (servicePane == WorkerServicePane.CUSTOMER) {
+                                        Text(stringResource(R.string.worker_customer_preview_explainer))
+                                        Row(horizontalArrangement=Arrangement.spacedBy(JodloSizes.SmallGap)) {
+                                            JodloChip(
+                                                selected=categoryLanguage==Language.HI,
+                                                onClick={
+                                                    if(categoryLanguage!=Language.HI) {
+                                                        categoryLanguage=Language.HI
+                                                        clearCategoryResults()
+                                                    }
+                                                },
+                                                enabled=!busy,
+                                                label={Text(stringResource(R.string.language_hindi))},
+                                            )
+                                            JodloChip(
+                                                selected=categoryLanguage==Language.EN,
+                                                onClick={
+                                                    if(categoryLanguage!=Language.EN) {
+                                                        categoryLanguage=Language.EN
+                                                        clearCategoryResults()
+                                                    }
+                                                },
+                                                enabled=!busy,
+                                                label={Text(stringResource(R.string.language_english))},
+                                            )
+                                        }
+                                        JodloTextAction(
+                                            onClick = { refreshSelectedService() },
+                                            enabled = !busy,
+                                        ) {
+                                            Text(stringResource(R.string.worker_exact_read_action))
+                                        }
+                                        if (exactObserved?.id == selectedListing) {
+                                            Text(stringResource(R.string.worker_exact_notice),
+                                                style = MaterialTheme.typography.bodySmall)
+                                        }
+                                        JodloTextAction(
+                                            onClick = { checkPublicPreview() },
+                                            enabled = !busy,
+                                        ) {
+                                            Text(stringResource(R.string.worker_customer_preview_check))
+                                        }
+                                        when(publicPreview.phase) {
+                                            WorkerCustomerServicePreviewPhase.PUBLIC_WHEN_CHECKED -> {
+                                                // Rendering the exact validated public card prevents
+                                                // private draft/owner fields from appearing here.
+                                                publicPreview.checkedCard?.let { card ->
+                                                    SafeServiceCard(card)
+                                                    SafePublicProfileFacts(card.profile, card.city)
+                                                    // Rechecking the same Service resets old bitmap
+                                                    // state: photo revision may have been revoked.
+                                                    key(previewRevision) {
+                                                        ApprovedServicePhoto(catalog, card, previewRevision)
+                                                    }
+                                                    Text(stringResource(
+                                                        R.string.worker_customer_preview_approved_label))
+                                                    Text(stringResource(R.string.worker_customer_preview_visible))
                                                 }
-                                            },
-                                            enabled=!busy,
-                                            label={Text(stringResource(R.string.language_hindi))},
-                                        )
-                                        JodloChip(
-                                            selected=categoryLanguage==Language.EN,
-                                            onClick={
-                                                if(categoryLanguage!=Language.EN) {
-                                                    categoryLanguage=Language.EN
-                                                    clearCategoryResults()
-                                                }
-                                            },
-                                            enabled=!busy,
-                                            label={Text(stringResource(R.string.language_english))},
-                                        )
-                                    }
-                                    JodloTextAction(
-                                        onClick = { refreshSelectedService() },
-                                        enabled = !busy,
-                                    ) {
-                                        Text(stringResource(R.string.worker_exact_read_action))
-                                    }
-                                    if (exactObserved?.id == selectedListing) {
-                                        Text(stringResource(R.string.worker_exact_notice),
-                                            style = MaterialTheme.typography.bodySmall)
-                                    }
-                                    JodloTextAction(
-                                        onClick = { checkPublicPreview() },
-                                        enabled = !busy,
-                                    ) {
-                                        Text(stringResource(R.string.worker_customer_preview_check))
-                                    }
-                                    when(publicPreview.phase) {
-                                        WorkerCustomerServicePreviewPhase.PUBLIC_WHEN_CHECKED -> {
-                                            // Rendering the exact validated public card prevents
-                                            // private draft/owner fields from appearing here.
-                                            publicPreview.checkedCard?.let { card ->
-                                                SafeServiceCard(card)
-                                                SafePublicProfileFacts(card.profile, card.city)
-                                                // Rechecking the same Service resets old bitmap
-                                                // state: photo revision may have been revoked.
-                                                key(previewRevision) {
-                                                    ApprovedServicePhoto(catalog, card, previewRevision)
-                                                }
-                                                Text(stringResource(
-                                                    R.string.worker_customer_preview_approved_label))
-                                                Text(stringResource(R.string.worker_customer_preview_visible))
+                                            }
+                                            WorkerCustomerServicePreviewPhase.NOT_PUBLIC_WHEN_CHECKED ->
+                                                Text(stringResource(R.string.worker_customer_preview_not_public))
+                                            WorkerCustomerServicePreviewPhase.CANNOT_CONFIRM ->
+                                                Text(stringResource(R.string.worker_customer_preview_failed),
+                                                    color=MaterialTheme.colorScheme.error)
+                                            WorkerCustomerServicePreviewPhase.UNCHECKED -> {
+                                                /* Owner status never certifies Customer visibility. */
                                             }
                                         }
-                                        WorkerCustomerServicePreviewPhase.NOT_PUBLIC_WHEN_CHECKED ->
-                                            Text(stringResource(R.string.worker_customer_preview_not_public))
-                                        WorkerCustomerServicePreviewPhase.CANNOT_CONFIRM ->
-                                            Text(stringResource(R.string.worker_customer_preview_failed),
-                                                color=MaterialTheme.colorScheme.error)
-                                        WorkerCustomerServicePreviewPhase.UNCHECKED -> {
-                                            /* Owner status never certifies Customer visibility. */
+                                    }
+                                    if (servicePane == WorkerServicePane.MANAGE) {
+                                        for (destination in WorkerServicePane.entries.drop(1)) {
+                                            JodloTextAction(onClick = { servicePane = destination },
+                                                modifier = Modifier.fillMaxWidth(), enabled = !busy) {
+                                                Text(stringResource(destination.title))
+                                            }
                                         }
                                     }
-                                    JodloTextAction(
-                                        onClick = {
-                                            beginVersionedReview()
-                                        },
-                                        enabled = canWrite,
-                                    ) { Text(stringResource(R.string.worker_edit_category)) }
+                                    if (servicePane == WorkerServicePane.MANAGE) {
+                                        JodloTextAction(onClick = { beginVersionedReview() }, enabled = canWrite) {
+                                            Text(stringResource(R.string.worker_edit_category))
+                                        }
+                                    }
                                     // 'visible=false' means only that the
                                     // current owner page cannot certify
                                     // public eligibility. It may be paused,
@@ -1100,24 +1119,25 @@ internal fun WorkerDashboard(
                                         it.id == selectedListing
                                     }
                                     if (currentOwnRow != null) {
-                                        WorkerServiceAreaEditor(session, currentOwnRow.id, enabled = canWrite) { confirmed ->
+                                        if (servicePane == WorkerServicePane.CITY) WorkerServiceAreaEditor(session, currentOwnRow.id, enabled = canWrite) { confirmed ->
                                             loadOwnPage()
                                             message = if (confirmed) R.string.worker_area_saved else R.string.worker_area_failed
                                         }
-                                        WorkerServiceDetailsEditor(session, currentOwnRow.id, enabled = canWrite) { notice ->
+                                        if (servicePane == WorkerServicePane.DETAILS) WorkerServiceDetailsEditor(session, currentOwnRow.id, enabled = canWrite) { notice ->
                                             loadOwnPage()
                                             message = notice
                                         }
-                                        WorkerServicePhotoEditor(activity, session, currentOwnRow.id, enabled = canWrite) { notice ->
+                                        if (servicePane == WorkerServicePane.PHOTO) WorkerServicePhotoEditor(activity, session, currentOwnRow.id, enabled = canWrite) { notice ->
                                             loadOwnPage()
                                             message = notice
                                         }
-                                        WorkerServiceAppealControls(session, currentOwnRow.id, enabled = canWrite) { confirmed ->
+                                        if (servicePane == WorkerServicePane.APPEAL) WorkerServiceAppealControls(session, currentOwnRow.id, enabled = canWrite) { confirmed ->
                                             loadOwnPage()
                                             message = if (confirmed) R.string.case_worker_appealed else R.string.case_request_failed
                                         }
                                     }
-                                    if (currentOwnRow?.publicationStatus == OwnPublicationStatus.PUBLISHED) {
+                                    if (servicePane == WorkerServicePane.MANAGE &&
+                                        currentOwnRow?.publicationStatus == OwnPublicationStatus.PUBLISHED) {
                                         if (guided.pendingUnpublishId != selectedListing) {
                                             JodloTextAction(
                                                 onClick = {
@@ -1147,7 +1167,8 @@ internal fun WorkerDashboard(
                                                 }
                                             }
                                         }
-                                    } else if (currentOwnRow?.publicationStatus == OwnPublicationStatus.UNPUBLISHED) {
+                                    } else if (servicePane == WorkerServicePane.MANAGE &&
+                                        currentOwnRow?.publicationStatus == OwnPublicationStatus.UNPUBLISHED) {
                                         if (guided.pendingResume?.id != currentOwnRow.id) {
                                             JodloTextAction(onClick = {
                                                 beginVersionedReview(publication = true)

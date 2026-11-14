@@ -2,7 +2,7 @@
 
 The founder approved the 72-screen design on 12 November 2026. This register maps every screen from that review to the real Android and web entry points. The preview used example services and example events. The application uses live eligibility and owner checks, including when these return an empty or unavailable state.
 
-**Updated** means this PR changes that entry point or its layout. **Shared styling** means the existing flow uses the updated components or navigation with its current layout. **Part of management** means the screen remains inside the existing owner Listing flow. **Limited**, **Gated UI** and **Open** record an implementation or release gap. The register is a source audit. Pixel-level comparison and an integrated physical-device run remain outstanding.
+**Updated** means this PR changes that entry point or its layout. **Shared styling** means the existing flow uses the updated components or navigation with its current layout. **Owner Listing view** means a dedicated view still requires an existing owner Listing. **Limited**, **Gated UI** and **Open** record an implementation or release gap. The register is a source audit. Pixel-level comparison and an integrated physical-device run remain outstanding.
 
 ## Customer
 
@@ -36,16 +36,16 @@ The founder approved the 72-screen design on 12 November 2026. This register map
 | My services | Updated | [WorkerDashboard](../apps/android/app/src/main/java/com/rekixo/jodlo/WorkerDashboard.kt). Create entry, owner list and call settings. |
 | Get started as a worker | Shared styling | [WorkerDashboard](../apps/android/app/src/main/java/com/rekixo/jodlo/WorkerDashboard.kt). Optional owner draft after verified sign-in. |
 | Work category | Updated | [WorkerDashboard](../apps/android/app/src/main/java/com/rekixo/jodlo/WorkerDashboard.kt). Dedicated creation view with real category selection. |
-| Service information | Part of management | [WorkerServiceDetailsEditor](../apps/android/app/src/main/java/com/rekixo/jodlo/WorkerServiceDetailsEditor.kt). The API needs an existing Listing before accepting the profile for review. |
-| Service city and photo | Part of management | [WorkerServiceAreaEditor](../apps/android/app/src/main/java/com/rekixo/jodlo/WorkerServiceAreaEditor.kt). City consent and media use separate owner-scoped operations after Listing creation. |
-| Work photo | Part of management | [WorkerServicePhotoEditor](../apps/android/app/src/main/java/com/rekixo/jodlo/WorkerServicePhotoEditor.kt). Existing picker, upload, review and removal. |
+| Service information | Owner Listing view | [WorkerServiceDetailsEditor](../apps/android/app/src/main/java/com/rekixo/jodlo/WorkerServiceDetailsEditor.kt). The API needs an existing Listing before accepting the profile for review. |
+| Service city and photo | Owner Listing view | [WorkerServiceAreaEditor](../apps/android/app/src/main/java/com/rekixo/jodlo/WorkerServiceAreaEditor.kt). City consent and media use separate owner-scoped operations after Listing creation. |
+| Work photo | Owner Listing view | [WorkerServicePhotoEditor](../apps/android/app/src/main/java/com/rekixo/jodlo/WorkerServicePhotoEditor.kt). Existing picker, upload, review and removal. |
 | Review before publishing | Updated | [WorkerDashboard](../apps/android/app/src/main/java/com/rekixo/jodlo/WorkerDashboard.kt). Category publication review. A unified four-stage pre-publication draft remains open. |
-| Review status | Part of management | [WorkerServiceDetailsEditor](../apps/android/app/src/main/java/com/rekixo/jodlo/WorkerServiceDetailsEditor.kt). Profile and photo review statuses remain attached to their individual editors. |
-| Changes requested | Part of management | [WorkerServiceDetailsEditor](../apps/android/app/src/main/java/com/rekixo/jodlo/WorkerServiceDetailsEditor.kt). Rejected profiles can be edited and resubmitted. |
+| Review status | Owner Listing view | [WorkerServiceDetailsEditor](../apps/android/app/src/main/java/com/rekixo/jodlo/WorkerServiceDetailsEditor.kt). Profile and photo review statuses remain attached to their individual editors. |
+| Changes requested | Owner Listing view | [WorkerServiceDetailsEditor](../apps/android/app/src/main/java/com/rekixo/jodlo/WorkerServiceDetailsEditor.kt). Rejected profiles can be edited and resubmitted. |
 | Manage service | Updated | [WorkerDashboard](../apps/android/app/src/main/java/com/rekixo/jodlo/WorkerDashboard.kt). Own Listing opens separately from the list. |
-| Customer view | Shared styling | [WorkerDashboard](../apps/android/app/src/main/java/com/rekixo/jodlo/WorkerDashboard.kt). Current customer projection checked independently. |
+| Customer view | Shared styling | [WorkerDashboard](../apps/android/app/src/main/java/com/rekixo/jodlo/WorkerDashboard.kt). Separate view with the current customer projection checked independently. |
 | Change service visibility | Shared styling | [WorkerDashboard](../apps/android/app/src/main/java/com/rekixo/jodlo/WorkerDashboard.kt). Existing revision-checked pause and resume. |
-| Appeal a decision | Shared styling | [ServiceCaseControls](../apps/android/app/src/main/java/com/rekixo/jodlo/ServiceCaseControls.kt). Existing owner appeal control uses moderation release gates. |
+| Appeal a decision | Shared styling | [ServiceCaseControls](../apps/android/app/src/main/java/com/rekixo/jodlo/ServiceCaseControls.kt). Separate owner appeal view uses the existing moderation release gates. |
 | Recheck service status | Shared styling | [WorkerDashboard](../apps/android/app/src/main/java/com/rekixo/jodlo/WorkerDashboard.kt). Unconfirmed writes use existing review and explicit recheck. |
 
 ## Calls and notifications

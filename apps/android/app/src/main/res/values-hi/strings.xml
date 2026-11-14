@@ -589,4 +589,5 @@
     <string name="navigation_call_microphone">माइक्रोफ़ोन की अनुमति दें</string>
     <string name="navigation_purchase_status">खरीद की स्थिति</string>
     <string name="navigation_purchase_unavailable">अभी खरीद की जाँच उपलब्ध नहीं है।</string>
+    <string name="navigation_manage_service">सेवा प्रबंधन</string>
 </resources>
