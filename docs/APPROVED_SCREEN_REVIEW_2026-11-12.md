@@ -23,7 +23,7 @@ The founder approved the 72-screen design on 12 November 2026. This register map
 | Service details | Updated | [SafePublicProfileFacts](../apps/android/app/src/main/java/com/rekixo/jodlo/SafePublicProfileFacts.kt). Reviewed detail hierarchy and common safety section. |
 | Recheck service | Shared styling | [PublicServicesFeed](../apps/android/app/src/main/java/com/rekixo/jodlo/PublicServicesFeed.kt). Fresh detail recheck clears prior results while loading. |
 | Service unavailable | Shared styling | [PublicServicesFeed](../apps/android/app/src/main/java/com/rekixo/jodlo/PublicServicesFeed.kt). An unavailable record drops the old public details and contact actions. |
-| Service photo | Shared styling | [ApprovedServicePhoto](../apps/android/app/src/main/java/com/rekixo/jodlo/ApprovedServicePhoto.kt). Current approved photo appears within details after an explicit read. |
+| Service photo | Updated | [ApprovedServicePhoto](../apps/android/app/src/main/java/com/rekixo/jodlo/ApprovedServicePhoto.kt). A dedicated view reads the current approved photo on request. |
 | Saved services | Updated | [SavedServicesDashboard](../apps/android/app/src/main/java/com/rekixo/jodlo/SavedServicesDashboard.kt). Device-only list with Hidden and file actions. |
 | Hidden services | Shared styling | [HiddenServicesDashboard](../apps/android/app/src/main/java/com/rekixo/jodlo/HiddenServicesDashboard.kt). Device-only restore and clear. |
 | Saved services file | Shared styling | [LocalDataTransferDashboard](../apps/android/app/src/main/java/com/rekixo/jodlo/LocalDataTransferDashboard.kt). System document picker for export and import. |
@@ -79,7 +79,7 @@ The founder approved the 72-screen design on 12 November 2026. This register map
 | Sign out on all devices | Updated | [AccountDashboard](../apps/android/app/src/main/java/com/rekixo/jodlo/AccountDashboard.kt). All-device confirmation tied to the current owner marker. |
 | Export account data | Updated | [AccountDashboard](../apps/android/app/src/main/java/com/rekixo/jodlo/AccountDashboard.kt). Separate export view with system document destination. |
 | Delete account | Updated | [AccountDashboard](../apps/android/app/src/main/java/com/rekixo/jodlo/AccountDashboard.kt). Separate deletion view, existing Google reauthentication and server release guard. |
-| Service safety | Updated | [SafePublicProfileFacts](../apps/android/app/src/main/java/com/rekixo/jodlo/SafePublicProfileFacts.kt). Common section on freshly checked service detail. |
+| Service safety | Updated | [SafePublicProfileFacts](../apps/android/app/src/main/java/com/rekixo/jodlo/SafePublicProfileFacts.kt). Dedicated safety view on freshly checked service details. |
 | Block contact | Shared styling | [ContactBlockControls](../apps/android/app/src/main/java/com/rekixo/jodlo/ContactBlockControls.kt). Existing owner-checked contact action. |
 | Blocked contacts | Updated | [AccountDashboard](../apps/android/app/src/main/java/com/rekixo/jodlo/AccountDashboard.kt). Blocked contacts gets a separate Account destination. |
 | Report service | Shared styling | [ServiceCaseControls](../apps/android/app/src/main/java/com/rekixo/jodlo/ServiceCaseControls.kt). Existing scoped report control and eligibility. |

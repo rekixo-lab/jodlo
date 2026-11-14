@@ -566,7 +566,6 @@
     <string name="navigation_all_cities">सभी शहर</string>
     <string name="navigation_categories">काम की श्रेणियाँ</string>
     <string name="navigation_browse_guest">बिना खाते के देखें</string>
-    <string name="navigation_notification_settings">सूचना सेटिंग</string>
     <string name="navigation_notifications">सूचनाएँ</string>
     <string name="navigation_call_account">आने वाली कॉल की सेटिंग देखें</string>
     <string name="navigation_alert_hint">आने वाली कॉल की सूचनाएँ खाते और फ़ोन की सेटिंग से प्रबंधित करें।</string>
@@ -590,4 +589,5 @@
     <string name="navigation_purchase_status">खरीद की स्थिति</string>
     <string name="navigation_purchase_unavailable">अभी खरीद की जाँच उपलब्ध नहीं है।</string>
     <string name="navigation_manage_service">सेवा प्रबंधन</string>
+    <string name="navigation_service_photo">सेवा की तस्वीर</string>
 </resources>

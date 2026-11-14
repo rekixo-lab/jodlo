@@ -566,7 +566,6 @@
     <string name="navigation_all_cities">All cities</string>
     <string name="navigation_categories">Work categories</string>
     <string name="navigation_browse_guest">Browse as a guest</string>
-    <string name="navigation_notification_settings">Notification settings</string>
     <string name="navigation_notifications">Notifications</string>
     <string name="navigation_call_account">Check incoming call settings</string>
     <string name="navigation_alert_hint">Manage incoming call alerts in Account and Android settings.</string>
@@ -590,4 +589,5 @@
     <string name="navigation_purchase_status">Purchase status</string>
     <string name="navigation_purchase_unavailable">Checking purchases is currently unavailable.</string>
     <string name="navigation_manage_service">Manage service</string>
+    <string name="navigation_service_photo">Service photo</string>
 </resources>

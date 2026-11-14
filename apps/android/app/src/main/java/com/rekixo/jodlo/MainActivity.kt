@@ -1184,7 +1184,7 @@ private fun GuestDiscovery(
                         }
                         if (liveApiConfigured) item { ServiceCallButton(onCall, card.listing.id) }
                         item {
-                            ServiceSafetyPanel {
+                            ServiceSafetyPanel(card.listing.id, requestRevision) {
                                 ContactBlockControls(contactSession, card.listing.id)
                                 ReportServiceControls(contactSession, card.listing.id)
                             }

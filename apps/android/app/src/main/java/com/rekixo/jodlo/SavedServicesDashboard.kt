@@ -435,7 +435,7 @@ internal fun SavedServicesDashboard(
                 item { ApprovedServicePhoto(repository, currentCard, revision) }
                 item { ServiceCallButton(onCall, currentCard.listing.id) }
                 item {
-                    ServiceSafetyPanel {
+                    ServiceSafetyPanel(currentCard.listing.id, revision) {
                         ContactBlockControls(contactSession, currentCard.listing.id)
                         ReportServiceControls(contactSession, currentCard.listing.id)
                     }
