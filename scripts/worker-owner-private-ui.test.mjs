@@ -19,7 +19,7 @@ test("Private Worker rows never render or authorize actions outside their owner/
     assert.match(ui,/Lifecycle\.Event\.ON_RESUME/);
     assert.match(ui,/if \(!accountEpochCurrent\)/);
     assert.match(ui,/displayedOwnListings.*ownListQuery/);
-    assert.match(ui,/if \(selectedListing != null && displayedOwnListings\.any/);
+    assert.match(ui,/if \(selectedListing != null && categoryEdit\.source == null && displayedOwnListings\.any\s*\{\s*it\.id == selectedListing/);
     assert.doesNotMatch(fence,/bearer|GoogleAuth|HttpMethod|SharedPreferences|http:\/\//);
 });
 
