@@ -1,6 +1,7 @@
 package com.rekixo.jodlo
 
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -67,6 +69,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private enum class WorkerCatalogMode { BROWSE, SEARCH }
+private enum class WorkerServicePane(val title: Int) {
+    MANAGE(R.string.navigation_manage_service),
+    CUSTOMER(R.string.worker_customer_preview_heading),
+    DETAILS(R.string.worker_details_load),
+    CITY(R.string.worker_area_load),
+    PHOTO(R.string.worker_photo_manage),
+    APPEAL(R.string.case_worker_check),
+}
 private data class WorkerCategoryPage(val rows: List<PublicCategory>, val next: String?)
 
 /**
@@ -84,6 +94,7 @@ internal fun WorkerDashboard(
     session: InMemorySessionCoordinator?,
     writes: HeadlessWorkerWriteScope?,
     catalog: RemoteCatalogRepository?,
+    openCallSettings: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     var login by remember(session) { mutableStateOf(session?.snapshot() ?: LoginState.SignedOut) }
@@ -109,7 +120,8 @@ internal fun WorkerDashboard(
     var categoryRows by remember(session) { mutableStateOf<List<PublicCategory>>(emptyList()) }
     var categoryCursor by remember(session) { mutableStateOf<String?>(null) }
     var categoryPageGeneration by remember(session) { mutableIntStateOf(0) }
-    var categoryLanguage by remember(session) { mutableStateOf(Language.HI) }
+    val appLanguage = LocalJodloLanguage.current
+    var categoryLanguage by remember(session) { mutableStateOf(appLanguage) }
     var categoryInput by remember(session) { mutableStateOf("") }
     var categoryMode by remember(session) { mutableStateOf(WorkerCatalogMode.BROWSE) }
     var submittedCategoryQuery by remember(session) { mutableStateOf<String?>(null) }
@@ -118,6 +130,7 @@ internal fun WorkerDashboard(
     var invalidCategoryQuery by remember(session) { mutableStateOf(false) }
     var guided by remember(session) { mutableStateOf(GuidedWorkerServiceActions()) }
     var categoryEdit by remember(session) { mutableStateOf(GuidedWorkerCategoryEdit()) }
+    var creating by remember(session) { mutableStateOf(false) }
     var selectedListing by remember(session) { mutableStateOf<String?>(null) }
     // One explicit current-owner GET for the selected existing Service.
     // Not a worker public profile, revision token, or proof of a prior write.
@@ -425,6 +438,7 @@ internal fun WorkerDashboard(
             clearApprovedNames()
             clearExactObservation()
             selectedListing = null
+            creating = false
             guided = guided.reset()
             categoryEdit = categoryEdit.reset()
             previewRevision++
@@ -657,12 +671,35 @@ internal fun WorkerDashboard(
         }
     }
 
+    var servicePane by remember(selectedListing) { mutableStateOf(WorkerServicePane.MANAGE) }
+    val listState = remember(creating, selectedListing, servicePane, categoryEdit.source != null) { LazyListState() }
+    fun backToServices() {
+        if (busy) return
+        when {
+            categoryEdit.source != null -> categoryEdit = categoryEdit.reset()
+            servicePane != WorkerServicePane.MANAGE -> servicePane = WorkerServicePane.MANAGE
+            guided.publishReviewOpen -> guided = guided.cancelPublicationReview()
+            guided.selectedCategory != null && creating -> guided = guided.clearPublication()
+            else -> {
+                creating = false
+                selectedListing = null
+                guided = guided.reset()
+                previewRevision++
+                publicPreview = WorkerCustomerServicePreview.unchecked()
+            }
+        }
+    }
+    BackHandler(enabled = creating || selectedListing != null) { backToServices() }
+
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize().padding(JodloSizes.ScreenPadding),
         verticalArrangement = Arrangement.spacedBy(JodloSizes.Gap),
     ) {
-        item {
-            Text(stringResource(R.string.worker_dashboard), style = MaterialTheme.typography.headlineMedium)
+        if (creating || selectedListing != null) item {
+            JodloTextAction(onClick = ::backToServices, enabled = !busy) {
+                Text(stringResource(R.string.guided_post_back))
+            }
         }
         if (session == null || writes == null || catalog == null) {
             item { Text(stringResource(R.string.no_api_origin), color = MaterialTheme.colorScheme.error) }
@@ -705,7 +742,7 @@ internal fun WorkerDashboard(
                 }
             }
         } else {
-            item {
+            if (!creating && selectedListing == null) item {
                 Row(horizontalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
                     JodloTextAction(
                         onClick = {
@@ -842,204 +879,235 @@ internal fun WorkerDashboard(
                             }
                         }
                     } else {
-                        // A status filter is a snapshot of loaded PRIVATE owner
-                        // rows only. It must not hide the selected management
-                        // controls nor imply current Customer public visibility.
-                        val localOwn = OwnServiceLocalFilter.apply(
-                            displayedOwnListings, ownListQuery, ownListGroup,
-                        ) { categoryId -> nameForOwnCategory(categoryId) }
-                        item {
-                            Text(stringResource(R.string.worker_my_listings), style = MaterialTheme.typography.titleMedium)
-                            Text(stringResource(R.string.worker_management_private_notice),
-                                style = MaterialTheme.typography.bodySmall)
-                            JodloTextAction(onClick = { loadOwnPage() }, enabled = !busy) {
-                                Text(stringResource(R.string.worker_refresh_listings))
+                        if (!creating && selectedListing == null) item {
+                            JodloCard(Modifier.fillMaxWidth(), selected = true) {
+                                Column(Modifier.padding(JodloSizes.CardPadding),
+                                    verticalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
+                                    Text(stringResource(R.string.navigation_worker_add),
+                                        style = MaterialTheme.typography.headlineMedium)
+                                    JodloButton(onClick = {
+                                        clearCategoryResults()
+                                        creating = true
+                                        loadCategories()
+                                    }, modifier = Modifier.fillMaxWidth(), enabled = canWrite && !busy) {
+                                        Text(stringResource(R.string.navigation_create_service))
+                                    }
+                                }
                             }
-                            if (displayedOwnListings.isNotEmpty()) {
-                                JodloSearchField(
-                                    value=ownListQuery,
-                                    onValueChange={
-                                        if (it.codePointCount(0,it.length)<=64) ownListQuery=it
-                                    },
-                                    label={Text(stringResource(R.string.worker_own_find))},
-                                    modifier=Modifier.fillMaxWidth(),
-                                )
-                                // Keep full-width touch targets: Hindi status labels
-                                // must not be clipped by a narrow two-chip row.
-                                Column(verticalArrangement=Arrangement.spacedBy(JodloSizes.SmallGap)) {
-                                    JodloChip(selected=ownListGroup==OwnServiceLocalGroup.ALL,
-                                        onClick={ownListGroup=OwnServiceLocalGroup.ALL},
-                                        modifier=Modifier.fillMaxWidth(),
-                                        label={Text(stringResource(R.string.worker_own_all))})
-                                    JodloChip(
-                                        selected=ownListGroup==OwnServiceLocalGroup.OWNER_READ_VISIBLE,
-                                        onClick={ownListGroup=OwnServiceLocalGroup.OWNER_READ_VISIBLE},
-                                        modifier=Modifier.fillMaxWidth(),
-                                        label={Text(stringResource(R.string.worker_own_owner_visible))})
-                                    JodloChip(selected=ownListGroup==OwnServiceLocalGroup.PAUSED,
-                                        onClick={ownListGroup=OwnServiceLocalGroup.PAUSED},
-                                        modifier=Modifier.fillMaxWidth(),
-                                        label={Text(stringResource(R.string.worker_own_paused))})
-                                    JodloChip(
-                                        selected=ownListGroup==OwnServiceLocalGroup.PUBLISHED_NOT_VISIBLE,
-                                        onClick={ownListGroup=OwnServiceLocalGroup.PUBLISHED_NOT_VISIBLE},
-                                        modifier=Modifier.fillMaxWidth(),
-                                        label={Text(stringResource(R.string.worker_own_published_hidden))})
-                                }
-                                Text(stringResource(R.string.worker_own_local_count,
-                                    localOwn.size,displayedOwnListings.size),
-                                    style=MaterialTheme.typography.bodySmall)
-                                Text(stringResource(R.string.worker_own_local_scope),
-                                    style=MaterialTheme.typography.bodySmall)
-                                if(ownerCursor!=null)
-                                    Text(stringResource(R.string.worker_own_load_more_scope),
-                                        style=MaterialTheme.typography.bodySmall)
-                                if(localOwn.isEmpty())
-                                    Text(stringResource(R.string.worker_own_local_empty),
-                                        style=MaterialTheme.typography.bodySmall)
-                                JodloTextAction(onClick = { loadApprovedNames() },
-                                    enabled = !busy && !namesBusy) {
-                                    Text(stringResource(R.string.category_label_lookup_action))
-                                }
-                                Text(stringResource(R.string.category_label_lookup_privacy),
+                            JodloTextAction(onClick = openCallSettings,
+                                modifier = Modifier.fillMaxWidth(), enabled = !busy) {
+                                Text(stringResource(R.string.navigation_call_consent))
+                            }
+                        }
+                        if (!creating && selectedListing == null) {
+                            // A status filter is a snapshot of loaded PRIVATE owner
+                            // rows only. It must not hide the selected management
+                            // controls nor imply current Customer public visibility.
+                            val localOwn = OwnServiceLocalFilter.apply(
+                                displayedOwnListings, ownListQuery, ownListGroup,
+                            ) { categoryId -> nameForOwnCategory(categoryId) }
+                            item {
+                                Text(stringResource(R.string.worker_my_listings), style = MaterialTheme.typography.titleMedium)
+                                Text(stringResource(R.string.worker_management_private_notice),
                                     style = MaterialTheme.typography.bodySmall)
-                                if (ownerCategoryIds.size <
-                                    displayedOwnListings.map { it.categoryId }.distinct().size) {
-                                    Text(stringResource(R.string.category_label_lookup_limited),
+                                JodloTextAction(onClick = { loadOwnPage() }, enabled = !busy) {
+                                    Text(stringResource(R.string.worker_refresh_listings))
+                                }
+                                if (displayedOwnListings.isNotEmpty()) {
+                                    JodloSearchField(
+                                        value=ownListQuery,
+                                        onValueChange={
+                                            if (it.codePointCount(0,it.length)<=64) ownListQuery=it
+                                        },
+                                        label={Text(stringResource(R.string.worker_own_find))},
+                                        modifier=Modifier.fillMaxWidth(),
+                                    )
+                                    // Keep full-width touch targets: Hindi status labels
+                                    // must not be clipped by a narrow two-chip row.
+                                    Column(verticalArrangement=Arrangement.spacedBy(JodloSizes.SmallGap)) {
+                                        JodloChip(selected=ownListGroup==OwnServiceLocalGroup.ALL,
+                                            onClick={ownListGroup=OwnServiceLocalGroup.ALL},
+                                            modifier=Modifier.fillMaxWidth(),
+                                            label={Text(stringResource(R.string.worker_own_all))})
+                                        JodloChip(
+                                            selected=ownListGroup==OwnServiceLocalGroup.OWNER_READ_VISIBLE,
+                                            onClick={ownListGroup=OwnServiceLocalGroup.OWNER_READ_VISIBLE},
+                                            modifier=Modifier.fillMaxWidth(),
+                                            label={Text(stringResource(R.string.worker_own_owner_visible))})
+                                        JodloChip(selected=ownListGroup==OwnServiceLocalGroup.PAUSED,
+                                            onClick={ownListGroup=OwnServiceLocalGroup.PAUSED},
+                                            modifier=Modifier.fillMaxWidth(),
+                                            label={Text(stringResource(R.string.worker_own_paused))})
+                                        JodloChip(
+                                            selected=ownListGroup==OwnServiceLocalGroup.PUBLISHED_NOT_VISIBLE,
+                                            onClick={ownListGroup=OwnServiceLocalGroup.PUBLISHED_NOT_VISIBLE},
+                                            modifier=Modifier.fillMaxWidth(),
+                                            label={Text(stringResource(R.string.worker_own_published_hidden))})
+                                    }
+                                    Text(stringResource(R.string.worker_own_local_count,
+                                        localOwn.size,displayedOwnListings.size),
+                                        style=MaterialTheme.typography.bodySmall)
+                                    Text(stringResource(R.string.worker_own_local_scope),
+                                        style=MaterialTheme.typography.bodySmall)
+                                    if(ownerCursor!=null)
+                                        Text(stringResource(R.string.worker_own_load_more_scope),
+                                            style=MaterialTheme.typography.bodySmall)
+                                    if(localOwn.isEmpty())
+                                        Text(stringResource(R.string.worker_own_local_empty),
+                                            style=MaterialTheme.typography.bodySmall)
+                                    JodloTextAction(onClick = { loadApprovedNames() },
+                                        enabled = !busy && !namesBusy) {
+                                        Text(stringResource(R.string.category_label_lookup_action))
+                                    }
+                                    Text(stringResource(R.string.category_label_lookup_privacy),
                                         style = MaterialTheme.typography.bodySmall)
-                                }
-                                if (namesBusy) CircularProgressIndicator()
-                                if (namesFailed) Text(
-                                    stringResource(R.string.category_label_lookup_failed),
-                                    color=MaterialTheme.colorScheme.error)
-                            }
-                        }
-                        items(localOwn, key = { "own-" + it.id }) { listing ->
-                            JodloCard(
-                                onClick = {
-                                    if (!busy) {
-                                        selectedListing = listing.id
-                                        clearExactObservation()
-                                        guided = guided.cancelUnpublish().cancelResume()
-                                        categoryEdit = categoryEdit.reset()
-                                        previewRevision++
-                                        publicPreview = WorkerCustomerServicePreview.unchecked()
+                                    if (ownerCategoryIds.size <
+                                        displayedOwnListings.map { it.categoryId }.distinct().size) {
+                                        Text(stringResource(R.string.category_label_lookup_limited),
+                                            style = MaterialTheme.typography.bodySmall)
                                     }
-                                },
-                                selected = selectedListing == listing.id,
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Column(Modifier.padding(JodloSizes.CardPadding)) {
-                                    val approvedName=nameForOwnCategory(listing.categoryId)
-                                    if(approvedName!=null) Text(approvedName,
-                                        style=MaterialTheme.typography.titleMedium)
-                                    Text(stringResource(R.string.listing_reference, listing.id))
-                                    Text(stringResource(R.string.worker_listing_category, listing.categoryId))
-                                    Text(stringResource(when(listing.publicationStatus) {
-                                        OwnPublicationStatus.PUBLISHED ->
-                                            R.string.worker_management_published
-                                        OwnPublicationStatus.UNPUBLISHED ->
-                                            R.string.worker_management_paused
-                                        null -> R.string.worker_management_unknown
-                                    }))
-                                    Text(stringResource(if (listing.visible)
-                                        R.string.worker_visible else R.string.worker_not_visible))
-                                    if (listing.publicationStatus == OwnPublicationStatus.PUBLISHED &&
-                                        !listing.visible) {
-                                        Text(stringResource(R.string.worker_management_not_public),
-                                            color = MaterialTheme.colorScheme.error)
-                                    }
-                                    if (selectedListing == listing.id)
-                                        Text(stringResource(R.string.worker_listing_selected))
+                                    if (namesBusy) CircularProgressIndicator()
+                                    if (namesFailed) Text(
+                                        stringResource(R.string.category_label_lookup_failed),
+                                        color=MaterialTheme.colorScheme.error)
                                 }
                             }
-                        }
-                        if (ownerCursor != null) item {
-                            JodloTextAction(onClick = { loadOwnPage(ownerCursor) }, enabled = !busy) {
-                                Text(stringResource(R.string.worker_load_more))
+                            items(localOwn, key = { "own-" + it.id }) { listing ->
+                                JodloCard(
+                                    onClick = {
+                                        if (!busy) {
+                                            selectedListing = listing.id
+                                            clearExactObservation()
+                                            guided = guided.cancelUnpublish().cancelResume()
+                                            categoryEdit = categoryEdit.reset()
+                                            previewRevision++
+                                            publicPreview = WorkerCustomerServicePreview.unchecked()
+                                        }
+                                    },
+                                    selected = selectedListing == listing.id,
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Column(Modifier.padding(JodloSizes.CardPadding)) {
+                                        val approvedName=nameForOwnCategory(listing.categoryId)
+                                        if(approvedName!=null) Text(approvedName,
+                                            style=MaterialTheme.typography.titleMedium)
+                                        Text(stringResource(R.string.listing_reference, listing.id))
+                                        Text(stringResource(R.string.worker_listing_category, listing.categoryId))
+                                        Text(stringResource(when(listing.publicationStatus) {
+                                            OwnPublicationStatus.PUBLISHED ->
+                                                R.string.worker_management_published
+                                            OwnPublicationStatus.UNPUBLISHED ->
+                                                R.string.worker_management_paused
+                                            null -> R.string.worker_management_unknown
+                                        }))
+                                        Text(stringResource(if (listing.visible)
+                                            R.string.worker_visible else R.string.worker_not_visible))
+                                        if (listing.publicationStatus == OwnPublicationStatus.PUBLISHED &&
+                                            !listing.visible) {
+                                            Text(stringResource(R.string.worker_management_not_public),
+                                                color = MaterialTheme.colorScheme.error)
+                                        }
+                                        if (selectedListing == listing.id)
+                                            Text(stringResource(R.string.worker_listing_selected))
+                                    }
+                                }
+                            }
+                            if (ownerCursor != null) item {
+                                JodloTextAction(onClick = { loadOwnPage(ownerCursor) }, enabled = !busy) {
+                                    Text(stringResource(R.string.worker_load_more))
+                                }
                             }
                         }
-                        if (selectedListing != null && displayedOwnListings.any {
+                        if (selectedListing != null && categoryEdit.source == null && displayedOwnListings.any {
                             it.id == selectedListing
                         }) item {
                             JodloCard(modifier = Modifier.fillMaxWidth()) {
                                 Column(Modifier.padding(JodloSizes.CardPadding),
                                     verticalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
-                                    Text(stringResource(R.string.worker_customer_preview_heading),
-                                        style = MaterialTheme.typography.titleMedium)
-                                    Text(stringResource(R.string.worker_customer_preview_explainer))
-                                    Row(horizontalArrangement=Arrangement.spacedBy(JodloSizes.SmallGap)) {
-                                        JodloChip(
-                                            selected=categoryLanguage==Language.HI,
-                                            onClick={
-                                                if(categoryLanguage!=Language.HI) {
-                                                    categoryLanguage=Language.HI
-                                                    clearCategoryResults()
+                                    Text(stringResource(servicePane.title),
+                                        style = MaterialTheme.typography.headlineMedium)
+                                    if (servicePane == WorkerServicePane.CUSTOMER) {
+                                        Text(stringResource(R.string.worker_customer_preview_explainer))
+                                        Row(horizontalArrangement=Arrangement.spacedBy(JodloSizes.SmallGap)) {
+                                            JodloChip(
+                                                selected=categoryLanguage==Language.HI,
+                                                onClick={
+                                                    if(categoryLanguage!=Language.HI) {
+                                                        categoryLanguage=Language.HI
+                                                        clearCategoryResults()
+                                                    }
+                                                },
+                                                enabled=!busy,
+                                                label={Text(stringResource(R.string.language_hindi))},
+                                            )
+                                            JodloChip(
+                                                selected=categoryLanguage==Language.EN,
+                                                onClick={
+                                                    if(categoryLanguage!=Language.EN) {
+                                                        categoryLanguage=Language.EN
+                                                        clearCategoryResults()
+                                                    }
+                                                },
+                                                enabled=!busy,
+                                                label={Text(stringResource(R.string.language_english))},
+                                            )
+                                        }
+                                        JodloTextAction(
+                                            onClick = { refreshSelectedService() },
+                                            enabled = !busy,
+                                        ) {
+                                            Text(stringResource(R.string.worker_exact_read_action))
+                                        }
+                                        if (exactObserved?.id == selectedListing) {
+                                            Text(stringResource(R.string.worker_exact_notice),
+                                                style = MaterialTheme.typography.bodySmall)
+                                        }
+                                        JodloTextAction(
+                                            onClick = { checkPublicPreview() },
+                                            enabled = !busy,
+                                        ) {
+                                            Text(stringResource(R.string.worker_customer_preview_check))
+                                        }
+                                        when(publicPreview.phase) {
+                                            WorkerCustomerServicePreviewPhase.PUBLIC_WHEN_CHECKED -> {
+                                                // Rendering the exact validated public card prevents
+                                                // private draft/owner fields from appearing here.
+                                                publicPreview.checkedCard?.let { card ->
+                                                    SafeServiceCard(card)
+                                                    SafePublicProfileFacts(card.profile, card.city)
+                                                    // Rechecking the same Service resets old bitmap
+                                                    // state: photo revision may have been revoked.
+                                                    key(previewRevision) {
+                                                        ApprovedServicePhoto(catalog, card, previewRevision)
+                                                    }
+                                                    Text(stringResource(
+                                                        R.string.worker_customer_preview_approved_label))
+                                                    Text(stringResource(R.string.worker_customer_preview_visible))
                                                 }
-                                            },
-                                            enabled=!busy,
-                                            label={Text(stringResource(R.string.language_hindi))},
-                                        )
-                                        JodloChip(
-                                            selected=categoryLanguage==Language.EN,
-                                            onClick={
-                                                if(categoryLanguage!=Language.EN) {
-                                                    categoryLanguage=Language.EN
-                                                    clearCategoryResults()
-                                                }
-                                            },
-                                            enabled=!busy,
-                                            label={Text(stringResource(R.string.language_english))},
-                                        )
-                                    }
-                                    JodloTextAction(
-                                        onClick = { refreshSelectedService() },
-                                        enabled = !busy,
-                                    ) {
-                                        Text(stringResource(R.string.worker_exact_read_action))
-                                    }
-                                    if (exactObserved?.id == selectedListing) {
-                                        Text(stringResource(R.string.worker_exact_notice),
-                                            style = MaterialTheme.typography.bodySmall)
-                                    }
-                                    JodloTextAction(
-                                        onClick = { checkPublicPreview() },
-                                        enabled = !busy,
-                                    ) {
-                                        Text(stringResource(R.string.worker_customer_preview_check))
-                                    }
-                                    when(publicPreview.phase) {
-                                        WorkerCustomerServicePreviewPhase.PUBLIC_WHEN_CHECKED -> {
-                                            // Rendering the exact validated public card prevents
-                                            // private draft/owner fields from appearing here.
-                                            publicPreview.checkedCard?.let { card ->
-                                                SafeServiceCard(card)
-                                                SafePublicProfileFacts(card.profile, card.city)
-                                                // Rechecking the same Service resets old bitmap
-                                                // state: photo revision may have been revoked.
-                                                key(previewRevision) {
-                                                    ApprovedServicePhoto(catalog, card, previewRevision)
-                                                }
-                                                Text(stringResource(
-                                                    R.string.worker_customer_preview_approved_label))
-                                                Text(stringResource(R.string.worker_customer_preview_visible))
+                                            }
+                                            WorkerCustomerServicePreviewPhase.NOT_PUBLIC_WHEN_CHECKED ->
+                                                Text(stringResource(R.string.worker_customer_preview_not_public))
+                                            WorkerCustomerServicePreviewPhase.CANNOT_CONFIRM ->
+                                                Text(stringResource(R.string.worker_customer_preview_failed),
+                                                    color=MaterialTheme.colorScheme.error)
+                                            WorkerCustomerServicePreviewPhase.UNCHECKED -> {
+                                                /* Owner status never certifies Customer visibility. */
                                             }
                                         }
-                                        WorkerCustomerServicePreviewPhase.NOT_PUBLIC_WHEN_CHECKED ->
-                                            Text(stringResource(R.string.worker_customer_preview_not_public))
-                                        WorkerCustomerServicePreviewPhase.CANNOT_CONFIRM ->
-                                            Text(stringResource(R.string.worker_customer_preview_failed),
-                                                color=MaterialTheme.colorScheme.error)
-                                        WorkerCustomerServicePreviewPhase.UNCHECKED -> {
-                                            /* Owner status never certifies Customer visibility. */
+                                    }
+                                    if (servicePane == WorkerServicePane.MANAGE) {
+                                        for (destination in WorkerServicePane.entries.drop(1)) {
+                                            JodloTextAction(onClick = { servicePane = destination },
+                                                modifier = Modifier.fillMaxWidth(), enabled = !busy) {
+                                                Text(stringResource(destination.title))
+                                            }
                                         }
                                     }
-                                    JodloTextAction(
-                                        onClick = {
-                                            beginVersionedReview()
-                                        },
-                                        enabled = canWrite,
-                                    ) { Text(stringResource(R.string.worker_edit_category)) }
+                                    if (servicePane == WorkerServicePane.MANAGE) {
+                                        JodloTextAction(onClick = { beginVersionedReview() }, enabled = canWrite) {
+                                            Text(stringResource(R.string.worker_edit_category))
+                                        }
+                                    }
                                     // 'visible=false' means only that the
                                     // current owner page cannot certify
                                     // public eligibility. It may be paused,
@@ -1051,24 +1119,25 @@ internal fun WorkerDashboard(
                                         it.id == selectedListing
                                     }
                                     if (currentOwnRow != null) {
-                                        WorkerServiceAreaEditor(session, currentOwnRow.id, enabled = canWrite) { confirmed ->
+                                        if (servicePane == WorkerServicePane.CITY) WorkerServiceAreaEditor(session, currentOwnRow.id, enabled = canWrite) { confirmed ->
                                             loadOwnPage()
                                             message = if (confirmed) R.string.worker_area_saved else R.string.worker_area_failed
                                         }
-                                        WorkerServiceDetailsEditor(session, currentOwnRow.id, enabled = canWrite) { notice ->
+                                        if (servicePane == WorkerServicePane.DETAILS) WorkerServiceDetailsEditor(session, currentOwnRow.id, enabled = canWrite) { notice ->
                                             loadOwnPage()
                                             message = notice
                                         }
-                                        WorkerServicePhotoEditor(activity, session, currentOwnRow.id, enabled = canWrite) { notice ->
+                                        if (servicePane == WorkerServicePane.PHOTO) WorkerServicePhotoEditor(activity, session, currentOwnRow.id, enabled = canWrite) { notice ->
                                             loadOwnPage()
                                             message = notice
                                         }
-                                        WorkerServiceAppealControls(session, currentOwnRow.id, enabled = canWrite) { confirmed ->
+                                        if (servicePane == WorkerServicePane.APPEAL) WorkerServiceAppealControls(session, currentOwnRow.id, enabled = canWrite) { confirmed ->
                                             loadOwnPage()
                                             message = if (confirmed) R.string.case_worker_appealed else R.string.case_request_failed
                                         }
                                     }
-                                    if (currentOwnRow?.publicationStatus == OwnPublicationStatus.PUBLISHED) {
+                                    if (servicePane == WorkerServicePane.MANAGE &&
+                                        currentOwnRow?.publicationStatus == OwnPublicationStatus.PUBLISHED) {
                                         if (guided.pendingUnpublishId != selectedListing) {
                                             JodloTextAction(
                                                 onClick = {
@@ -1098,7 +1167,8 @@ internal fun WorkerDashboard(
                                                 }
                                             }
                                         }
-                                    } else if (currentOwnRow?.publicationStatus == OwnPublicationStatus.UNPUBLISHED) {
+                                    } else if (servicePane == WorkerServicePane.MANAGE &&
+                                        currentOwnRow?.publicationStatus == OwnPublicationStatus.UNPUBLISHED) {
                                         if (guided.pendingResume?.id != currentOwnRow.id) {
                                             JodloTextAction(onClick = {
                                                 beginVersionedReview(publication = true)
@@ -1145,217 +1215,219 @@ internal fun WorkerDashboard(
                                 }
                             }
                         }
-                        item {
-                            Text(stringResource(R.string.worker_publish_category),
-                                style = MaterialTheme.typography.titleMedium)
-                            Text(stringResource(R.string.worker_publish_explainer))
-                            Text(stringResource(R.string.worker_category_search_hint))
-                            Row(horizontalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
-                                JodloChip(
-                                    selected = categoryLanguage == Language.HI,
-                                    onClick = {
-                                        if (categoryLanguage != Language.HI) {
-                                            categoryLanguage = Language.HI
-                                            clearCategoryResults()
-                                        }
-                                    },
+                        if ((creating && guided.selectedCategory == null) || categoryEdit.source != null) {
+                            item {
+                                Text(stringResource(R.string.worker_publish_category),
+                                    style = MaterialTheme.typography.titleMedium)
+                                Text(stringResource(R.string.worker_publish_explainer))
+                                Text(stringResource(R.string.worker_category_search_hint))
+                                Row(horizontalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
+                                    JodloChip(
+                                        selected = categoryLanguage == Language.HI,
+                                        onClick = {
+                                            if (categoryLanguage != Language.HI) {
+                                                categoryLanguage = Language.HI
+                                                clearCategoryResults()
+                                            }
+                                        },
+                                        enabled = !busy,
+                                        label = { Text(stringResource(R.string.language_hindi)) },
+                                    )
+                                    JodloChip(
+                                        selected = categoryLanguage == Language.EN,
+                                        onClick = {
+                                            if (categoryLanguage != Language.EN) {
+                                                categoryLanguage = Language.EN
+                                                clearCategoryResults()
+                                            }
+                                        },
+                                        enabled = !busy,
+                                        label = { Text(stringResource(R.string.language_english)) },
+                                    )
+                                }
+                                JodloSearchField(
+                                    value = categoryInput,
+                                    onValueChange = { categoryInput = it; invalidCategoryQuery = false },
+                                    label = { Text(stringResource(R.string.search_label)) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                                if (invalidCategoryQuery) {
+                                    Text(stringResource(R.string.search_validation),
+                                        color = MaterialTheme.colorScheme.error)
+                                }
+                                JodloButton(
+                                    onClick = { loadCategories(searchQuery = categoryInput.trim()) },
                                     enabled = !busy,
-                                    label = { Text(stringResource(R.string.language_hindi)) },
-                                )
-                                JodloChip(
-                                    selected = categoryLanguage == Language.EN,
-                                    onClick = {
-                                        if (categoryLanguage != Language.EN) {
-                                            categoryLanguage = Language.EN
-                                            clearCategoryResults()
-                                        }
-                                    },
-                                    enabled = !busy,
-                                    label = { Text(stringResource(R.string.language_english)) },
-                                )
-                            }
-                            JodloSearchField(
-                                value = categoryInput,
-                                onValueChange = { categoryInput = it; invalidCategoryQuery = false },
-                                label = { Text(stringResource(R.string.search_label)) },
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                            if (invalidCategoryQuery) {
-                                Text(stringResource(R.string.search_validation),
-                                    color = MaterialTheme.colorScheme.error)
-                            }
-                            JodloButton(
-                                onClick = { loadCategories(searchQuery = categoryInput.trim()) },
-                                enabled = !busy,
-                            ) { Text(stringResource(R.string.search_action)) }
-                            JodloTextAction(onClick = { loadCategories() }, enabled = !busy) {
-                                Text(stringResource(R.string.worker_choose_category))
-                            }
-                            if (categoryMode == WorkerCatalogMode.SEARCH && categoryLoaded) {
-                                Text(stringResource(R.string.search_query_caption,
-                                    submittedCategoryQuery.orEmpty()))
-                            }
-                        }
-                        if (categoryLoaded && categoryRows.isEmpty() && !categoryFailed) item {
-                            Text(stringResource(if (categoryMode == WorkerCatalogMode.BROWSE)
-                                R.string.worker_category_empty_browse else R.string.worker_category_empty))
-                        }
-                        if (categoryFailed) item {
-                            Text(stringResource(R.string.worker_category_page_failed),
-                                color = MaterialTheme.colorScheme.error)
-                            JodloTextAction(onClick = {
-                                loadCategories(
-                                    after = categoryCursor,
-                                    searchQuery = if (categoryMode == WorkerCatalogMode.SEARCH)
-                                        submittedCategoryQuery else null,
-                                )
-                            }, enabled = !busy) {
-                                Text(stringResource(R.string.retry_action))
-                            }
-                        }
-                        items(categoryRows, key = { "cat-" + it.id }) { category ->
-                            JodloCard(
-                                onClick = {
-                                    if (!canWrite) return@JodloCard
-                                    if (categoryEdit.source != null) {
-                                        categoryEdit = categoryEdit.chooseDestination(
-                                            category, categoryRows,
-                                            session?.accountExportSessionMarker())
-                                    } else {
-                                        guided = guided.cancelResume().chooseCategory(
-                                            category, categoryRows,
-                                            session?.accountExportSessionMarker())
-                                    }
-                                },
-                                selected = if (categoryEdit.source != null)
-                                    categoryEdit.destination?.id == category.id
-                                else guided.selectedCategory?.id == category.id,
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Column(Modifier.padding(JodloSizes.CardPadding)) {
-                                    Text(category.name)
-                                    if (guided.selectedCategory?.id == category.id ||
-                                        categoryEdit.destination?.id == category.id)
-                                        Text(stringResource(R.string.worker_category_selected))
+                                ) { Text(stringResource(R.string.search_action)) }
+                                JodloTextAction(onClick = { loadCategories() }, enabled = !busy) {
+                                    Text(stringResource(R.string.worker_choose_category))
+                                }
+                                if (categoryMode == WorkerCatalogMode.SEARCH && categoryLoaded) {
+                                    Text(stringResource(R.string.search_query_caption,
+                                        submittedCategoryQuery.orEmpty()))
                                 }
                             }
-                        }
-                        if (categoryCursor != null) item {
-                            JodloTextAction(onClick = { loadCategories(categoryCursor) }, enabled = !busy) {
-                                Text(stringResource(R.string.worker_load_more))
+                            if (categoryLoaded && categoryRows.isEmpty() && !categoryFailed) item {
+                                Text(stringResource(if (categoryMode == WorkerCatalogMode.BROWSE)
+                                    R.string.worker_category_empty_browse else R.string.worker_category_empty))
                             }
-                        }
-                        if (categoryEdit.source != null) item {
-                            JodloCard(modifier = Modifier.fillMaxWidth()) {
-                                Column(Modifier.padding(JodloSizes.CardPadding),
-                                    verticalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
-                                    Text(stringResource(R.string.worker_edit_heading),
-                                        style = MaterialTheme.typography.titleMedium)
-                                    Text(stringResource(R.string.worker_edit_existing_category,
-                                        nameForOwnCategory(categoryEdit.source!!.categoryId)
-                                            ?: categoryEdit.source!!.categoryId))
-                                    Text(stringResource(R.string.worker_edit_description))
-                                    Text(stringResource(R.string.worker_edit_revision_notice),
-                                        style=MaterialTheme.typography.bodySmall)
-                                    val next = categoryEdit.destination
-                                    if (next == null) {
-                                        Text(stringResource(R.string.worker_editor_step_choose),
-                                            style = MaterialTheme.typography.titleSmall)
-                                        Text(stringResource(R.string.worker_edit_choose_category))
-                                    } else {
-                                        val alreadyOwned = displayedOwnListings.any {
-                                            it.id != categoryEdit.source?.id &&
-                                                it.categoryId == next.id
+                            if (categoryFailed) item {
+                                Text(stringResource(R.string.worker_category_page_failed),
+                                    color = MaterialTheme.colorScheme.error)
+                                JodloTextAction(onClick = {
+                                    loadCategories(
+                                        after = categoryCursor,
+                                        searchQuery = if (categoryMode == WorkerCatalogMode.SEARCH)
+                                            submittedCategoryQuery else null,
+                                    )
+                                }, enabled = !busy) {
+                                    Text(stringResource(R.string.retry_action))
+                                }
+                            }
+                            items(categoryRows, key = { "cat-" + it.id }) { category ->
+                                JodloCard(
+                                    onClick = {
+                                        if (!canWrite) return@JodloCard
+                                        if (categoryEdit.source != null) {
+                                            categoryEdit = categoryEdit.chooseDestination(
+                                                category, categoryRows,
+                                                session?.accountExportSessionMarker())
+                                        } else {
+                                            guided = guided.cancelResume().chooseCategory(
+                                                category, categoryRows,
+                                                session?.accountExportSessionMarker())
                                         }
-                                        Text(stringResource(R.string.worker_edit_new_category,
-                                            next.name))
-                                        if (alreadyOwned) {
-                                            Text(stringResource(R.string.worker_editor_duplicate),
-                                                color = MaterialTheme.colorScheme.error)
-                                        }
-                                        when {
-                                            !categoryEdit.scopeReviewOpen -> {
-                                                Text(stringResource(R.string.worker_editor_step_scope),
-                                                    style = MaterialTheme.typography.titleSmall)
-                                                Text(stringResource(
-                                                    R.string.worker_editor_scope_intro))
-                                                JodloButton(onClick = {
-                                                    categoryEdit = categoryEdit.reviewScope(
-                                                        session?.accountExportSessionMarker(),
-                                                        categoryRows, displayedOwnListings)
-                                                }, enabled = canWrite && !alreadyOwned) {
-                                                    Text(stringResource(
-                                                        R.string.worker_editor_review_scope))
-                                                }
-                                            }
-                                            !categoryEdit.reviewOpen -> {
-                                                Text(stringResource(R.string.worker_editor_step_final),
-                                                    style = MaterialTheme.typography.titleSmall)
-                                                Text(stringResource(
-                                                    R.string.worker_editor_scope_public))
-                                                Text(stringResource(
-                                                    R.string.worker_editor_scope_locked))
-                                                Text(stringResource(
-                                                    R.string.worker_edit_revision_notice),
-                                                    style = MaterialTheme.typography.bodySmall)
-                                                JodloTextAction(onClick = {
-                                                    categoryEdit = categoryEdit.invalidateCategory()
-                                                }, enabled = canWrite) {
-                                                    Text(stringResource(R.string.guided_post_back))
-                                                }
-                                                JodloButton(onClick = {
-                                                    categoryEdit = categoryEdit.review(
-                                                        session?.accountExportSessionMarker())
-                                                }, enabled = canWrite && !alreadyOwned) {
-                                                    Text(stringResource(R.string.worker_edit_review))
-                                                }
-                                            }
-                                            else -> {
-                                                Text(stringResource(
-                                                    R.string.worker_editor_step_confirm),
-                                                    style = MaterialTheme.typography.titleSmall)
-                                                Text(stringResource(
-                                                    R.string.worker_editor_scope_public))
-                                                Text(stringResource(
-                                                    R.string.worker_edit_public_warning),
-                                                    color = MaterialTheme.colorScheme.error)
-                                                JodloTextAction(onClick = {
-                                                    categoryEdit = categoryEdit.cancelReview()
-                                                }, enabled = canWrite) {
-                                                    Text(stringResource(R.string.guided_post_back))
-                                                }
-                                                JodloButton(onClick = {
-                                                    val owner = session?.accountPrivateReadMarker()
-                                                        ?: return@JodloButton
-                                                    if (owner != ownerRowsMarker) return@JodloButton
-                                                    val command = categoryEdit.confirmedVersioned(
-                                                        displayedOwnListings, categoryRows,
-                                                        owner.sessionGeneration,
-                                                    ) ?: return@JodloButton
-                                                    mutate {
-                                                        writes.editCategoryVersioned(
-                                                            command.listingId,
-                                                            command.expectedCategoryId,
-                                                            command.nextCategoryId,
-                                                            command.expectedRevision,
-                                                            expectedOwner = owner,
-                                                        )
-                                                    }
-                                                }, enabled = canWrite &&
-                                                    !alreadyOwned && categoryEdit.confirmedVersioned(
-                                                        displayedOwnListings, categoryRows,
-                                                        session?.accountExportSessionMarker(),
-                                                    ) != null) {
-                                                    Text(stringResource(
-                                                        R.string.worker_edit_confirm))
-                                                }
-                                            }
-                                        }
+                                    },
+                                    selected = if (categoryEdit.source != null)
+                                        categoryEdit.destination?.id == category.id
+                                    else guided.selectedCategory?.id == category.id,
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Column(Modifier.padding(JodloSizes.CardPadding)) {
+                                        Text(category.name)
+                                        if (guided.selectedCategory?.id == category.id ||
+                                            categoryEdit.destination?.id == category.id)
+                                            Text(stringResource(R.string.worker_category_selected))
                                     }
-                                    JodloTextAction(onClick = {
-                                        categoryEdit = categoryEdit.reset()
-                                    }, enabled = !busy) {
-                                        Text(stringResource(R.string.worker_edit_cancel))
+                                }
+                            }
+                            if (categoryCursor != null) item {
+                                JodloTextAction(onClick = { loadCategories(categoryCursor) }, enabled = !busy) {
+                                    Text(stringResource(R.string.worker_load_more))
+                                }
+                            }
+                            if (categoryEdit.source != null) item {
+                                JodloCard(modifier = Modifier.fillMaxWidth()) {
+                                    Column(Modifier.padding(JodloSizes.CardPadding),
+                                        verticalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
+                                        Text(stringResource(R.string.worker_edit_heading),
+                                            style = MaterialTheme.typography.titleMedium)
+                                        Text(stringResource(R.string.worker_edit_existing_category,
+                                            nameForOwnCategory(categoryEdit.source!!.categoryId)
+                                                ?: categoryEdit.source!!.categoryId))
+                                        Text(stringResource(R.string.worker_edit_description))
+                                        Text(stringResource(R.string.worker_edit_revision_notice),
+                                            style=MaterialTheme.typography.bodySmall)
+                                        val next = categoryEdit.destination
+                                        if (next == null) {
+                                            Text(stringResource(R.string.worker_editor_step_choose),
+                                                style = MaterialTheme.typography.titleSmall)
+                                            Text(stringResource(R.string.worker_edit_choose_category))
+                                        } else {
+                                            val alreadyOwned = displayedOwnListings.any {
+                                                it.id != categoryEdit.source?.id &&
+                                                    it.categoryId == next.id
+                                            }
+                                            Text(stringResource(R.string.worker_edit_new_category,
+                                                next.name))
+                                            if (alreadyOwned) {
+                                                Text(stringResource(R.string.worker_editor_duplicate),
+                                                    color = MaterialTheme.colorScheme.error)
+                                            }
+                                            when {
+                                                !categoryEdit.scopeReviewOpen -> {
+                                                    Text(stringResource(R.string.worker_editor_step_scope),
+                                                        style = MaterialTheme.typography.titleSmall)
+                                                    Text(stringResource(
+                                                        R.string.worker_editor_scope_intro))
+                                                    JodloButton(onClick = {
+                                                        categoryEdit = categoryEdit.reviewScope(
+                                                            session?.accountExportSessionMarker(),
+                                                            categoryRows, displayedOwnListings)
+                                                    }, enabled = canWrite && !alreadyOwned) {
+                                                        Text(stringResource(
+                                                            R.string.worker_editor_review_scope))
+                                                    }
+                                                }
+                                                !categoryEdit.reviewOpen -> {
+                                                    Text(stringResource(R.string.worker_editor_step_final),
+                                                        style = MaterialTheme.typography.titleSmall)
+                                                    Text(stringResource(
+                                                        R.string.worker_editor_scope_public))
+                                                    Text(stringResource(
+                                                        R.string.worker_editor_scope_locked))
+                                                    Text(stringResource(
+                                                        R.string.worker_edit_revision_notice),
+                                                        style = MaterialTheme.typography.bodySmall)
+                                                    JodloTextAction(onClick = {
+                                                        categoryEdit = categoryEdit.invalidateCategory()
+                                                    }, enabled = canWrite) {
+                                                        Text(stringResource(R.string.guided_post_back))
+                                                    }
+                                                    JodloButton(onClick = {
+                                                        categoryEdit = categoryEdit.review(
+                                                            session?.accountExportSessionMarker())
+                                                    }, enabled = canWrite && !alreadyOwned) {
+                                                        Text(stringResource(R.string.worker_edit_review))
+                                                    }
+                                                }
+                                                else -> {
+                                                    Text(stringResource(
+                                                        R.string.worker_editor_step_confirm),
+                                                        style = MaterialTheme.typography.titleSmall)
+                                                    Text(stringResource(
+                                                        R.string.worker_editor_scope_public))
+                                                    Text(stringResource(
+                                                        R.string.worker_edit_public_warning),
+                                                        color = MaterialTheme.colorScheme.error)
+                                                    JodloTextAction(onClick = {
+                                                        categoryEdit = categoryEdit.cancelReview()
+                                                    }, enabled = canWrite) {
+                                                        Text(stringResource(R.string.guided_post_back))
+                                                    }
+                                                    JodloButton(onClick = {
+                                                        val owner = session?.accountPrivateReadMarker()
+                                                            ?: return@JodloButton
+                                                        if (owner != ownerRowsMarker) return@JodloButton
+                                                        val command = categoryEdit.confirmedVersioned(
+                                                            displayedOwnListings, categoryRows,
+                                                            owner.sessionGeneration,
+                                                        ) ?: return@JodloButton
+                                                        mutate {
+                                                            writes.editCategoryVersioned(
+                                                                command.listingId,
+                                                                command.expectedCategoryId,
+                                                                command.nextCategoryId,
+                                                                command.expectedRevision,
+                                                                expectedOwner = owner,
+                                                            )
+                                                        }
+                                                    }, enabled = canWrite &&
+                                                        !alreadyOwned && categoryEdit.confirmedVersioned(
+                                                            displayedOwnListings, categoryRows,
+                                                            session?.accountExportSessionMarker(),
+                                                        ) != null) {
+                                                        Text(stringResource(
+                                                            R.string.worker_edit_confirm))
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        JodloTextAction(onClick = {
+                                            categoryEdit = categoryEdit.reset()
+                                        }, enabled = !busy) {
+                                            Text(stringResource(R.string.worker_edit_cancel))
+                                        }
                                     }
                                 }
                             }
