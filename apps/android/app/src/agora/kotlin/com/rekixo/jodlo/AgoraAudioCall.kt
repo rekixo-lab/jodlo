@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.SystemClock
 import com.rekixo.jodlo.core.network.CallAudioLinkRecovery
+import com.rekixo.jodlo.core.network.CallAudioShutdown
 import com.rekixo.jodlo.core.network.FailureKind
 import com.rekixo.jodlo.core.network.CallAudioGrant
 import com.rekixo.jodlo.core.network.InMemorySessionCoordinator
@@ -169,7 +170,12 @@ internal class AgoraAudioCall(
     }
 
     fun muteMicrophone(muted: Boolean): Boolean =
-        active != null && engine?.muteLocalAudioStream(muted) == 0
+        active != null && try {
+            engine?.muteLocalAudioStream(muted) == 0
+        } catch (_: Exception) {
+            // An Android/native SDK failure must not crash a user tapping Mute.
+            false
+        }
 
     private fun renew(call: Active) {
         if (active !== call || renewal?.isActive == true) return
@@ -242,11 +248,14 @@ internal class AgoraAudioCall(
         engine = null
         try {
             if (rtc != null) {
-                try {
-                    rtc.leaveChannel()
-                } finally {
-                    RtcEngine.destroy()
-                }
+                // Stop microphone publication FIRST. Native teardown failures
+                // must not suppress the server-side end request in CallScreen.
+                // Each action is attempted even when an earlier SDK call throws.
+                CallAudioShutdown.release(
+                    mute = { rtc.muteLocalAudioStream(true) },
+                    leave = { rtc.leaveChannel() },
+                    destroy = { RtcEngine.destroy() },
+                )
             }
         } finally {
             mutableState.value = next
