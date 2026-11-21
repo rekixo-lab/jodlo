@@ -22,7 +22,8 @@ test("candidate requires dedicated HTTPS backend, nonempty Google OAuth, and exp
   assert.match(gradle, /candidateVersionCode != null && candidateVersionCode in 2\.\.2100000000/);
   assert.match(gradle, /versionCode = if \(releaseCandidateRequested\) requireNotNull\(candidateVersionCode\) else 1/);
   assert.match(gradle, /versionName = if \(releaseCandidateRequested\) candidateVersionName else "0\.1\.0-dev"/);
-  assert.match(gradle, /Regex\("""\^\[1-9\]\[0-9\]\{0,2\}/);
+  // Kotlin raw patterns must use one backslash before each semantic-version dot.
+  assert.ok(gradle.includes(String.raw`Regex("""^[1-9][0-9]{0,2}\.[0-9]{1,3}\.[0-9]{1,3}$""")`));
 });
 
 test("debug remains unconfigured and Android prevents cleartext and backups", () => {
