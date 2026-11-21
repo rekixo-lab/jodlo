@@ -50,7 +50,7 @@ export function auditWorkflowSource(source, fileName = "workflow.yml") {
       report("unreviewed action or floating reference: " + action[1]);
   }
   for (let i = 0; i < lines.length; i++) {
-    const checkout = lines[i].match(/^(\s*)-\s*uses:\s*actions\/checkout@v4\s*$/);
+    const checkout = lines[i].match(/^(\s*)-\s*uses:\s*actions\/checkout@11d5960a326750d5838078e36cf38b85af677262\s*$/);
     if (!checkout) continue;
     const depth = checkout[1].length;
     const step = [];
