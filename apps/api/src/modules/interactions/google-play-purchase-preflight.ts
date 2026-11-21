@@ -1,3 +1,4 @@
+import { withinPlayDeadline, readPlayBoundedJson } from "./play-provider-bounds.ts";
 import { validOpaqueId } from "../shared/identifiers.ts";
 
 /** No JODLO Play SKUs, prices, billing launch or provider credentials are
@@ -104,50 +105,6 @@ function validProducts(products: ReadonlyMap<string, number>): boolean {
   return true;
 }
 
-async function cappedText(response: Response, budget: () => number): Promise<string | null> {
-  const length = response.headers.get("content-length");
-  if (length !== null && (!/^\d+$/.test(length) || Number(length) > MAX_RESPONSE_BYTES))
-    return null;
-  if (!response.body) return null;
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let bytes = 0;
-  try {
-    while (true) {
-      const next = await withinBudget(() => reader.read(), budget);
-      if (next.done) break;
-      bytes += next.value.byteLength;
-      if (bytes > MAX_RESPONSE_BYTES) return null;
-      chunks.push(next.value);
-    }
-  } finally {
-    void reader.cancel().catch(() => {});
-    reader.releaseLock();
-  }
-  const combined = new Uint8Array(bytes);
-  let at = 0;
-  for (const chunk of chunks) { combined.set(chunk, at); at += chunk.byteLength; }
-  return new TextDecoder("utf-8", {fatal: true}).decode(combined);
-}
-
-/** Monotonic shared timeout for auth, provider GET and bounded JSON body.
- * A timed-out provider callback can never perform a late credit write
- * because this module has ZERO write operations.
- */
-async function withinBudget<T>(work: () => Promise<T>, budget: () => number): Promise<T> {
-  const remaining = budget();
-  if (remaining <= 0) throw Error("Play verifier deadline");
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      Promise.resolve().then(work),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(Error("Play verifier deadline")), remaining);
-      }),
-    ]);
-  } finally { if (timer !== undefined) clearTimeout(timer); }
-}
-
 /** Trusted caller only. A candidate is NOT a credit grant, Play
  * acknowledgement, refund check or verified settlement. */
 export async function inspectJodloPlayOneTimePurchase(
@@ -164,15 +121,15 @@ export async function inspectJodloPlayOneTimePurchase(
   const started = performance.now();
   const budget = () => Math.max(0, Math.floor(timeoutMs - (performance.now() - started)));
   try {
-    const expected = await withinBudget(() => jodloPlayAccountBinding(accountId), budget);
+    const expected = await withinPlayDeadline(() => jodloPlayAccountBinding(accountId), budget);
     if (!expected) return {kind: "not_eligible"};
-    const oauth = await withinBudget(deps.accessToken, budget);
+    const oauth = await withinPlayDeadline(deps.accessToken, budget);
     if (!oauth || !/^[A-Za-z0-9._~+\/-]{1,4096}={0,2}$/.test(oauth))
       return {kind: "unavailable"};
     const endpoint = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/" +
       JODLO_PLAY_PACKAGE + "/purchases/productsv2/tokens/" + encodeURIComponent(purchaseToken);
     const request = deps.request ?? fetch;
-    const response = await withinBudget(() => request(endpoint, {
+    const response = await withinPlayDeadline(() => request(endpoint, {
       method: "GET", redirect: "error", cache: "no-store",
       signal: AbortSignal.timeout(budget()),
       headers: {Authorization: "Bearer " + oauth, Accept: "application/json"},
@@ -182,14 +139,14 @@ export async function inspectJodloPlayOneTimePurchase(
       return {kind: [401, 403, 408, 429].includes(response.status) ||
         response.status >= 500 ? "unavailable" : "not_eligible"};
     }
-    const raw = await cappedText(response, budget);
-    if (raw === null || budget() <= 0) return {kind: "unavailable"};
-    const verified = validatePlayProductPurchaseV2(JSON.parse(raw), expected,
+    const receipt = await readPlayBoundedJson(response, budget, MAX_RESPONSE_BYTES);
+    if (budget() <= 0) return {kind: "unavailable"};
+    const verified = validatePlayProductPurchaseV2(receipt, expected,
       deps.approvedProducts, now());
     if (!verified) return {kind: "not_eligible"};
     // The fingerprint is scoped to the canonical package AND token, NOT the
     // SKU, to prevent cross-SKU replay of the same Play purchase.
-    const sourceKeyHash = await withinBudget(
+    const sourceKeyHash = await withinPlayDeadline(
       () => jodloPlayPurchaseFingerprint(purchaseToken), budget);
     if (sourceKeyHash === null) return {kind: "not_eligible"};
     return {kind: "candidate", ...verified, sourceKeyHash};

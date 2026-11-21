@@ -1,3 +1,4 @@
+import { withinPlayDeadline, readPlayBoundedJson } from "./play-provider-bounds.ts";
 import type { D1Database } from "../../data/d1.ts";
 import {
   type AuthenticatedPlayPush,
@@ -29,51 +30,6 @@ type Provider = Readonly<{
 function obj(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown> : null;
-}
-
-async function bounded<T>(run: () => Promise<T>, remaining: () => number): Promise<T> {
-  const time = remaining();
-  if (time <= 0) throw Error("Google Play provider timeout");
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      Promise.resolve().then(run),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(Error("Google Play provider timeout")), time);
-      }),
-    ]);
-  } finally {
-    if (timer !== undefined) clearTimeout(timer);
-  }
-}
-
-async function safeJson(response: Response, remaining: () => number): Promise<Record<string, unknown>> {
-  if (response.status !== 200 || !response.body) throw Error("Google Play read unavailable");
-  const length = response.headers.get("content-length");
-  if (length !== null && (!/^\d+$/.test(length) ||
-      Number(length) > MAX_PROVIDER_BODY))
-    throw Error("Google Play response too large");
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let bytes = 0;
-  try {
-    while (true) {
-      const next = await bounded(() => reader.read(), remaining);
-      if (next.done) break;
-      bytes += next.value.byteLength;
-      if (bytes > MAX_PROVIDER_BODY) throw Error("Google Play oversized stream");
-      chunks.push(next.value);
-    }
-  } finally {
-    void reader.cancel().catch(() => {});
-    reader.releaseLock();
-  }
-  const all = new Uint8Array(bytes);
-  let offset = 0;
-  for (const chunk of chunks) { all.set(chunk, offset); offset += chunk.length; }
-  const parsed = obj(JSON.parse(new TextDecoder("utf-8", {fatal: true}).decode(all)));
-  if (!parsed) throw Error("Google Play malformed JSON");
-  return parsed;
 }
 
 async function productCanceled(
@@ -175,7 +131,7 @@ export async function reconcileAuthenticatedJodloPlayRevocation(
   try {
     const nowMs = now();
     // Even an internal caller cannot fence an unrelated token digest.
-    if (await bounded(
+    if (await withinPlayDeadline(
       () => jodloPlayPurchaseFingerprint(push.purchaseToken), remaining,
     ) !== push.hint.sourceKeyHash) return "retry";
     if (!Number.isSafeInteger(nowMs) || nowMs <= VOID_SEARCH_MS ||
@@ -183,12 +139,12 @@ export async function reconcileAuthenticatedJodloPlayRevocation(
         push.hint.eventTimeMs > nowMs + 300_000 ||
         push.hint.eventTimeMs < nowMs - 7 * 24 * 60 * 60 * 1000)
       return "retry";
-    const access = await bounded(provider.accessToken, remaining);
+    const access = await withinPlayDeadline(provider.accessToken, remaining);
     if (!access || !/^[A-Za-z0-9._~+\/-]{1,4096}={0,2}$/.test(access))
       return "retry";
     const request = provider.request ?? fetch;
     const get = async (endpoint: string) => {
-      const response = await bounded(() => request(endpoint, {
+      const response = await withinPlayDeadline(() => request(endpoint, {
         method: "GET", redirect: "error", cache: "no-store",
         signal: AbortSignal.timeout(Math.max(1, remaining())),
         headers: {Authorization: "Bearer " + access, Accept: "application/json"},
@@ -197,7 +153,9 @@ export async function reconcileAuthenticatedJodloPlayRevocation(
         void response.body?.cancel().catch(() => {});
         throw Error("Google Play status unavailable");
       }
-      return safeJson(response, remaining);
+      const data = obj(await readPlayBoundedJson(response, remaining, MAX_PROVIDER_BODY));
+      if (!data) throw Error("Google Play malformed JSON");
+      return data;
     };
     const confirmed = push.hint.kind === "canceled_hint"
       ? await productCanceled(push, get)
@@ -205,7 +163,7 @@ export async function reconcileAuthenticatedJodloPlayRevocation(
     if (!confirmed || remaining() <= 0) return "retry";
     // This is the only D1 write in this chain. An OIDC signature is only
     // transport authentication; provider read is the financial proof.
-    const answer = await bounded(() => recordTrustedPlayRevocation(db, {
+    const answer = await withinPlayDeadline(() => recordTrustedPlayRevocation(db, {
       sourceKeyHash: push.hint.sourceKeyHash,
       reason: push.hint.kind === "canceled_hint"
         ? "one_time_canceled" : "voided_purchase",
