@@ -46,7 +46,7 @@ if [[ "$1" == devices ]]; then
 fi
 printf 'adb %s\n' "$*" >> "$MOCK_CALLS"
 if [[ "$*" == *" install -r "* ]]; then
-  if [[ "${MOCK_INSTALL_FAIL:-0}" == 1 ]]; then
+  if [[ "${MOCK_INSTALL_FAIL:-0}" == 1 || "$*" == *"-s ${MOCK_INSTALL_FAIL_DEVICE:-__NO_DEVICE__} install -r "* ]]; then
     printf 'Failure [INSTALL_FAILED_USER_RESTRICTED]\n'
     exit 9
   fi
@@ -65,7 +65,8 @@ reset() {
   rm -f "$apk"
   MOCK_DEVICES=""
   export MOCK_DEVICES
-  unset ANDROID_SERIAL MOCK_BUILD_FAIL MOCK_NO_APK MOCK_INSTALL_FAIL JODLO_JDK17_HOME JODLO_JDK_HOME
+  unset ANDROID_SERIAL MOCK_BUILD_FAIL MOCK_NO_APK MOCK_INSTALL_FAIL MOCK_INSTALL_FAIL_DEVICE JODLO_JDK17_HOME JODLO_JDK_HOME JODLO_GOOGLE_WEB_CLIENT_ID
+  rm -f "$tmp/repo/apps/android/app/google-services.json"
   export JAVA_HOME="$tmp/jdk17"
 }
 ok() {
@@ -196,4 +197,94 @@ reset
 bad run --serial
 lacks gradle
 echo '✓ malformed serial never builds'
-echo 'JODLO Android connected-device CLI: all offline safety cases passed.'
+# Only synthetic/local mock inputs. Never contact providers or a real device.
+mkdir -p "$tmp/repo/apps/android/app"
+mock_fcm() {
+cat > "$tmp/repo/apps/android/app/google-services.json" <<'MOCK_FCM_JSON'
+{
+  "project_info": {"project_id": "jodlo-operator-test"},
+  "client": [{
+    "client_info": {"android_client_info": {"package_name": "com.rekixo.jodlo"}},
+    "api_key": [{"current_key": "mock_key_for_local_offline_tests"}]
+  }]
+}
+MOCK_FCM_JSON
+}
+reset
+MOCK_DEVICES=$'D1\tdevice\nD2\tdevice'
+bad call-qa --customer D1 --worker D2
+lacks gradle
+lacks 'adb -s '
+echo '✓ two-phone mode refuses missing real OAuth before build/install'
+
+reset
+MOCK_DEVICES=$'D1\tdevice\nD2\tdevice'
+export JODLO_GOOGLE_WEB_CLIENT_ID='1234567890-publicqa.apps.googleusercontent.com'
+bad call-qa --customer D1 --worker D2
+lacks gradle
+echo '✓ two-phone mode refuses missing FCM config'
+
+reset
+MOCK_DEVICES=$'D1\tdevice\nD2\tdevice'
+export JODLO_GOOGLE_WEB_CLIENT_ID='1234567890-publicqa.apps.googleusercontent.com'
+mock_fcm
+bad call-qa --customer D1 --worker D1
+lacks gradle
+echo '✓ QA requires two distinct phones'
+
+reset
+MOCK_DEVICES=$'D1\tdevice\nD2\tunauthorized'
+export JODLO_GOOGLE_WEB_CLIENT_ID='1234567890-publicqa.apps.googleusercontent.com'
+mock_fcm
+bad call-qa --customer D1 --worker D2
+lacks gradle
+lacks 'adb -s '
+echo '✓ unauthorized Worker phone blocks all installation'
+
+reset
+MOCK_DEVICES=$'D1\tdevice\nD2\tdevice'
+export JODLO_GOOGLE_WEB_CLIENT_ID='1234567890-publicqa.apps.googleusercontent.com'
+mock_fcm
+export MOCK_INSTALL_FAIL_DEVICE=D2
+bad call-qa --customer D1 --worker D2
+has 'adb -s D1 install -r '
+has 'adb -s D2 install -r '
+lacks 'shell am start'
+echo '✓ second install failure cannot launch either phone'
+
+reset
+MOCK_DEVICES=$'D1\tdevice\nD2\tdevice\nD3\tdevice'
+export JODLO_GOOGLE_WEB_CLIENT_ID='1234567890-publicqa.apps.googleusercontent.com'
+mock_fcm
+ok call-qa --customer D2 --worker D1
+has 'gradle -p '
+has '-PjodloEnableAgora=true'
+has '-PjodloEnableFcm=true'
+has '-PjodloApiOrigin=https://api.jodlo.rekixo.com'
+has '-PjodloGoogleWebClientId=1234567890-publicqa.apps.googleusercontent.com'
+has 'adb -s D2 install -r '
+has 'adb -s D1 install -r '
+has 'adb -s D2 shell am start'
+has 'adb -s D1 shell am start'
+lacks 'adb -s D3 '
+[[ "$(grep -c '^gradle ' "$MOCK_CALLS")" == 1 ]]
+echo '✓ one explicitly configured QA build goes only to two named authorized phones'
+
+reset
+MOCK_DEVICES=$'D1\tdevice\nD2\tdevice'
+export JODLO_GOOGLE_WEB_CLIENT_ID='1234567890-ci-only.apps.googleusercontent.com'
+mock_fcm
+bad call-qa --customer D1 --worker D2
+lacks gradle
+echo '✓ synthetic Google OAuth client refused'
+
+reset
+MOCK_DEVICES=$'D1\tdevice\nD2\tdevice'
+export JODLO_GOOGLE_WEB_CLIENT_ID='1234567890-publicqa.apps.googleusercontent.com'
+mock_fcm
+sed -i 's/jodlo-operator-test/jodlo-ci-synthetic-not-real/' "$tmp/repo/apps/android/app/google-services.json"
+bad call-qa --customer D1 --worker D2
+lacks gradle
+echo '✓ synthetic Firebase config refused'
+
+echo 'JODLO Android device CLI: existing and two-phone mock safety cases passed.'

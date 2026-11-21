@@ -16,3 +16,11 @@
 3. Google Play digital purchase: Play Console products, Android Billing, सुरक्षित backend verification, D1 ledger, duplicate purchase रोकना, consume/acknowledge, refund/void और restore को पूरा किए बिना पैसे चालू न करें।
 4. GitHub green और Cloudflare live version को अलग जाँचें; सिर्फ API health से पूरा deploy प्रमाणित नहीं होता।
 5. अंतिम QA में दो असली फोन, कमजोर नेटवर्क, call-answer/reject, notification, खरीद और data-deletion का पूरा परीक्षण; कोई झूठी release-ready घोषणा नहीं।
+
+## दो फोन पर वास्तविक कॉलिंग जाँच — पहले मालिक की अनुमति
+
+सामान्य GitHub debug APK में जानबूझकर Google Login, Cloudflare API और Agora/FCM बंद रहते हैं, इसलिए उससे वास्तविक कॉल का परीक्षण संभव नहीं। दो अलग, USB-debugging के लिए अधिकृत Android फोन, JODLO का वास्तविक सार्वजनिक **Google Web OAuth client ID** और JODLO की अपनी gitignored `apps/android/app/google-services.json` फ़ाइल चाहिए। इन्हें GitHub या चैट में न डालें।
+
+अपने Android development कंप्यूटर पर `JODLO_GOOGLE_WEB_CLIENT_ID=<अपना-पब्लिक-Web-client-ID> npm run android:call-qa -- --customer <Customer-ADB-serial> --worker <Worker-ADB-serial>` चलाएँ। स्क्रिप्ट पहले दोनों फोन और कॉन्फ़िगरेशन जाँचेगी, **एक** debug APK Cloudflare API + Google Login + Agora + FCM के साथ बनाएगी और **सिर्फ निर्दिष्ट दो फोन** पर बिना uninstall/data wipe install करके ऐप खोलेगी। कोई real call, Google Play payment, email या Cloudflare deployment स्वयं नहीं करेगी। FCM config की स्थानीय बनावट जाँचना Google/provider का वास्तविक सत्यापन नहीं है।
+
+फिर दोनों फोन पर अलग Customer और Worker login → Worker की incoming call अनुमति और push readiness → public Service खोजकर ग्राहक द्वारा कॉल शुरू करना → Worker द्वारा Answer/Decline → Mute/Hangup → Network off/on और background/foreground → वास्तविक call history और credit की server से पुष्टि। **दो असली फोन पर यह परीक्षण कोई इंसान ही करेगा; CI में synthetic Firebase compile सिर्फ कोड जाँचता है।**
