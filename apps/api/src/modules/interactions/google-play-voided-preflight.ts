@@ -1,3 +1,4 @@
+import { withinPlayDeadline, readPlayBoundedJson } from "./play-provider-bounds.ts";
 import {
   inspectJodloPlayOneTimePurchase, JODLO_PLAY_PACKAGE,
   PLAY_PREFLIGHT_TIMEOUT_MS,
@@ -19,48 +20,6 @@ type ScreenedResult =
 function object(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown> : null;
-}
-
-async function withinDeadline<T>(work: () => Promise<T>, timeLeft: () => number): Promise<T> {
-  const remaining = timeLeft();
-  if (remaining <= 0) throw new Error("Voided purchase scan deadline");
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      Promise.resolve().then(work),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error("Voided purchase scan deadline")), remaining);
-      }),
-    ]);
-  } finally {
-    if (timer !== undefined) clearTimeout(timer);
-  }
-}
-
-async function limitedJson(response: Response, timeLeft: () => number): Promise<unknown> {
-  const length = response.headers.get("content-length");
-  if (length !== null && (!/^\d+$/.test(length) || Number(length) > MAX_JSON_BYTES))
-    throw new Error("Voided purchase oversized body");
-  if (!response.body) throw new Error("Voided purchase missing body");
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  try {
-    while (true) {
-      const step = await withinDeadline(() => reader.read(), timeLeft);
-      if (step.done) break;
-      size += step.value.byteLength;
-      if (size > MAX_JSON_BYTES) throw new Error("Voided purchase oversized body");
-      chunks.push(step.value);
-    }
-  } finally {
-    void reader.cancel().catch(() => {});
-    reader.releaseLock();
-  }
-  const full = new Uint8Array(size);
-  let at = 0;
-  for (const chunk of chunks) { full.set(chunk, at); at += chunk.byteLength; }
-  return JSON.parse(new TextDecoder("utf-8", {fatal: true}).decode(full));
 }
 
 /** Returns a NON-PRIVILEGED candidate only after BOTH a Google V2 read and
@@ -94,7 +53,7 @@ export async function inspectJodloPlayPurchaseWithVoids(
   const timeLeft = () => Math.max(0, Math.floor(timeoutMs - (performance.now() - started)));
 
   try {
-    const oauth = await withinDeadline(deps.accessToken, timeLeft);
+    const oauth = await withinPlayDeadline(deps.accessToken, timeLeft);
     if (!oauth || !/^[A-Za-z0-9._~+\/-]{1,4096}={0,2}$/.test(oauth))
       return {kind: "unavailable"};
 
@@ -116,7 +75,7 @@ export async function inspectJodloPlayPurchaseWithVoids(
         endpoint.searchParams.set("pageSelection.token", nextPage);
       }
 
-      const response = await withinDeadline(() => request(endpoint.toString(), {
+      const response = await withinPlayDeadline(() => request(endpoint.toString(), {
         method: "GET",
         redirect: "error",
         cache: "no-store",
@@ -127,7 +86,7 @@ export async function inspectJodloPlayPurchaseWithVoids(
         void response.body?.cancel().catch(() => {});
         return {kind: "unavailable"};
       }
-      const responseObject = object(await limitedJson(response, timeLeft));
+      const responseObject = object(await readPlayBoundedJson(response, timeLeft, MAX_JSON_BYTES));
       if (!responseObject) return {kind: "unavailable"};
       const rows = responseObject.voidedPurchases;
       if (rows !== undefined && (!Array.isArray(rows) || rows.length > PAGE_SIZE))
