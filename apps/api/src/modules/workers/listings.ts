@@ -28,12 +28,20 @@ export const PUBLIC_LISTING_ELIGIBILITY =
   "wl.status='published' AND wl.moderation_status='allowed' AND wl.report_hold=0 " +
   "AND a.status='active' AND wp.status='draft' AND c.is_active=1";
 
+/** All public listing reads reuse one select, join and eligibility clause.
+ * Keep category, detail, all-category feed, and both cursor scopes aligned. */
+const PUBLIC_LISTING_COLUMNS =
+  "SELECT wl.id,wl.category_id AS categoryId,wl.worker_account_id AS workerId";
+const PUBLIC_LISTING_FROM =
+  " FROM worker_listings AS wl JOIN accounts AS a ON a.id=wl.worker_account_id " +
+  "JOIN worker_profiles AS wp ON wp.account_id=a.id " +
+  "JOIN categories AS c ON c.id=wl.category_id ";
+const PUBLIC_LISTING_BASE = PUBLIC_LISTING_COLUMNS + PUBLIC_LISTING_FROM;
+const publicWhere = (where: string): string =>
+  PUBLIC_LISTING_BASE + "WHERE " + where + " AND " + PUBLIC_LISTING_ELIGIBILITY;
+
 export const PUBLIC_LISTINGS_QUERY =
-  "SELECT wl.id,wl.category_id AS categoryId,wl.worker_account_id AS workerId " +
-  "FROM worker_listings AS wl JOIN accounts AS a ON a.id=wl.worker_account_id " +
-  "JOIN worker_profiles AS wp ON wp.account_id=a.id JOIN categories AS c ON c.id=wl.category_id " +
-  "WHERE wl.category_id=? AND " + PUBLIC_LISTING_ELIGIBILITY +
-  " ORDER BY wl.created_at,wl.id LIMIT 25";
+  publicWhere("wl.category_id=?") + " ORDER BY wl.created_at,wl.id LIMIT 25";
 
 /** Opt-in bounded browse: the cursor must be a STILL-PUBLIC listing ID.
  * Look up its ordering tuple INSIDE D1 and recheck exactly the same eligibility
@@ -41,11 +49,7 @@ export const PUBLIC_LISTINGS_QUERY =
  * not be usable as an existence/order oracle. Never publish private columns
  * or vary the established 25-row GET.
  */
-const PUBLIC_LISTINGS_SELECT =
-  "SELECT wl.id,wl.category_id AS categoryId,wl.worker_account_id AS workerId " +
-  "FROM worker_listings AS wl JOIN accounts AS a ON a.id=wl.worker_account_id " +
-  "JOIN worker_profiles AS wp ON wp.account_id=a.id JOIN categories AS c ON c.id=wl.category_id " +
-  "WHERE wl.category_id=? AND " + PUBLIC_LISTING_ELIGIBILITY;
+const PUBLIC_LISTINGS_SELECT = publicWhere("wl.category_id=?");
 
 export const PAGED_PUBLIC_LISTINGS_QUERY =
   PUBLIC_LISTINGS_SELECT + " ORDER BY wl.created_at,wl.id LIMIT ?";
@@ -54,11 +58,7 @@ export const PAGED_PUBLIC_LISTINGS_QUERY =
  * The same current DB predicate is used by browse, availability facets,
  * pagination and this detail. No owner ID / profile / phone is projected.
  */
-export const PUBLIC_LISTING_DETAIL_QUERY =
-  "SELECT wl.id,wl.category_id AS categoryId,wl.worker_account_id AS workerId " +
-  "FROM worker_listings AS wl JOIN accounts AS a ON a.id=wl.worker_account_id " +
-  "JOIN worker_profiles AS wp ON wp.account_id=a.id JOIN categories AS c ON c.id=wl.category_id " +
-  "WHERE wl.id=? AND " + PUBLIC_LISTING_ELIGIBILITY + " LIMIT 1";
+export const PUBLIC_LISTING_DETAIL_QUERY = publicWhere("wl.id=?") + " LIMIT 1";
 
 /** Explicit, public-only SERVICE detail. A single authoritative query
  * rechecks the existing listing/owner/worker/moderation/current Category join
@@ -70,10 +70,7 @@ const PUBLIC_APPROVED_SERVICE_DETAIL_SELECT =
   " c.id AS approvedCategoryId,c.slug AS categorySlug," +
   " CASE WHEN ?='hi' THEN COALESCE(NULLIF(c.name_hi,''),c.name_en)" +
   " ELSE c.name_en END AS categoryName " +
-  "FROM worker_listings AS wl JOIN accounts AS a ON a.id=wl.worker_account_id " +
-  "JOIN worker_profiles AS wp ON wp.account_id=a.id " +
-  "JOIN categories AS c ON c.id=wl.category_id " +
-  "WHERE wl.id=? AND " + PUBLIC_LISTING_ELIGIBILITY;
+  PUBLIC_LISTING_FROM + "WHERE wl.id=? AND " + PUBLIC_LISTING_ELIGIBILITY;
 export const PUBLIC_APPROVED_SERVICE_DETAIL_QUERY =
   PUBLIC_APPROVED_SERVICE_DETAIL_SELECT + " LIMIT 1";
 
@@ -85,10 +82,7 @@ export const PUBLIC_APPROVED_SERVICE_DETAIL_QUERY =
 export const CONTINUED_PUBLIC_LISTINGS_QUERY =
   PUBLIC_LISTINGS_SELECT +
   " AND (wl.created_at,wl.id) > (SELECT wl.created_at,wl.id " +
-  "FROM worker_listings AS wl JOIN accounts AS a ON a.id=wl.worker_account_id " +
-  "JOIN worker_profiles AS wp ON wp.account_id=a.id " +
-  "JOIN categories AS c ON c.id=wl.category_id " +
-  "WHERE wl.id=? AND wl.category_id=? AND " + PUBLIC_LISTING_ELIGIBILITY + ")" +
+  PUBLIC_LISTING_FROM + "WHERE wl.id=? AND wl.category_id=? AND " + PUBLIC_LISTING_ELIGIBILITY + ")" +
   " ORDER BY wl.created_at,wl.id LIMIT ?";
 
 /** Owner-only projection: moderation-hidden and unpublished items remain
@@ -462,21 +456,13 @@ export async function pagePublicListings(
  * A listing changed between pages can only disappear, never leak private
  * owner data; no persistent feed snapshots or automatic notifications.
  */
-const PUBLIC_LISTING_COLUMNS =
-  "SELECT wl.id,wl.category_id AS categoryId,wl.worker_account_id AS workerId";
 const ALL_PUBLIC_LISTINGS_FROM =
-  " FROM worker_listings AS wl JOIN accounts AS a ON a.id=wl.worker_account_id " +
-  "JOIN worker_profiles AS wp ON wp.account_id=a.id " +
-  "JOIN categories AS c ON c.id=wl.category_id " +
-  "WHERE " + PUBLIC_LISTING_ELIGIBILITY;
+  PUBLIC_LISTING_FROM + "WHERE " + PUBLIC_LISTING_ELIGIBILITY;
 
 const ALL_PUBLIC_LISTINGS_ORDER = " ORDER BY wl.created_at,wl.id LIMIT ?";
 const publicListingContinuation = (scope: string): string =>
   " AND (wl.created_at,wl.id) > (SELECT wl.created_at,wl.id " +
-  "FROM worker_listings AS wl JOIN accounts AS a ON a.id=wl.worker_account_id " +
-  "JOIN worker_profiles AS wp ON wp.account_id=a.id " +
-  "JOIN categories AS c ON c.id=wl.category_id " +
-  "WHERE wl.id=? AND " + PUBLIC_LISTING_ELIGIBILITY +
+  PUBLIC_LISTING_FROM + "WHERE wl.id=? AND " + PUBLIC_LISTING_ELIGIBILITY +
   scope + ")";
 
 export const PAGED_ALL_PUBLIC_LISTINGS_QUERY =
