@@ -3,6 +3,8 @@ package com.rekixo.jodlo
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.SystemClock
+import com.rekixo.jodlo.core.network.CallAudioLinkRecovery
 import com.rekixo.jodlo.core.network.FailureKind
 import com.rekixo.jodlo.core.network.CallAudioGrant
 import com.rekixo.jodlo.core.network.InMemorySessionCoordinator
@@ -45,6 +47,7 @@ internal class AgoraAudioCall(
     private var localConnected = false
     private var peerPresent = false
     private var wasConnected = false
+    private val linkRecovery = CallAudioLinkRecovery()
 
     private data class Active(val id: String, val epoch: Long, val appId: String, val channel: String, val uid: Int) {
         fun matches(grant: CallAudioGrant): Boolean =
@@ -60,6 +63,7 @@ internal class AgoraAudioCall(
         }
         val owner = session.accountPrivateReadMarker() ?: return
         mutableState.value = AgoraAudioState.JOINING
+        linkRecovery.begin(SystemClock.elapsedRealtime())
         start = scope.launch {
             try {
                 val grant = withContext(Dispatchers.IO) {
@@ -114,6 +118,7 @@ internal class AgoraAudioCall(
                 when (state) {
                     Constants.CONNECTION_STATE_RECONNECTING -> {
                         localConnected = false
+                        linkRecovery.expired(false, SystemClock.elapsedRealtime())
                         mutableState.value = AgoraAudioState.RECONNECTING
                     }
                     Constants.CONNECTION_STATE_CONNECTED -> {
@@ -153,7 +158,9 @@ internal class AgoraAudioCall(
     }
 
     private fun updateConnectionState() {
-        if (localConnected && peerPresent) {
+        val linked = localConnected && peerPresent
+        linkRecovery.expired(linked, SystemClock.elapsedRealtime())
+        if (linked) {
             wasConnected = true
             mutableState.value = AgoraAudioState.CONNECTED
         } else {
@@ -172,14 +179,23 @@ internal class AgoraAudioCall(
                     return@launch
                 }
                 val owner = session.accountPrivateReadMarker()
-                val reply = if (owner?.sessionGeneration == call.epoch) {
-                    withContext(Dispatchers.IO) { session.callAudioGrant(owner, call.id) }
-                } else null
+                // An offline/timeout exception must be a bounded recoverable
+                // failure, never an uncaught coroutine crash on Android main.
+                val reply = try {
+                    if (owner?.sessionGeneration == call.epoch) {
+                        withContext(Dispatchers.IO) { session.callAudioGrant(owner, call.id) }
+                    } else null
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    null
+                }
                 if (active !== call) return@launch
                 val grant = (reply as? SessionResult.Success)?.value
-                if (grant != null && call.matches(grant) && engine?.renewToken(grant.token) == 0) {
-                    return@launch
-                }
+                val renewed = if (grant != null && call.matches(grant)) {
+                    try { engine?.renewToken(grant.token) == 0 } catch (_: Exception) { false }
+                } else false
+                if (renewed) return@launch
                 val failure = (reply as? SessionResult.Failed)?.networkKind
                 if (reply != null && failure != FailureKind.OFFLINE_OR_TIMEOUT &&
                     failure != FailureKind.SERVICE_UNAVAILABLE) {
@@ -195,8 +211,21 @@ internal class AgoraAudioCall(
     private fun watch(call: Active) {
         monitor = scope.launch {
             while (active === call) {
-                delay(3_000)
-                if (session.accountExportSessionMarker() != call.epoch) stop(AgoraAudioState.ENDED)
+                delay(1_000)
+                if (active !== call) break
+                if (session.accountExportSessionMarker() != call.epoch) {
+                    stop(AgoraAudioState.ENDED)
+                    break
+                }
+                if (linkRecovery.expired(
+                    localConnected && peerPresent, SystemClock.elapsedRealtime()
+                )) {
+                    // A missing peer or network must never leave the RTC
+                    // microphone active forever. Remote call state is UNKNOWN:
+                    // CallScreen offers explicit Hang up/reconciliation.
+                    stop(AgoraAudioState.FAILED)
+                    break
+                }
             }
         }
     }

@@ -1,6 +1,14 @@
 plugins {
     kotlin("jvm") version "1.9.24"
 }
+tasks.register<JavaExec>("verifyCallAudioLinkRecovery") {
+    group = "verification"
+    description = "Verify bounded initial join, reconnect, reset and clock safety"
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.rekixo.jodlo.core.network.CallAudioLinkRecoveryTestKt")
+}
+
 repositories {
     mavenCentral()
 }
