@@ -59,7 +59,7 @@ if (releaseCandidateRequested) {
     require(googleWebClientId.isNotBlank()) {
         "Release candidate requires a configured JODLO Google Web OAuth client ID"
     }
-    require(Regex("""^[1-9][0-9]{0,2}\\.[0-9]{1,3}\\.[0-9]{1,3}$""")
+    require(Regex("""^[1-9][0-9]{0,2}\.[0-9]{1,3}\.[0-9]{1,3}$""")
         .matches(candidateVersionName)) {
         "Release candidate needs explicit numeric major.minor.patch version name"
     }
