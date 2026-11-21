@@ -2,7 +2,7 @@
 
 ## Scope
 
-The development-stage bilingual, static JODLO help site at
+The development-stage bilingual, static JODLO Home/Help/Privacy/Terms/deletion site at
 `apps/web/` already has an HTML **meta** Content Security Policy (CSP), no
 forms, trackers, cookies or external resources. HTML meta policies cannot
 enforce `frame-ancestors`; headers are a separate deployment responsibility.
@@ -45,3 +45,10 @@ changes are introduced.
 Related: [infrastructure](CLOUDFLARE_INFRASTRUCTURE.md),
 [release readiness](RELEASE_READINESS.md),
 [verified state](CURRENT_STATE.md).
+
+## Combined-main integration check
+
+This integration branch starts from `main` after the approved 72-screen UI
+and CI trust-boundary merges. Its required **new-commit** CI checks cover both
+Android release blocking and web HTTP headers against that exact combined
+source. Previous standalone PR checks are not a substitute for these checks.
