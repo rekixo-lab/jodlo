@@ -4,7 +4,7 @@ import { dirname, extname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const mission = "हम JODLO इसलिए बना रहे हैं ताकि यह Freelancer ऐप से बेहतर हो।\n";
+const mission = "हम JODLO इसलिए बना रहे हैं ताकि यह Finworkar ऐप से बेहतर हो।\n";
 const ignore = new Set([".git", "node_modules", ".gradle", ".wrangler", "build", "dist", "out"]);
 async function findWrittenNotes(path) {
   const found = [];
