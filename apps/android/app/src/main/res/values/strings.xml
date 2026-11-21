@@ -518,6 +518,8 @@
     <string name="call_connected">Call connected</string>
     <string name="call_connecting">Connecting…</string>
     <string name="call_reconnecting">Reconnecting…</string>
+    <string name="call_retry_audio">Check call and retry audio</string>
+    <string name="call_retry_audio_unconfirmed">Could not confirm this call is still active. Audio remains off. Check the network or end the call.</string>
     <string name="call_ringing">Ringing…</string>
     <string name="call_declined">Call declined</string>
     <string name="call_missed">No answer</string>

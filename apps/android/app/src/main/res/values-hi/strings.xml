@@ -518,6 +518,8 @@
     <string name="call_connected">कॉल जुड़ी है</string>
     <string name="call_connecting">कॉल जुड़ रही है…</string>
     <string name="call_reconnecting">कॉल दोबारा जुड़ रही है…</string>
+    <string name="call_retry_audio">कॉल जाँचकर ऑडियो फिर जोड़ें</string>
+    <string name="call_retry_audio_unconfirmed">सर्वर से कॉल जारी होने की पुष्टि नहीं मिली। ऑडियो बंद है। नेटवर्क जाँचें या कॉल समाप्त करें।</string>
     <string name="call_ringing">कॉल बज रही है…</string>
     <string name="call_declined">कॉल ठुकरा दी गई</string>
     <string name="call_missed">कॉल नहीं उठाई गई</string>

@@ -512,3 +512,38 @@ test("Agora RTC network and token renewal fail locally after bounded retries wit
     assert.match(call,/CallEndProtocol\.actionToEnd\(expectedRole, phase/);
     assert.doesNotMatch(rtc,/session\.callSignal\([^)]*CallAction\.(?:HANGUP|CANCEL|DECLINE)/);
 });
+
+
+test("Failed Agora audio offers ONLY explicit same-invitation retry after current-owner server GET", () => {
+    const ui = read("apps/android/app/src/main/java/com/rekixo/jodlo/CallScreen.kt");
+    const rtc = read("apps/android/app/src/agora/kotlin/com/rekixo/jodlo/AgoraAudioCall.kt");
+    const stub = read("apps/android/app/src/noAgora/kotlin/com/rekixo/jodlo/AgoraAudioCall.kt");
+    const en = read("apps/android/app/src/main/res/values/strings.xml");
+    const hi = read("apps/android/app/src/main/res/values-hi/strings.xml");
+    assert.match(ui, /fun retryAudioAfterServerCheck\(\) \{/);
+    const start = ui.indexOf("    fun retryAudioAfterServerCheck() {");
+    const end = ui.indexOf("\n    fun dial() {", start);
+    assert.ok(start >= 0 && end > start);
+    const retry = ui.slice(start, end);
+    assert.match(retry, /phase != CallPhase\.ACCEPTED/);
+    assert.match(retry, /audioState != AgoraAudioState\.FAILED/);
+    assert.match(retry, /owner = session\.accountPrivateReadMarker\(\)\?\.takeIf \{ it\.sessionGeneration == epoch \}/);
+    assert.match(retry, /Manifest\.permission\.RECORD_AUDIO/);
+    assert.match(retry, /Lifecycle\.State\.STARTED/);
+    assert.match(retry, /withContext\(Dispatchers\.IO\) \{ session\.callSignal\(owner, id\) \}/);
+    assert.match(retry, /CallPollSafety\.mustStopLocalAudio\(result\)/);
+    assert.match(retry, /it\.role == expectedRole && session\.accountPrivateReadMarker\(\) == owner/);
+    assert.match(retry, /signal\?\.phase == CallPhase\.ACCEPTED && ending == null/);
+    assert.match(retry, /audio\.state\.value == AgoraAudioState\.FAILED/);
+    assert.match(retry, /audio\.join\(id\)/);
+    assert.match(retry, /CallEndProtocol\.isConfirmed\(expectedRole, signal\)/);
+    assert.match(retry, /error = R\.string\.call_retry_audio_unconfirmed/);
+    assert.doesNotMatch(retry, /startCall\(|CallAction\.(?:ACCEPT|HANGUP|CANCEL)|\.callSignal\(owner, id,/);
+    assert.match(ui, /if \(phase == CallPhase\.ACCEPTED && audioState == AgoraAudioState\.FAILED/);
+    assert.match(ui, /JodloButton\(onClick = ::retryAudioAfterServerCheck/);
+    assert.match(rtc, /fun join\(invitationId: String\)/);
+    assert.match(stub, /fun join\(invitationId: String\)/);
+    for(const xml of [en,hi])
+      for(const name of ["call_retry_audio","call_retry_audio_unconfirmed"])
+        assert.ok(xml.includes('name="'+name+'"'), name+" must be translated");
+});
