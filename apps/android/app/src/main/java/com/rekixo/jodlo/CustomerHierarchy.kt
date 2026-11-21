@@ -51,7 +51,8 @@ internal fun CustomerHierarchy(
     openHome: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    var language by remember { mutableStateOf(Language.HI) }
+    val appLanguage = LocalJodloLanguage.current
+    var language by remember { mutableStateOf(appLanguage) }
     var availableOnly by remember { mutableStateOf(false) }
     var level by remember { mutableStateOf(HierarchyLevel.GROUPS) }
     var group by remember { mutableStateOf<HierarchyItem?>(null) }

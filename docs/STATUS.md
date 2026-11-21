@@ -1,3 +1,13 @@
+## 2026-11-12 — Approved design implementation review
+
+**Done.** Android uses the approved bottom navigation, localized welcome, task-first Home, explicit city picker, separate Worker create and management views, account and data destinations, shared service details, and call review/permission screens. Web has independent bilingual Home, Help, Privacy, Terms and account deletion guidance routes.
+
+**Evidence.** The [screen register](APPROVED_SCREEN_REVIEW_2026-11-12.md) maps all 72 screens and identifies the scope of the current layout changes. Exact PR head CI is tracked in GitHub.
+
+**Pending.** Pixel-level and integrated device acceptance are outstanding. Worker city, profile and photo still use the existing Listing-backed editors. The combined pre-publication draft, general notification feed and staff console need further work. Purchases, provider calls, approved legal copy and staff access continue to depend on their release prerequisites.
+
+**Next.** Verify the PR's Foundation and Android JDK 17/21 results. Review the screen register and wire the remaining design journeys to their real data contracts.
+
 ## 2026-11-12 — Native Worker profile draft pre-submit validation (source PR only)
 
 The bilingual Worker Service Profile editor now checks draft input locally against the existing server's restricted public-text and numeric rules, shows field-specific correction after an edit, and only offers server-authoritative **private** moderation submission when the draft passes. Existing owner/session/revision and unknown-write recovery boundaries remain. Kotlin JVM and native wiring regressions accompany this source-only change; no provider/Cloudflare deployment, public approval, Catalog activation, phone acceptance, email or Finworkar writes. [Contract](WORKER_PROFILE_DRAFT_VALIDATION_2026-11-12.md).

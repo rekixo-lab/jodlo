@@ -19,7 +19,7 @@ test("Private Worker rows never render or authorize actions outside their owner/
     assert.match(ui,/Lifecycle\.Event\.ON_RESUME/);
     assert.match(ui,/if \(!accountEpochCurrent\)/);
     assert.match(ui,/displayedOwnListings.*ownListQuery/);
-    assert.match(ui,/if \(selectedListing != null && displayedOwnListings\.any/);
+    assert.match(ui,/if \(selectedListing != null && categoryEdit\.source == null && displayedOwnListings\.any\s*\{\s*it\.id == selectedListing/);
     assert.doesNotMatch(fence,/bearer|GoogleAuth|HttpMethod|SharedPreferences|http:\/\//);
 });
 
@@ -274,7 +274,8 @@ test("Notification-tap network uncertainty permits only explicit expiring same-o
     assert.match(main,/CallScreenRequest\.Incoming\(wakeup\.invitationId, status\.value\.ringDeadlineMs\)/);
     assert.match(call,/val confirmedRingDeadlineMs: Long/);
     assert.match(call,/if \(request is CallScreenRequest\.Incoming\) CallPhase\.RINGING else null/);
-    assert.match(call,/if \(!receiver\) requestMicrophone\(\)/);
+    assert.match(call,/outgoingReview = false\s+if \(!receiver\) requestMicrophone\(\)/);
+    assert.doesNotMatch(call,/LaunchedEffect\(request\)\s*\{[^}]*requestMicrophone/);
     assert.match(policy,/FailureKind\.OFFLINE_OR_TIMEOUT/);
     assert.match(policy,/FailureKind\.SERVICE_UNAVAILABLE/);
     assert.match(policy,/SessionFailure\.OPERATION_IN_PROGRESS/);

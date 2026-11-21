@@ -25,6 +25,7 @@ object JodloPalette {
     val MutedText = Color(0xFF929292)
     val Outline = Color(0xFF262626)
     val Accent = Color(0xFF40C877)
+    val ActiveSurface = Color(0xFF061009)
     val AccentOutline = Color(0xFF08391A)
     val Error = Color(0xFFFF8888)
 }
@@ -38,6 +39,8 @@ object JodloSizes {
     val Gap = 12.dp
     val SmallGap = 8.dp
     val BrandMark = 48.dp
+    val NavigationIcon = 20.dp
+    val TopBarMark = 28.dp
     val MinTouch = 48.dp
     val CallBadge = 88.dp
     val CallWaveStroke = 4.dp

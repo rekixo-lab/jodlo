@@ -1,6 +1,7 @@
 package com.rekixo.jodlo
 
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -8,7 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -58,6 +59,10 @@ internal fun AccountDashboard(
     session: InMemorySessionCoordinator?,
     openHelp: () -> Unit,
     onSignInSuccess: () -> Unit = {},
+    openLanguage: () -> Unit,
+    openWorker: () -> Unit,
+    openHome: () -> Unit,
+    startAtCallSettings: Boolean = false,
 ) {
     val scope = rememberCoroutineScope()
     var login by remember(session) {
@@ -70,6 +75,10 @@ internal fun AccountDashboard(
     }
     var busy by remember(session) { mutableStateOf(false) }
     var notice by remember(session) { mutableStateOf(0) }
+    var pane by remember(session, startAtCallSettings) {
+        mutableStateOf(if (startAtCallSettings) AccountPane.CALLS else AccountPane.OVERVIEW)
+    }
+    var signOutReview by remember(session) { mutableStateOf<AccountPrivateReadMarker?>(null) }
     var erasureReview by remember(session) { mutableStateOf<AccountPrivateReadMarker?>(null) }
     // Memory-only and never saveable: the payload contains account IDs and
     // Google subject, unlike public Catalog/listing projections.
@@ -222,7 +231,7 @@ internal fun AccountDashboard(
         }
     }
 
-    fun logoutEverywhere() {
+    fun signOut(allDevices: Boolean) {
         if (busy || session == null || login !is LoginState.SignedIn) return
         busy = true
         notice = 0
@@ -231,7 +240,7 @@ internal fun AccountDashboard(
         exportMarker = null
         scope.launch {
             val result = try {
-                withContext(Dispatchers.IO) { session.logout(allDevices = true) }
+                withContext(Dispatchers.IO) { session.logout(allDevices = allDevices) }
             } catch (_: Exception) { null }
             login = session.snapshot()
             observedMarker = session.accountPrivateReadMarker()
@@ -239,8 +248,11 @@ internal fun AccountDashboard(
             // account's notification locally after credentials are forgotten.
             if (login !is LoginState.SignedIn) CallNotifications.clearLocal(activity.applicationContext)
             busy = false
-            notice = if (result is SessionResult.Success)
-                R.string.account_logged_out_all else R.string.account_logged_out_uncertain
+            notice = when {
+                !allDevices -> R.string.worker_logout_local
+                result is SessionResult.Success -> R.string.account_logged_out_all
+                else -> R.string.account_logged_out_uncertain
+            }
         }
     }
 
@@ -299,23 +311,32 @@ internal fun AccountDashboard(
     // A former owner's data cannot be drawn after another login or write.
     val currentMarker = session?.accountPrivateReadMarker()
     val confirmedOverview = overview?.forCurrent(currentMarker)
+    fun goBack() {
+        if (busy) return
+        erasureReview = null
+        signOutReview = null
+        pane = when (pane) {
+            AccountPane.EXPORT, AccountPane.SECURITY, AccountPane.DELETE -> AccountPane.DATA
+            AccountPane.PURCHASE_STATUS -> AccountPane.BILLING
+            else -> AccountPane.OVERVIEW
+        }
+    }
+    BackHandler(enabled = pane != AccountPane.OVERVIEW) { goBack() }
+    val scroll = remember(pane) { ScrollState(0) }
 
     Column(
         Modifier.fillMaxSize()
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(scroll)
             .padding(JodloSizes.ScreenPadding),
         verticalArrangement = Arrangement.spacedBy(JodloSizes.CardPadding),
     ) {
-        Text(stringResource(R.string.account_heading),
-            style = MaterialTheme.typography.headlineSmall)
-        JodloTextAction(onClick = openHelp) {
-            Text(stringResource(R.string.help_account_action))
-        }
         if (session == null) {
             Text(stringResource(R.string.no_api_origin),
                 color = MaterialTheme.colorScheme.error)
         } else if (login !is LoginState.SignedIn ||
             session.snapshot() !is LoginState.SignedIn) {
+            Text(stringResource(R.string.navigation_sign_in_title),
+                style = MaterialTheme.typography.headlineLarge)
             Text(stringResource(R.string.account_sign_in_hint))
             if (BuildConfig.GOOGLE_WEB_CLIENT_ID.isBlank()) {
                 Text(stringResource(R.string.google_setup_required))
@@ -324,71 +345,163 @@ internal fun AccountDashboard(
                     Text(stringResource(R.string.google_sign_in))
                 }
             }
-        } else {
-            Text(stringResource(R.string.account_private_notice),
-                style = MaterialTheme.typography.bodySmall)
-            JodloTextAction(onClick = ::refresh,
-                enabled = !busy && currentMarker != null) {
-                Text(stringResource(R.string.account_refresh))
+            JodloTextAction(onClick = openHome, enabled = !busy) {
+                Text(stringResource(R.string.navigation_browse_guest))
             }
-            if (confirmedOverview != null) {
-                val data = confirmedOverview
-                JodloCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(JodloSizes.CardPadding),
-                        verticalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
-                        Text(stringResource(R.string.account_since, data.createdAt))
-                        Text(stringResource(if (data.workerEnabled)
-                            R.string.account_worker_enabled else R.string.account_worker_disabled))
-                        Text(stringResource(R.string.account_total_services, data.totalServices))
-                        Text(stringResource(R.string.account_published_services, data.publishedServices))
-                        Text(stringResource(R.string.account_visible_services, data.visibleServices))
-                        Text(stringResource(R.string.account_active_sessions, data.activeSessions))
+        } else {
+            if (pane != AccountPane.OVERVIEW) {
+                JodloTextAction(onClick = ::goBack, enabled = !busy) {
+                    Text(stringResource(R.string.guided_post_back))
+                }
+                Text(stringResource(pane.title), style = MaterialTheme.typography.headlineLarge)
+            }
+            if (pane == AccountPane.OVERVIEW) {
+                Text(stringResource(R.string.account_private_notice),
+                    style = MaterialTheme.typography.bodySmall)
+                JodloTextAction(onClick = ::refresh,
+                    enabled = !busy && currentMarker != null) {
+                    Text(stringResource(R.string.account_refresh))
+                }
+                if (confirmedOverview != null) {
+                    val data = confirmedOverview
+                    JodloCard(modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(JodloSizes.CardPadding),
+                            verticalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
+                            Text(stringResource(R.string.account_since, data.createdAt))
+                            Text(stringResource(if (data.workerEnabled)
+                                R.string.account_worker_enabled else R.string.account_worker_disabled))
+                            Text(stringResource(R.string.account_total_services, data.totalServices))
+                            Text(stringResource(R.string.account_published_services, data.publishedServices))
+                            Text(stringResource(R.string.account_visible_services, data.visibleServices))
+                            Text(stringResource(R.string.account_active_sessions, data.activeSessions))
+                        }
+                    }
+                }
+                JodloTextAction(onClick = openWorker, modifier = Modifier.fillMaxWidth(), enabled = !busy) {
+                    Text(stringResource(R.string.tab_worker))
+                }
+                for (destination in listOf(AccountPane.HISTORY, AccountPane.BLOCKED,
+                    AccountPane.CALLS, AccountPane.DATA, AccountPane.BILLING)) {
+                    JodloTextAction(onClick = { pane = destination }, modifier = Modifier.fillMaxWidth(),
+                        enabled = !busy) {
+                        Text(stringResource(destination.title))
                     }
                 }
             }
-            if (session != null && ((login as? LoginState.SignedIn)?.worker == WorkerState.DRAFT ||
-                    confirmedOverview?.workerEnabled == true)) {
-                CallPreferenceControls(activity, session, busy, ::refresh)
-                if (BuildConfig.AGORA_ENABLED) {
-                    CallPreferenceControls(activity, session, busy, ::refresh, availability = true)
+            when (pane) {
+                AccountPane.CALLS -> {
+                    if ((login as? LoginState.SignedIn)?.worker == WorkerState.DRAFT ||
+                        confirmedOverview?.workerEnabled == true) {
+                        CallPreferenceControls(activity, session, busy, ::refresh)
+                        if (BuildConfig.AGORA_ENABLED) {
+                            CallPreferenceControls(activity, session, busy, ::refresh, availability = true)
+                        }
+                    } else {
+                        Text(stringResource(R.string.worker_opt_in_explainer))
+                        JodloTextAction(onClick = openWorker, enabled = !busy) {
+                            Text(stringResource(R.string.tab_worker))
+                        }
+                    }
                 }
-            }
-            if (session != null) {
-                ContactBlockList(session, busy)
-                CallHistorySection(session, busy)
-            }
-            Text(stringResource(R.string.account_export_privacy_notice),
-                style = MaterialTheme.typography.bodySmall)
-            JodloButton(onClick = ::saveOwnData,
-                enabled = !busy && currentMarker != null) {
-                Text(stringResource(R.string.account_export_action))
-            }
-            JodloButton(onClick = ::logoutEverywhere,
-                enabled = !busy && currentMarker != null) {
-                Text(stringResource(R.string.account_logout_all))
-            }
-            if (BuildConfig.GOOGLE_WEB_CLIENT_ID.isNotBlank()) {
-                if (currentMarker != null && erasureReview == currentMarker) {
+                AccountPane.BLOCKED -> ContactBlockList(session, busy)
+                AccountPane.HISTORY -> CallHistorySection(session, busy)
+                AccountPane.BILLING -> {
+                    Text(stringResource(R.string.navigation_billing_off))
+                    JodloTextAction(onClick = { pane = AccountPane.PURCHASE_STATUS },
+                        modifier = Modifier.fillMaxWidth(), enabled = !busy) {
+                        Text(stringResource(R.string.navigation_purchase_status))
+                    }
+                }
+                AccountPane.PURCHASE_STATUS -> {
+                    Text(stringResource(R.string.navigation_purchase_unavailable))
+                }
+                AccountPane.DATA -> {
+                    for (destination in listOf(AccountPane.EXPORT, AccountPane.SECURITY, AccountPane.DELETE)) {
+                        if (destination != AccountPane.DELETE || BuildConfig.GOOGLE_WEB_CLIENT_ID.isNotBlank()) {
+                            JodloTextAction(onClick = { pane = destination },
+                                modifier = Modifier.fillMaxWidth(), enabled = !busy) {
+                                Text(stringResource(destination.title))
+                            }
+                        }
+                    }
+                }
+                AccountPane.EXPORT -> {
+                    Text(stringResource(R.string.account_export_privacy_notice),
+                        style = MaterialTheme.typography.bodySmall)
+                    JodloButton(onClick = ::saveOwnData, modifier = Modifier.fillMaxWidth(),
+                        enabled = !busy && currentMarker != null) {
+                        Text(stringResource(R.string.account_export_action))
+                    }
+                }
+                AccountPane.SECURITY -> {
+                    Text(stringResource(R.string.navigation_google_account))
+                    JodloTextAction(onClick = { signOut(allDevices = false) },
+                        enabled = !busy && currentMarker != null) {
+                        Text(stringResource(R.string.worker_logout))
+                    }
+                    if (currentMarker != null && signOutReview == currentMarker) {
+                        Text(stringResource(R.string.navigation_signout_title),
+                            style = MaterialTheme.typography.titleMedium)
+                        Text(stringResource(R.string.navigation_signout_hint))
+                        JodloTextAction(onClick = { signOutReview = null }, enabled = !busy) {
+                            Text(stringResource(R.string.guided_post_back))
+                        }
+                        JodloButton(onClick = {
+                            if (session.accountPrivateReadMarker() == signOutReview) signOut(allDevices = true)
+                            signOutReview = null
+                        }, enabled = !busy) { Text(stringResource(R.string.account_logout_all)) }
+                    } else {
+                        JodloTextAction(onClick = { signOutReview = currentMarker },
+                            enabled = !busy && currentMarker != null) {
+                            Text(stringResource(R.string.account_logout_all))
+                        }
+                    }
+                }
+                AccountPane.DELETE -> {
                     Text(stringResource(R.string.account_erase_scope),
                         color = MaterialTheme.colorScheme.error)
-                    JodloTextAction(onClick = { erasureReview = null }, enabled = !busy) {
-                        Text(stringResource(R.string.guided_post_back))
-                    }
-                    JodloButton(onClick = ::eraseConfirmedAccount, enabled = !busy) {
-                        Text(stringResource(R.string.account_erase_confirm))
-                    }
-                } else {
-                    JodloTextAction(onClick = { erasureReview = currentMarker },
-                        enabled = !busy && currentMarker != null) {
-                        Text(stringResource(R.string.account_erase_action))
+                    if (currentMarker != null && erasureReview == currentMarker) {
+                        JodloTextAction(onClick = { erasureReview = null }, enabled = !busy) {
+                            Text(stringResource(R.string.guided_post_back))
+                        }
+                        JodloButton(onClick = ::eraseConfirmedAccount, enabled = !busy) {
+                            Text(stringResource(R.string.account_erase_confirm))
+                        }
+                    } else {
+                        JodloTextAction(onClick = { erasureReview = currentMarker },
+                            enabled = !busy && currentMarker != null) {
+                            Text(stringResource(R.string.account_erase_action))
+                        }
                     }
                 }
+                AccountPane.OVERVIEW -> Unit
+            }
+        }
+        if (pane == AccountPane.OVERVIEW || login !is LoginState.SignedIn) {
+            JodloTextAction(onClick = openLanguage, enabled = !busy) {
+                Text(stringResource(R.string.navigation_language))
+            }
+            JodloTextAction(onClick = openHelp) {
+                Text(stringResource(R.string.help_account_action))
             }
         }
         if (busy) CircularProgressIndicator()
         if (notice != 0) Text(stringResource(notice),
             style = MaterialTheme.typography.bodySmall)
     }
+}
+
+private enum class AccountPane(val title: Int) {
+    OVERVIEW(R.string.account_heading),
+    HISTORY(R.string.call_history_title),
+    BLOCKED(R.string.account_blocked_contacts),
+    CALLS(R.string.navigation_call_consent),
+    DATA(R.string.navigation_account_data),
+    BILLING(R.string.navigation_billing_title),
+    PURCHASE_STATUS(R.string.navigation_purchase_status),
+    EXPORT(R.string.account_export_action),
+    SECURITY(R.string.navigation_security),
+    DELETE(R.string.account_erase_action),
 }
 
 @Composable

@@ -7,6 +7,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -15,7 +16,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -48,6 +51,7 @@ import com.rekixo.jodlo.core.network.CallRole
 import com.rekixo.jodlo.core.network.InMemorySessionCoordinator
 import com.rekixo.jodlo.core.network.SessionResult
 import com.rekixo.jodlo.ui.theme.JodloButton
+import com.rekixo.jodlo.ui.theme.JodloAppBar
 import com.rekixo.jodlo.ui.theme.JodloPalette
 import com.rekixo.jodlo.ui.theme.JodloSizes
 import com.rekixo.jodlo.ui.theme.JodloTextAction
@@ -77,7 +81,10 @@ internal sealed interface CallScreenRequest {
 
 @Composable
 internal fun ServiceCallButton(onCall: ((String) -> Unit)?, listingId: String) {
-    if (onCall == null) return
+    if (onCall == null) {
+        Text(stringResource(R.string.call_unavailable), style = MaterialTheme.typography.bodySmall)
+        return
+    }
     JodloButton(onClick = { onCall(listingId) }, modifier = Modifier.fillMaxWidth()) {
         Text(stringResource(R.string.call_start), color = JodloPalette.Accent)
     }
@@ -114,6 +121,8 @@ internal fun CallScreen(
     }
     var error by remember(request) { mutableStateOf<Int?>(null) }
     var busy by remember(request) { mutableStateOf(false) }
+    var outgoingReview by remember(request) { mutableStateOf(!receiver && epoch != null) }
+    var microphoneReview by remember(request) { mutableStateOf(false) }
     var muted by remember(request) { mutableStateOf(false) }
     var connectedAt by remember(request) { mutableStateOf<Long?>(null) }
     var seconds by remember(request) { mutableStateOf(0L) }
@@ -349,11 +358,17 @@ internal fun CallScreen(
     }
 
     fun useMicrophone() {
-        if (receiver) send(CallAction.ACCEPT) else dial()
+        if (!receiver) dial()
+        else if (phase == CallPhase.RINGING && ringUntil?.let { it > SystemClock.elapsedRealtime() } == true) {
+            send(CallAction.ACCEPT)
+        }
     }
 
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) useMicrophone() else error = R.string.call_microphone_required
+        if (granted) {
+            microphoneReview = false
+            useMicrophone()
+        } else error = R.string.call_microphone_required
     }
 
     fun requestMicrophone() {
@@ -361,7 +376,7 @@ internal fun CallScreen(
         if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
             useMicrophone()
         } else {
-            permission.launch(Manifest.permission.RECORD_AUDIO)
+            microphoneReview = true
         }
     }
 
@@ -404,7 +419,6 @@ internal fun CallScreen(
     }
     LaunchedEffect(request) {
         if (epoch == null) error = R.string.call_sign_in
-        else if (!receiver) requestMicrophone()
     }
     // An uncertain Answer/End stops automatic polling. Once an explicit
     // server GET resolves the error, the poll must RESTART for this same call.
@@ -472,7 +486,10 @@ internal fun CallScreen(
         }
     }
 
+    val canReviewMicrophone = microphoneReview && !sessionLost && phase !in terminalPhases
     val status = when {
+        outgoingReview -> R.string.navigation_call_review
+        canReviewMicrophone -> R.string.call_microphone_required
         sessionLost -> R.string.call_close_warning
         reviewLocalClose -> R.string.call_close_warning
         ending != null && busy -> R.string.call_ending
@@ -500,13 +517,12 @@ internal fun CallScreen(
     )) {
         Column(
             modifier = Modifier.fillMaxSize().background(JodloPalette.Canvas)
-                .padding(JodloSizes.ScreenPadding).verticalScroll(rememberScrollState()),
+                .safeDrawingPadding().verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text(stringResource(R.string.app_name), color = JodloPalette.Accent,
-                style = MaterialTheme.typography.headlineSmall)
-            Column(horizontalAlignment = Alignment.CenterHorizontally,
+            JodloAppBar(stringResource(R.string.navigation_internet_call))
+            Column(Modifier.padding(JodloSizes.ScreenPadding), horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(JodloSizes.Gap)) {
                 CallWaveform()
                 Text(stringResource(status), textAlign = TextAlign.Center,
@@ -516,81 +532,109 @@ internal fun CallScreen(
                         color = JodloPalette.Accent, style = MaterialTheme.typography.titleLarge)
                 }
             }
-            when {
-                sessionLost -> {
-                    // Do not claim to have hung up remotely after account
-                    // revocation or expiry. Audio is already stopped locally.
-                    JodloButton(onClick = { audio.close(); close() },
-                        modifier = Modifier.fillMaxWidth()) {
-                        Text(stringResource(R.string.call_close_local))
-                    }
-                }
-                reviewLocalClose -> {
-                    // Closing locally cannot prove the remote invitation ended.
-                    JodloTextAction(onClick = { reviewLocalClose = false },
-                        modifier = Modifier.fillMaxWidth()) {
-                        Text(stringResource(R.string.call_keep_open))
-                    }
-                    JodloButton(onClick = { audio.close(); close() },
-                        modifier = Modifier.fillMaxWidth()) {
-                        Text(stringResource(R.string.call_close_local))
-                    }
-                }
-                ending != null -> {
-                    JodloButton(onClick = ::checkEnding, modifier = Modifier.fillMaxWidth(), enabled = !busy) {
-                        Text(stringResource(R.string.call_check_end))
-                    }
-                    JodloTextAction(onClick = { ending?.let(::send) },
-                        modifier = Modifier.fillMaxWidth(), enabled = !busy) {
-                        Text(stringResource(R.string.call_retry_end))
-                    }
-                    JodloTextAction(onClick = { reviewLocalClose = true },
-                        modifier = Modifier.fillMaxWidth(), enabled = !busy) {
-                        Text(stringResource(R.string.call_close_local))
-                    }
-                }
-                acceptUncertain -> {
-                    JodloButton(onClick = ::checkAcceptance,
-                        modifier = Modifier.fillMaxWidth(), enabled = !busy) {
-                        Text(stringResource(R.string.call_check_accept))
-                    }
-                    JodloTextAction(onClick = { reviewLocalClose = true },
-                        modifier = Modifier.fillMaxWidth(), enabled = !busy) {
-                        Text(stringResource(R.string.call_close_local))
-                    }
-                }
-                dialUncertain && invitationId == null -> {
-                    JodloButton(onClick = ::dial, modifier = Modifier.fillMaxWidth(), enabled = !busy) {
-                        Text(stringResource(R.string.call_retry_same_attempt))
-                    }
-                    JodloTextAction(onClick = { reviewLocalClose = true },
-                        modifier = Modifier.fillMaxWidth(), enabled = !busy) {
-                        Text(stringResource(R.string.call_close_local))
-                    }
-                }
-                else -> Row(Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(JodloSizes.Gap)) {
-                    when {
-                        error == null && receiver && phase == CallPhase.RINGING -> {
-                            JodloTextAction(::endOrClose, Modifier.weight(1f), enabled = !busy) {
-                                Text(stringResource(R.string.call_decline), color = JodloPalette.Error)
-                            }
-                            JodloButton(::requestMicrophone, Modifier.weight(1f), enabled = !busy) {
-                                Text(stringResource(R.string.call_answer), color = JodloPalette.Accent)
-                            }
+            Column(Modifier.fillMaxWidth().padding(JodloSizes.ScreenPadding),
+                verticalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap),
+            ) {
+                when {
+                    outgoingReview -> {
+                        JodloButton(onClick = {
+                            outgoingReview = false
+                            if (!receiver) requestMicrophone()
+                        }, modifier = Modifier.fillMaxWidth()) {
+                            Text(stringResource(R.string.call_start))
                         }
-                        phase == CallPhase.ACCEPTED -> {
-                            JodloTextAction({ if (audio.muteMicrophone(!muted)) muted = !muted },
-                                Modifier.weight(1f), enabled = audioState == AgoraAudioState.CONNECTED) {
-                                Text(stringResource(if (muted) R.string.call_unmute else R.string.call_mute))
-                            }
-                            JodloTextAction(::endOrClose, Modifier.weight(1f), enabled = !busy) {
-                                Text(stringResource(R.string.call_hangup), color = JodloPalette.Error)
-                            }
+                        JodloTextAction(onClick = close, modifier = Modifier.fillMaxWidth()) {
+                            Text(stringResource(R.string.guided_post_back))
                         }
-                        else -> JodloTextAction(::endOrClose, Modifier.fillMaxWidth(), enabled = !busy) {
-                            Text(stringResource(if (phase == CallPhase.RINGING || phase == CallPhase.PENDING)
-                                R.string.call_cancel else R.string.call_close))
+                    }
+                    canReviewMicrophone -> {
+                        JodloButton(onClick = { permission.launch(Manifest.permission.RECORD_AUDIO) },
+                            modifier = Modifier.fillMaxWidth()) {
+                            Text(stringResource(R.string.navigation_call_microphone))
+                        }
+                        JodloTextAction(onClick = {
+                            microphoneReview = false
+                            error = null
+                            if (!receiver) close()
+                        }, modifier = Modifier.fillMaxWidth()) {
+                            Text(stringResource(R.string.guided_post_back))
+                        }
+                    }
+                    sessionLost -> {
+                        // Do not claim to have hung up remotely after account
+                        // revocation or expiry. Audio is already stopped locally.
+                        JodloButton(onClick = { audio.close(); close() },
+                            modifier = Modifier.fillMaxWidth()) {
+                            Text(stringResource(R.string.call_close_local))
+                        }
+                    }
+                    reviewLocalClose -> {
+                        // Closing locally cannot prove the remote invitation ended.
+                        JodloTextAction(onClick = { reviewLocalClose = false },
+                            modifier = Modifier.fillMaxWidth()) {
+                            Text(stringResource(R.string.call_keep_open))
+                        }
+                        JodloButton(onClick = { audio.close(); close() },
+                            modifier = Modifier.fillMaxWidth()) {
+                            Text(stringResource(R.string.call_close_local))
+                        }
+                    }
+                    ending != null -> {
+                        JodloButton(onClick = ::checkEnding, modifier = Modifier.fillMaxWidth(), enabled = !busy) {
+                            Text(stringResource(R.string.call_check_end))
+                        }
+                        JodloTextAction(onClick = { ending?.let(::send) },
+                            modifier = Modifier.fillMaxWidth(), enabled = !busy) {
+                            Text(stringResource(R.string.call_retry_end))
+                        }
+                        JodloTextAction(onClick = { reviewLocalClose = true },
+                            modifier = Modifier.fillMaxWidth(), enabled = !busy) {
+                            Text(stringResource(R.string.call_close_local))
+                        }
+                    }
+                    acceptUncertain -> {
+                        JodloButton(onClick = ::checkAcceptance,
+                            modifier = Modifier.fillMaxWidth(), enabled = !busy) {
+                            Text(stringResource(R.string.call_check_accept))
+                        }
+                        JodloTextAction(onClick = { reviewLocalClose = true },
+                            modifier = Modifier.fillMaxWidth(), enabled = !busy) {
+                            Text(stringResource(R.string.call_close_local))
+                        }
+                    }
+                    dialUncertain && invitationId == null -> {
+                        JodloButton(onClick = ::dial, modifier = Modifier.fillMaxWidth(), enabled = !busy) {
+                            Text(stringResource(R.string.call_retry_same_attempt))
+                        }
+                        JodloTextAction(onClick = { reviewLocalClose = true },
+                            modifier = Modifier.fillMaxWidth(), enabled = !busy) {
+                            Text(stringResource(R.string.call_close_local))
+                        }
+                    }
+                    else -> Row(Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(JodloSizes.Gap)) {
+                        when {
+                            error == null && receiver && phase == CallPhase.RINGING -> {
+                                JodloTextAction(::endOrClose, Modifier.weight(1f), enabled = !busy) {
+                                    Text(stringResource(R.string.call_decline), color = JodloPalette.Error)
+                                }
+                                JodloButton(::requestMicrophone, Modifier.weight(1f), enabled = !busy) {
+                                    Text(stringResource(R.string.call_answer), color = JodloPalette.Accent)
+                                }
+                            }
+                            phase == CallPhase.ACCEPTED -> {
+                                JodloTextAction({ if (audio.muteMicrophone(!muted)) muted = !muted },
+                                    Modifier.weight(1f), enabled = audioState == AgoraAudioState.CONNECTED) {
+                                    Text(stringResource(if (muted) R.string.call_unmute else R.string.call_mute))
+                                }
+                                JodloTextAction(::endOrClose, Modifier.weight(1f), enabled = !busy) {
+                                    Text(stringResource(R.string.call_hangup), color = JodloPalette.Error)
+                                }
+                            }
+                            else -> JodloTextAction(::endOrClose, Modifier.fillMaxWidth(), enabled = !busy) {
+                                Text(stringResource(if (phase == CallPhase.RINGING || phase == CallPhase.PENDING)
+                                    R.string.call_cancel else R.string.call_close))
+                            }
                         }
                     }
                 }
@@ -601,8 +645,9 @@ internal fun CallScreen(
 
 @Composable
 private fun CallWaveform() {
-    Canvas(Modifier.size(JodloSizes.CallBadge)) {
-        drawCircle(JodloPalette.AccentOutline)
+    Canvas(Modifier.size(JodloSizes.CallBadge).border(
+        JodloSizes.Stroke, JodloPalette.AccentOutline, RoundedCornerShape(JodloSizes.ActionRadius),
+    )) {
         val heights = listOf(0.16f, 0.28f, 0.40f, 0.28f, 0.16f)
         heights.forEachIndexed { index, fraction ->
             val x = size.width * (0.30f + index * 0.10f)

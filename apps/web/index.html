@@ -8,13 +8,13 @@
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'self'; connect-src 'none'; img-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
   <meta name="description" content="JODLO development-stage help for service discovery, Saved services, account export and data rights. Not a final legal policy.">
-  <title>JODLO — सहायता / Help</title>
+  <title>JODLO</title>
   <link rel="icon" type="image/png" sizes="32x32" href="./public/favicon.png">
   <link rel="stylesheet" href="./styles.css">
   <script src="./app.js" defer></script>
 </head>
 <body>
-  <a class="skip-link" href="#main">मुख्य सामग्री / Skip to content</a>
+  <a class="skip-link" href="#main"><span data-language-panel="hi" lang="hi">मुख्य सामग्री</span><span data-language-panel="en" lang="en" hidden>Skip to content</span></a>
   <header class="topbar">
     <div class="brand">
       <img src="./public/jodlo-mark.png" alt="" width="36" height="36">
@@ -26,7 +26,34 @@
     </nav>
   </header>
   <main id="main">
-    <section data-language-panel="hi" lang="hi" aria-labelledby="hi-title">
+    <section data-language-panel="hi" lang="hi">
+      <nav class="page-nav" aria-label="मुखपृष्ठ"><a href="#home" data-route="home">मुखपृष्ठ</a><a href="#help" data-route="help">सहायता</a><a href="#privacy" data-route="privacy">गोपनीयता</a><a href="#terms" data-route="terms">सेवा की शर्तें</a></nav>
+      <section data-page-panel="home">
+        <div class="hero hero-outline">
+          <h1>अपने शहर में सेवाएँ खोजें</h1>
+          <p class="lead">काम की श्रेणी और शहर चुनकर सेवा की जानकारी देखें। कामगार अपने खाते से सेवा जोड़ सकते हैं।</p>
+          <a class="action" href="#help">सेवाएँ कैसे खोजें</a>
+        </div>
+        <div class="page-links">
+          <a href="#help">सहायता</a><a href="#privacy">गोपनीयता</a><a href="#terms">सेवा की शर्तें</a>
+        </div>
+      </section>
+      <section data-page-panel="privacy" hidden>
+        <h1>गोपनीयता</h1>
+        <article class="tile"><h2>ग्राहक क्या देख सकते हैं?</h2><p>सार्वजनिक सेवा में समीक्षा के बाद काम का विवरण और तस्वीर दिख सकती है। कामगार चाहे तो सेवा का शहर भी दिखा सकता है।</p></article>
+        <article class="tile"><h2>आपका नियंत्रण</h2><p>ऐप में सहेजी गई सेवाएँ हटाएँ या खाते के उपलब्ध अभिलेखों की प्रति लें।</p></article>
+        <a class="action" href="#deletion">डेटा हटाने की जानकारी</a>
+      </section>
+      <section data-page-panel="terms" hidden>
+        <h1>सेवा की शर्तें</h1>
+        <article class="tile"><p>स्वीकृत सेवा शर्तें उपलब्ध होने पर यहाँ उनकी प्रभावी तारीख के साथ प्रकाशित होंगी।</p></article>
+      </section>
+      <section data-page-panel="deletion" hidden>
+        <h1>डेटा हटाने की जानकारी</h1>
+        <article class="tile"><h2>खाते से हटाने का विकल्प</h2><p>ऐप में खाता → खाता और डेटा → खाता हटाएँ खोलें। जहाँ सुविधा उपलब्ध है, पहले Google से पहचान की पुष्टि करें।</p><p>बैकअप और बाहरी प्रदाताओं के अभिलेखों की अलग प्रक्रिया है।</p></article>
+        <a class="action" href="#help">सहायता</a>
+      </section>
+      <section data-page-panel="help" hidden>
       <div class="hero">
         <p class="eyebrow">JODLO · विकास-चरण की सहायता</p>
         <h1 id="hi-title">खोज आसान।<br><span>आपके डेटा की स्पष्ट जानकारी।</span></h1>
@@ -35,34 +62,63 @@
       </div>
       <section class="content" aria-label="सहायता विषय">
         <article class="tile">
-          <div class="index">01</div>
+
           <h2>बिना खाते के सेवा खोजें</h2>
           <p>स्वीकृत श्रेणियों की खोज के लिए Google साइन-इन या GPS आवश्यक नहीं है। प्रकाशित सेवा से Worker की पहचान, उपलब्धता, आसपास होने या कॉल स्वीकार करने की पुष्टि नहीं होती।</p>
         </article>
         <article class="tile">
-          <div class="index">02</div>
+
           <h2>Saved सेवाएँ हटाएँ</h2>
           <p>Saved बुकमार्क इसी फोन पर रखे जाते हैं। ऐप के <strong>Saved</strong> भाग में एक-एक बुकमार्क हटाएँ या सभी साफ करें। इसे खाता, सर्वर या बैकअप डेटा मिटाने के बराबर न समझें। अवांछित Service इस फोन पर छिपाकर Hidden से फिर दिखा सकते हैं; यह सर्वर पर Block या शिकायत नहीं है। ऐप में Backup से Saved और Hidden की सार्वजनिक पहचानें खुद चुनी गई फ़ाइल में सहेज सकते हैं। Import में फ़ाइल की जाँच और अलग-अलग Merge की पुष्टि होती है; पुराना डेटा नहीं मिटता। क्लाउड जगह चुनने पर वह प्रदाता फ़ाइल अपलोड कर सकता है।</p>
         </article>
         <article class="tile">
-          <div class="index">03</div>
+
           <h2>अपने खाते का डेटा लें</h2>
           <p>Google साइन-इन के बाद ऐप के <strong>Account</strong> भाग में उपलब्ध JODLO डेटाबेस रिकॉर्ड एक्सपोर्ट करें या सभी डिवाइस पर साइन-आउट करें। चुनी गई क्लाउड स्टोरेज पर निजी एक्सपोर्ट फाइल अपलोड हो सकती है। एक्सपोर्ट में प्रदाता और बैकअप रिकॉर्ड शामिल नहीं हैं।</p>
         </article>
         <article class="tile">
-          <div class="index">04</div>
+
           <h2>Worker सेवाएँ और गोपनीयता</h2>
           <p>Worker इसी साझा खाते में अपनी सेवाओं की श्रेणी चुन, बदल और रोक सकते हैं। नाम, अनुभव, दर, सेवा क्षेत्र, फोटो या सत्यापित पहचान का सार्वजनिक प्रोफाइल अभी उपलब्ध नहीं है। वास्तविक Agora इंटरनेट कॉल और आसपास के Worker का मिलान भी चालू नहीं है।</p>
         </article>
         <article class="tile tile-wide">
-          <div class="index">05</div>
+
           <h2>डेटा मिटाना, शिकायत, सहायता और कानूनी नीति</h2>
           <p>पूरा खाता मिटाने, बैकअप/प्रदाता रिकॉर्ड हटाने, शिकायत/अपील और प्रमाणित सहायता संपर्क की सुविधा अभी पूरी तरह लागू या स्वीकृत नहीं है। <strong>एक्सपोर्ट या साइन-आउट से डेटा नहीं मिटता</strong> और यह वेबसाइट कोई अनुरोध जमा नहीं करती। कानूनी गोपनीयता नीति, सेवा शर्तें, डेटा रखने की अवधि तथा सहायता संपर्क की स्वतंत्र समीक्षा अभी बाकी है।</p>
         </article>
       </section>
       <p class="footer-note">जानकारी जाँचने का सबसे सुरक्षित तरीका: ऐप के Home → सहायता या Account → सहायता में जाएँ। यह वेबसाइट कोई पहचान, लोकेशन या सहायता अनुरोध नहीं लेती; वास्तविक होस्टिंग की लॉगिंग और डेटा नीति अभी तय होनी है।</p>
+        <a class="action" href="#deletion">डेटा हटाने की जानकारी</a>
+      </section>
     </section>
-    <section data-language-panel="en" lang="en" aria-labelledby="en-title" hidden>
+    <section data-language-panel="en" lang="en" hidden>
+      <nav class="page-nav" aria-label="Home"><a href="#home" data-route="home">Home</a><a href="#help" data-route="help">Help</a><a href="#privacy" data-route="privacy">Privacy</a><a href="#terms" data-route="terms">Terms of service</a></nav>
+      <section data-page-panel="home">
+        <div class="hero hero-outline">
+          <h1>Find services in your city</h1>
+          <p class="lead">Choose a city and category to browse services. Workers can list their work from the same account.</p>
+          <a class="action" href="#help">How to find services</a>
+        </div>
+        <div class="page-links">
+          <a href="#help">Help</a><a href="#privacy">Privacy</a><a href="#terms">Terms of service</a>
+        </div>
+      </section>
+      <section data-page-panel="privacy" hidden>
+        <h1>Privacy</h1>
+        <article class="tile"><h2>What can customers see?</h2><p>A public service can show reviewed work details and a photo. Workers can choose whether to show the service city.</p></article>
+        <article class="tile"><h2>Your controls</h2><p>Remove saved services in the app or save a copy of the account records that are available.</p></article>
+        <a class="action" href="#deletion">Read about account deletion</a>
+      </section>
+      <section data-page-panel="terms" hidden>
+        <h1>Terms of service</h1>
+        <article class="tile"><p>Approved terms will be published here with their effective date when available.</p></article>
+      </section>
+      <section data-page-panel="deletion" hidden>
+        <h1>Account deletion help</h1>
+        <article class="tile"><h2>Delete from your account</h2><p>In the app, open Account → Account and data → Delete account. Where deletion is available, confirm your identity with Google first.</p><p>Backups and external provider records follow a separate process.</p></article>
+        <a class="action" href="#help">Help</a>
+      </section>
+      <section data-page-panel="help" hidden>
       <div class="hero">
         <p class="eyebrow">JODLO · Development-stage help</p>
         <h1 id="en-title">Discover work.<br><span>Understand your data.</span></h1>
@@ -71,37 +127,39 @@
       </div>
       <section class="content" aria-label="Help topics">
         <article class="tile">
-          <div class="index">01</div>
+
           <h2>Browse without an account</h2>
           <p>Searching approved Categories does not require Google sign-in or GPS. A published Service does not establish Worker identity, current availability, proximity or permission to start a call.</p>
         </article>
         <article class="tile">
-          <div class="index">02</div>
+
           <h2>Remove Saved services</h2>
           <p>Saved bookmarks stay on this phone. In the app's <strong>Saved</strong> screen, remove an individual reference or clear them all. Clearing Saved does not delete your account, server or backup records. You can also hide an unwanted Service on this phone and restore its display from Hidden; this is not a server block or report. In the app, Backup lets you export anonymous Saved and Hidden IDs to a document you choose, then inspect and separately merge them back. Existing entries are kept; choosing a cloud destination may upload the file through that provider.</p>
         </article>
         <article class="tile">
-          <div class="index">03</div>
+
           <h2>Export your account data</h2>
           <p>After Google sign-in, the app's <strong>Account</strong> screen lets you export available JODLO database records or sign out on every device. A private export may be uploaded if you choose a cloud storage provider. External-provider and backup records are not included.</p>
         </article>
         <article class="tile">
-          <div class="index">04</div>
+
           <h2>Worker listings and privacy</h2>
           <p>Using the same account, Workers can select, edit or pause an approved Service Category. A public Worker profile with identity, experience, rates, area and photographs is not available. Real Agora Internet calls and nearby Worker matching are not live.</p>
         </article>
         <article class="tile tile-wide">
-          <div class="index">05</div>
+
           <h2>Deletion, reports, support and legal policies</h2>
           <p>Full account deletion, provider/backup erasure, reporting/appeals and an authorized staffed support contact are not yet implemented or approved. <strong>Export and sign-out do not erase account data.</strong> This website submits no support or deletion requests. Final legal Privacy Policy, Terms, retention windows and a verified support contact remain under independent review.</p>
         </article>
       </section>
       <p class="footer-note">For working controls, open Home → Help or Account → Help inside the app. This page has no identity, location or support-submission form; actual hosting-log policies still require approval.</p>
+        <a class="action" href="#deletion">Read about account deletion</a>
+      </section>
     </section>
   </main>
   <footer class="site-footer">
-    <p>© JODLO · Development documentation — not approved legal terms.</p>
-    <p>No analytics, cookies, trackers, forms or remote scripts in this source bundle.</p>
+    <p data-language-panel="hi" lang="hi">© JODLO · विकास के दौरान सहायता की जानकारी</p>
+    <p data-language-panel="en" lang="en" hidden>© JODLO · Development-stage help</p>
   </footer>
 </body>
 </html>

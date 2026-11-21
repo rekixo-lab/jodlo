@@ -2,7 +2,7 @@ package com.rekixo.jodlo
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.MaterialTheme
@@ -28,8 +28,11 @@ internal fun ManualNearbyDiscovery(
     onSearchCity: (NearbyPilotCity) -> Unit,
     canSearch: Boolean,
     onHome: () -> Unit,
+    selectedCity: NearbyPilotCity? = null,
 ) {
-    var intent by remember { mutableStateOf(ManualNearbyIntent()) }
+    var intent by remember(selectedCity) {
+        mutableStateOf(selectedCity?.let { ManualNearbyIntent().choose(it) } ?: ManualNearbyIntent())
+    }
     BackHandler(onBack = onHome)
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -46,38 +49,35 @@ internal fun ManualNearbyDiscovery(
         item {
             Text(stringResource(R.string.nearby_choose_city),
                 style = MaterialTheme.typography.titleMedium)
-            Row(horizontalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
-                JodloChip(
-                    selected = intent.city == NearbyPilotCity.BILASPUR,
-                    onClick = { intent = intent.choose(NearbyPilotCity.BILASPUR) },
-                    label = { Text(stringResource(R.string.nearby_city_bilaspur)) },
-                )
-                JodloChip(
-                    selected = intent.city == NearbyPilotCity.RAIPUR,
-                    onClick = { intent = intent.choose(NearbyPilotCity.RAIPUR) },
-                    label = { Text(stringResource(R.string.nearby_city_raipur)) },
-                )
-            }
-            if (intent.city != null) {
-                JodloTextAction(onClick = { intent = intent.clear() }) {
-                    Text(stringResource(R.string.nearby_clear_city))
-                }
-            }
+            JodloChip(
+                selected = intent.city == NearbyPilotCity.RAIPUR,
+                onClick = { intent = intent.choose(NearbyPilotCity.RAIPUR) },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text(stringResource(R.string.nearby_city_raipur)) },
+            )
+            JodloChip(
+                selected = intent.city == NearbyPilotCity.BILASPUR,
+                onClick = { intent = intent.choose(NearbyPilotCity.BILASPUR) },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text(stringResource(R.string.nearby_city_bilaspur)) },
+            )
+            JodloChip(
+                selected = intent.city == null,
+                onClick = { intent = intent.clear() },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text(stringResource(R.string.navigation_all_cities)) },
+            )
         }
         item {
             JodloButton(
-                onClick = { intent.city?.let(onSearchCity) },
-                enabled = canSearch && intent.city != null,
+                onClick = { intent.city?.let(onSearchCity) ?: onBrowseAll() },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = canSearch || intent.city == null,
             ) { Text(stringResource(R.string.nearby_search_city)) }
             Text(stringResource(R.string.nearby_city_disclosure),
                 style = MaterialTheme.typography.bodySmall)
         }
         item {
-            JodloButton(onClick = onBrowseAll) {
-                Text(stringResource(R.string.nearby_browse_all))
-            }
-            Text(stringResource(R.string.nearby_browse_unfiltered_notice),
-                style = MaterialTheme.typography.bodySmall)
             JodloTextAction(onClick = onHome) {
                 Text(stringResource(R.string.nearby_back_home))
             }
