@@ -489,3 +489,26 @@ test("Customer call login returns to exactly the selected Service, without auto-
             assert.ok(xml.includes('name="'+key+'"'), key);
     }
 });
+
+
+test("Agora RTC network and token renewal fail locally after bounded retries without phantom remote HANGUP", () => {
+    const rtc=read("apps/android/app/src/agora/kotlin/com/rekixo/jodlo/AgoraAudioCall.kt");
+    const recovery=read("apps/android/core/src/main/kotlin/com/rekixo/jodlo/core/network/CallAudioLinkRecovery.kt");
+    const unit=read("apps/android/core/src/test/kotlin/com/rekixo/jodlo/core/network/CallAudioLinkRecoveryTest.kt");
+    const gradle=read("apps/android/core/build.gradle.kts");
+    const call=read("apps/android/app/src/main/java/com/rekixo/jodlo/CallScreen.kt");
+    assert.match(rtc,/linkRecovery\.begin\(SystemClock\.elapsedRealtime\(\)\)/);
+    assert.match(rtc,/linkRecovery\.expired\(\s*localConnected && peerPresent, SystemClock\.elapsedRealtime\(\)/);
+    assert.match(rtc,/stop\(AgoraAudioState\.FAILED\)/);
+    assert.match(rtc,/session\.accountExportSessionMarker\(\) != call\.epoch/);
+    assert.match(rtc,/catch \(cancelled: CancellationException\) \{\s*throw cancelled\s*\} catch \(_: Exception\) \{\s*null/);
+    assert.match(rtc,/engine\?\.renewToken\(grant\.token\) == 0 \} catch \(_: Exception\) \{ false \}/);
+    assert.match(recovery,/initialJoinTimeoutMs: Long = 45_000L/);
+    assert.match(recovery,/reconnectTimeoutMs: Long = 30_000L/);
+    assert.match(recovery,/elapsedMs - since >= timeout/);
+    assert.match(unit,/fun main\(\)/);
+    assert.match(gradle,/mainClass\.set\("com\.rekixo\.jodlo\.core\.network\.CallAudioLinkRecoveryTestKt"\)/);
+    assert.match(call,/AgoraAudioState\.FAILED -> R\.string\.call_unavailable/);
+    assert.match(call,/CallEndProtocol\.actionToEnd\(expectedRole, phase/);
+    assert.doesNotMatch(rtc,/session\.callSignal\([^)]*CallAction\.(?:HANGUP|CANCEL|DECLINE)/);
+});
