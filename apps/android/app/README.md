@@ -1,3 +1,12 @@
+## 2026-11-21 — Fail-closed Android release-candidate builds
+
+Regular debug APK builds remain available, but Gradle no longer exposes
+`release` variants by default. An intentionally enabled release candidate
+requires the real JODLO API origin, public Google Web OAuth client ID and
+explicit production version name/code. This does not sign, publish or accept
+a real provider build: [full source gate and owner acceptance](../../../docs/ANDROID_RELEASE_CANDIDATE_GUARD_2026-11-21.md).
+No Cloudflare operation, signing credential, email or Finworkar write.
+
 ## 2026-11-04 — Show current approved Hindi/English Category names
 
 The **Saved** and **Worker → My services** screens previously could show only technical Category IDs. A Customer/Worker can now explicitly choose or use Hindi/English and tap **Show current approved Category names**. This makes at most three 20-ID anonymous GETs to the same JODLO public Catalog route (max 50 distinct Category IDs), passing NO saved/own Listing IDs, Worker bearer, account, phone or location. Only approved active names can be displayed and only for that language/current selection/account; inactive, unknown or offline results fall back to original technical IDs. No locale name is persisted as a trusted provider identity.
