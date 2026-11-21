@@ -12,6 +12,9 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: jodlo-android-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
   build-android:
     runs-on: ubuntu-latest
@@ -22,6 +25,8 @@ jobs:
         java-version: ['17', '21']
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Verify approved flat UI rules
         run: node scripts/verify-approved-flat-ui.mjs
       - uses: actions/setup-java@v4
