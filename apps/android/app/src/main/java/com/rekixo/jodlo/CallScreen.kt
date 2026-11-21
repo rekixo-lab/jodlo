@@ -328,6 +328,63 @@ internal fun CallScreen(
         }
     }
 
+    fun retryAudioAfterServerCheck() {
+        if (busy || sessionLost || ending != null || reviewLocalClose ||
+            acceptUncertain || phase != CallPhase.ACCEPTED ||
+            audioState != AgoraAudioState.FAILED) return
+        val id = invitationId ?: return
+        val owner = session.accountPrivateReadMarker()?.takeIf { it.sessionGeneration == epoch }
+        if (owner == null) {
+            if (session.accountExportSessionMarker() != epoch) markLocalSessionUnavailable()
+            else error = R.string.call_retry_audio_unconfirmed
+            return
+        }
+        if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) !=
+            PackageManager.PERMISSION_GRANTED) {
+            error = R.string.call_microphone_required
+            return
+        }
+        if (!activity.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) return
+        busy = true
+        error = null
+        scope.launch {
+            try {
+                // The existing invitation must STILL be accepted by the same
+                // authenticated participant. GET-only; never create/accept
+                // another call, replay a payment or trust stale local phase.
+                val result = withContext(Dispatchers.IO) { session.callSignal(owner, id) }
+                if (session.accountExportSessionMarker() != epoch ||
+                    CallPollSafety.mustStopLocalAudio(result)) {
+                    markLocalSessionUnavailable()
+                    return@launch
+                }
+                val signal = (result as? SessionResult.Success)?.value
+                    ?.takeIf { it.role == expectedRole && session.accountPrivateReadMarker() == owner }
+                when {
+                    signal?.phase == CallPhase.ACCEPTED && ending == null && !sessionLost &&
+                        audio.state.value == AgoraAudioState.FAILED -> {
+                        muted = false
+                        // Agora requests a fresh current-owner RTC grant. This
+                        // only retries LOCAL audio after the user taps.
+                        audio.join(id)
+                    }
+                    signal != null && CallEndProtocol.isConfirmed(expectedRole, signal) -> {
+                        phase = signal.phase
+                        error = null // Server has confirmed this terminal phase.
+                    }
+                    else -> error = R.string.call_retry_audio_unconfirmed
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                if (session.accountExportSessionMarker() != epoch) markLocalSessionUnavailable()
+                else error = R.string.call_retry_audio_unconfirmed
+            } finally {
+                busy = false
+            }
+        }
+    }
+
     fun dial() {
         if (sessionLost) return
         val outgoing = request as? CallScreenRequest.Outgoing ?: return
@@ -550,6 +607,14 @@ internal fun CallScreen(
             Column(Modifier.fillMaxWidth().padding(JodloSizes.ScreenPadding),
                 verticalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap),
             ) {
+                if (phase == CallPhase.ACCEPTED && audioState == AgoraAudioState.FAILED &&
+                    !sessionLost && ending == null && !reviewLocalClose &&
+                    !acceptUncertain && !outgoingReview) {
+                    JodloButton(onClick = ::retryAudioAfterServerCheck,
+                        modifier = Modifier.fillMaxWidth(), enabled = !busy) {
+                        Text(stringResource(R.string.call_retry_audio))
+                    }
+                }
                 when {
                     outgoingReview -> {
                         JodloButton(onClick = {
