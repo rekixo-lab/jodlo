@@ -86,7 +86,8 @@ jobs:
           grep -Eq '^[[:space:]]*bundleRelease([[:space:]]|$)' "$RUNNER_TEMP/jodlo-candidate-tasks.txt"
           # Valid origin/client are insufficient: any non-semver version must
           # fail before Gradle exposes a release candidate variant.
-          if gradle -p apps/android "${CANDIDATE_ARGS[@]}" -PjodloReleaseVersionName=dev :app:help --no-daemon > "$RUNNER_TEMP/jodlo-bad-version.txt" 2>&1; then
+          CANDIDATE_ARGS[4]=-PjodloReleaseVersionName=dev
+          if gradle -p apps/android "${CANDIDATE_ARGS[@]}" :app:help --no-daemon > "$RUNNER_TEMP/jodlo-bad-version.txt" 2>&1; then
             echo "Unsafe: invalid release version accepted"
             exit 1
           fi
