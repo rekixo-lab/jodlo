@@ -61,7 +61,7 @@ internal fun SavedServicesDashboard(
     hidden: HiddenPublicServices,
     onHide: (String) -> Boolean,
     contactSession: InMemorySessionCoordinator?,
-    onCall: ((String) -> Unit)? = null,
+    onCall: ((PublicListing, Language, NearbyPilotCity?) -> Unit)? = null,
     openHidden: () -> Unit,
     openLocalData: () -> Unit,
 ) {
@@ -433,7 +433,7 @@ internal fun SavedServicesDashboard(
             if (currentCard != null) {
                 item { SafePublicProfileFacts(currentCard.profile, currentCard.city) }
                 item { ApprovedServicePhoto(repository, currentCard, revision) }
-                item { ServiceCallButton(onCall, currentCard.listing.id, contactSession) }
+                item { ServiceCallButton(onCall, currentCard.listing, categoryLanguage, contactSession) }
                 item {
                     ServiceSafetyPanel(currentCard.listing.id, revision) {
                         ContactBlockControls(contactSession, currentCard.listing.id)
