@@ -174,21 +174,36 @@ private fun JodloApp(
     var wakeupNotice by remember { mutableStateOf<Int?>(null) }
     var wakeupRetryClicks by remember { mutableIntStateOf(0) }
     var callScreen by remember(session) { mutableStateOf<CallScreenRequest?>(null) }
-    val onCall: ((String) -> Unit)? = if (BuildConfig.AGORA_ENABLED && session != null && !debugPreview) {
-        { id ->
-            if (callScreen == null) {
-                // A call is never started from a signed-out or expired session.
-                // Let the customer sign in explicitly, then re-open the Service
-                // for a fresh public eligibility check before calling.
-                if (session.accountExportSessionMarker() == null) {
-                    accountFromAlerts = false
-                    section = "account"
-                } else {
-                    callScreen = CallScreenRequest.Outgoing(id)
+    // A public Listing reference, NEVER a contact grant, credential or saved
+    // navigation state. Lost on process death; no automatic post-login call.
+    var pendingCallReturn by remember(session) { mutableStateOf<CustomerCallReturn?>(null) }
+    val onCall: ((PublicListing, Language, NearbyPilotCity?) -> Unit)? =
+        if (BuildConfig.AGORA_ENABLED && session != null && !debugPreview) {
+            { listing, language, city ->
+                if (callScreen == null) {
+                    if (session.accountExportSessionMarker() == null) {
+                        if (section in setOf("customer", "saved", "feed", "city-feed")) {
+                            pendingCallReturn = CustomerCallReturn(listing, language, section, city)
+                        } else if (section != "return-service") {
+                            pendingCallReturn = null
+                        }
+                        accountFromAlerts = false
+                        section = "account"
+                    } else {
+                        // Keep the return screen after the user closes the call.
+                        // The existing server-owned CallScreen still decides admission.
+                        if (section != "return-service") pendingCallReturn = null
+                        callScreen = CallScreenRequest.Outgoing(listing.id)
+                    }
                 }
             }
-        }
-    } else null
+        } else null
+    // Manual navigation away from sign-in discards the old return reference;
+    // an unrelated later sign-in must not resurrect an earlier selection.
+    LaunchedEffect(section) {
+        if (section != "account" && section != "return-service")
+            pendingCallReturn = null
+    }
     // An FCM event and exported Activity extras are unverified. In a newly
     // started process, show Account first: never ACK/accept/join on a push.
     // After explicit Google sign-in, GET the current owner's exact call state.
@@ -371,6 +386,7 @@ private fun JodloApp(
             "welcome" -> languageBack
             "hidden", "local-data" -> "saved"
             "city-feed" -> "nearby"
+            "return-service" -> pendingCallReturn?.source ?: "home"
             else -> "home"
         }
         val back: (() -> Unit)? = previous?.let { route -> { section = route } }
@@ -541,9 +557,25 @@ private fun JodloApp(
                     onAccount = { section = "account" },
                     onWorker = { section = "worker" },
                 )
+                "return-service" -> {
+                    val pending = pendingCallReturn
+                    if (pending != null) CustomerCallReturnScreen(
+                        catalog, session, pending, onCall,
+                        onBack = {
+                            pendingCallReturn = null
+                            section = pending.source
+                        },
+                    ) else Text(stringResource(R.string.call_unavailable))
+                }
                 else -> AccountDashboard(
                     activity, session, openHelp = { section = "help" },
-                    onSignInSuccess = { loginRevision++ },
+                    onSignInSuccess = {
+                        loginRevision++
+                        if (pendingCallReturn != null &&
+                            session?.accountExportSessionMarker() != null && incomingCall == null) {
+                            section = "return-service"
+                        }
+                    },
                     openLanguage = { languageBack = "account"; section = "welcome" },
                     openWorker = { section = "worker" },
                     openHome = { section = "home" },
@@ -591,7 +623,7 @@ private fun GuestDiscovery(
     onHide: (String) -> Boolean,
     homeCategory: HomeCategorySelection? = null,
     contactSession: InMemorySessionCoordinator?,
-    onCall: ((String) -> Unit)?,
+    onCall: ((PublicListing, Language, NearbyPilotCity?) -> Unit)?,
 ) {
     val scope = rememberCoroutineScope()
     val appLanguage = LocalJodloLanguage.current
@@ -1194,7 +1226,9 @@ private fun GuestDiscovery(
                                 Text(stringResource(R.string.service_details_refresh_now))
                             }
                         }
-                        if (liveApiConfigured) item { ServiceCallButton(onCall, card.listing.id, contactSession) }
+                        if (liveApiConfigured) item {
+                            ServiceCallButton(onCall, card.listing, language, contactSession)
+                        }
                         item {
                             ServiceSafetyPanel(card.listing.id, requestRevision) {
                                 ContactBlockControls(contactSession, card.listing.id)

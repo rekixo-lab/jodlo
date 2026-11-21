@@ -48,6 +48,9 @@ import com.rekixo.jodlo.core.network.CallEndProtocol
 import com.rekixo.jodlo.core.network.CallPhase
 import com.rekixo.jodlo.core.network.CallPollSafety
 import com.rekixo.jodlo.core.network.CallRole
+import com.rekixo.jodlo.core.network.PublicListing
+import com.rekixo.jodlo.core.network.Language
+import com.rekixo.jodlo.core.network.NearbyPilotCity
 import com.rekixo.jodlo.core.network.InMemorySessionCoordinator
 import com.rekixo.jodlo.core.network.SessionResult
 import com.rekixo.jodlo.ui.theme.JodloButton
@@ -81,9 +84,11 @@ internal sealed interface CallScreenRequest {
 
 @Composable
 internal fun ServiceCallButton(
-    onCall: ((String) -> Unit)?,
-    listingId: String,
+    onCall: ((PublicListing, Language, NearbyPilotCity?) -> Unit)?,
+    listing: PublicListing,
+    language: Language,
     contactSession: InMemorySessionCoordinator?,
+    city: NearbyPilotCity? = null,
 ) {
     if (onCall == null) {
         Text(stringResource(R.string.call_unavailable), style = MaterialTheme.typography.bodySmall)
@@ -92,7 +97,7 @@ internal fun ServiceCallButton(
     // The shared Customer call entry renders the honest state on Browse,
     // Saved and Feed. The click handler must still recheck session expiry.
     val signedIn = contactSession?.accountExportSessionMarker() != null
-    JodloButton(onClick = { onCall(listingId) }, modifier = Modifier.fillMaxWidth()) {
+    JodloButton(onClick = { onCall(listing, language, city) }, modifier = Modifier.fillMaxWidth()) {
         Text(
             stringResource(if (signedIn) R.string.call_start else R.string.call_sign_in),
             color = JodloPalette.Accent,

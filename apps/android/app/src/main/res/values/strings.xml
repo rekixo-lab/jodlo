@@ -537,6 +537,9 @@
     <string name="call_status_unconfirmed">Could not check the incoming call because the connection failed. The call may still be ringing.</string>
     <string name="call_check_incoming_status">Check incoming call again</string>
     <string name="call_sign_in">Sign in to use calling</string>
+    <string name="call_return_heading">Your selected service</string>
+    <string name="call_return_notice">Signed in. We are checking this service again before you choose to call. Calling will not start automatically.</string>
+    <string name="call_return_browse">Back to services</string>
     <string name="call_microphone_required">Allow microphone access to use voice calling</string>
     <string name="call_available_status">Available for calls</string>
     <string name="call_unavailable_status">Unavailable for calls</string>
