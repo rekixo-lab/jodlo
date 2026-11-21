@@ -42,3 +42,25 @@ test("CI enforces an unconfigured negative release build and candidate rejection
   assert.match(ci, /jodloReleaseCandidate=true/);
   assert.match(ci, /:app:help/);
 });
+
+
+test("CI proves an explicit, synthetic release candidate can be configured without building it", () => {
+  const ci = read(".github/workflows/android-native.yml");
+  const start = ci.indexOf("      - name: Verify configured release candidate tasks without building or signing");
+  const end = ci.indexOf("      - name: Run Kotlin Core verification under JDK 21", start);
+  assert.ok(start >= 0 && end > start, "A separate JDK21 positive/negative candidate preflight is required");
+  const section = ci.slice(start, end);
+  assert.match(section, /if: matrix\.java-version == '21'/);
+  assert.match(section, /-PjodloReleaseCandidate=true/);
+  assert.match(section, /-PjodloApiOrigin=https:\/\/api\.jodlo\.rekixo\.com/);
+  assert.match(section, /-PjodloGoogleWebClientId=123456789012-jodlo-ci-only\.apps\.googleusercontent\.com/);
+  assert.match(section, /-PjodloReleaseVersionName=1\.0\.0/);
+  assert.match(section, /-PjodloReleaseVersionCode=2/);
+  assert.match(section, /:app:tasks --all --no-daemon/);
+  assert.match(section, /assembleRelease/);
+  assert.match(section, /bundleRelease/);
+  assert.match(section, /-PjodloReleaseVersionName=dev/);
+  assert.match(section, /Release candidate needs explicit numeric major\.minor\.patch version name/);
+  assert.doesNotMatch(section, /:app:(assembleRelease|bundleRelease|publish|sign)/);
+  assert.doesNotMatch(section, /upload-artifact|wrangler deploy|google-play|fastlane|gh release/i);
+});
