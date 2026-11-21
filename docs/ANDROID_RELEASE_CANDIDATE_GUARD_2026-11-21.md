@@ -24,7 +24,11 @@ is **not** evidence of an approved, functioning production Marketplace.
   builds retain their previous `1` / `0.1.0-dev` values by default.
 - GitHub Android CI tests that the unconfigured release tasks do not exist
   and that asking for a candidate without owner configuration fails with the
-  expected reason. Node regression tests also enforce source invariants.
+  expected reason. It also performs **task discovery only** with synthetic,
+  publicly shaped API/OAuth/version inputs: both release tasks must be
+  present, while replacing the version with `dev` must fail closed. No release
+  candidate is compiled, signed, uploaded or deployed by this positive smoke.
+  Node regression tests enforce these CI source boundaries.
 - This does **not** implement app signing, upload to Play, release approval,
   contract verification against a real deployed Worker, phone acceptance,
   catalog review, Firebase/Agora delivery or Play Billing. The build cannot
