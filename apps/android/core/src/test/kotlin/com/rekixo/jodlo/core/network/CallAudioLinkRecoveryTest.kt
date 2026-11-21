@@ -31,6 +31,7 @@ private fun newCallAndClockAnomaliesAreSafe() {
     gate.begin(200)
     check(!gate.expired(false, 249))
     check(!gate.expired(true, 250))
+    check(!gate.expired(false, 250))
     check(!gate.expired(false, 299))
     check(gate.expired(false, 300))
     check(runCatching { CallAudioLinkRecovery(0, 20) }.isFailure)
