@@ -441,21 +441,51 @@ test("Worker Service editors fence per-account local drafts and preserve unknown
         assert.ok(xml.includes('name="worker_details_unsent_after_recheck"'));
 });
 
-test("Customer call entry shows sign-in first across Browse, Feed, Saved and rechecks the session on tap", () => {
+test("Customer call login returns to exactly the selected Service, without auto-dial or stale evidence", () => {
     const main = read("apps/android/app/src/main/java/com/rekixo/jodlo/MainActivity.kt");
     const button = read("apps/android/app/src/main/java/com/rekixo/jodlo/CallScreen.kt");
     const feed = read("apps/android/app/src/main/java/com/rekixo/jodlo/PublicServicesFeed.kt");
     const saved = read("apps/android/app/src/main/java/com/rekixo/jodlo/SavedServicesDashboard.kt");
+    const resume = read("apps/android/app/src/main/java/com/rekixo/jodlo/CustomerCallReturn.kt");
+    const account = read("apps/android/app/src/main/java/com/rekixo/jodlo/AccountDashboard.kt");
+    const en = read("apps/android/app/src/main/res/values/strings.xml");
+    const hi = read("apps/android/app/src/main/res/values-hi/strings.xml");
+
     assert.match(button, /val signedIn = contactSession\?\.accountExportSessionMarker\(\) != null/);
     assert.match(button, /if \(signedIn\) R\.string\.call_start else R\.string\.call_sign_in/);
     assert.match(button, /if \(onCall == null\)/);
     assert.match(button, /R\.string\.call_unavailable/);
-    assert.match(main, /if \(session\.accountExportSessionMarker\(\) == null\) \{\s*accountFromAlerts = false\s*section = "account"/);
-    assert.match(main, /else \{\s*callScreen = CallScreenRequest\.Outgoing\(id\)/);
-    for (const source of [main, feed, saved]) {
-        assert.match(source, /ServiceCallButton\(onCall, [a-zA-Z]+\.listing\.id, contactSession\)/);
+    assert.match(button, /onCall\(listing, language, city\)/);
+
+    assert.match(main, /var pendingCallReturn by remember\(session\)/);
+    assert.doesNotMatch(main, /rememberSaveable\s*\{\s*mutableStateOf<CustomerCallReturn/);
+    assert.match(main, /CustomerCallReturn\(listing, language, section, city\)/);
+    assert.match(main, /if \(session\.accountExportSessionMarker\(\) == null\)/);
+    assert.match(main, /accountFromAlerts = false\s*section = "account"/);
+    assert.match(main, /else \{\s*pendingCallReturn = null\s*callScreen = CallScreenRequest\.Outgoing\(listing\.id\)/);
+    assert.match(main, /onSignInSuccess = \{\s*loginRevision\+\+/);
+    assert.match(main, /session\?\.accountExportSessionMarker\(\) != null && incomingCall == null/);
+    assert.match(main, /section = "return-service"/);
+    assert.match(main, /"return-service" -> \{\s*val pending = pendingCallReturn/);
+    assert.match(main, /if \(section != "account" && section != "return-service"\)\s*pendingCallReturn = null/);
+    assert.match(account, /if \(result is SessionResult\.Success\) \{[\s\S]*?onSignInSuccess\(\)/);
+
+    assert.match(main, /ServiceCallButton\(onCall, card\.listing, language, contactSession\)/);
+    assert.match(feed, /ServiceCallButton\(onCall, safeCard\.listing, language, contactSession, city\)/);
+    assert.match(saved, /ServiceCallButton\(onCall, currentCard\.listing, categoryLanguage, contactSession\)/);
+
+    assert.match(resume, /repository\.reviewedServiceDetail\(/);
+    assert.match(resume, /handoff\.listing\.id, handoff\.listing\.categoryId, handoff\.language, handoff\.city/);
+    assert.match(resume, /CustomerServiceCard\.publicWhenChecked\(/);
+    assert.match(resume, /session\.accountExportSessionMarker\(\) != ownerEpoch/);
+    assert.match(resume, /val card = checked\?\.takeIf/);
+    assert.match(resume, /onClick = \{ revision\+\+ \}/);
+    assert.match(resume, /SafeServiceCard\(card\)/);
+    assert.match(resume, /SafePublicProfileFacts\(card\.profile, card\.city\)/);
+    assert.match(resume, /ServiceCallButton\(onCall, card\.listing, handoff\.language, session, handoff\.city\)/);
+    assert.doesNotMatch(resume, /CallScreenRequest\.Outgoing|startCall\(|publishExplicitCategory|createListing\(/);
+    for (const xml of [en, hi]) {
+        for (const key of ["call_sign_in","call_return_heading","call_return_notice","call_return_browse"])
+            assert.ok(xml.includes('name="'+key+'"'), key);
     }
-    const en=read("apps/android/app/src/main/res/values/strings.xml");
-    const hi=read("apps/android/app/src/main/res/values-hi/strings.xml");
-    for(const xml of [en,hi]) assert.match(xml, /name="call_sign_in"/);
 });
