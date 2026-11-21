@@ -46,6 +46,37 @@ require(googleWebClientId.isEmpty() ||
     "jodloGoogleWebClientId must be a public WEB OAuth client ID only"
 }
 
+// A debug APK may be built with no backend or Google identity, but a release
+// variant must never be created accidentally with those development defaults.
+// This is a SOURCE/BUILD gate, NOT approval to publish, sign, charge or deploy.
+val releaseCandidateRequested = providers.gradleProperty("jodloReleaseCandidate").orNull == "true"
+val candidateVersionName = providers.gradleProperty("jodloReleaseVersionName").orNull?.trim().orEmpty()
+val candidateVersionCode = providers.gradleProperty("jodloReleaseVersionCode").orNull?.toIntOrNull()
+if (releaseCandidateRequested) {
+    require(apiOrigin == "https://api.jodlo.rekixo.com") {
+        "Release candidate requires the dedicated verified JODLO API origin"
+    }
+    require(googleWebClientId.isNotBlank()) {
+        "Release candidate requires a configured JODLO Google Web OAuth client ID"
+    }
+    require(Regex("""^[1-9][0-9]{0,2}\\.[0-9]{1,3}\\.[0-9]{1,3}$""")
+        .matches(candidateVersionName)) {
+        "Release candidate needs explicit numeric major.minor.patch version name"
+    }
+    require(candidateVersionCode != null && candidateVersionCode in 2..2100000000) {
+        "Release candidate needs a new positive version code (>= 2)"
+    }
+}
+
+// No release Gradle tasks exist by default. A consciously configured build is
+// only a candidate; the owner must separately verify signing, Play policies,
+// providers, real-device QA, reviewed Catalog and rollout authorization.
+androidComponents {
+    beforeVariants(selector().withBuildType("release")) { variant ->
+        variant.enable = releaseCandidateRequested
+    }
+}
+
 android {
     sourceSets.getByName("main") {
         java.srcDir(if (agoraEnabled) "src/agora/kotlin" else "src/noAgora/kotlin")
@@ -59,8 +90,8 @@ android {
         applicationId = "com.rekixo.jodlo"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0-dev"
+        versionCode = if (releaseCandidateRequested) requireNotNull(candidateVersionCode) else 1
+        versionName = if (releaseCandidateRequested) candidateVersionName else "0.1.0-dev"
         manifestPlaceholders["callMessagingServiceEnabled"] = fcmEnabled
         buildConfigField("boolean", "FCM_ENABLED", fcmEnabled.toString())
         buildConfigField("boolean", "AGORA_ENABLED", agoraEnabled.toString())
