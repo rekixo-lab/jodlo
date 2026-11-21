@@ -38,7 +38,38 @@ private fun newCallAndClockAnomaliesAreSafe() {
     check(runCatching { CallAudioLinkRecovery(100, -1) }.isFailure)
 }
 
+private fun sdkTeardownAlwaysAttemptsEveryStep() {
+    val calls = mutableListOf<String>()
+    fun recording(name: String, fail: Boolean = false): () -> Unit = {
+        calls.add(name)
+        if (fail) throw IllegalStateException("simulated SDK failure")
+    }
+    check(CallAudioShutdown.release(
+        recording("mute"), recording("leave"), recording("destroy"),
+    ))
+    check(calls == listOf("mute", "leave", "destroy"))
+
+    calls.clear()
+    check(!CallAudioShutdown.release(
+        recording("mute", true), recording("leave", true), recording("destroy"),
+    ))
+    check(calls == listOf("mute", "leave", "destroy"))
+
+    calls.clear()
+    check(!CallAudioShutdown.release(
+        recording("mute"), recording("leave", true), recording("destroy", true),
+    ))
+    check(calls == listOf("mute", "leave", "destroy"))
+
+    calls.clear()
+    check(!CallAudioShutdown.release(
+        recording("mute", true), recording("leave"), recording("destroy", true),
+    ))
+    check(calls == listOf("mute", "leave", "destroy"))
+}
+
 fun main() {
+    sdkTeardownAlwaysAttemptsEveryStep()
     joinMustNotHangForever()
     reconnectUsesShorterBudgetAndResetsOnSuccess()
     newCallAndClockAnomaliesAreSafe()

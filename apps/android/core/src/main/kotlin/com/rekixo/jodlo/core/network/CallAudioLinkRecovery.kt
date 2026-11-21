@@ -45,3 +45,25 @@ class CallAudioLinkRecovery(
         return elapsedMs - since >= timeout
     }
 }
+
+/** Best-effort independent Android RTC teardown. Failing one SDK operation
+ * must never skip the others or prevent the caller's server HANGUP request.
+ * This is not server-side termination proof and cannot guarantee native SDK
+ * cleanup when the SDK itself fails. Do not catch fatal JVM Errors.
+ */
+object CallAudioShutdown {
+    private fun safely(action: () -> Unit): Boolean =
+        try {
+            action()
+            true
+        } catch (_: Exception) {
+            false
+        }
+
+    fun release(mute: () -> Unit, leave: () -> Unit, destroy: () -> Unit): Boolean {
+        val muted = safely(mute)
+        val left = safely(leave)
+        val destroyed = safely(destroy)
+        return muted && left && destroyed
+    }
+}

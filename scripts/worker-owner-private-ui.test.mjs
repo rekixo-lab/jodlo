@@ -547,3 +547,27 @@ test("Failed Agora audio offers ONLY explicit same-invitation retry after curren
       for(const name of ["call_retry_audio","call_retry_audio_unconfirmed"])
         assert.ok(xml.includes('name="'+name+'"'), name+" must be translated");
 });
+
+
+test("Agora shutdown always attempts mute/leave/destroy and cannot suppress server Hangup on native Exceptions", () => {
+    const core = read("apps/android/core/src/main/kotlin/com/rekixo/jodlo/core/network/CallAudioLinkRecovery.kt");
+    const cases = read("apps/android/core/src/test/kotlin/com/rekixo/jodlo/core/network/CallAudioLinkRecoveryTest.kt");
+    const rtc = read("apps/android/app/src/agora/kotlin/com/rekixo/jodlo/AgoraAudioCall.kt");
+    const ui = read("apps/android/app/src/main/java/com/rekixo/jodlo/CallScreen.kt");
+    assert.match(core, /object CallAudioShutdown/);
+    assert.match(core, /fun release\(mute: \(\) -> Unit, leave: \(\) -> Unit, destroy: \(\) -> Unit\): Boolean/);
+    assert.match(core, /val muted = safely\(mute\)/);
+    assert.match(core, /val left = safely\(leave\)/);
+    assert.match(core, /val destroyed = safely\(destroy\)/);
+    assert.match(core, /catch \(_: Exception\) \{\s*false/);
+    assert.match(cases, /fun sdkTeardownAlwaysAttemptsEveryStep\(\)/);
+    assert.match(cases, /recording\("mute", true\), recording\("leave", true\), recording\("destroy"\)/);
+    assert.match(cases, /recording\("mute"\), recording\("leave", true\), recording\("destroy", true\)/);
+    assert.match(rtc, /CallAudioShutdown\.release\(/);
+    assert.match(rtc, /mute = \{ rtc\.muteLocalAudioStream\(true\) \}/);
+    assert.match(rtc, /leave = \{ rtc\.leaveChannel\(\) \}/);
+    assert.match(rtc, /destroy = \{ RtcEngine\.destroy\(\) \}/);
+    assert.match(rtc, /fun muteMicrophone\(muted: Boolean\): Boolean =[\s\S]*?catch \(_: Exception\) \{\s*false/);
+    assert.match(ui, /audio\.close\(\)\s*ending = action/);
+    assert.doesNotMatch(rtc, /catch \(_: Throwable\)/);
+});
