@@ -68,6 +68,29 @@ jobs:
             exit 1
           fi
           grep -q 'Release candidate requires the dedicated verified JODLO API origin' "$RUNNER_TEMP/jodlo-invalid-release.txt"
+      - name: Verify configured release candidate tasks without building or signing
+        if: matrix.java-version == '21'
+        run: |
+          # Synthetic/public values only. Task discovery cannot package, sign, upload
+          # or run a release. This is NOT a production release configuration.
+          CANDIDATE_ARGS=(
+            -PincludeAndroidApp=true
+            -PjodloReleaseCandidate=true
+            -PjodloApiOrigin=https://api.jodlo.rekixo.com
+            -PjodloGoogleWebClientId=123456789012-jodlo-ci-only.apps.googleusercontent.com
+            -PjodloReleaseVersionName=1.0.0
+            -PjodloReleaseVersionCode=2
+          )
+          gradle -p apps/android "${CANDIDATE_ARGS[@]}" :app:tasks --all --no-daemon > "$RUNNER_TEMP/jodlo-candidate-tasks.txt"
+          grep -Eq '^[[:space:]]*assembleRelease([[:space:]]|$)' "$RUNNER_TEMP/jodlo-candidate-tasks.txt"
+          grep -Eq '^[[:space:]]*bundleRelease([[:space:]]|$)' "$RUNNER_TEMP/jodlo-candidate-tasks.txt"
+          # Valid origin/client are insufficient: any non-semver version must
+          # fail before Gradle exposes a release candidate variant.
+          if gradle -p apps/android "${CANDIDATE_ARGS[@]}" -PjodloReleaseVersionName=dev :app:help --no-daemon > "$RUNNER_TEMP/jodlo-bad-version.txt" 2>&1; then
+            echo "Unsafe: invalid release version accepted"
+            exit 1
+          fi
+          grep -q 'Release candidate needs explicit numeric major.minor.patch version name' "$RUNNER_TEMP/jodlo-bad-version.txt"
       - name: Run Kotlin Core verification under JDK 21
         if: matrix.java-version == '21'
         run: gradle -p apps/android :core:verifyHeadlessCore --no-daemon
