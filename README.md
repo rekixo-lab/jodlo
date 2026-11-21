@@ -23,4 +23,6 @@
 
 अपने Android development कंप्यूटर पर `JODLO_GOOGLE_WEB_CLIENT_ID=<अपना-पब्लिक-Web-client-ID> npm run android:call-qa -- --customer <Customer-ADB-serial> --worker <Worker-ADB-serial>` चलाएँ। स्क्रिप्ट पहले दोनों फोन और कॉन्फ़िगरेशन जाँचेगी, **एक** debug APK Cloudflare API + Google Login + Agora + FCM के साथ बनाएगी और **सिर्फ निर्दिष्ट दो फोन** पर बिना uninstall/data wipe install करके ऐप खोलेगी। कोई real call, Google Play payment, email या Cloudflare deployment स्वयं नहीं करेगी। FCM config की स्थानीय बनावट जाँचना Google/provider का वास्तविक सत्यापन नहीं है।
 
+**सावधानी:** QA APK वास्तविक JODLO Cloudflare API से जुड़ता है। असली Login, FCM registration या Call पर production में रिकॉर्ड/क्रेडिट बदल सकते हैं। इसलिए केवल अलग अनुमति और नियंत्रित test accounts के साथ ये मैनुअल परीक्षण करें।
+
 फिर दोनों फोन पर अलग Customer और Worker login → Worker की incoming call अनुमति और push readiness → public Service खोजकर ग्राहक द्वारा कॉल शुरू करना → Worker द्वारा Answer/Decline → Mute/Hangup → Network off/on और background/foreground → वास्तविक call history और credit की server से पुष्टि। **दो असली फोन पर यह परीक्षण कोई इंसान ही करेगा; CI में synthetic Firebase compile सिर्फ कोड जाँचता है।**
