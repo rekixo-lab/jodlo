@@ -462,7 +462,7 @@ test("Customer call login returns to exactly the selected Service, without auto-
     assert.match(main, /CustomerCallReturn\(listing, language, section, city\)/);
     assert.match(main, /if \(session\.accountExportSessionMarker\(\) == null\)/);
     assert.match(main, /accountFromAlerts = false\s*section = "account"/);
-    assert.match(main, /else \{\s*pendingCallReturn = null\s*callScreen = CallScreenRequest\.Outgoing\(listing\.id\)/);
+    assert.match(main, /if \\(section != "return-service"\\) pendingCallReturn = null\\s*callScreen = CallScreenRequest\\.Outgoing\\(listing\\.id\\)/);
     assert.match(main, /onSignInSuccess = \{\s*loginRevision\+\+/);
     assert.match(main, /session\?\.accountExportSessionMarker\(\) != null && incomingCall == null/);
     assert.match(main, /section = "return-service"/);

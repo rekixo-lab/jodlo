@@ -182,13 +182,17 @@ private fun JodloApp(
             { listing, language, city ->
                 if (callScreen == null) {
                     if (session.accountExportSessionMarker() == null) {
-                        pendingCallReturn = if (section in setOf("customer", "saved", "feed", "city-feed"))
-                            CustomerCallReturn(listing, language, section, city)
-                        else null
+                        if (section in setOf("customer", "saved", "feed", "city-feed")) {
+                            pendingCallReturn = CustomerCallReturn(listing, language, section, city)
+                        } else if (section != "return-service") {
+                            pendingCallReturn = null
+                        }
                         accountFromAlerts = false
                         section = "account"
                     } else {
-                        pendingCallReturn = null
+                        // Keep the return screen after the user closes the call.
+                        // The existing server-owned CallScreen still decides admission.
+                        if (section != "return-service") pendingCallReturn = null
                         callScreen = CallScreenRequest.Outgoing(listing.id)
                     }
                 }
