@@ -3,7 +3,7 @@
 # part of a reviewed Pages build. Never apply to api.jodlo.rekixo.com.
 # Keep stricter HTTP CSP in step with index.html's meta fallback.
 # HSTS is intentionally deferred until the owner verifies actual TLS/routing.
- /*
+/*
   Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'; object-src 'none'; frame-ancestors 'none'; upgrade-insecure-requests
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
