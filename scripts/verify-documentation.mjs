@@ -5,6 +5,14 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const mission = "हम JODLO इसलिए बना रहे हैं ताकि यह Finworkar ऐप से बेहतर हो।\n";
+const requiredRules = [
+  "**Cloudflare:**",
+  "**Google Play Billing**",
+  "**Google Pay**",
+  "**Reuse, कोई बेकार duplication नहीं:**",
+  "**Customer-to-Worker**",
+  "backend verification",
+];
 const ignore = new Set([".git", "node_modules", ".gradle", ".wrangler", "build", "dist", "out"]);
 async function findWrittenNotes(path) {
   const found = [];
@@ -19,6 +27,8 @@ async function findWrittenNotes(path) {
 }
 const markdown = (await findWrittenNotes(root)).sort();
 assert.deepEqual(markdown, ["README.md"], "Obsolete JODLO notes/instructions must not be restored");
-assert.equal(await readFile(join(root, "README.md"), "utf8"), mission,
-  "Only the founder's exact JODLO mission belongs in project documentation");
+const guide = await readFile(join(root, "README.md"), "utf8");
+assert.ok(guide.startsWith(mission), "Founder mission must be the first line");
+for (const rule of requiredRules)
+  assert.ok(guide.includes(rule), "Founder directive missing from JODLO notes: " + rule);
 process.stdout.write("JODLO mission-only written notes verified.\n");
