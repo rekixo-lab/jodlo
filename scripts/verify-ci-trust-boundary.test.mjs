@@ -16,10 +16,10 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
       - name: Test only
@@ -54,7 +54,7 @@ test("writes, overly broad privileges, and missing read-only top-level scope fai
 
 test("unchecked remote actions, token references, and implicit checkout credentials fail", () => {
   const bad = [
-    [safeWorkflow.replace("actions/setup-node@v4", "untrusted/example-action@main"),
+    [safeWorkflow.replace("actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020", "untrusted/example-action@main"),
       /unreviewed action/],
     [safeWorkflow.replace("persist-credentials: false", "fetch-depth: 1"),
       /persist-credentials: false/],
@@ -70,7 +70,7 @@ test("unchecked remote actions, token references, and implicit checkout credenti
 });
 
 test("main-only temporary APK artifact upload is required", () => {
-  const withUpload = safeWorkflow + "      - uses: actions/upload-artifact@v4\n";
+  const withUpload = safeWorkflow + "      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02\n";
   assert.match(auditWorkflowSource(withUpload).join("\n"), /limited to main/);
   assert.deepEqual(auditWorkflowSource(withUpload +
     "        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'\n"), []);
