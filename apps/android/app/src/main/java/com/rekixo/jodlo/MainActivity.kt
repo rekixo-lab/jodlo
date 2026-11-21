@@ -175,7 +175,19 @@ private fun JodloApp(
     var wakeupRetryClicks by remember { mutableIntStateOf(0) }
     var callScreen by remember(session) { mutableStateOf<CallScreenRequest?>(null) }
     val onCall: ((String) -> Unit)? = if (BuildConfig.AGORA_ENABLED && session != null && !debugPreview) {
-        { id -> if (callScreen == null) callScreen = CallScreenRequest.Outgoing(id) }
+        { id ->
+            if (callScreen == null) {
+                // A call is never started from a signed-out or expired session.
+                // Let the customer sign in explicitly, then re-open the Service
+                // for a fresh public eligibility check before calling.
+                if (session.accountExportSessionMarker() == null) {
+                    accountFromAlerts = false
+                    section = "account"
+                } else {
+                    callScreen = CallScreenRequest.Outgoing(id)
+                }
+            }
+        }
     } else null
     // An FCM event and exported Activity extras are unverified. In a newly
     // started process, show Account first: never ACK/accept/join on a push.
@@ -1182,7 +1194,7 @@ private fun GuestDiscovery(
                                 Text(stringResource(R.string.service_details_refresh_now))
                             }
                         }
-                        if (liveApiConfigured) item { ServiceCallButton(onCall, card.listing.id) }
+                        if (liveApiConfigured) item { ServiceCallButton(onCall, card.listing.id, contactSession) }
                         item {
                             ServiceSafetyPanel(card.listing.id, requestRevision) {
                                 ContactBlockControls(contactSession, card.listing.id)

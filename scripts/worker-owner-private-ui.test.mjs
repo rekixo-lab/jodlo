@@ -440,3 +440,22 @@ test("Worker Service editors fence per-account local drafts and preserve unknown
     for(const xml of [en,hi])
         assert.ok(xml.includes('name="worker_details_unsent_after_recheck"'));
 });
+
+test("Customer call entry shows sign-in first across Browse, Feed, Saved and rechecks the session on tap", () => {
+    const main = read("apps/android/app/src/main/java/com/rekixo/jodlo/MainActivity.kt");
+    const button = read("apps/android/app/src/main/java/com/rekixo/jodlo/CallScreen.kt");
+    const feed = read("apps/android/app/src/main/java/com/rekixo/jodlo/PublicServicesFeed.kt");
+    const saved = read("apps/android/app/src/main/java/com/rekixo/jodlo/SavedServicesDashboard.kt");
+    assert.match(button, /val signedIn = contactSession\?\.accountExportSessionMarker\(\) != null/);
+    assert.match(button, /if \(signedIn\) R\.string\.call_start else R\.string\.call_sign_in/);
+    assert.match(button, /if \(onCall == null\)/);
+    assert.match(button, /R\.string\.call_unavailable/);
+    assert.match(main, /if \(session\.accountExportSessionMarker\(\) == null\) \{\s*accountFromAlerts = false\s*section = "account"/);
+    assert.match(main, /else \{\s*callScreen = CallScreenRequest\.Outgoing\(id\)/);
+    for (const source of [main, feed, saved]) {
+        assert.match(source, /ServiceCallButton\(onCall, [a-zA-Z]+\.listing\.id, contactSession\)/);
+    }
+    const en=read("apps/android/app/src/main/res/values/strings.xml");
+    const hi=read("apps/android/app/src/main/res/values-hi/strings.xml");
+    for(const xml of [en,hi]) assert.match(xml, /name="call_sign_in"/);
+});

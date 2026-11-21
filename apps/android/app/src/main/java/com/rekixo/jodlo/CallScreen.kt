@@ -80,13 +80,23 @@ internal sealed interface CallScreenRequest {
 }
 
 @Composable
-internal fun ServiceCallButton(onCall: ((String) -> Unit)?, listingId: String) {
+internal fun ServiceCallButton(
+    onCall: ((String) -> Unit)?,
+    listingId: String,
+    contactSession: InMemorySessionCoordinator?,
+) {
     if (onCall == null) {
         Text(stringResource(R.string.call_unavailable), style = MaterialTheme.typography.bodySmall)
         return
     }
+    // The shared Customer call entry renders the honest state on Browse,
+    // Saved and Feed. The click handler must still recheck session expiry.
+    val signedIn = contactSession?.accountExportSessionMarker() != null
     JodloButton(onClick = { onCall(listingId) }, modifier = Modifier.fillMaxWidth()) {
-        Text(stringResource(R.string.call_start), color = JodloPalette.Accent)
+        Text(
+            stringResource(if (signedIn) R.string.call_start else R.string.call_sign_in),
+            color = JodloPalette.Accent,
+        )
     }
 }
 

@@ -604,7 +604,7 @@ internal fun PublicServicesFeed(
                 }
                 item { SafePublicProfileFacts(safeCard.profile, safeCard.city) }
                 item { ApprovedServicePhoto(repository, safeCard, revision) }
-                item { ServiceCallButton(onCall, safeCard.listing.id) }
+                item { ServiceCallButton(onCall, safeCard.listing.id, contactSession) }
                 item {
                     ServiceSafetyPanel(safeCard.listing.id, revision) {
                         ContactBlockControls(contactSession, safeCard.listing.id)
