@@ -9,13 +9,17 @@ npm run android:build     # build debug APK only
 npm run android:install   # build + install on one ready device
 npm run android:run       # build + install + launch
 npm run android:run -- --serial DEVICE_SERIAL  # choose among multiple devices
-Alternatively set ANDROID_SERIAL=DEVICE_SERIAL.
+npm run android:call-qa -- --customer CUSTOMER_SERIAL --worker WORKER_SERIAL
+# Two-phone mode needs real JODLO Google Web OAuth and ignored google-services.json.
+Alternatively set ANDROID_SERIAL=DEVICE_SERIAL for normal one-phone modes.
 USAGE
 }
 mode="${1:-run}"
 if (( $# > 0 )); then shift; fi
-case "$mode" in devices|build|install|run) ;; help|--help|-h) usage; exit 0 ;; *) usage >&2; die "Unknown mode: $mode";; esac
+case "$mode" in devices|build|install|run|call-qa) ;; help|--help|-h) usage; exit 0 ;; *) usage >&2; die "Unknown mode: $mode";; esac
 serial="${ANDROID_SERIAL:-}"
+customer_serial=""
+worker_serial=""
 while (( $# > 0 )); do
   case "$1" in
     --serial|-s)
@@ -24,10 +28,32 @@ while (( $# > 0 )); do
       [[ -n "$serial" && "$serial" != -* && "$serial" != *$'\n'* ]] || die "Invalid device serial"
       shift 2
       ;;
+    --customer|--worker)
+      (( $# >= 2 )) || die "Missing phone serial after $1"
+      [[ "$2" =~ ^[A-Za-z0-9._:-]+$ ]] || die "Invalid phone serial"
+      if [[ "$1" == --customer ]]; then
+        [[ -z "$customer_serial" ]] || die "Customer serial set twice"
+        customer_serial="$2"
+      else
+        [[ -z "$worker_serial" ]] || die "Worker serial set twice"
+        worker_serial="$2"
+      fi
+      shift 2
+      ;;
     --help|-h) usage; exit 0 ;;
     *) die "Unknown option: $1" ;;
   esac
 done
+if [[ "$mode" == call-qa ]]; then
+  [[ -z "$serial" ]] || die "call-qa needs --customer and --worker, not ANDROID_SERIAL/--serial"
+  [[ -n "$customer_serial" && -n "$worker_serial" ]] ||
+    die "Specify BOTH --customer CUSTOMER_SERIAL and --worker WORKER_SERIAL"
+  [[ "$customer_serial" != "$worker_serial" ]] ||
+    die "Customer and Worker must be DIFFERENT devices"
+else
+  [[ -z "$customer_serial" && -z "$worker_serial" ]] ||
+    die "--customer/--worker can only be used in call-qa mode"
+fi
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 root="$(cd -- "$script_dir/.." && pwd)"
@@ -49,7 +75,8 @@ if [[ "$mode" == devices ]]; then
 fi
 
 chosen=""
-if [[ "$mode" == install || "$mode" == run ]]; then
+chosen_devices=()
+if [[ "$mode" == install || "$mode" == run || "$mode" == call-qa ]]; then
   [[ -n "$adb_bin" ]] || die "adb missing. Install platform-tools and enable USB debugging."
   if ! listing="$("$adb_bin" devices 2>&1)"; then
     printf '%s\n' "$listing" >&2
@@ -67,7 +94,17 @@ if [[ "$mode" == install || "$mode" == run ]]; then
       other_state="$state"
     fi
   done <<< "$listing"
-  if [[ -n "$serial" ]]; then
+  if [[ "$mode" == call-qa ]]; then
+    for wanted in "$customer_serial" "$worker_serial"; do
+      found=0
+      for id in "${ready[@]}"; do
+        if [[ "$id" == "$wanted" ]]; then found=1; break; fi
+      done
+      (( found == 1 )) ||
+        die "QA phone '$wanted' not ready/authorized. Check adb devices and USB approval."
+      chosen_devices+=("$wanted")
+    done
+  elif [[ -n "$serial" ]]; then
     for id in "${ready[@]}"; do
       if [[ "$id" == "$serial" ]]; then chosen="$id"; break; fi
     done
@@ -86,7 +123,8 @@ if [[ "$mode" == install || "$mode" == run ]]; then
         ;;
     esac
   fi
-  printf 'JODLO: Device selected: %s\n' "$chosen"
+  if [[ "$mode" != call-qa ]]; then chosen_devices=("$chosen"); fi
+  printf 'JODLO: Selected device(s): %s\n' "${chosen_devices[*]}"
 fi
 
 [[ -d "$sdk/platforms/android-35" ]] || die "Android SDK platform 35 missing. Install sdkmanager 'platforms;android-35'."
@@ -140,22 +178,71 @@ elif [[ -x "$HOME/.local/opt/gradle-8.10.2/bin/gradle" ]]; then
 else
   die "Gradle missing. Install Gradle 8.10.2."
 fi
+# Two-phone QA is opt-in; ordinary debug APK has no Google/Agora/FCM config.
+gradle_qa_args=()
+if [[ "$mode" == call-qa ]]; then
+  web_id="${JODLO_GOOGLE_WEB_CLIENT_ID:-}"
+  web_id_regex='^[0-9]+-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$'
+  [[ "$web_id" =~ $web_id_regex && "$web_id" != *ci-only* && "$web_id" != *synthetic* ]] ||
+    die "Set real JODLO_GOOGLE_WEB_CLIENT_ID (public WEB OAuth client, no CI fixture)"
+  config="$root/apps/android/app/google-services.json"
+  [[ -f "$config" && ! -L "$config" ]] ||
+    die "Real non-symlink JODLO google-services.json required for FCM QA"
+  command -v node >/dev/null 2>&1 || die "Node.js required for local FCM project validation"
+  # File shape check only, not a proof of Google ownership or FCM delivery.
+  if ! node - "$config" <<'JODLO_FCM_PREFLIGHT'
+const fs = require("node:fs");
+let data;
+try { data = JSON.parse(fs.readFileSync(process.argv[2], "utf8")); }
+catch { process.exit(1); }
+const project = data?.project_info?.project_id;
+const clients = data?.client ?? [];
+const valid = typeof project === "string" && project.length > 2 &&
+  !/synthetic|example|ci-only|not-real/i.test(project) &&
+  Array.isArray(clients) && clients.some(c =>
+    c?.client_info?.android_client_info?.package_name === "com.rekixo.jodlo" &&
+    (c?.api_key ?? []).some(k => typeof k?.current_key === "string" &&
+      k.current_key.length > 15 &&
+      !/synthetic|example|ci-only|not-real/i.test(k.current_key)));
+if (!valid) process.exit(1);
+JODLO_FCM_PREFLIGHT
+  then
+    die "FCM config lacks JODLO Android app/project/key or contains CI example values"
+  fi
+  gradle_qa_args=(
+    -PjodloApiOrigin=https://api.jodlo.rekixo.com
+    "-PjodloGoogleWebClientId=$web_id"
+    -PjodloEnableAgora=true
+    -PjodloEnableFcm=true
+  )
+  printf 'JODLO: Two-phone QA build with API, Google, Agora and FCM enabled.\n'
+  printf 'JODLO: No call, payment, email or cloud deployment initiated.\n'
+fi
+
 apk="$root/apps/android/app/build/outputs/apk/debug/app-debug.apk"
 printf 'JODLO: Building local debug APK...\n'
-"$gradle_bin" -p "$root/apps/android" -PincludeAndroidApp=true :app:assembleDebug --no-daemon
+"$gradle_bin" -p "$root/apps/android" -PincludeAndroidApp=true "${gradle_qa_args[@]}" :app:assembleDebug --no-daemon
 [[ -s "$apk" ]] || die "Build returned without a nonempty APK: $apk"
 printf 'JODLO: APK ready: %s\n' "$apk"
 if [[ "$mode" == build ]]; then exit 0; fi
 
-printf 'JODLO: Installing on %s (no uninstall or data removal)...\n' "$chosen"
-if ! output="$("$adb_bin" -s "$chosen" install -r "$apk" 2>&1)"; then
-  printf '%s\n' "$output" >&2
-  die "ADB install failed. If another-signature version exists, manual uninstall removes app data; never done automatically."
+for selected_device in "${chosen_devices[@]}"; do
+  printf 'JODLO: Installing on %s (no uninstall or data removal)...\n' "$selected_device"
+  if ! output="$("$adb_bin" -s "$selected_device" install -r "$apk" 2>&1)"; then
+    printf '%s\n' "$output" >&2
+    die "ADB install failed. No uninstall, auto retry or data removal."
+  fi
+  printf '%s\n' "$output"
+  [[ "$output" == *Success* ]] || die "ADB did not confirm a successful install."
+  printf 'JODLO: Installed on %s\n' "$selected_device"
+done
+if [[ "$mode" == run || "$mode" == call-qa ]]; then
+  for selected_device in "${chosen_devices[@]}"; do
+    printf 'JODLO: Launching on %s...\n' "$selected_device"
+    "$adb_bin" -s "$selected_device" shell am start -n 'com.rekixo.jodlo/.MainActivity'
+  done
 fi
-printf '%s\n' "$output"
-[[ "$output" == *Success* ]] || die "ADB did not confirm a successful install."
-printf 'JODLO: Installed on %s\n' "$chosen"
-if [[ "$mode" == run ]]; then
-  printf 'JODLO: Launching app...\n'
-  "$adb_bin" -s "$chosen" shell am start -n 'com.rekixo.jodlo/.MainActivity'
+if [[ "$mode" == call-qa ]]; then
+  printf 'JODLO: Both apps opened. Sign in separately and manually authorize any call.\n'
+  printf 'JODLO: A successful build does NOT prove live call, FCM or credit readiness.\n'
 fi
