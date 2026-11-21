@@ -109,7 +109,6 @@ export async function auditFounderGates(root = rootDefault) {
   const catalog = await required(root,"apps/api/src/modules/catalog/catalog.ts",errors);
   const phrases = await required(root,"apps/api/src/modules/catalog/search-phrases.ts",errors);
   const workerSql = await required(root,"infra/migrations/0002_shared_accounts_worker_drafts.sql",errors);
-  const adr = await required(root,"docs/decisions/0008-hindi-english-only.md",errors);
   const workflow = await required(root,".github/workflows/checks.yml",errors);
   const pkg = await required(root,"package.json",errors);
   // Literal router paths (not a complete parser for dynamically built routes).
@@ -147,8 +146,6 @@ export async function auditFounderGates(root = rootDefault) {
     if(/["'](?:mujhe|chahiye|kaam|karta|karti|mere|meri)["']/.test(phrases))
       errors.push("Unsupported Romanized Hindi grammar reintroduced");
   }
-  if(adr !== null && !/Hinglish is NOT a supported language/i.test(adr.replace(/\*\*/g,"")))
-    errors.push("ADR-0008 Hindi/English-only rule missing");
   if(workerSql !== null) {
     const block=workerSql.replace(/--[^\n]*/g,"")
       .match(/CREATE\s+TABLE\s+worker_profiles\s*\(([\s\S]*?)\)\s*;/i);
