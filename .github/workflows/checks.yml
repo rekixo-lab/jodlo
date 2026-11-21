@@ -21,19 +21,15 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
-      - name: Validate linked docs (no deps)
+      - name: Verify founder's sole current mission (no deps)
         run: npm run docs:check
-      - name: Test status-ledger guard against unsupported live or reviewer claims (no deps)
-        run: node --test scripts/verify-current-state.test.mjs
       - name: Enforce founder-approved flat dark and outlined native UI (no deps)
         run: node scripts/verify-approved-flat-ui.mjs
       - name: Enforce design token and asset deduplication rules (no deps)
         run: npm run design:check
       - name: Enforce founder privacy, route, language and no-deploy safety (no deps)
         run: npm run founder:check
-      - name: Verify committed first five full-Service reviewer handoff matches pinned source (no writes)
-        run: node scripts/catalog-first-five-handoff.mjs --check
-      - name: Verify uploaded historical bilingual catalog reference (no deps)
+      - name: Verify archived historical input integrity without applying it
         run: npm run reference:check
       - name: Enforce exhaustive Kotlin JVM suite wiring (no deps)
         run: npm run kotlin:coverage-check

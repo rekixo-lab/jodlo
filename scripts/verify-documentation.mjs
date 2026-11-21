@@ -1,54 +1,24 @@
 import assert from "node:assert/strict";
-import { verifyCurrentState } from "./verify-current-state.mjs";
-import { readFile, readdir, stat } from "node:fs/promises";
-import { dirname, extname, join, resolve } from "node:path";
+import { readFile, readdir } from "node:fs/promises";
+import { dirname, extname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-const root=resolve(dirname(fileURLToPath(import.meta.url)),"..");
-const required=[
-"README.md","AGENTS.md","CONTRIBUTING.md","UPLOAD_INSTRUCTIONS.md","docs/PROJECT.md","docs/CURRENT_STATE.md","docs/AI_HANDOFF.md","docs/STATUS.md","docs/ROADMAP.md","docs/ARCHITECTURE.md","docs/ARCHITECTURE_RESEARCH_20261027.md","docs/ANDROID_STRUCTURE.md","docs/CLOUDFLARE_INFRASTRUCTURE.md","docs/MODULE_BOUNDARIES.md","docs/PAYMENTS.md","docs/TESTING.md","docs/DESIGN_SYSTEM.md","docs/MOTION_3D.md","docs/REUSE_ASSET_POLICY.md","docs/RELEASE_READINESS.md","docs/MANUAL_ACTIONS.md","docs/reference/LEGACY_MAPPING.md","docs/reference/FINWORKAR_CATALOG_AUDIT_2026-10-27.md","docs/decisions/0001-cloudflare-modular-monolith.md","docs/decisions/0002-google-pay-and-play-billing.md","docs/decisions/0004-local-first-no-staging-until-production.md","docs/decisions/0015-real-provider-integration-and-controlled-production.md", "docs/decisions/0016-jodlo-dedicated-custom-api-domain.md","docs/REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md","docs/decisions/0005-reuse-tokens-premium-motion.md","docs/decisions/0003-native-android-single-activity.md","docs/decisions/0006-shared-account-opt-in-worker.md","docs/decisions/0007-google-signin-verified-session.md","docs/decisions/0008-hindi-english-only.md","docs/decisions/0009-instant-service-publication.md","docs/decisions/0010-bilaspur-raipur-pilot-city-names.md","docs/decisions/0011-all-category-coverage-smart-discovery.md"
-];
-async function walk(dir){let all=[];for(const item of await readdir(dir,{withFileTypes:true})){if(item.name.startsWith(".git")||item.name==="node_modules")continue;const p=join(dir,item.name);if(item.isDirectory())all.push(...await walk(p));else if(item.isFile()&&extname(p)===".md")all.push(p);}return all;}
-async function main(){await verifyCurrentState(root);for(const p of required)assert.equal((await stat(join(root,p))).isFile(),true,"Missing "+p);
-for(const path of ["README.md","AGENTS.md","docs/AI_HANDOFF.md","docs/STATUS.md"]){let t=await readFile(join(root,path),"utf8");for(const id of ["JODLO","com.rekixo.jodlo","jodlo.rekixo.com"])assert.ok(t.includes(id),path+" missing "+id);}
-for(const path of ["README.md","AGENTS.md","docs/AI_HANDOFF.md"]){let t=await readFile(join(root,path),"utf8");assert.ok(t.includes("Google Pay")&&t.includes("Razorpay")&&/UI/.test(t)&&/approval|approve|consent|सहमति/.test(t),path+" missing owner gates");}
-// Newer founder instruction supersedes prior deployment prohibition. Ensure
-// all canonical handoff files point to current ADR and owner runbook.
-for (const path of ["README.md","AGENTS.md","docs/MANUAL_ACTIONS.md",
-                    "docs/STATUS.md","docs/AI_HANDOFF.md","docs/ROADMAP.md",
-                    "docs/RELEASE_READINESS.md"]) {
-  const current=await readFile(join(root,path),"utf8");
-  assert.ok(current.includes("ADR-0015") &&
-            current.includes("REAL_PRODUCTION_CONNECTION_RUNBOOK_2026-11-03.md"),
-            path+" missing current founder real-deployment directive");
-}
-// Founder explicitly rejected a ten-category public scope. Keep the binding
-// correction visible in the canonical entry points; old ten-trade review
-// samples can remain as historical evidence, never as a launch restriction.
-for(const path of ["AGENTS.md","README.md","docs/MANUAL_ACTIONS.md",
-                   "docs/STATUS.md","docs/AI_HANDOFF.md","docs/ROADMAP.md"]){
-  const doc=await readFile(join(root,path),"utf8");
-  assert.ok(doc.includes("ADR-0011") && doc.includes("889"),
-    path+" must retain founder all-category/no-ten-limit scope");
-}
-const breadth=await readFile(join(root,
-  "docs/decisions/0011-all-category-coverage-smart-discovery.md"),"utf8");
-assert.ok(breadth.includes("No arbitrary ten-category limit") &&
-  breadth.includes("NOT") && breadth.includes("889") &&
-  breadth.includes("45") && breadth.includes("M-005"),
-  "All-category ADR must retain breadth AND human safety boundaries");
-// Prevent future handoffs from silently dropping founder-action escalation rules.
-for (const [path, mandatory] of Object.entries({
-  "AGENTS.md": ["MANUAL-GATE", "docs/MANUAL_ACTIONS.md"],
-  "docs/MANUAL_ACTIONS.md": ["## Owner-action communication protocol", "## Action register", "M-001", "M-007", "NEEDS_DECISION_NOW", "DEFERRED"],
-  "docs/STATUS.md": ["Owner-action checkpoint", "M-001"],
-  "docs/AI_HANDOFF.md": ["MANUAL-GATE", "Manual Actions"],
-  "docs/ROADMAP.md": ["M-001", "MANUAL_ACTIONS.md"],
-})) {
-  const doc = await readFile(join(root, path), "utf8");
-  for (const phrase of mandatory) {
-    assert.ok(doc.includes(phrase), path + " missing required manual-action policy: " + phrase);
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const mission = "हम JODLO इसलिए बना रहे हैं ताकि यह Freelancer ऐप से बेहतर हो।\n";
+const ignore = new Set([".git", "node_modules", ".gradle", ".wrangler", "build", "dist", "out"]);
+async function findWrittenNotes(path) {
+  const found = [];
+  for (const item of await readdir(path, { withFileTypes: true })) {
+    if (ignore.has(item.name)) continue;
+    const absolute = join(path, item.name);
+    if (item.isDirectory()) found.push(...await findWrittenNotes(absolute));
+    else if (item.isFile() && /\.(?:md|mdx|txt)$/i.test(item.name))
+      found.push(relative(root, absolute).replaceAll("\\", "/"));
   }
+  return found;
 }
-let links=0;for(const file of await walk(root)){const raw=await readFile(file,"utf8");const text=raw.replace(/^```[^\n]*\n[\s\S]*?^```\s*$/gm,"");for(const match of text.matchAll(/!?\[[^\]]*\]\(([^)]+)\)/g)){let href=match[1].trim().replace(/^<|>$/g,"").split("#")[0].split("?")[0];if(!href||/^(https?:\/\/|mailto:|tel:|data:)/i.test(href))continue;assert.ok(!href.startsWith("/"),"Absolute link "+href);const dest=resolve(dirname(file),decodeURIComponent(href));assert.ok(dest===root||dest.startsWith(root+"/"),"Link escapes repo: "+href);try{await stat(dest);}catch{throw Error("Broken relative link "+file+" => "+href)}links++;}}
-process.stdout.write("JODLO docs: "+required.length+" required, "+links+" relative links valid.\n");}
-main().catch(e=>{console.error(e.message);process.exitCode=1});
+const markdown = (await findWrittenNotes(root)).sort();
+assert.deepEqual(markdown, ["README.md"], "Obsolete JODLO notes/instructions must not be restored");
+assert.equal(await readFile(join(root, "README.md"), "utf8"), mission,
+  "Only the founder's exact JODLO mission belongs in project documentation");
+process.stdout.write("JODLO mission-only written notes verified.\n");

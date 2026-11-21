@@ -11,10 +11,9 @@ const main = "apps/android/app/src/main/java/com/rekixo/jodlo/";
 async function requireText(file) {
     return readFile(join(root, file), "utf8");
 }
-const [theme, components, customer, worker, reference, design, flowSvg, iconsSvg] = await Promise.all([
+const [theme, components, customer, worker, flowSvg, iconsSvg] = await Promise.all([
     main + "ui/theme/JodloTheme.kt", main + "ui/theme/JodloComponents.kt",
     main + "MainActivity.kt", main + "WorkerDashboard.kt",
-    "docs/UI_REFERENCE_2026-11-02.md", "docs/DESIGN_SYSTEM.md",
     "docs/assets/reference-flat-flow.svg", "docs/assets/reference-icon-actions.svg",
 ].map(requireText));
 const errors = [];
@@ -43,10 +42,6 @@ for (const [name, source] of [["Customer", customer], ["Worker", worker]]) {
 }
 if (!customer.includes("JodloChip(") || !customer.includes("JodloSearchField("))
     errors.push("Customer filters and fields must use shared components");
-for (const [name, source] of [["ref", reference], ["design", design]]) {
-    if (!source.includes("2026-11-02") || !/approved/i.test(source))
-        errors.push(name+" missing founder design approval");
-}
 if (!flowSvg.includes("#08391a") || !iconsSvg.includes("#40c877"))
     errors.push("Committed visual reference redraws missing approved green strokes");
 if (errors.length) {
