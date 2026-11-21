@@ -27,6 +27,7 @@ import com.rekixo.jodlo.core.network.ApiOutcome
 import com.rekixo.jodlo.core.network.ApprovedCategoryNameSnapshot
 import com.rekixo.jodlo.core.network.LocalPublicReferenceFinder
 import com.rekixo.jodlo.core.network.Language
+import com.rekixo.jodlo.core.network.NearbyPilotCity
 import com.rekixo.jodlo.core.network.PublicCategory
 import com.rekixo.jodlo.core.network.FailureKind
 import com.rekixo.jodlo.core.network.CustomerServiceCard
