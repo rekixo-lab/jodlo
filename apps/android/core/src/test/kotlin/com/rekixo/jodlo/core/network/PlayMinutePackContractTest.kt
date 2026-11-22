@@ -209,6 +209,61 @@ private fun playCheckoutOfferContractIsStrictAndHasNoLocallyInventedPrice() {
     check(!validGoogleFormattedPrice("free\rprice"))
 }
 
+
+private fun privateMinutesPreviewIsOwnerFencedAndRejectsPricesOrEntitlements() {
+    val token = "z".repeat(43)
+    val route = JodloRoutes.playAccountOverview(token)
+    check(route.method == HttpMethod.GET)
+    check(route.resource == "/api/v1/me/play-overview")
+    check(route.headers()["Authorization"] == "Bearer $token")
+    check(route.bodyUtf8() == null)
+    check(!route.toString().contains(token))
+    val one = """{"productId":"jodlo.minutes5","minutes":5}"""
+    val catalog = """{"packs":[$one],"priceSource":"google_play","purchasable":false}"""
+    val good = """{"ok":true,"data":{"balance":{"availableSeconds":125,"revision":7},"catalog":$catalog}}"""
+    val reply=JodloReplyDecoder.playAccountOverview(TransportReply(200,good))
+    check(reply == ApiOutcome.Ok(PlayMinuteAccountOverview(125,7,
+        PlayMinutePackCatalog(listOf(PlayMinutePack("jodlo.minutes5",5)),"google_play",false))))
+    val owner=AccountPrivateReadMarker(31L,1L)
+    val otherOwner=AccountPrivateReadMarker(32L,1L)
+    val changedWorker=AccountPrivateReadMarker(31L,2L)
+    val snapshotValue=(reply as ApiOutcome.Ok).value
+    val confirmed=requireNotNull(PrivatePlayMinuteAccountSnapshot.confirmed(owner,owner,
+        SessionResult.Success(snapshotValue)))
+    check(confirmed.forCurrent(owner)?.availableSeconds == 125)
+    check(confirmed.forCurrent(otherOwner) == null)
+    check(confirmed.forCurrent(changedWorker) == null)
+    check(!confirmed.toString().contains(token))
+    check(PrivatePlayMinuteAccountSnapshot.confirmed(owner,otherOwner,
+        SessionResult.Success(snapshotValue)) == null)
+    check(PrivatePlayMinuteAccountSnapshot.confirmed(owner,owner,
+        SessionResult.Failed(SessionFailure.REPLACED)) == null)
+    for (invalid in listOf(
+        good.replace(""""availableSeconds":125""",""""availableSeconds":-1"""),
+        good.replace(""""availableSeconds":125""",""""availableSeconds":"125""""),
+        good.replace(""""revision":7""",""""revision":-1"""),
+        good.replace(""""revision":7""",""""revision":"7""""),
+        good.replace(""""revision":7""",""""revision":7,"priceInr":149"""),
+        good.replace(""""revision":7""",""""revision":7,"purchaseToken":"secret""""),
+        good.replace(""""revision":7""",""""revision":7,"accountId":"other""""),
+        good.replace(""""revision":7""",""""revision":7,"revision":7"""),
+        good.replace(""""purchasable":false""",""""purchasable":true"""),
+        good.replace(""""priceSource":"google_play"""",""""priceSource":"local_fiat""""),
+        good.replace(""""minutes":5""",""""minutes":6"""),
+        good.replace(""""purchasable":false""",""""purchasable":false,"price":"NOT_GOOGLE_PRICE""""),
+        good.replace(""""balance":{""",""""balance":[],"old":{"""),
+        good.replace(""""catalog":""",""""catalog":{"cash":true},"other":"""),
+    )) {
+        check(JodloReplyDecoder.playAccountOverview(TransportReply(200,invalid)) ==
+            ApiOutcome.Failed(FailureKind.BAD_RESPONSE,false)) {
+            "Private balance cannot trust prices, duplicate data or an unrecognized SKU"
+        }
+    }
+    check(JodloReplyDecoder.playAccountOverview(TransportReply(404,
+        """{"ok":false,"error":{"code":"NOT_FOUND","message":"off"}}""")) ==
+        ApiOutcome.Failed(FailureKind.NOT_FOUND,false))
+}
+
 fun main() {
     acceptsCanonicalCatalog()
     rejectsInventedPricesAndWrongPackMapping()
@@ -217,5 +272,6 @@ fun main() {
     rejectsFalseBillingIdentityAndFabricatedEntitlements()
     uncertainProviderChecksStayOneShot()
     playCheckoutOfferContractIsStrictAndHasNoLocallyInventedPrice()
+    privateMinutesPreviewIsOwnerFencedAndRejectsPricesOrEntitlements()
     println("JODLO Play catalog: authenticated, price-independent, strictly decoded, checkout disabled OK")
 }

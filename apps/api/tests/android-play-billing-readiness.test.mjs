@@ -168,3 +168,44 @@ test("pure checkout review is defined once in Kotlin Core and rejects changed Go
   assert.match(core,/fun validGoogleFormattedPrice\(/);
   assert.match(tests,/playCheckoutOfferContractIsStrictAndHasNoLocallyInventedPrice\(\)/);
 });
+
+
+test("private account minute dashboard is owner-fenced and has no hardcoded money or checkout",()=>{
+  const dashboard=readApp("src/main/java/com/rekixo/jodlo/AccountDashboard.kt");
+  const screen=readApp("src/main/java/com/rekixo/jodlo/PrivatePlayMinuteAccountSection.kt");
+  const session=readFileSync(
+    new URL("../../android/core/src/main/kotlin/com/rekixo/jodlo/core/network/InMemorySessionCoordinator.kt",import.meta.url),"utf8");
+  const decoder=readFileSync(
+    new URL("../../android/core/src/main/kotlin/com/rekixo/jodlo/core/network/JodloReplyDecoder.kt",import.meta.url),"utf8");
+  assert.match(dashboard,/AccountPane\.PURCHASE_STATUS -> \{\s*PrivatePlayMinuteAccountSection\(session, busy\)/);
+  assert.match(screen,/session\.accountPrivateReadMarker\(\)/);
+  assert.match(screen,/remember\(session,marker\)/);
+  assert.match(screen,/session\.playAccountOverview\(owner\)/);
+  assert.match(screen,/PrivatePlayMinuteAccountSnapshot\.confirmed\(owner,now,result\)/);
+  assert.match(screen,/snapshot = null/);
+  assert.match(screen,/current\.catalog\.packs/);
+  assert.match(screen,/stringResource\(R\.string\.play_overview_balance/);
+  assert.match(session,/fun playAccountOverview\(/);
+  assert.match(session,/JodloRoutes\.playAccountOverview\(token\)/);
+  assert.match(session,/JodloReplyDecoder::playAccountOverview/);
+  assert.match(session,/consistentRead = true, expectedOwner = owner/);
+  assert.match(decoder,/private fun playCatalog\(data: JsonObject\)/);
+  assert.match(decoder,/fun playAccountOverview\(reply: TransportReply\)/);
+  for(const forbidden of [
+    /launchBillingFlow\s*\(/,
+    /acknowledgePurchase\s*\(/,
+    /consumeAsync\s*\(/,
+    /purchaseToken/,
+    /paymentReceipt/,
+    /priceInr|pricePaise|amountInr|Razorpay/,
+    /"₹[0-9]+"/,
+    /availableSeconds\s*\+\=/,
+  ]) assert.doesNotMatch(screen,forbidden,
+    "account preview is read-only and must not invent prices or grant credit");
+  for(const locale of ["values","values-hi"]) {
+    const strings=readApp("src/main/res/"+locale+"/strings.xml");
+    for(const resource of ["play_overview_readonly_notice","play_overview_refresh",
+      "play_overview_balance","play_overview_packs_title","play_overview_price_pending"])
+      assert.ok(strings.includes('name="'+resource+'"'));
+  }
+});

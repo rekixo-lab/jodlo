@@ -413,7 +413,7 @@ internal fun AccountDashboard(
                     }
                 }
                 AccountPane.PURCHASE_STATUS -> {
-                    Text(stringResource(R.string.navigation_purchase_unavailable))
+                    PrivatePlayMinuteAccountSection(session, busy)
                 }
                 AccountPane.DATA -> {
                     for (destination in listOf(AccountPane.EXPORT, AccountPane.SECURITY, AccountPane.DELETE)) {

@@ -405,25 +405,42 @@ object JodloReplyDecoder {
     /** Use the existing strict JSON, duplicate-key and error decoder.
      * Reject fabricated prices or a server accidentally advertising checkout.
      * Android must fetch any localized rupee price from Google Play itself. */
+    private fun playCatalog(data: JsonObject): PlayMinutePackCatalog {
+        data.keysOnly(setOf("packs", "priceSource", "purchasable"))
+        if (data.required("priceSource").str() != "google_play" ||
+            data.required("purchasable").bool()) bad()
+        val products = data.required("packs").arr()
+        if (products.size !in 1..16) bad()
+        var previousMinutes = 0
+        val mapped = products.map { element ->
+            val row = element.obj()
+            row.keysOnly(setOf("productId", "minutes"))
+            val minutes = row.required("minutes").number()
+            val id = row.required("productId").str()
+            if (minutes !in 1..500 || minutes <= previousMinutes ||
+                id != "jodlo.minutes" + minutes) bad()
+            previousMinutes = minutes
+            PlayMinutePack(id, minutes)
+        }
+        return PlayMinutePackCatalog(mapped, "google_play", false)
+    }
+
     fun playMinutePacks(reply: TransportReply): ApiOutcome<PlayMinutePackCatalog> =
+        decode(reply,::playCatalog)
+
+    /** A private session-bound D1 snapshot, never a Play purchase status.
+     * Strictly reject prices, actor IDs, tokens, invented entitlements and
+     * paid/purchasable flags; reuse the exact same SKU/pack decoder. */
+    fun playAccountOverview(reply: TransportReply): ApiOutcome<PlayMinuteAccountOverview> =
         decode(reply) { data ->
-            data.keysOnly(setOf("packs", "priceSource", "purchasable"))
-            if (data.required("priceSource").str() != "google_play" ||
-                data.required("purchasable").bool()) bad()
-            val products = data.required("packs").arr()
-            if (products.size !in 1..16) bad()
-            var previousMinutes = 0
-            val mapped = products.map { element ->
-                val row = element.obj()
-                row.keysOnly(setOf("productId", "minutes"))
-                val minutes = row.required("minutes").number()
-                val id = row.required("productId").str()
-                if (minutes !in 1..500 || minutes <= previousMinutes ||
-                    id != "jodlo.minutes" + minutes) bad()
-                previousMinutes = minutes
-                PlayMinutePack(id, minutes)
-            }
-            PlayMinutePackCatalog(mapped, "google_play", false)
+            data.keysOnly(setOf("balance","catalog"))
+            val balance = data.required("balance").obj()
+            balance.keysOnly(setOf("availableSeconds","revision"))
+            val seconds = balance.required("availableSeconds").number()
+            val revision = balance.required("revision").number()
+            if (seconds < 0 || revision < 0) bad()
+            PlayMinuteAccountOverview(seconds,revision,
+                playCatalog(data.required("catalog").obj()))
         }
 
     fun browse(reply: TransportReply): ApiOutcome<CatalogBrowse> = decode(reply) { data ->

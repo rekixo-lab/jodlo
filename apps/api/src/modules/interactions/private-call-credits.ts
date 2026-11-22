@@ -2,7 +2,10 @@ import type { D1Database } from "../../data/d1.ts";
 import { sessionHash, validSessionToken } from "../identity/sessions.ts";
 import { validOpaqueId } from "../shared/identifiers.ts";
 
-/** No client or public API may call this module. A future Play/UPI adapter
+/** No client or public API may call the TRUSTED MUTATION in this module.
+ * The separate owner-bound D1 read may be used by a default-off, strictly
+ * authenticated minute-preview endpoint; it cannot grant/revoke/consume.
+ * A future Play/UPI adapter
  * must independently verify entitlement, SKU, account binding, revocation,
  * refund state and a globally unique provider event BEFORE creating input.
  * Similarly verified_usage requires measured billable media usage; call
@@ -63,7 +66,8 @@ export async function recordTrustedCallCreditEvent(
     existing.results[0]?.seconds === event.seconds ? "replay" : "denied";
 }
 
-/** Private owner-only read seam; not registered with the HTTP router.
+/** Private owner-only D1 read seam; optional default-off HTTP adapter
+ * must authenticate the active session itself (never caller-supplied owner).
  * An account with no events has exactly zero seconds, never implied credit.
  */
 export async function readOwnCallCreditBalance(

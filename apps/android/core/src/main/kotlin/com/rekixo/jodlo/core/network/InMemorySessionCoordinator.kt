@@ -598,6 +598,20 @@ class InMemorySessionCoordinator(
         mutation = true, expectedOwner = owner,
     )
 
+    /** Account-bound read of canonical Play packs and internal D1 call seconds.
+     * No public Worker data, Google price, purchase proof or local credit.
+     * A logout, replacement or concurrent write invalidates the entire reply. */
+    fun playAccountOverview(
+        owner: AccountPrivateReadMarker,
+        cancellation: CancellationSignal? = null,
+    ): SessionResult<PlayMinuteAccountOverview> = withSession(
+        call = { token -> performOnce(JodloRoutes.playAccountOverview(token),
+            authSender::send,JodloReplyDecoder::playAccountOverview) },
+        update = { reply, _ -> outcome(reply) },
+        consistentRead = true, expectedOwner = owner,
+        cancellation = cancellation,
+    )
+
     fun accountOverview(
         cancellation: CancellationSignal? = null,
     ): SessionResult<OwnAccountOverview> = withSession(

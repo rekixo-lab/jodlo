@@ -593,6 +593,14 @@
     <string name="navigation_call_microphone">Allow microphone access</string>
     <string name="navigation_purchase_status">Purchase status</string>
     <string name="navigation_purchase_unavailable">Checking purchases is currently unavailable.</string>
+    <string name="play_overview_readonly_notice">This is a read-only account preview, not a payment receipt or an offer to buy.</string>
+    <string name="play_overview_refresh">Check current minute balance and available pack sizes</string>
+    <string name="play_overview_loading">Checking your current account…</string>
+    <string name="play_overview_balance">Call time in account ledger: %1$d min %2$d sec</string>
+    <string name="play_overview_balance_notice">This balance is shown only after a fresh account check. It does not prove a Google Play purchase.</string>
+    <string name="play_overview_packs_title">Proposed minute packs (not for sale yet)</string>
+    <string name="play_overview_pack">%1$d minutes</string>
+    <string name="play_overview_price_pending">Price will be shown by Google Play once the app is ready.</string>
     <string name="navigation_manage_service">Manage service</string>
     <string name="navigation_service_photo">Service photo</string>
 </resources>

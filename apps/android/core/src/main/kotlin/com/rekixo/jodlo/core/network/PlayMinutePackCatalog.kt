@@ -22,3 +22,34 @@ class RemotePlayMinutePackRepository(private val sender: RequestSender) {
         performOnce(JodloRoutes.playMinutePacks(session),
             sender::send, JodloReplyDecoder::playMinutePacks)
 }
+
+/** Private, server-owned D1 ledger seconds and the canonical proposed packs.
+ * This is NOT confirmation that any purchase was made or may be bought. */
+data class PlayMinuteAccountOverview(
+    val availableSeconds: Int,
+    val revision: Int,
+    val catalog: PlayMinutePackCatalog,
+)
+
+/** A successful read is always tied to the currently authenticated session.
+ * Never persist it or use it to grant entitlement on the device. */
+class PrivatePlayMinuteAccountSnapshot private constructor(
+    private val owner: AccountPrivateReadMarker,
+    private val overview: PlayMinuteAccountOverview,
+) {
+    fun forCurrent(current: AccountPrivateReadMarker?): PlayMinuteAccountOverview? =
+        if (current == owner) overview else null
+
+    override fun toString(): String = "PrivatePlayMinuteAccountSnapshot(<private>)"
+
+    companion object {
+        fun confirmed(
+            requested: AccountPrivateReadMarker?,
+            current: AccountPrivateReadMarker?,
+            result: SessionResult<PlayMinuteAccountOverview>?,
+        ): PrivatePlayMinuteAccountSnapshot? =
+            if (requested == null || requested != current ||
+                result !is SessionResult.Success) null
+            else PrivatePlayMinuteAccountSnapshot(requested,result.value)
+    }
+}
