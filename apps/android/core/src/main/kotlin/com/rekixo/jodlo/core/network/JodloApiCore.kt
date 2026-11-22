@@ -378,6 +378,11 @@ object JodloRoutes {
     fun playMinutePacks(token: String): ApiCall =
         ApiCall.getOwned("/api/v1/me/play-packs", token)
 
+    /** Private balance + proposed packs in one session-scoped GET.
+     * Read-only, default-off; no invented Play price or paid checkout. */
+    fun playAccountOverview(token: String): ApiCall =
+        ApiCall.getOwned("/api/v1/me/play-overview", token)
+
     /** Private, current-account overview; no owner ID in path, query or body. */
     fun accountOverview(token: String): ApiCall =
         ApiCall.getOwned("/api/v1/me/overview", token)
