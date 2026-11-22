@@ -593,6 +593,14 @@
     <string name="navigation_call_microphone">माइक्रोफ़ोन की अनुमति दें</string>
     <string name="navigation_purchase_status">खरीद की स्थिति</string>
     <string name="navigation_purchase_unavailable">अभी खरीद की जाँच उपलब्ध नहीं है।</string>
+    <string name="play_overview_readonly_notice">यह केवल खाते की जानकारी का प्रीव्यू है, भुगतान की रसीद या खरीदने का ऑफर नहीं।</string>
+    <string name="play_overview_refresh">मौजूदा मिनट-बैलेंस और पैक देखें</string>
+    <string name="play_overview_loading">आपके खाते की जाँच हो रही है…</string>
+    <string name="play_overview_balance">खाते में कॉल समय: %1$d मिनट %2$d सेकंड</string>
+    <string name="play_overview_balance_notice">बैलेंस खाते की ताज़ा जाँच के बाद ही दिखता है। यह Google Play खरीद का प्रमाण नहीं है।</string>
+    <string name="play_overview_packs_title">प्रस्तावित मिनट-पैक (खरीद अभी बंद)</string>
+    <string name="play_overview_pack">%1$d मिनट</string>
+    <string name="play_overview_price_pending">ऐप तैयार होने पर कीमत Google Play से दिखाई जाएगी।</string>
     <string name="navigation_manage_service">सेवा प्रबंधन</string>
     <string name="navigation_service_photo">सेवा की तस्वीर</string>
 </resources>
