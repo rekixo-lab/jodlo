@@ -178,7 +178,7 @@ private fun playCheckoutOfferContractIsStrictAndHasNoLocallyInventedPrice() {
     val approved = listOf(5,20,50,100,300,500).map { "jodlo.minutes$it" }.toSet()
     val product = "jodlo.minutes20"
     val binding = "a".repeat(64)
-    val displayed = "₹149.00" // fake Google-formatted display in a JVM test, not a catalog price
+    val displayed = "GOOGLE_DISPLAY_PRICE_A" // synthetic, never a real SKU price
     val token = "opaque.Google.OneTime.Offer.Token"
     val happy = reviewFreshGooglePlayOffer(
         approved,product,binding,displayed,product,displayed,token,
@@ -186,7 +186,7 @@ private fun playCheckoutOfferContractIsStrictAndHasNoLocallyInventedPrice() {
     check(happy is PlayOfferReview.Ready && happy.offerToken == token)
     check(!happy.toString().contains(token))
     check(reviewFreshGooglePlayOffer(approved,product,binding,displayed,
-        product,"₹159.00",token) == PlayOfferReview.PriceChanged("₹159.00"))
+        product,"GOOGLE_DISPLAY_PRICE_B",token) == PlayOfferReview.PriceChanged("GOOGLE_DISPLAY_PRICE_B"))
     for (invalid in listOf(
         reviewFreshGooglePlayOffer(approved,product,"wrong",displayed,product,displayed,token),
         reviewFreshGooglePlayOffer(approved,product,"z".repeat(64),displayed,product,displayed,token),
