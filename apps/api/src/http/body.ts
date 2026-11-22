@@ -1,3 +1,4 @@
+import { validJodloPlayPurchaseToken } from "../modules/interactions/google-play-purchase-preflight.ts";
 /** Maximum empty byte chunks tolerated before rejecting a malformed/unproductive
  * body stream. Neither login nor no-body routes may spin on endless zero bytes.
  */
@@ -168,9 +169,7 @@ export async function readCallDeviceBody(request: Request): Promise<string | nul
 export async function readPlayPurchaseTokenBody(request: Request): Promise<string | null> {
   const obj = await readBoundedObject(request, 4352);
   if (!obj || Object.keys(obj).length !== 1 ||
-      typeof obj.purchaseToken !== "string" ||
-      !/^[A-Za-z0-9._~+\\/=-]{20,4096}$/.test(obj.purchaseToken))
-    return null;
+      !validJodloPlayPurchaseToken(obj.purchaseToken)) return null;
   return obj.purchaseToken;
 }
 
