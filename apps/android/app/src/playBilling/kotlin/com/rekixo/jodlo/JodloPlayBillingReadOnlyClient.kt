@@ -4,6 +4,7 @@ import android.content.Context
 import com.android.billingclient.api.BillingClient
 import com.android.billingclient.api.BillingClientStateListener
 import com.android.billingclient.api.BillingResult
+import com.android.billingclient.api.ProductDetails
 import com.android.billingclient.api.PendingPurchasesParams
 import com.android.billingclient.api.Purchase
 import com.android.billingclient.api.PurchasesUpdatedListener
@@ -93,12 +94,18 @@ internal class JodloPlayBillingReadOnlyClient(
         })
     }
 
-    /** No configured JODLO SKU IDs => no Play query and no suggested packs.
-     * All product details come from Play only for server-approved IDs.
-     * This method exposes IDs only; no fabricated prices or purchase CTA.
-     */
-    fun queryApprovedOneTimeProductIds(
-        callback: (ReadResult<String>) -> Unit,
+    /** Google's localized, formatted money text is the sole display-price
+     * source. Never use legacy Finworkar prices or infer INR on the device.
+     * No backend SKU configuration means no Play query, offer or CTA. */
+    internal data class LocalizedPlayOffer(
+        val productId: String,
+        val formattedPrice: String,
+    )
+
+    /** Shared one-time-product details query for both IDs and Play prices.
+     * Requery rather than caching stale ProductDetails or offer tokens. */
+    private fun queryApprovedProductDetails(
+        callback: (ReadResult<ProductDetails>) -> Unit,
     ) {
         if (closed || !client.isReady || approvedIds.isEmpty()) {
             callback(ReadResult.Unavailable)
@@ -121,9 +128,42 @@ internal class JodloPlayBillingReadOnlyClient(
                 callback(ReadResult.Available(details.productDetailsList
                     .filter { it.productType == BillingClient.ProductType.INAPP &&
                         it.productId in approvedIds
+                    }.distinctBy { it.productId }))
+            }
+        }
+    }
+
+    fun queryApprovedOneTimeProductIds(
+        callback: (ReadResult<String>) -> Unit,
+    ) {
+        queryApprovedProductDetails { result ->
+            when (result) {
+                is ReadResult.Available ->
+                    callback(ReadResult.Available(result.items.map { it.productId }))
+                ReadResult.Unavailable -> callback(ReadResult.Unavailable)
+            }
+        }
+    }
+
+    /** This preview MAY display a price supplied by the real Google Play
+     * ProductDetails API. Multiple/unsupported offers are not silently
+     * priced or selected. Nothing here initiates a purchase or grants credit.
+     * On a Play failure return Unavailable, never fabricated zero cost. */
+    fun queryLocalizedOneTimePrices(
+        callback: (ReadResult<LocalizedPlayOffer>) -> Unit,
+    ) {
+        queryApprovedProductDetails { result ->
+            when (result) {
+                is ReadResult.Available -> callback(ReadResult.Available(
+                    result.items.mapNotNull { product ->
+                        val offer = product.oneTimePurchaseOfferDetailsList?.singleOrNull()
+                        val price = offer?.formattedPrice
+                        if (price.isNullOrBlank() || price.length > 64 ||
+                            price.any { Character.isISOControl(it) }
+                        ) null else LocalizedPlayOffer(product.productId, price)
                     }
-                    .map { it.productId }
-                    .distinct()))
+                ))
+                ReadResult.Unavailable -> callback(ReadResult.Unavailable)
             }
         }
     }
