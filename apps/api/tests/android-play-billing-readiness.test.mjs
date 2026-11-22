@@ -104,3 +104,67 @@ test("Play proof handoff is strictly owner-bound, one-shot, redacted and never s
     /private val cachedPurchaseToken/,
   ])assert.doesNotMatch(code,unsafe);
 });
+
+
+test("debug-only Android checkout is gated and cannot be bundled into an approved release",()=>{
+  const gradle=readApp("build.gradle.kts");
+  assert.match(gradle,/val playCheckoutEnabled = providers\.gradleProperty\("jodloEnablePlayCheckout"\)\.orNull == "true"/);
+  assert.match(gradle,/!playCheckoutEnabled \|\| \(playBillingEnabled && !releaseCandidateRequested/);
+  assert.match(gradle,/buildConfigField\("boolean", "PLAY_CHECKOUT_ENABLED", playCheckoutEnabled\.toString\(\)\)/);
+  assert.doesNotMatch(workflow,/-PjodloEnablePlayCheckout=true/);
+  // The standard app never imports, invokes or exposes the opt-in engine.
+  const app=readApp("src/main/java/com/rekixo/jodlo/MainActivity.kt");
+  assert.doesNotMatch(app,/JodloPlayCheckoutController|prepareAndLaunchOwnerBoundCheckout/);
+});
+
+test("debug checkout reuses ONE BillingClient, no stale price or duplicate payment starts",()=>{
+  const shared=readApp("src/playBilling/kotlin/com/rekixo/jodlo/JodloPlayBillingReadOnlyClient.kt");
+  const engine=readApp("src/playBilling/kotlin/com/rekixo/jodlo/JodloPlayCheckoutController.kt");
+  assert.match(shared,/private val checkout(?:: JodloPlayCheckoutController)? by lazy/);
+  assert.match(shared,/JodloPlayCheckoutController\(\s*client, approvedIds, ::queryApprovedProductDetails, ::ownerBoundProof/);
+  assert.match(shared,/if \(!closed\) checkout\.onPurchaseUpdated\(result,purchases\)/);
+  assert.match(shared,/checkout\.invalidateSession\(\)/);
+  assert.match(engine,/if \(!BuildConfig\.PLAY_CHECKOUT_ENABLED\)/);
+  assert.match(engine,/!validJodloPlayAccountBinding\(currentServerBinding\)/);
+  assert.match(engine,/!validGoogleFormattedPrice\(displayedGooglePrice\)/);
+  assert.match(engine,/reviewFreshGooglePlayOffer\(/);
+  assert.match(engine,/\.oneTimePurchaseOfferDetailsList\?\.singleOrNull\(\)/);
+  assert.match(engine,/attempt\.launchStarted = true/);
+  assert.match(engine,/sessionInvalidated = true/);
+  assert.match(engine,/activity\.runOnUiThread/);
+  assert.match(engine,/\.setProductDetails\(product!!\)/);
+  assert.match(engine,/\.setOfferToken\(\(review as PlayOfferReview\.Ready\)\.offerToken\)/);
+  assert.match(engine,/\.setObfuscatedAccountId\(attempt\.binding\)/);
+  assert.match(engine,/billing\.launchBillingFlow\(activity,params\)/);
+  assert.match(engine,/Event\.VerifyWithCloudflare\(proof\)/);
+  assert.match(engine,/Event\.Pending/);
+  assert.match(engine,/Event\.RestoreManually/);
+  assert.match(engine,/BillingClient\.BillingResponseCode\.USER_CANCELED/);
+  for (const code of [shared,engine]) {
+    for(const forbidden of [
+      /\bconsumeAsync\s*\(/,
+      /\backnowledgePurchase\s*\(/,
+      /\bgetOrderId\s*\(/,
+      /Razorpay|com\.razorpay/,
+      /"₹[0-9]+"/,
+      /grantTrusted|recordTrustedCallCreditEvent|availableSeconds\s*\+\=/,
+      /setObfuscatedAccountId\(accountId\)/,
+      /BillingFlowParams\.newBuilder\(\)\s*\.build\(\)/,
+    ]) assert.doesNotMatch(code,forbidden,
+      "checkout code cannot invent prices, auto-grant credits or skip account proof");
+  }
+  assert.equal((shared+engine).match(/BillingClient\.newBuilder\(/g)?.length,1);
+  assert.equal((shared+engine).match(/billing\.launchBillingFlow\(/g)?.length,1);
+});
+
+test("pure checkout review is defined once in Kotlin Core and rejects changed Google price",()=>{
+  const core=readFileSync(new URL("../../android/core/src/main/kotlin/com/rekixo/jodlo/core/network/PlayCheckoutOfferReview.kt",import.meta.url),"utf8");
+  const tests=readFileSync(new URL("../../android/core/src/test/kotlin/com/rekixo/jodlo/core/network/PlayMinutePackContractTest.kt",import.meta.url),"utf8");
+  assert.match(core,/fun reviewFreshGooglePlayOffer\(/);
+  assert.match(core,/validJodloPlayAccountBinding\(serverAccountBinding\)/);
+  assert.match(core,/freshProductId != requestedProductId/);
+  assert.match(core,/freshFormattedGooglePrice != previouslyDisplayedGooglePrice/);
+  assert.match(core,/freshOfferToken\.isNullOrBlank\(\)/);
+  assert.match(core,/fun validGoogleFormattedPrice\(/);
+  assert.match(tests,/playCheckoutOfferContractIsStrictAndHasNoLocallyInventedPrice\(\)/);
+});

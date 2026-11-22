@@ -173,6 +173,42 @@ private fun statusToFailure(code:Int):FailureKind=when(code){
     else -> FailureKind.SERVICE_UNAVAILABLE
 }
 
+
+private fun playCheckoutOfferContractIsStrictAndHasNoLocallyInventedPrice() {
+    val approved = listOf(5,20,50,100,300,500).map { "jodlo.minutes$it" }.toSet()
+    val product = "jodlo.minutes20"
+    val binding = "a".repeat(64)
+    val displayed = "GOOGLE_DISPLAY_PRICE_A" // synthetic, never a real SKU price
+    val token = "opaque.Google.OneTime.Offer.Token"
+    val happy = reviewFreshGooglePlayOffer(
+        approved,product,binding,displayed,product,displayed,token,
+    )
+    check(happy is PlayOfferReview.Ready && happy.offerToken == token)
+    check(!happy.toString().contains(token))
+    check(reviewFreshGooglePlayOffer(approved,product,binding,displayed,
+        product,"GOOGLE_DISPLAY_PRICE_B",token) == PlayOfferReview.PriceChanged("GOOGLE_DISPLAY_PRICE_B"))
+    for (invalid in listOf(
+        reviewFreshGooglePlayOffer(approved,product,"wrong",displayed,product,displayed,token),
+        reviewFreshGooglePlayOffer(approved,product,"z".repeat(64),displayed,product,displayed,token),
+        reviewFreshGooglePlayOffer(emptySet(),product,binding,displayed,product,displayed,token),
+        reviewFreshGooglePlayOffer(approved,"jodlo.minutes10",binding,displayed,product,displayed,token),
+        reviewFreshGooglePlayOffer(approved,product,binding,displayed,"jodlo.minutes5",displayed,token),
+        reviewFreshGooglePlayOffer(approved,product,binding,"",product,displayed,token),
+        reviewFreshGooglePlayOffer(approved,product,binding,displayed,product,"",token),
+        reviewFreshGooglePlayOffer(approved,product,binding,displayed,product,displayed,""),
+        reviewFreshGooglePlayOffer(approved,product,binding,displayed,product,displayed,"x".repeat(4097)),
+        reviewFreshGooglePlayOffer(approved,product,binding,displayed,product,displayed,"token\nunsafe"),
+        reviewFreshGooglePlayOffer(approved,product,binding,displayed,
+            product,displayed + "\u0000",token),
+    )) check(invalid == PlayOfferReview.Unavailable) {
+        "Never launch checkout for a stale, foreign, malformed or ambiguous Google offer"
+    }
+    check(validJodloPlayAccountBinding(binding))
+    check(!validJodloPlayAccountBinding("a".repeat(63)))
+    check(validGoogleFormattedPrice("€1,49"))
+    check(!validGoogleFormattedPrice("free\rprice"))
+}
+
 fun main() {
     acceptsCanonicalCatalog()
     rejectsInventedPricesAndWrongPackMapping()
@@ -180,5 +216,6 @@ fun main() {
     verifiesOwnerBoundProofWithoutGrantOrRetry()
     rejectsFalseBillingIdentityAndFabricatedEntitlements()
     uncertainProviderChecksStayOneShot()
+    playCheckoutOfferContractIsStrictAndHasNoLocallyInventedPrice()
     println("JODLO Play catalog: authenticated, price-independent, strictly decoded, checkout disabled OK")
 }
