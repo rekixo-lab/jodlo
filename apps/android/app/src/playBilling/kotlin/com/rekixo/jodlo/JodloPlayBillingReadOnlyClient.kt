@@ -35,6 +35,25 @@ internal class JodloPlayBillingReadOnlyClient(
         val acknowledged: Boolean,
     )
 
+    /** Ephemeral proof for the account-bound Cloudflare POST, never a grant.
+     * Keep the Play token out of data-class toString, logs and UI surfaces.
+     * Caller must use the SAME live JODLO session that fetched the binding. */
+    internal class OwnerBoundUnverifiedProof internal constructor(
+        val productId: String,
+        private val secretToken: String,
+    ) {
+        fun submitOnceToServer(send: (String) -> Unit) = send(secretToken)
+        override fun toString(): String = "OwnerBoundUnverifiedProof(<redacted>)"
+    }
+
+    private fun ownerBoundProof(purchase: Purchase, binding: String): OwnerBoundUnverifiedProof? {
+        val inspected = unverified(purchase) ?: return null
+        if (inspected.state != PurchaseState.PURCHASED || inspected.acknowledged ||
+            purchase.accountIdentifiers?.obfuscatedAccountId != binding ||
+            !VALID_PURCHASE_TOKEN.matches(purchase.purchaseToken)) return null
+        return OwnerBoundUnverifiedProof(inspected.productIds.single(),purchase.purchaseToken)
+    }
+
     /** Immutable, trusted SKU snapshot; invalid/empty configurations fail closed. */
     private val approvedIds = approvedProductIds.toSet().takeIf { ids ->
         ids.isNotEmpty() && ids.size <= 16 && ids.all { VALID_PRODUCT_ID.matches(it) }
@@ -168,15 +187,11 @@ internal class JodloPlayBillingReadOnlyClient(
         }
     }
 
-    /** Only a read of Play-owned existing purchases. No restore/grant
-     * transition is ever made here: the backend must verify ownership,
-     * PURCHASED, void/refund history and actual configured SKU first.
-     */
-    fun queryExistingOneTimePurchases(
-        callback: (ReadResult<UnverifiedPlayPurchase>) -> Unit,
+    /** One shared Play read for both the existing privacy-safe status UI
+     * and explicit, session-bound proof handoff. No consume/ack/POST here. */
+    private fun queryOneTimePurchases(
+        callback: (ReadResult<Purchase>) -> Unit,
     ) {
-        // An absent approved SKU set means no Play query and no disclosure
-        // of purchases belonging to other apps/products.
         if (closed || !client.isReady || approvedIds.isEmpty()) {
             callback(ReadResult.Unavailable)
             return
@@ -188,10 +203,44 @@ internal class JodloPlayBillingReadOnlyClient(
             if (closed) return@queryPurchasesAsync
             if (result.responseCode != BillingClient.BillingResponseCode.OK) {
                 callback(ReadResult.Unavailable)
-            } else {
-                // Available(empty) is a confirmed empty Play result;
-                // unavailable service is never presented as 'none'.
-                callback(ReadResult.Available(purchases.mapNotNull(::unverified)))
+            } else callback(ReadResult.Available(purchases))
+        }
+    }
+
+    /** Read-only purchase status without revealing tokens or order IDs. */
+    fun queryExistingOneTimePurchases(
+        callback: (ReadResult<UnverifiedPlayPurchase>) -> Unit,
+    ) {
+        queryOneTimePurchases { result ->
+            when (result) {
+                is ReadResult.Available ->
+                    callback(ReadResult.Available(result.items.mapNotNull(::unverified)))
+                ReadResult.Unavailable -> callback(ReadResult.Unavailable)
+            }
+        }
+    }
+
+    /** Existing owned receipts may be submitted for Google verification, but
+     * NOT for local credit. Valid binding is fetched from signed-in Cloudflare,
+     * never computed from email, Google subject or an arbitrary client user ID.
+     * Missing binding, foreign/PENDING/acknowledged or malformed tokens are
+     * excluded. No automatic retry after an unknown POST response.
+     */
+    fun queryOwnerBoundUnverifiedProofs(
+        accountBinding: String,
+        callback: (ReadResult<OwnerBoundUnverifiedProof>) -> Unit,
+    ) {
+        if (!VALID_ACCOUNT_BINDING.matches(accountBinding)) {
+            callback(ReadResult.Unavailable)
+            return
+        }
+        queryOneTimePurchases { result ->
+            when (result) {
+                is ReadResult.Available ->
+                    callback(ReadResult.Available(result.items.mapNotNull {
+                        ownerBoundProof(it,accountBinding)
+                    }))
+                ReadResult.Unavailable -> callback(ReadResult.Unavailable)
             }
         }
     }
@@ -205,5 +254,7 @@ internal class JodloPlayBillingReadOnlyClient(
 
     private companion object {
         val VALID_PRODUCT_ID = Regex("^[a-z][a-z0-9._]{2,99}$")
+        val VALID_ACCOUNT_BINDING = Regex("^[0-9a-f]{64}$")
+        val VALID_PURCHASE_TOKEN = Regex("^[A-Za-z0-9._~+/=-]{20,4096}$")
     }
 }
