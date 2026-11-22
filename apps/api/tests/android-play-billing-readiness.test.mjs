@@ -209,3 +209,68 @@ test("private account minute dashboard is owner-fenced and has no hardcoded mone
       assert.ok(strings.includes('name="'+resource+'"'));
   }
 });
+
+
+test("manual Play restore has a separate default-off, non-release build gate",()=>{
+  const gradle=readApp("build.gradle.kts");
+  assert.match(gradle,/val playRestoreEnabled = providers\.gradleProperty\("jodloEnablePlayRestore"\)\.orNull == "true"/);
+  assert.match(gradle,/!playRestoreEnabled \|\| \(playBillingEnabled && !releaseCandidateRequested/);
+  assert.match(gradle,/buildConfigField\("boolean", "PLAY_RESTORE_ENABLED", playRestoreEnabled\.toString\(\)\)/);
+  assert.doesNotMatch(workflow,/-PjodloEnablePlayRestore=true/);
+  const app=readApp("src/main/java/com/rekixo/jodlo/MainActivity.kt");
+  const screen=readApp("src/main/java/com/rekixo/jodlo/PrivatePlayMinuteAccountSection.kt");
+  for(const source of [app,screen])assert.doesNotMatch(source,
+    /JodloPlayManualRestore|inspectOneOwnedPlayPurchaseManually|queryOwnerBoundUnverifiedProofs/,
+    "regular Android UI never launches a Play restore or queries purchases");
+});
+
+test("explicit owner-bound manual restore reuses one Play connection, no granting or automatic receipt replay",()=>{
+  const sdk=readApp("src/playBilling/kotlin/com/rekixo/jodlo/JodloPlayBillingReadOnlyClient.kt");
+  const restore=readApp("src/playBilling/kotlin/com/rekixo/jodlo/JodloPlayManualRestore.kt");
+  const checkout=readApp("src/playBilling/kotlin/com/rekixo/jodlo/JodloPlayCheckoutController.kt");
+  const session=readFileSync(new URL(
+    "../../android/core/src/main/kotlin/com/rekixo/jodlo/core/network/InMemorySessionCoordinator.kt",
+    import.meta.url),"utf8");
+  const policy=readFileSync(new URL(
+    "../../android/core/src/main/kotlin/com/rekixo/jodlo/core/network/PlayManualRestoreReview.kt",
+    import.meta.url),"utf8");
+  assert.equal((sdk+restore+checkout).match(/BillingClient\.newBuilder\(/g)?.length,1);
+  assert.match(sdk,/private val manualRestore: JodloPlayManualRestore by lazy/);
+  assert.match(sdk,/JodloPlayManualRestore\(approvedIds,::queryOwnerBoundUnverifiedProofs,restoreExecutor\)/);
+  assert.match(sdk,/fun inspectOneOwnedPlayPurchaseManually\(/);
+  assert.match(sdk,/if \(closed \|\| !BuildConfig\.PLAY_RESTORE_ENABLED\)/);
+  assert.match(sdk,/manualRestore\.inspectOneExplicitPurchase\(session,owner,selectedProductId,onStatus\)/);
+  assert.match(sdk,/manualRestore\.invalidateSession\(\)/);
+  assert.match(sdk,/restoreExecutor\.shutdownNow\(\)/);
+  assert.match(restore,/if \(!BuildConfig\.PLAY_RESTORE_ENABLED\)/);
+  assert.match(restore,/session\.accountPrivateReadMarker\(\) == marker/);
+  assert.match(restore,/session\.playVerificationBinding\(marker\)/);
+  assert.match(restore,/identity\.verificationOnly/);
+  assert.match(restore,/queryOwned\(identity\.accountBinding\)/);
+  assert.match(restore,/AtomicBoolean\(false\)/);
+  assert.match(restore,/selectManualPlayRestore\(/);
+  assert.match(restore,/ManualPlayRestoreSelection\.Single/);
+  assert.match(restore,/proof\.submitOnceToServer/);
+  assert.match(restore,/session\.screenOwnedPlayPurchase\(marker,token\)/);
+  assert.match(restore,/summarizeManualPlayScreening\(productId,screened!!\)/);
+  assert.match(restore,/ManualPlayRestoreStatus\.AccountChanged/);
+  assert.match(session,/private val playVerification = RemotePlayVerificationRepository\(authSender\)/);
+  assert.match(session,/fun playVerificationBinding\(/);
+  assert.match(session,/fun screenOwnedPlayPurchase\(/);
+  assert.match(session,/playVerification\.binding\(token\)/);
+  assert.match(session,/playVerification\.verify\(token,purchaseToken\)/);
+  assert.match(session,/expectedOwner = owner, consistentRead = true/);
+  assert.match(policy,/fun selectManualPlayRestore\(/);
+  assert.match(policy,/productsFromOwnedProofs\.size > 16/);
+  assert.match(policy,/fun summarizeManualPlayScreening\(/);
+  assert.match(policy,/PlayReceiptScreening\.NotEligible/);
+  for(const source of [sdk,restore])for(const forbidden of [
+    /\backnowledgePurchase\s*\(/,
+    /\bconsumeAsync\s*\(/,
+    /recordTrustedCallCreditEvent|grantTrusted|availableSeconds\s*\+\=/,
+    /Razorpay|com\.razorpay/,
+    /"₹[0-9]+"/,
+    /fun autoRestoreOnStart/,
+  ])assert.doesNotMatch(source,forbidden,
+    "manual restore cannot change money, local credit, or start an automatic replay");
+});
