@@ -38,6 +38,8 @@ export interface Env {
   /** Default-OFF Google Play RTDN: requires ALL exact Pub/Sub identity, OAuth and rate-limit bindings. */
   /** Default-OFF read-only minute-pack preview. No checkout or credit route. */
   PLAY_CATALOG_ENABLED?: string;
+  /** Default OFF: session-only read of D1 minute ledger with the shared pack catalog. */
+  PLAY_ACCOUNT_VIEW_ENABLED?: string;
   /** OFF until backend/Play owner setup; read-only, rate-limited verification. */
   PLAY_VERIFICATION_ENABLED?: string;
   PLAY_VERIFICATION_LIMITER?: RateLimitBinding;
