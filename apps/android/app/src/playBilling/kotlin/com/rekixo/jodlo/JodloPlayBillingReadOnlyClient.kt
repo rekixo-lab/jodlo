@@ -15,8 +15,10 @@ import com.android.billingclient.api.QueryPurchasesParams
  * Google Play Billing 9 read-only, opted-in native source.
  *
  * This is a PREPARATORY adapter, not a checkout or entitlement engine.
- * It intentionally exposes neither the raw Play token nor order ID, cannot
- * launchBillingFlow, acknowledge/consume a purchase or grant any minutes.
+ * Its normal read-only preview exposes no purchase token or order ID.
+ * An explicit owner-bound proof path passes a transient token once to the
+ * signed-in backend only. This class cannot launchBillingFlow, acknowledge/
+ * consume a purchase or grant minutes.
  * PURCHASED is still NOT a server-verified JODLO entitlement.
  *
  * Not referenced by the app. The main Android build does not compile this
