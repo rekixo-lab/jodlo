@@ -227,14 +227,15 @@ private fun privateMinutesPreviewIsOwnerFencedAndRejectsPricesOrEntitlements() {
     val owner=AccountPrivateReadMarker(31L,1L)
     val otherOwner=AccountPrivateReadMarker(32L,1L)
     val changedWorker=AccountPrivateReadMarker(31L,2L)
-    val confirmed=PrivatePlayMinuteAccountSnapshot.confirmed(owner,owner,
-        SessionResult.Success((reply as ApiOutcome.Ok).value))
-    check(confirmed?.forCurrent(owner)?.availableSeconds == 125)
+    val snapshotValue=(reply as ApiOutcome.Ok).value
+    val confirmed=requireNotNull(PrivatePlayMinuteAccountSnapshot.confirmed(owner,owner,
+        SessionResult.Success(snapshotValue)))
+    check(confirmed.forCurrent(owner)?.availableSeconds == 125)
     check(confirmed.forCurrent(otherOwner) == null)
     check(confirmed.forCurrent(changedWorker) == null)
     check(!confirmed.toString().contains(token))
     check(PrivatePlayMinuteAccountSnapshot.confirmed(owner,otherOwner,
-        SessionResult.Success(reply.value)) == null)
+        SessionResult.Success(snapshotValue)) == null)
     check(PrivatePlayMinuteAccountSnapshot.confirmed(owner,owner,
         SessionResult.Failed(SessionFailure.REPLACED)) == null)
     for (invalid in listOf(
@@ -249,7 +250,7 @@ private fun privateMinutesPreviewIsOwnerFencedAndRejectsPricesOrEntitlements() {
         good.replace(""""purchasable":false""",""""purchasable":true"""),
         good.replace(""""priceSource":"google_play"""",""""priceSource":"local_fiat""""),
         good.replace(""""minutes":5""",""""minutes":6"""),
-        good.replace(""""purchasable":false""",""""purchasable":false,"price":"₹50""""),
+        good.replace(""""purchasable":false""",""""purchasable":false,"price":"NOT_GOOGLE_PRICE""""),
         good.replace(""""balance":{""",""""balance":[],"old":{"""),
         good.replace(""""catalog":""",""""catalog":{"cash":true},"other":"""),
     )) {
