@@ -26,3 +26,7 @@
 **सावधानी:** QA APK वास्तविक JODLO Cloudflare API से जुड़ता है। असली Login, FCM registration या Call पर production में रिकॉर्ड/क्रेडिट बदल सकते हैं। इसलिए केवल अलग अनुमति और नियंत्रित test accounts के साथ ये मैनुअल परीक्षण करें।
 
 फिर दोनों फोन पर अलग Customer और Worker login → Worker की incoming call अनुमति और push readiness → public Service खोजकर ग्राहक द्वारा कॉल शुरू करना → Worker द्वारा Answer/Decline → Mute/Hangup → Network off/on और background/foreground → वास्तविक call history और credit की server से पुष्टि। **दो असली फोन पर यह परीक्षण कोई इंसान ही करेगा; CI में synthetic Firebase compile सिर्फ कोड जाँचता है।**
+
+## Google Play Billing — एक पूरा offline जीवन-चक्र परीक्षण
+
+खरीद सत्यापन → Refund screening → निजी D1 credit/outbox → अधिकतम एक consume POST → uncertain consume recovery → refund/cancellation fence का संयुक्त **synthetic, local** परीक्षण `apps/api/tests/play-billing-lifecycle-integration.test.mjs` में है। इसका पास होना **असली भुगतान चालू होने का प्रमाण नहीं** है। Android checkout, सुरक्षित server entitlement coordinator, Play Console SKU और वास्तविक refund policy अभी बाकी हैं। पूरी स्थिति और जिन कामों में मालिक की जरूरत है: [Billing owner handoff](docs/play-billing-owner-handoff.md)।
