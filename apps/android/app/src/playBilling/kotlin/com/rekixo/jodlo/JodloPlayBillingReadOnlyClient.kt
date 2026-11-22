@@ -79,12 +79,12 @@ internal class JodloPlayBillingReadOnlyClient(
 
     // Lazy: no second BillingClient, no Play checkout outside an explicit
     // debug build. Keeps the same product/receipt readers as the preview.
-    private val checkout by lazy {
+    private val checkout: JodloPlayCheckoutController by lazy {
         JodloPlayCheckoutController(
             client, approvedIds, ::queryApprovedProductDetails, ::ownerBoundProof,
         )
     }
-    private val listener = PurchasesUpdatedListener { result, purchases ->
+    private val listener: PurchasesUpdatedListener = PurchasesUpdatedListener { result, purchases ->
         if (!closed) checkout.onPurchaseUpdated(result,purchases)
         if (!closed && approvedIds.isNotEmpty() &&
             result.responseCode == BillingClient.BillingResponseCode.OK &&
@@ -94,7 +94,7 @@ internal class JodloPlayBillingReadOnlyClient(
         }
     }
 
-    private val client = BillingClient.newBuilder(context.applicationContext)
+    private val client: BillingClient = BillingClient.newBuilder(context.applicationContext)
         .setListener(listener)
         .enablePendingPurchases(
             PendingPurchasesParams.newBuilder().enableOneTimeProducts().build()
