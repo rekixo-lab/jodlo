@@ -2,6 +2,7 @@ import { readOwnWorkerAvailability, setOwnWorkerAvailability } from "../modules/
 import { handleConfiguredJodloPlayRtdn } from "../modules/interactions/google-play-pubsub-handler.ts";
 import { handleConfiguredJodloPlayVerification } from "../modules/interactions/google-play-verification-handler.ts";
 import { priceIndependentPlayCatalog } from "../modules/interactions/play-minute-packs.ts";
+import { readOwnCallCreditBalance } from "../modules/interactions/private-call-credits.ts";
 import { issueOwnAgoraAudioGrant } from "../modules/interactions/private-agora-media.ts";
 import { validIdempotencyKey } from "../modules/shared/identifiers.ts";
 import { ownPrivateCallSignal, validCallAction } from "../modules/interactions/private-call-signaling.ts";
@@ -91,6 +92,31 @@ export async function handleRequest(
   if (url.pathname === "/api/v1/me/play-verify" &&
       env.PLAY_VERIFICATION_ENABLED === "1") {
     return handleConfiguredJodloPlayVerification(request,env);
+  }
+  if (url.pathname === "/api/v1/me/play-overview" &&
+      env.PLAY_ACCOUNT_VIEW_ENABLED === "1") {
+    // A single read-only snapshot. No caller-supplied owner, credit mutation,
+    // price, purchase token, order, billing permission or entitlement. If
+    // any security or ledger check fails the entire snapshot fails closed.
+    const methodError = getOnly(request);
+    if (methodError) return methodError;
+    if (url.search || !(await hasEmptyBody(request)))
+      return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid overview request"}},400);
+    const bearer = bearerToken(request);
+    if (!validSessionToken(bearer))
+      return json({ok:false,error:{code:"UNAUTHORIZED",message:"Authentication required"}},401);
+    if (!env.DB || env.PLAY_CATALOG_ENABLED !== "1")
+      return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Overview unavailable"}},503);
+    try {
+      const balance = await readOwnCallCreditBalance(env.DB,bearer);
+      if (balance === null)
+        return json({ok:false,error:{code:"UNAUTHORIZED",message:"Authentication required"}},401);
+      return json({ok:true,data:{
+        balance, catalog:priceIndependentPlayCatalog(),
+      }});
+    } catch {
+      return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Overview unavailable"}},503);
+    }
   }
   if (url.pathname === "/api/v1/me/play-packs" && env.PLAY_CATALOG_ENABLED === "1") {
     // Session-bound PREVIEW only. No price, checkout, purchase confirmation,
