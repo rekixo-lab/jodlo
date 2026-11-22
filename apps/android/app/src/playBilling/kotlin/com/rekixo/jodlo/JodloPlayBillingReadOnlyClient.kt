@@ -12,13 +12,13 @@ import com.android.billingclient.api.QueryProductDetailsParams
 import com.android.billingclient.api.QueryPurchasesParams
 
 /**
- * Google Play Billing 9 read-only, opted-in native source.
+ * Google Play Billing 9 single-connection, opt-in native source.
  *
- * This is a PREPARATORY adapter, not a checkout or entitlement engine.
- * Its normal read-only preview exposes no purchase token or order ID.
- * An explicit owner-bound proof path passes a transient token once to the
- * signed-in backend only. This class cannot launchBillingFlow, acknowledge/
- * consume a purchase or grant minutes.
+ * Read-only catalog and existing-purchase preview remain the default.
+ * An independent BUILD and SESSION gate can activate the private DEBUG
+ * checkout controller (never built into default or release candidate).
+ * The optional checkout delegates to this SAME BillingClient instance and
+ * sends no paid entitlement. This adapter cannot acknowledge or consume.
  * PURCHASED is still NOT a server-verified JODLO entitlement.
  *
  * Not referenced by the app. The main Android build does not compile this
@@ -76,7 +76,16 @@ internal class JodloPlayBillingReadOnlyClient(
     }
 
     private var closed = false
+
+    // Lazy: no second BillingClient, no Play checkout outside an explicit
+    // debug build. Keeps the same product/receipt readers as the preview.
+    private val checkout by lazy {
+        JodloPlayCheckoutController(
+            client, approvedIds, ::queryApprovedProductDetails, ::ownerBoundProof,
+        )
+    }
     private val listener = PurchasesUpdatedListener { result, purchases ->
+        if (!closed) checkout.onPurchaseUpdated(result,purchases)
         if (!closed && approvedIds.isNotEmpty() &&
             result.responseCode == BillingClient.BillingResponseCode.OK &&
             purchases != null
@@ -256,9 +265,34 @@ internal class JodloPlayBillingReadOnlyClient(
         }
     }
 
+    /** Explicit review-on-tap, not wired to any app screen.
+     * This is always disabled in the default/release build. The Cloudflare
+     * verification-only binding cannot authorize credit or consume. */
+    fun prepareAndLaunchOwnerBoundCheckout(
+        activity: android.app.Activity,
+        productId: String,
+        displayedGooglePrice: String,
+        currentServerBinding: String,
+        onEvent: (JodloPlayCheckoutController.Event) -> Unit,
+    ) {
+        if (closed || !BuildConfig.PLAY_CHECKOUT_ENABLED) {
+            onEvent(JodloPlayCheckoutController.Event.Disabled)
+            return
+        }
+        checkout.prepareAndLaunch(
+            activity,productId,displayedGooglePrice,currentServerBinding,onEvent,
+        )
+    }
+
+    /** Call synchronously before replacing/logout of the live JODLO session.
+     * Any later Play callback must require explicit fresh restore, not reuse
+     * a different account's binding or token. */
+    fun invalidateCheckoutForAccountChange() = checkout.invalidateSession()
+
     override fun close() {
         if (!closed) {
             closed = true
+            checkout.invalidateSession()
             client.endConnection()
         }
     }
