@@ -38,11 +38,17 @@ async function hexSha256(value: string): Promise<string> {
   return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
 }
 
+/** One canonical Play V2 token shape shared by API ingress, preflight and
+ * fingerprint. This is validation, never evidence a purchase was made. */
+export function validJodloPlayPurchaseToken(input: unknown): input is string {
+  return typeof input === "string" &&
+    new RegExp("^[A-Za-z0-9._~+/=-]{20,4096}$").test(input);
+}
+
 /** Canonical, non-reversible purchase token fingerprint shared by Google
  * GET verification, D1 outbox and an eventual consume attempt. */
 export async function jodloPlayPurchaseFingerprint(purchaseToken: string): Promise<string | null> {
-  if (typeof purchaseToken !== "string" ||
-      !/^[A-Za-z0-9._~+\/=-]{20,4096}$/.test(purchaseToken)) return null;
+  if (!validJodloPlayPurchaseToken(purchaseToken)) return null;
   return hexSha256("jodlo-play-product-v2:" + JODLO_PLAY_PACKAGE + ":" + purchaseToken);
 }
 
@@ -111,8 +117,7 @@ export async function inspectJodloPlayOneTimePurchase(
   accountId: string, purchaseToken: string, deps: PlayPreflightDeps,
 ): Promise<PlayPreflightResult> {
   if (!validProducts(deps.approvedProducts)) return {kind: "unconfigured"};
-  if (!validOpaqueId(accountId) || typeof purchaseToken !== "string" ||
-      !/^[A-Za-z0-9._~+\/=-]{20,4096}$/.test(purchaseToken))
+  if (!validOpaqueId(accountId) || !validJodloPlayPurchaseToken(purchaseToken))
     return {kind: "not_eligible"};
   const timeoutMs = deps.timeoutMs ?? PLAY_PREFLIGHT_TIMEOUT_MS;
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 ||

@@ -358,6 +358,21 @@ object JodloRoutes {
             """{"challenge":"$challenge","googleProof":"$googleProof"}""")
     }
 
+    /** Server-issued one-way JODLO account binding for Google Play. The
+     * account ID itself never leaves Cloudflare or enters Play Billing. */
+    fun playVerificationBinding(token: String): ApiCall =
+        ApiCall.getOwned("/api/v1/me/play-verify", token)
+
+    /** One transient proof POST: not a request to mint minutes. Never retry
+     * after an uncertain response, and do not cache, log or serialize token. */
+    fun verifyPlayReceipt(token: String, purchaseToken: String): ApiCall {
+        require(Regex("^[A-Za-z0-9._~+/=-]{20,4096}$").matches(purchaseToken)) {
+            "Invalid Google Play purchase proof"
+        }
+        return ApiCall.post("/api/v1/me/play-verify", token,
+            """{"purchaseToken":"$purchaseToken"}""")
+    }
+
     /** Authenticated, default-off Play pack preview. No checkout or price;
      * all localized prices are owned by Google Play's ProductDetails. */
     fun playMinutePacks(token: String): ApiCall =
@@ -647,6 +662,7 @@ class HttpsTransport(origin: String) {
             if (body != null) {
                 val maxBody = when {
                     request.resource == "/api/v1/auth/google" -> 8192
+                    request.resource == "/api/v1/me/play-verify" -> 4352
                     request.method == HttpMethod.PUT -> 512
                     else -> 256
                 }

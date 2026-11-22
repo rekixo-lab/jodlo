@@ -372,6 +372,36 @@ object JodloReplyDecoder {
             HierarchyPage(language, level, parent, items, cursor)
         }
 
+    /** Strict owner-bound identity; a hash is not checkout authorization. */
+    fun playAccountBinding(reply: TransportReply): ApiOutcome<PlayAccountBinding> =
+        decode(reply) { data ->
+            data.keysOnly(setOf("accountBinding","verificationOnly"))
+            val binding=data.required("accountBinding").str()
+            if (!Regex("^[0-9a-f]{64}$").matches(binding) ||
+                !data.required("verificationOnly").bool()) bad()
+            PlayAccountBinding(binding, verificationOnly = true)
+        }
+
+    /** One nonprivileged, explicit state. A verified-looking response may
+     * never silently become a paid balance or claim settlement. */
+    fun playReceiptScreening(reply: TransportReply): ApiOutcome<PlayReceiptScreening> =
+        decode(reply) { data ->
+            when (data.required("status").str()) {
+                "not_eligible" -> {
+                    data.keysOnly(setOf("status"))
+                    PlayReceiptScreening.NotEligible
+                }
+                "screened_pending_settlement" -> {
+                    data.keysOnly(setOf("status","productId","minutes"))
+                    val id=data.required("productId").str()
+                    val minutes=data.required("minutes").number()
+                    if (minutes !in 1..500 || id != "jodlo.minutes" + minutes) bad()
+                    PlayReceiptScreening.ScreenedPendingSettlement(id,minutes)
+                }
+                else -> bad()
+            }
+        }
+
     /** Use the existing strict JSON, duplicate-key and error decoder.
      * Reject fabricated prices or a server accidentally advertising checkout.
      * Android must fetch any localized rupee price from Google Play itself. */

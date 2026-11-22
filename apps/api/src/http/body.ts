@@ -1,3 +1,4 @@
+import { validJodloPlayPurchaseToken } from "../modules/interactions/google-play-purchase-preflight.ts";
 /** Maximum empty byte chunks tolerated before rejecting a malformed/unproductive
  * body stream. Neither login nor no-body routes may spin on endless zero bytes.
  */
@@ -160,6 +161,16 @@ async function readBoundedObject(request: Request, maxBytes: number,
 export async function readCallDeviceBody(request: Request): Promise<string | null> {
   const obj = await readBoundedObject(request, 8192);
   return typeof obj?.registrationToken === "string" ? obj.registrationToken : null;
+}
+
+/** One transient Google Play purchase proof, never stored in D1, URLs or logs.
+ * Shared strict single-field bounded JSON reader rejects extra/duplicate fields,
+ * oversized streams, invalid UTF-8 and stalled uploads. */
+export async function readPlayPurchaseTokenBody(request: Request): Promise<string | null> {
+  const obj = await readBoundedObject(request, 4352);
+  if (!obj || Object.keys(obj).length !== 1 ||
+      !validJodloPlayPurchaseToken(obj.purchaseToken)) return null;
+  return obj.purchaseToken;
 }
 
 export async function readGoogleLoginBody(request: Request): Promise<string | null> {

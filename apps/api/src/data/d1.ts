@@ -38,6 +38,9 @@ export interface Env {
   /** Default-OFF Google Play RTDN: requires ALL exact Pub/Sub identity, OAuth and rate-limit bindings. */
   /** Default-OFF read-only minute-pack preview. No checkout or credit route. */
   PLAY_CATALOG_ENABLED?: string;
+  /** OFF until backend/Play owner setup; read-only, rate-limited verification. */
+  PLAY_VERIFICATION_ENABLED?: string;
+  PLAY_VERIFICATION_LIMITER?: RateLimitBinding;
   PLAY_RTDN_ENABLED?: string;
   PLAY_RTDN_AUDIENCE?: string;
   PLAY_RTDN_PUSH_EMAIL?: string;
