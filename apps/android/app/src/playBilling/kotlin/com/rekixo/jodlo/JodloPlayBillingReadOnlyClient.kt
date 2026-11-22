@@ -1,6 +1,11 @@
 package com.rekixo.jodlo
 
 import android.content.Context
+import com.rekixo.jodlo.core.network.AccountPrivateReadMarker
+import com.rekixo.jodlo.core.network.InMemorySessionCoordinator
+import com.rekixo.jodlo.core.network.ManualPlayRestoreStatus
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import com.android.billingclient.api.BillingClient
 import com.android.billingclient.api.BillingClientStateListener
 import com.android.billingclient.api.BillingResult
@@ -83,6 +88,14 @@ internal class JodloPlayBillingReadOnlyClient(
         JodloPlayCheckoutController(
             client, approvedIds, ::queryApprovedProductDetails, ::ownerBoundProof,
         )
+    }
+    // One worker thread per opt-in adapter; no raw receipt, long-lived
+    // identity or Play query is retained across logout/adapter close.
+    private val restoreExecutor: ExecutorService by lazy {
+        Executors.newSingleThreadExecutor()
+    }
+    private val manualRestore: JodloPlayManualRestore by lazy {
+        JodloPlayManualRestore(approvedIds,::queryOwnerBoundUnverifiedProofs,restoreExecutor)
     }
     private val listener: PurchasesUpdatedListener = PurchasesUpdatedListener { result, purchases ->
         if (!closed) checkout.onPurchaseUpdated(result,purchases)
@@ -287,12 +300,36 @@ internal class JodloPlayBillingReadOnlyClient(
     /** Call synchronously before replacing/logout of the live JODLO session.
      * Any later Play callback must require explicit fresh restore, not reuse
      * a different account's binding or token. */
-    fun invalidateCheckoutForAccountChange() = checkout.invalidateSession()
+    fun invalidateCheckoutForAccountChange() {
+        checkout.invalidateSession()
+        manualRestore.invalidateSession()
+    }
+
+    /** EXPLICIT manual one-SKU purchase check, not a restore of paid minutes.
+     * Requires current signed-in owner marker, an approved SKU, independent
+     * debug-only restore build gate, server binding and read-only Google V2
+     * verification; never persists/returns receipt, changes D1 credit or
+     * launches the Play checkout UI.
+     */
+    fun inspectOneOwnedPlayPurchaseManually(
+        session: InMemorySessionCoordinator,
+        owner: AccountPrivateReadMarker,
+        selectedProductId: String,
+        onStatus: (ManualPlayRestoreStatus) -> Unit,
+    ) {
+        if (closed || !BuildConfig.PLAY_RESTORE_ENABLED) {
+            onStatus(ManualPlayRestoreStatus.Disabled)
+            return
+        }
+        manualRestore.inspectOneExplicitPurchase(session,owner,selectedProductId,onStatus)
+    }
 
     override fun close() {
         if (!closed) {
             closed = true
             checkout.invalidateSession()
+            manualRestore.invalidateSession()
+            restoreExecutor.shutdownNow()
             client.endConnection()
         }
     }
