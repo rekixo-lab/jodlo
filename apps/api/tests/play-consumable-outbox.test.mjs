@@ -251,3 +251,52 @@ test("existing credit event digest collision aborts both outbox and balance writ
     assert.equal(db.prepare("SELECT available_seconds FROM call_credit_balances").get().available_seconds,300);
   } finally {db.close();}
 });
+
+
+test("ambiguous Play consume never resends after invalid, oversized or stalled recovery GET",async()=>{
+  const cases=[
+    ["oversized declared length",()=>new Response("{}",{headers:{"Content-Length":"20000"}})],
+    ["oversized streamed bytes",()=>new Response("x".repeat(17000))],
+    ["malformed JSON",()=>new Response("{bad")],
+    ["invalid UTF-8",()=>new Response(Uint8Array.from([0xc3,0x28]))],
+    ["missing body",()=>new Response(null)],
+    ["stalled body",()=>new Response(new ReadableStream({start(){}}))],
+  ];
+  for(const [name,response] of cases) {
+    const {db,adapter}=openLocalDatabase();
+    try {
+      db.exec("INSERT INTO accounts(id) VALUES ('play-consumer-one')");
+      const event=grant();
+      assert.equal(await stageTrustedPlayConsumable(adapter,event,APPROVED),"applied");
+      const now=Date.now();
+      const claim=await claimPlayConsumeOnce(adapter,ACCOUNT,event.sourceKeyHash,now);
+      assert.ok(claim,name);
+      let sends=0,reads=0;
+      assert.equal(await deliverClaimedPlayConsume(adapter,claim,TOKEN,{
+        now:()=>now+10,timeoutMs:40,
+        accessToken:async()=>"synthetic-access-bearer",
+        request:async(_url,init)=>{
+          assert.equal(init.method,"POST");
+          sends++;
+          return new Promise(()=>{});
+        },
+      }),"unknown",name+" should preserve ambiguous provider POST state");
+      assert.equal(getState(db).status,"unknown");
+      assert.equal(await reconcileUnknownPlayConsume(adapter,claim,TOKEN,{
+        now:()=>now+100,timeoutMs:60,
+        accessToken:async()=>"synthetic-access-bearer",
+        request:async(_url,init)=>{
+          assert.equal(init.method,"GET","recovery must NEVER repeat consume POST");
+          reads++;
+          return response();
+        },
+      }),"unknown",name);
+      assert.equal(reads,1,name+" required one bounded provider read");
+      assert.equal(sends,1,name+" must never send a second consume POST");
+      assert.equal(getState(db).status,"unknown",name+" must not clear uncertain state");
+      assert.equal(await claimPlayConsumeOnce(adapter,ACCOUNT,event.sourceKeyHash,now+200),
+        null,name+" must not re-enable another send");
+      assert.equal(rows(db,"call_credit_events"),1,"never grant credit a second time");
+    }finally{db.close();}
+  }
+});
