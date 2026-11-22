@@ -57,3 +57,25 @@ test("read-only Play restore is approved-SKU scoped and distinguishes offline fr
   assert.match(code,/if \(closed\) return@queryProductDetailsAsync/);
   assert.doesNotMatch(code,/callback\(emptyList\(\)\)/);
 });
+
+
+test("opt-in Play price preview uses ONLY Play ProductDetails, never an old INR price",()=>{
+  const code=readApp("src/playBilling/kotlin/com/rekixo/jodlo/JodloPlayBillingReadOnlyClient.kt");
+  assert.match(code,/private fun queryApprovedProductDetails\(/);
+  assert.match(code,/fun queryApprovedOneTimeProductIds\(/);
+  assert.match(code,/fun queryLocalizedOneTimePrices\(/);
+  assert.match(code,/product\.oneTimePurchaseOfferDetailsList\?\.singleOrNull\(\)/);
+  assert.match(code,/offer\?\.formattedPrice/);
+  assert.match(code,/if \(price\.isNullOrBlank\(\) \|\| price\.length > 64/);
+  assert.match(code,/ReadResult\.Unavailable/);
+  for(const forbidden of [
+    /amountInr|amountPaise|priceInr|pricePaise/,
+    /"₹[0-9]+"/,
+    /"Rs\s*[0-9]+"/,
+    /Razorpay|com\.razorpay/,
+    /\blaunchBillingFlow\s*\(/,
+    /\bconsumeAsync\s*\(/,
+    /\backnowledgePurchase\s*\(/,
+  ]) assert.doesNotMatch(code,forbidden,
+    "no invented price or active paid action in the preview source");
+});

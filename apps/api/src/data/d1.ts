@@ -36,6 +36,8 @@ export interface Env {
   FCM_SERVICE_ACCOUNT_PRIVATE_KEY?: string;
   SERVICE_MODERATION_KEY?: string;
   /** Default-OFF Google Play RTDN: requires ALL exact Pub/Sub identity, OAuth and rate-limit bindings. */
+  /** Default-OFF read-only minute-pack preview. No checkout or credit route. */
+  PLAY_CATALOG_ENABLED?: string;
   PLAY_RTDN_ENABLED?: string;
   PLAY_RTDN_AUDIENCE?: string;
   PLAY_RTDN_PUSH_EMAIL?: string;

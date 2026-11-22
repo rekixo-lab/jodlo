@@ -358,6 +358,11 @@ object JodloRoutes {
             """{"challenge":"$challenge","googleProof":"$googleProof"}""")
     }
 
+    /** Authenticated, default-off Play pack preview. No checkout or price;
+     * all localized prices are owned by Google Play's ProductDetails. */
+    fun playMinutePacks(token: String): ApiCall =
+        ApiCall.getOwned("/api/v1/me/play-packs", token)
+
     /** Private, current-account overview; no owner ID in path, query or body. */
     fun accountOverview(token: String): ApiCall =
         ApiCall.getOwned("/api/v1/me/overview", token)

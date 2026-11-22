@@ -1,5 +1,6 @@
 import { readOwnWorkerAvailability, setOwnWorkerAvailability } from "../modules/interactions/agora-private-safety-state.ts";
 import { handleConfiguredJodloPlayRtdn } from "../modules/interactions/google-play-pubsub-handler.ts";
+import { priceIndependentPlayCatalog } from "../modules/interactions/play-minute-packs.ts";
 import { issueOwnAgoraAudioGrant } from "../modules/interactions/private-agora-media.ts";
 import { validIdempotencyKey } from "../modules/shared/identifiers.ts";
 import { ownPrivateCallSignal, validCallAction } from "../modules/interactions/private-call-signaling.ts";
@@ -85,6 +86,27 @@ export async function handleRequest(
     // Default OFF. Only Google-signed Pub/Sub push plus a second live
     // AndroidPublisher check can fence a purchase; this route never grants.
     return handleConfiguredJodloPlayRtdn(request, env);
+  }
+  if (url.pathname === "/api/v1/me/play-packs" && env.PLAY_CATALOG_ENABLED === "1") {
+    // Session-bound PREVIEW only. No price, checkout, purchase confirmation,
+    // Play credential, entitlement, consume or D1 write on this route.
+    if (request.method !== "GET")
+      return json({ok:false,error:{code:"METHOD_NOT_ALLOWED",message:"Method not allowed"}},
+        405,{Allow:"GET"});
+    if (url.search || !(await hasEmptyBody(request)))
+      return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid pack request"}},400);
+    const token=bearerToken(request);
+    if (!validSessionToken(token))
+      return json({ok:false,error:{code:"UNAUTHORIZED",message:"Authentication required"}},401);
+    if (!env.DB)
+      return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Packs unavailable"}},503);
+    try {
+      if (!(await makeSessionVerifier(env.DB).verify(token)))
+        return json({ok:false,error:{code:"UNAUTHORIZED",message:"Authentication required"}},401);
+      return json({ok:true,data:priceIndependentPlayCatalog()});
+    } catch {
+      return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Packs unavailable"}},503);
+    }
   }
   if (url.pathname === "/api/v1/health") {
     return getOnly(request) ?? json({ ok: true, data: healthData() });
