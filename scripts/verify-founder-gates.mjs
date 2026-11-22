@@ -27,6 +27,8 @@ const allowedRoutes = new Set([
   "/api/v1/play/rtdn",
   // Default-OFF, signed-in price-free SKU preview only; checkout stays absent.
   "/api/v1/me/play-packs",
+  // One default-off private read-only D1 balance + shared Play catalog.
+  "/api/v1/me/play-overview",
   // Scoped owner-only, rate-limited and OFF-by-default receipt screening.
   "/api/v1/me/play-verify",
   // Only approved, default-OFF taxonomy hierarchy; no public Worker or GPS.
@@ -137,8 +139,13 @@ export async function auditFounderGates(root = rootDefault) {
       (!router.includes('env.PLAY_VERIFICATION_ENABLED === "1"') ||
        !router.includes('handleConfiguredJodloPlayVerification(request,env)')))
     errors.push("Play verification must remain behind default-OFF owner gate");
+  if (routes.includes("/api/v1/me/play-overview") &&
+      (!router.includes('env.PLAY_ACCOUNT_VIEW_ENABLED === "1"') ||
+       !router.includes('readOwnCallCreditBalance(env.DB,bearer)') ||
+       !router.includes('env.PLAY_CATALOG_ENABLED !== "1"')))
+    errors.push("Private Play overview must stay default OFF and session-owned");
   for(const route of allowedRoutes)
-    if(route!=="/api/v1/play/rtdn" && route!=="/api/v1/me/play-packs" && route!=="/api/v1/me/play-verify" &&
+    if(route!=="/api/v1/play/rtdn" && route!=="/api/v1/me/play-packs" && route!=="/api/v1/me/play-verify" && route!=="/api/v1/me/play-overview" &&
        route!=="/api/v1/catalog/hierarchy" && route!=="/api/v1/me/account-erasure" &&
        route!=="/api/v1/me/contact-block" && route!=="/api/v1/me/contact-blocks" &&
        route!=="/api/v1/me/call-preference" && route!=="/api/v1/me/call-history" &&
