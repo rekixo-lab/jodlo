@@ -1,6 +1,10 @@
 package com.rekixo.jodlo
 
 import android.app.Activity
+import com.rekixo.jodlo.core.network.PlayOfferReview
+import com.rekixo.jodlo.core.network.reviewFreshGooglePlayOffer
+import com.rekixo.jodlo.core.network.validGoogleFormattedPrice
+import com.rekixo.jodlo.core.network.validJodloPlayAccountBinding
 import android.os.Looper
 import com.android.billingclient.api.BillingClient
 import com.android.billingclient.api.BillingFlowParams
@@ -90,8 +94,8 @@ internal class JodloPlayCheckoutController(
         if (Looper.myLooper() != Looper.getMainLooper() ||
             activity.isFinishing || activity.isDestroyed ||
             !billing.isReady || productId !in approved ||
-            !Regex("^[0-9a-f]{64}$").matches(currentServerBinding) ||
-            !validGooglePrice(displayedGooglePrice)
+            !validJodloPlayAccountBinding(currentServerBinding) ||
+            !validGoogleFormattedPrice(displayedGooglePrice)
         ) {
             onEvent(Event.Unavailable)
             return
@@ -122,17 +126,21 @@ internal class JodloPlayCheckoutController(
                     it.productType == BillingClient.ProductType.INAPP
                 }?.singleOrNull()
                 val offer = product?.oneTimePurchaseOfferDetailsList?.singleOrNull()
-                val freshPrice = offer?.formattedPrice ?: ""
-                val offerToken = offer?.offerToken
-                if (product == null || !validGooglePrice(freshPrice) ||
-                    offerToken.isNullOrBlank() || offerToken.length > 4096
-                ) {
-                    emit(attempt,Event.Unavailable)
-                    return@queryFreshProducts
-                }
-                if (freshPrice != attempt.displayedGooglePrice) {
-                    emit(attempt,Event.PriceChanged(freshPrice))
-                    return@queryFreshProducts
+                val review = reviewFreshGooglePlayOffer(
+                    approved, productId, attempt.binding,
+                    attempt.displayedGooglePrice, product?.productId,
+                    offer?.formattedPrice, offer?.offerToken,
+                )
+                when (review) {
+                    PlayOfferReview.Unavailable -> {
+                        emit(attempt,Event.Unavailable)
+                        return@queryFreshProducts
+                    }
+                    is PlayOfferReview.PriceChanged -> {
+                        emit(attempt,Event.PriceChanged(review.latestGooglePrice))
+                        return@queryFreshProducts
+                    }
+                    is PlayOfferReview.Ready -> Unit
                 }
                 activity.runOnUiThread {
                     if (!current(attempt)) return@runOnUiThread
@@ -145,8 +153,8 @@ internal class JodloPlayCheckoutController(
                     // Correct Play 9 one-time offer token and server-issued
                     // opaque account identity, not raw email/Google subject.
                     val details = BillingFlowParams.ProductDetailsParams.newBuilder()
-                        .setProductDetails(product)
-                        .setOfferToken(offerToken)
+                        .setProductDetails(product!!)
+                        .setOfferToken((review as PlayOfferReview.Ready).offerToken)
                         .build()
                     val params = BillingFlowParams.newBuilder()
                         .setProductDetailsParamsList(listOf(details))
@@ -200,7 +208,4 @@ internal class JodloPlayCheckoutController(
         }
     }
 
-    private fun validGooglePrice(price: String?): Boolean =
-        !price.isNullOrBlank() && price.length <= 64 &&
-            price.none { Character.isISOControl(it) }
 }
