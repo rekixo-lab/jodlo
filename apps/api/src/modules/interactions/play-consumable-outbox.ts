@@ -1,3 +1,4 @@
+import { withinPlayDeadline, readPlayBoundedJson } from "./play-provider-bounds.ts";
 import type { D1Database } from "../../data/d1.ts";
 import { validOpaqueId } from "../shared/identifiers.ts";
 import {
@@ -215,22 +216,6 @@ type ConsumeProvider=Readonly<{
   now?:()=>number;
 }>;
 
-async function deadline<T>(run:()=>Promise<T>, remaining:()=>number):Promise<T> {
-  const wait=remaining();
-  if(wait<=0)throw Error("Play consume timed out");
-  let timer:ReturnType<typeof setTimeout>|undefined;
-  try{
-    return await Promise.race([
-      Promise.resolve().then(run),
-      new Promise<never>((_,reject)=>{
-        timer=setTimeout(()=>reject(Error("Play consume timed out")),wait);
-      }),
-    ]);
-  }finally{
-    if(timer!==undefined)clearTimeout(timer);
-  }
-}
-
 /** INTERNAL no-route sender. Exactly one POST for an active claimed row.
  * After POST begins, any failure/timeout becomes UNKNOWN, NEVER an
  * automatic retry. A post-timeout callback has no D1 write capability.
@@ -251,17 +236,17 @@ export async function deliverClaimedPlayConsume(
     timeoutMs-(performance.now()-started), claim.deadlineMs-now())));
   let sent=false;
   try {
-    const digest=await deadline(()=>jodloPlayPurchaseFingerprint(purchaseToken),remaining);
+    const digest=await withinPlayDeadline(()=>jodloPlayPurchaseFingerprint(purchaseToken),remaining);
     if(digest!==claim.sourceKeyHash) {
       const released=await releaseUnsentPlayConsumeClaim(db,claim,now());
       return released?"unsent":"denied";
     }
-    const auth=await deadline(deps.accessToken,remaining);
+    const auth=await withinPlayDeadline(deps.accessToken,remaining);
     if(!auth||!/^[A-Za-z0-9._~+\/-]{1,4096}={0,2}$/.test(auth)) {
       const released=await releaseUnsentPlayConsumeClaim(db,claim,now());
       return released?"unsent":"denied";
     }
-    if(remaining()<=0 || !(await deadline(()=>hasLiveClaim(db,claim,now()),remaining))) {
+    if(remaining()<=0 || !(await withinPlayDeadline(()=>hasLiveClaim(db,claim,now()),remaining))) {
       const released=await releaseUnsentPlayConsumeClaim(db,claim,now());
       return released?"unsent":"denied";
     }
@@ -271,7 +256,7 @@ export async function deliverClaimedPlayConsume(
       JODLO_PLAY_PACKAGE+"/purchases/products/"+encodeURIComponent(claim.productId)+
       "/tokens/"+encodeURIComponent(purchaseToken)+":consume";
     const request=deps.request??fetch;
-    const response=await deadline(()=>request(endpoint,{
+    const response=await withinPlayDeadline(()=>request(endpoint,{
       method:"POST",redirect:"error",cache:"no-store",
       signal:AbortSignal.timeout(Math.max(1,remaining())),
       headers:{Authorization:"Bearer "+auth,Accept:"application/json"},
@@ -312,9 +297,9 @@ export async function reconcileUnknownPlayConsume(
   const started=performance.now();
   const remaining=()=>Math.max(0,Math.floor(timeoutMs-(performance.now()-started)));
   try{
-    const digest=await deadline(()=>jodloPlayPurchaseFingerprint(purchaseToken),remaining);
+    const digest=await withinPlayDeadline(()=>jodloPlayPurchaseFingerprint(purchaseToken),remaining);
     if(digest!==claim.sourceKeyHash)return "denied";
-    const {results}=await deadline(()=>db.prepare(
+    const {results}=await withinPlayDeadline(()=>db.prepare(
       "SELECT 1 AS ok FROM play_consume_outbox AS o JOIN accounts AS a " +
       "ON a.id=o.account_id AND a.status='active' " +
       "WHERE o.source_key_hash=? AND o.account_id=? AND o.product_id=? " +
@@ -322,14 +307,14 @@ export async function reconcileUnknownPlayConsume(
     ).bind(claim.sourceKeyHash,claim.accountId,claim.productId,claim.attemptId)
       .all<{ok:number}>(),remaining);
     if(results[0]?.ok!==1)return "denied";
-    const binding=await deadline(()=>jodloPlayAccountBinding(claim.accountId),remaining);
+    const binding=await withinPlayDeadline(()=>jodloPlayAccountBinding(claim.accountId),remaining);
     if(!binding)return "denied";
-    const auth=await deadline(deps.accessToken,remaining);
+    const auth=await withinPlayDeadline(deps.accessToken,remaining);
     if(!auth||!/^[A-Za-z0-9._~+\/-]{1,4096}={0,2}$/.test(auth))return "unknown";
     const endpoint="https://androidpublisher.googleapis.com/androidpublisher/v3/applications/"+
       JODLO_PLAY_PACKAGE+"/purchases/productsv2/tokens/"+encodeURIComponent(purchaseToken);
     const request=deps.request??fetch;
-    const response=await deadline(()=>request(endpoint,{
+    const response=await withinPlayDeadline(()=>request(endpoint,{
       method:"GET",redirect:"error",cache:"no-store",
       signal:AbortSignal.timeout(Math.max(1,remaining())),
       headers:{Authorization:"Bearer "+auth,Accept:"application/json"},
@@ -338,28 +323,7 @@ export async function reconcileUnknownPlayConsume(
       void response.body?.cancel().catch(()=>{});
       return "unknown";
     }
-    const length=response.headers.get("content-length");
-    if(length!==null&&(!/^\d+$/.test(length)||Number(length)>16_384))return "unknown";
-    if(!response.body)return "unknown";
-    const reader=response.body.getReader();
-    const parts:Uint8Array[]=[];
-    let total=0;
-    try{
-      while(true){
-        const part=await deadline(()=>reader.read(),remaining);
-        if(part.done)break;
-        total+=part.value.byteLength;
-        if(total>16_384)return "unknown";
-        parts.push(part.value);
-      }
-    }finally{
-      void reader.cancel().catch(()=>{});
-      reader.releaseLock();
-    }
-    const all=new Uint8Array(total);
-    let offset=0;
-    for(const part of parts){all.set(part,offset);offset+=part.byteLength;}
-    const value:unknown=JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(all));
+    const value = await readPlayBoundedJson(response,remaining,16_384);
     if(!value||typeof value!=="object"||Array.isArray(value))return "unknown";
     const receipt=value as Record<string,unknown>;
     const context=receipt.purchaseStateContext;
