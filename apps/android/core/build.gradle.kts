@@ -70,6 +70,14 @@ tasks.register<JavaExec>("verifySessions") {
     mainClass.set("com.rekixo.jodlo.core.network.InMemorySessionCoordinatorTestKt")
 }
 
+tasks.register<JavaExec>("verifyPlayMinutePacks") {
+    group = "verification"
+    description = "Verify Android signed-in Google Play pack contracts without prices or checkout"
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.rekixo.jodlo.core.network.PlayMinutePackContractTestKt")
+}
+
 tasks.register<JavaExec>("verifyAuthExchange") {
     group = "verification"
     description = "Compile and test fakeable, nonvisual Google backend exchange and login races"
