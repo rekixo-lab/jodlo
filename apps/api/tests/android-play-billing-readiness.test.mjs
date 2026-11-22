@@ -33,7 +33,6 @@ test("opt-in native billing adapter is read-only and cannot mint or activate pai
     /\bconsumeAsync\s*\(/,
     /\bgetPurchaseToken\s*\(/,
     /\bgetOrderId\s*\(/,
-    /\.purchaseToken\b/,
     /\.orderId\b/,
     /\bcom\.razorpay\b/,
     /\bstartActivityForResult\s*\(/,
@@ -52,7 +51,7 @@ test("read-only Play restore is approved-SKU scoped and distinguishes offline fr
   assert.match(code,/data object Unavailable/);
   assert.match(code,/if \(closed \|\| !client\.isReady \|\| approvedIds\.isEmpty\(\)\)/);
   assert.match(code,/callback\(ReadResult\.Unavailable\)/);
-  assert.match(code,/callback\(ReadResult\.Available\(purchases\.mapNotNull\(::unverified\)\)\)/);
+  assert.match(code,/callback\(ReadResult\.Available\(result\.items\.mapNotNull\(::unverified\)\)\)/);
   assert.match(code,/if \(closed\) return@queryPurchasesAsync/);
   assert.match(code,/if \(closed\) return@queryProductDetailsAsync/);
   assert.doesNotMatch(code,/callback\(emptyList\(\)\)/);
@@ -78,4 +77,30 @@ test("opt-in Play price preview uses ONLY Play ProductDetails, never an old INR 
     /\backnowledgePurchase\s*\(/,
   ]) assert.doesNotMatch(code,forbidden,
     "no invented price or active paid action in the preview source");
+});
+
+
+test("Play proof handoff is strictly owner-bound, one-shot, redacted and never settles money",()=>{
+  const code=readApp("src/playBilling/kotlin/com/rekixo/jodlo/JodloPlayBillingReadOnlyClient.kt");
+  assert.match(code,/internal class OwnerBoundUnverifiedProof/);
+  assert.match(code,/@Synchronized\s+fun submitOnceToServer/);
+  assert.match(code,/secretToken = null/);
+  assert.match(code,/OwnerBoundUnverifiedProof\(<redacted>\)/);
+  assert.match(code,/purchase\.accountIdentifiers\?\.obfuscatedAccountId != binding/);
+  assert.match(code,/purchase\.purchaseToken/);
+  assert.match(code,/inspected\.state != PurchaseState\.PURCHASED \|\| inspected\.acknowledged/);
+  assert.match(code,/!VALID_PURCHASE_TOKEN\.matches\(purchase\.purchaseToken\)/);
+  assert.match(code,/fun queryOwnerBoundUnverifiedProofs\(/);
+  assert.match(code,/!VALID_ACCOUNT_BINDING\.matches\(accountBinding\)/);
+  assert.match(code,/private fun queryOneTimePurchases\(/);
+  assert.match(code,/queryOneTimePurchases \{ result ->/);
+  assert.match(code,/onUnverifiedPurchases\(purchases\.mapNotNull\(::unverified\)\)/);
+  for(const unsafe of [
+    /fun\s+launchOwnerBoundCheckout/,
+    /\blaunchBillingFlow\s*\(/,
+    /\bconsumeAsync\s*\(/,
+    /\backnowledgePurchase\s*\(/,
+    /"₹\s*[0-9]+"/,
+    /private val cachedPurchaseToken/,
+  ])assert.doesNotMatch(code,unsafe);
 });
