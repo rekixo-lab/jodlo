@@ -120,7 +120,7 @@ test("debug-only Android checkout is gated and cannot be bundled into an approve
 test("debug checkout reuses ONE BillingClient, no stale price or duplicate payment starts",()=>{
   const shared=readApp("src/playBilling/kotlin/com/rekixo/jodlo/JodloPlayBillingReadOnlyClient.kt");
   const engine=readApp("src/playBilling/kotlin/com/rekixo/jodlo/JodloPlayCheckoutController.kt");
-  assert.match(shared,/private val checkout by lazy/);
+  assert.match(shared,/private val checkout(?:: JodloPlayCheckoutController)? by lazy/);
   assert.match(shared,/JodloPlayCheckoutController\(\s*client, approvedIds, ::queryApprovedProductDetails, ::ownerBoundProof/);
   assert.match(shared,/if \(!closed\) checkout\.onPurchaseUpdated\(result,purchases\)/);
   assert.match(shared,/checkout\.invalidateSession\(\)/);
