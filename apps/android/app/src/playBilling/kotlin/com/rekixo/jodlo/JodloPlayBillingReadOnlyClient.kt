@@ -40,9 +40,18 @@ internal class JodloPlayBillingReadOnlyClient(
      * Caller must use the SAME live JODLO session that fetched the binding. */
     internal class OwnerBoundUnverifiedProof internal constructor(
         val productId: String,
-        private val secretToken: String,
+        initialSecretToken: String,
     ) {
-        fun submitOnceToServer(send: (String) -> Unit) = send(secretToken)
+        // Erase this object's only reference before invoking the caller:
+        // an uncertain POST is never automatically replayed.
+        private var secretToken: String? = initialSecretToken
+        @Synchronized
+        fun submitOnceToServer(send: (String) -> Unit): Boolean {
+            val proof = secretToken ?: return false
+            secretToken = null
+            send(proof)
+            return true
+        }
         override fun toString(): String = "OwnerBoundUnverifiedProof(<redacted>)"
     }
 
