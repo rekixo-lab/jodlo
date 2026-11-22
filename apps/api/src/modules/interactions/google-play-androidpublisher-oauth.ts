@@ -69,7 +69,7 @@ export function createPlayAndroidPublisherAccessTokenSource(
         const fields = data as Record<string, unknown>;
         if (fields.token_type !== "Bearer" ||
             typeof fields.access_token !== "string" ||
-            !/^[A-Za-z0-9._~+\\/-]{1,4096}={0,2}$/.test(fields.access_token) ||
+          !/^[A-Za-z0-9._~+\/-]{1,4096}={0,2}$/.test(fields.access_token) ||
             !Number.isSafeInteger(fields.expires_in) ||
             (fields.expires_in as number) < 90 ||
             (fields.expires_in as number) > 3600)
