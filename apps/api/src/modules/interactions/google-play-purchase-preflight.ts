@@ -42,7 +42,7 @@ async function hexSha256(value: string): Promise<string> {
  * fingerprint. This is validation, never evidence a purchase was made. */
 export function validJodloPlayPurchaseToken(input: unknown): input is string {
   return typeof input === "string" &&
-    /^[A-Za-z0-9._~+\\/=-]{20,4096}$/.test(input);
+    new RegExp("^[A-Za-z0-9._~+/=-]{20,4096}$").test(input);
 }
 
 /** Canonical, non-reversible purchase token fingerprint shared by Google
