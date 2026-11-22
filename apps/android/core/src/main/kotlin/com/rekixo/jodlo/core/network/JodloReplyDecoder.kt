@@ -372,6 +372,30 @@ object JodloReplyDecoder {
             HierarchyPage(language, level, parent, items, cursor)
         }
 
+    /** Use the existing strict JSON, duplicate-key and error decoder.
+     * Reject fabricated prices or a server accidentally advertising checkout.
+     * Android must fetch any localized rupee price from Google Play itself. */
+    fun playMinutePacks(reply: TransportReply): ApiOutcome<PlayMinutePackCatalog> =
+        decode(reply) { data ->
+            data.keysOnly(setOf("packs", "priceSource", "purchasable"))
+            if (data.required("priceSource").str() != "google_play" ||
+                data.required("purchasable").bool()) bad()
+            val products = data.required("packs").arr()
+            if (products.size !in 1..16) bad()
+            var previousMinutes = 0
+            val mapped = products.map { element ->
+                val row = element.obj()
+                row.keysOnly(setOf("productId", "minutes"))
+                val minutes = row.required("minutes").number()
+                val id = row.required("productId").str()
+                if (minutes !in 1..500 || minutes <= previousMinutes ||
+                    id != "jodlo.minutes" + minutes) bad()
+                previousMinutes = minutes
+                PlayMinutePack(id, minutes)
+            }
+            PlayMinutePackCatalog(mapped, "google_play", false)
+        }
+
     fun browse(reply: TransportReply): ApiOutcome<CatalogBrowse> = decode(reply) { data ->
         data.keysOnly(setOf("language", "categories"), setOf("nextCursor"))
         CatalogBrowse(language(data.required("language")),
