@@ -25,6 +25,8 @@ const allowedRoutes = new Set([
   // Only signed Google Pub/Sub RTDN with approved OAuth and rate-limit bindings.
   // Default OFF, cannot credit minutes or process a purchase notification.
   "/api/v1/play/rtdn",
+  // Default-OFF, signed-in price-free SKU preview only; checkout stays absent.
+  "/api/v1/me/play-packs",
   // Only approved, default-OFF taxonomy hierarchy; no public Worker or GPS.
   "/api/v1/catalog/hierarchy",
   "/api/v1/auth/google", "/api/v1/auth/logout", "/api/v1/auth/logout-all",
@@ -125,8 +127,12 @@ export async function auditFounderGates(root = rootDefault) {
   if (routes.includes("/api/v1/play/rtdn") &&
       !router.includes('env.PLAY_RTDN_ENABLED === "1"'))
     errors.push("Play RTDN push route requires an explicit default-OFF release gate");
+  if (routes.includes("/api/v1/me/play-packs") &&
+      (!router.includes('env.PLAY_CATALOG_ENABLED === "1"') ||
+       !router.includes('await makeSessionVerifier(env.DB).verify(token)')))
+    errors.push("Play pack preview requires default-OFF gate and active session");
   for(const route of allowedRoutes)
-    if(route!=="/api/v1/play/rtdn" &&
+    if(route!=="/api/v1/play/rtdn" && route!=="/api/v1/me/play-packs" &&
        route!=="/api/v1/catalog/hierarchy" && route!=="/api/v1/me/account-erasure" &&
        route!=="/api/v1/me/contact-block" && route!=="/api/v1/me/contact-blocks" &&
        route!=="/api/v1/me/call-preference" && route!=="/api/v1/me/call-history" &&
