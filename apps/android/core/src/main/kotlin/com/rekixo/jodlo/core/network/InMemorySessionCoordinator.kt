@@ -56,6 +56,7 @@ class InMemorySessionCoordinator(
     private var publicReadRevision: Long = 0
     private var writesOnWire: Int = 0
     private val googleBackend = BackendGoogleSessionExchange(authSender)
+    private val playVerification = RemotePlayVerificationRepository(authSender)
 
     /** Non-secret optional contract capability, not an authorization check.
      * Legacy WorkerRepository fakes cannot run the paged diagnostic, so a
@@ -596,6 +597,34 @@ class InMemorySessionCoordinator(
             else outcome(reply)
         },
         mutation = true, expectedOwner = owner,
+    )
+
+    /** Manual restore stage 1: get opaque Play account binding solely from
+     * the CURRENT signed-in Cloudflare session. Caller MUST capture the
+     * AccountPrivateReadMarker before the user explicitly requests checking.
+     * This is not purchase permission and does not grant a balance. */
+    fun playVerificationBinding(
+        owner: AccountPrivateReadMarker,
+        cancellation: CancellationSignal? = null,
+    ): SessionResult<PlayAccountBinding> = withSession(
+        call = { token -> playVerification.binding(token) },
+        update = { reply, _ -> outcome(reply) },
+        expectedOwner = owner, consistentRead = true, cancellation = cancellation,
+    )
+
+    /** Manual restore stage 2: exactly one ephemeral receipt inspection.
+     * Never call for an older session or without an explicit user action.
+     * Use the SAME owner marker as stage 1. Google and D1 remain authoritative;
+     * successful screening is NOT a credit, Play ack or consume.
+     * A lost POST reply is UNKNOWN, never silently retried. */
+    fun screenOwnedPlayPurchase(
+        owner: AccountPrivateReadMarker,
+        purchaseToken: String,
+        cancellation: CancellationSignal? = null,
+    ): SessionResult<PlayReceiptScreening> = withSession(
+        call = { token -> playVerification.verify(token,purchaseToken) },
+        update = { reply, _ -> outcome(reply) },
+        expectedOwner = owner, consistentRead = true, cancellation = cancellation,
     )
 
     /** Account-bound read of canonical Play packs and internal D1 call seconds.

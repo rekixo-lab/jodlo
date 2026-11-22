@@ -13,6 +13,9 @@ val playBillingEnabled = providers.gradleProperty("jodloEnablePlayBilling").orNu
 /** Engineering-only checkout simulator integration. Not included in default
  * debug builds and forbidden in release candidate builds until owner tests. */
 val playCheckoutEnabled = providers.gradleProperty("jodloEnablePlayCheckout").orNull == "true"
+/** A second independent read-only manual restore QA gate, OFF by default.
+ * No automatic Play queries, checkout or credit in the shipped app. */
+val playRestoreEnabled = providers.gradleProperty("jodloEnablePlayRestore").orNull == "true"
 if (fcmEnabled) {
     require(file("google-services.json").isFile) {
         "Place JODLO's google-services.json in the Android app module before enabling FCM"
@@ -55,6 +58,10 @@ require(googleWebClientId.isEmpty() ||
 val releaseCandidateRequested = providers.gradleProperty("jodloReleaseCandidate").orNull == "true"
 val candidateVersionName = providers.gradleProperty("jodloReleaseVersionName").orNull?.trim().orEmpty()
 val candidateVersionCode = providers.gradleProperty("jodloReleaseVersionCode").orNull?.toIntOrNull()
+require(!playRestoreEnabled || (playBillingEnabled && !releaseCandidateRequested &&
+    apiOrigin.isNotBlank() && googleWebClientId.isNotBlank())) {
+    "Manual Play restore is only available in an explicitly configured debug-only Billing build"
+}
 require(!playCheckoutEnabled || (playBillingEnabled && !releaseCandidateRequested &&
     apiOrigin.isNotBlank() && googleWebClientId.isNotBlank())) {
     "Checkout is only allowed in an explicitly configured Play Billing debug build"
@@ -105,6 +112,7 @@ android {
         buildConfigField("boolean", "PLAY_BILLING_ENABLED", playBillingEnabled.toString())
         // OFF for all default and release-candidate builds; no app UI wires this.
         buildConfigField("boolean", "PLAY_CHECKOUT_ENABLED", playCheckoutEnabled.toString())
+        buildConfigField("boolean", "PLAY_RESTORE_ENABLED", playRestoreEnabled.toString())
         buildConfigField("String", "API_ORIGIN", "\"" + apiOrigin + "\"")
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"" + googleWebClientId + "\"")
     }

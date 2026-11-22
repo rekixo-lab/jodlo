@@ -264,6 +264,51 @@ private fun privateMinutesPreviewIsOwnerFencedAndRejectsPricesOrEntitlements() {
         ApiOutcome.Failed(FailureKind.NOT_FOUND,false))
 }
 
+
+private fun manualPlayRestoreNeverConfusesReceiptScreeningWithCredits() {
+    val approved=listOf(5,20,50,100,300,500).map { "jodlo.minutes$it" }.toSet()
+    val target="jodlo.minutes20"
+    val binding="b".repeat(64)
+    fun choose(vararg products:String)=selectManualPlayRestore(
+        approved,target,binding,products.toList())
+    check(choose()==ManualPlayRestoreSelection.Missing)
+    check(choose("jodlo.minutes5")==ManualPlayRestoreSelection.Missing)
+    check(choose("jodlo.minutes5",target,"jodlo.minutes100")==
+        ManualPlayRestoreSelection.Single(1))
+    check(choose(target,target)==ManualPlayRestoreSelection.Ambiguous)
+    check(choose("foreign.product")==ManualPlayRestoreSelection.Ambiguous)
+    check(choose(*Array(17){target})==ManualPlayRestoreSelection.Ambiguous)
+    check(selectManualPlayRestore(approved,target,"not-a-binding",listOf(target))==
+        ManualPlayRestoreSelection.Ambiguous)
+    check(selectManualPlayRestore(approved,"jodlo.minutes10",binding,listOf(target))==
+        ManualPlayRestoreSelection.Ambiguous)
+    check(selectManualPlayRestore(emptySet(),target,binding,listOf(target))==
+        ManualPlayRestoreSelection.Ambiguous)
+
+    val screened=SessionResult.Success<PlayReceiptScreening>(
+        PlayReceiptScreening.ScreenedPendingSettlement(target,20))
+    check(summarizeManualPlayScreening(target,screened)==
+        ManualPlayRestoreStatus.ScreenedPendingSettlement(target,20))
+    check(summarizeManualPlayScreening("jodlo.minutes5",screened)==
+        ManualPlayRestoreStatus.Unavailable)
+    check(summarizeManualPlayScreening(target,SessionResult.Success(
+        PlayReceiptScreening.NotEligible))==ManualPlayRestoreStatus.NotEligible)
+    check(summarizeManualPlayScreening(target,SessionResult.Success<PlayReceiptScreening>(
+        PlayReceiptScreening.ScreenedPendingSettlement(target,21)))==
+        ManualPlayRestoreStatus.Unavailable)
+    for(reason in listOf(SessionFailure.REPLACED,SessionFailure.EXPIRED,
+        SessionFailure.SIGNED_OUT,SessionFailure.STALE_RESULT)) {
+        check(summarizeManualPlayScreening(target,SessionResult.Failed(reason))==
+            ManualPlayRestoreStatus.AccountChanged)
+    }
+    for(kind in listOf(FailureKind.OFFLINE_OR_TIMEOUT,FailureKind.BAD_RESPONSE,
+        FailureKind.RATE_LIMITED,FailureKind.SERVICE_UNAVAILABLE)) {
+        check(summarizeManualPlayScreening(target,SessionResult.Failed(
+            SessionFailure.REMOTE_FAILURE,kind))==
+            ManualPlayRestoreStatus.Unavailable)
+    }
+}
+
 fun main() {
     acceptsCanonicalCatalog()
     rejectsInventedPricesAndWrongPackMapping()
@@ -273,5 +318,6 @@ fun main() {
     uncertainProviderChecksStayOneShot()
     playCheckoutOfferContractIsStrictAndHasNoLocallyInventedPrice()
     privateMinutesPreviewIsOwnerFencedAndRejectsPricesOrEntitlements()
+    manualPlayRestoreNeverConfusesReceiptScreeningWithCredits()
     println("JODLO Play catalog: authenticated, price-independent, strictly decoded, checkout disabled OK")
 }

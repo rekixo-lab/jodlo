@@ -717,8 +717,88 @@ private fun testCallPollLocalMediaAuthorization() {
     )) check(!CallPollSafety.mustStopLocalAudio(SessionResult.Failed(local)))
 }
 
+
+/** A manual Play receipt never travels through a naked/reused bearer, and
+ * an old response is discarded when the current JODLO actor changes. */
+private fun testManualPlayRestoreIsOneShotAndOwnerGenerationFenced() {
+    val binding="a".repeat(64)
+    val proof="synthetic.jodlo.googleplay.receipt.123456"
+    var requests=0
+    var beforeReply: ((ApiCall) -> Unit)?=null
+    lateinit var session:InMemorySessionCoordinator
+    session=InMemorySessionCoordinator(FakeWorkers(), RequestSender { call ->
+        requests++
+        check(call.headers()["Authorization"]=="Bearer $TOKEN_ONE")
+        check(call.resource=="/api/v1/me/play-verify")
+        check(!call.resource.contains(proof) && !call.toString().contains(proof))
+        beforeReply?.invoke(call)
+        when(call.method) {
+            HttpMethod.GET -> {
+                check(call.bodyUtf8()==null)
+                TransportReply(200,
+                    """{"ok":true,"data":{"accountBinding":"$binding","verificationOnly":true}}""")
+            }
+            HttpMethod.POST -> {
+                check(call.bodyUtf8()!!.decodeToString()=="""{"purchaseToken":"$proof"}""")
+                TransportReply(200,
+                    """{"ok":true,"data":{"status":"screened_pending_settlement","productId":"jodlo.minutes20","minutes":20}}""")
+            }
+            else -> error("No Play mutation/checkout API")
+        }
+    })
+    check(session.acceptIssuedSession(issued()) is ApiOutcome.Ok)
+    val owner=requireNotNull(session.accountPrivateReadMarker())
+    check(session.playVerificationBinding(owner)==
+        SessionResult.Success(PlayAccountBinding(binding,true)))
+    check(session.screenOwnedPlayPurchase(owner,proof)==
+        SessionResult.Success(
+            PlayReceiptScreening.ScreenedPendingSettlement("jodlo.minutes20",20)))
+    check(requests==2)
+    val foreign=owner.copy(sessionGeneration=owner.sessionGeneration+1)
+    check(session.playVerificationBinding(foreign)==
+        SessionResult.Failed(SessionFailure.REMOTE_FAILURE,FailureKind.CONFLICT))
+    check(session.screenOwnedPlayPurchase(foreign,proof)==
+        SessionResult.Failed(SessionFailure.REMOTE_FAILURE,FailureKind.CONFLICT))
+    check(requests==2)
+
+    // Explicitly replace the account DURING the GET. Late owner binding
+    // cannot drive a query to Google Play for the former actor.
+    beforeReply = { call ->
+        if(call.method==HttpMethod.GET)
+            check(session.acceptIssuedSession(issued(TOKEN_TWO)) is ApiOutcome.Ok)
+    }
+    check(session.playVerificationBinding(owner)==
+        SessionResult.Failed(SessionFailure.REPLACED))
+    check(requests==3)
+
+    // Set up a fresh actor and replace it DURING the one-shot POST. Even a
+    // successful provider response cannot become an old-owner entitlement.
+    check(session.acceptIssuedSession(issued()) is ApiOutcome.Ok)
+    val current=requireNotNull(session.accountPrivateReadMarker())
+    beforeReply = { call ->
+        if(call.method==HttpMethod.POST)
+            check(session.acceptIssuedSession(issued(TOKEN_TWO)) is ApiOutcome.Ok)
+    }
+    check(session.screenOwnedPlayPurchase(current,proof)==
+        SessionResult.Failed(SessionFailure.REPLACED))
+    check(requests==4)
+    check(session.screenOwnedPlayPurchase(current,proof)==
+        SessionResult.Failed(SessionFailure.REMOTE_FAILURE,FailureKind.CONFLICT))
+    check(requests==4)
+
+    // Re-login isn't a restore: a NEW explicit check still requires a NEW
+    // binding, no automatic retry or local grant.
+    beforeReply = null
+    check(session.acceptIssuedSession(issued()) is ApiOutcome.Ok)
+    val latest=requireNotNull(session.accountPrivateReadMarker())
+    check(session.playVerificationBinding(latest) ==
+        SessionResult.Success(PlayAccountBinding(binding,true)))
+    check(requests==5)
+}
+
 fun main() {
     testCallPollLocalMediaAuthorization()
+    testManualPlayRestoreIsOneShotAndOwnerGenerationFenced()
     testReceiverAcceptRecoveryContract()
     testLostReceiverAnswerReconcilesByRead()
     testCallDeviceRegistrationGate()
