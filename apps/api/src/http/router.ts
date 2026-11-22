@@ -1,5 +1,6 @@
 import { readOwnWorkerAvailability, setOwnWorkerAvailability } from "../modules/interactions/agora-private-safety-state.ts";
 import { handleConfiguredJodloPlayRtdn } from "../modules/interactions/google-play-pubsub-handler.ts";
+import { handleConfiguredJodloPlayVerification } from "../modules/interactions/google-play-verification-handler.ts";
 import { priceIndependentPlayCatalog } from "../modules/interactions/play-minute-packs.ts";
 import { issueOwnAgoraAudioGrant } from "../modules/interactions/private-agora-media.ts";
 import { validIdempotencyKey } from "../modules/shared/identifiers.ts";
@@ -86,6 +87,10 @@ export async function handleRequest(
     // Default OFF. Only Google-signed Pub/Sub push plus a second live
     // AndroidPublisher check can fence a purchase; this route never grants.
     return handleConfiguredJodloPlayRtdn(request, env);
+  }
+  if (url.pathname === "/api/v1/me/play-verify" &&
+      env.PLAY_VERIFICATION_ENABLED === "1") {
+    return handleConfiguredJodloPlayVerification(request,env);
   }
   if (url.pathname === "/api/v1/me/play-packs" && env.PLAY_CATALOG_ENABLED === "1") {
     // Session-bound PREVIEW only. No price, checkout, purchase confirmation,
