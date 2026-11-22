@@ -97,12 +97,15 @@ internal class JodloPlayCheckoutController(
             return
         }
         val attempt = Attempt(productId,currentServerBinding,displayedGooglePrice,onEvent)
-        synchronized(this) {
-            if (active != null) {
-                onEvent(Event.Busy)
-                return
+        val reserved = synchronized(this) {
+            if (active != null) false else {
+                active = attempt
+                true
             }
-            active = attempt
+        }
+        if (!reserved) {
+            onEvent(Event.Busy)
+            return
         }
 
         // Re-query Google immediately on each explicit user tap. Neither a
@@ -110,13 +113,16 @@ internal class JodloPlayCheckoutController(
         try {
             queryFreshProducts { response ->
                 if (!current(attempt)) return@queryFreshProducts
-                val products = (response as?
-                    JodloPlayBillingReadOnlyClient.ReadResult.Available)?.items
+                val products = when (response) {
+                    is JodloPlayBillingReadOnlyClient.ReadResult.Available ->
+                        response.items
+                    JodloPlayBillingReadOnlyClient.ReadResult.Unavailable -> null
+                }
                 val product = products?.filter { it.productId == productId &&
                     it.productType == BillingClient.ProductType.INAPP
                 }?.singleOrNull()
                 val offer = product?.oneTimePurchaseOfferDetailsList?.singleOrNull()
-                val freshPrice = offer?.formattedPrice
+                val freshPrice = offer?.formattedPrice ?: ""
                 val offerToken = offer?.offerToken
                 if (product == null || !validGooglePrice(freshPrice) ||
                     offerToken.isNullOrBlank() || offerToken.length > 4096
