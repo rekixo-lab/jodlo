@@ -54,20 +54,27 @@ internal class JodloPlayCheckoutController(
         val binding: String,
         val displayedGooglePrice: String,
         val notify: (Event) -> Unit,
-    )
+    ) {
+        var launchStarted: Boolean = false
+    }
 
     private val approved = approvedProductIds.toSet()
     private var active: Attempt? = null
+    private var sessionInvalidated = false
 
     @Synchronized
     fun invalidateSession() {
         // Play UI cannot be forcibly canceled on sign-out. Its late callback
         // must not deliver a token to a new or logged-out JODLO session.
         active = null
+        // Any Play UI still on screen belongs to the OLD account. Recreate
+        // the native adapter after new sign-in; never reuse its connection.
+        sessionInvalidated = true
     }
 
     @Synchronized
-    private fun current(attempt: Attempt): Boolean = active === attempt
+    private fun current(attempt: Attempt): Boolean =
+        !sessionInvalidated && active === attempt
 
     private fun emit(attempt: Attempt, result: Event, finish: Boolean = true) {
         val notify = synchronized(this) {
@@ -102,7 +109,7 @@ internal class JodloPlayCheckoutController(
         }
         val attempt = Attempt(productId,currentServerBinding,displayedGooglePrice,onEvent)
         val reserved = synchronized(this) {
-            if (active != null) false else {
+            if (active != null || sessionInvalidated) false else {
                 active = attempt
                 true
             }
@@ -143,7 +150,17 @@ internal class JodloPlayCheckoutController(
                     is PlayOfferReview.Ready -> Unit
                 }
                 activity.runOnUiThread {
-                    if (!current(attempt)) return@runOnUiThread
+                    // Even a buggy or repeated Play ProductDetails callback
+                    // may launch at most one Google BillingFlow for this tap.
+                    val firstLaunch = synchronized(this) {
+                        if (sessionInvalidated || active !== attempt ||
+                            attempt.launchStarted) false
+                        else {
+                            attempt.launchStarted = true
+                            true
+                        }
+                    }
+                    if (!firstLaunch) return@runOnUiThread
                     if (!BuildConfig.PLAY_CHECKOUT_ENABLED || !billing.isReady ||
                         activity.isFinishing || activity.isDestroyed
                     ) {
