@@ -133,6 +133,13 @@ internal class JodloPlayBillingReadOnlyClient(
             onReady(false)
             return
         }
+        // The same owner may explicitly inspect more than one pack.
+        // Reuse the existing BillingClient connection; don't try starting
+        // a second connection after the first manual check.
+        if (client.isReady) {
+            onReady(true)
+            return
+        }
         client.startConnection(object : BillingClientStateListener {
             override fun onBillingSetupFinished(result: BillingResult) {
                 if (!closed) {
