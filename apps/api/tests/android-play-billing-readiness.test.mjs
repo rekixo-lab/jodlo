@@ -10,7 +10,8 @@ const workflow = readFileSync(
 test("Play Billing is absent from default JODLO APK and only compiles with explicit opt-in",()=>{
   const gradle=readApp("build.gradle.kts");
   assert.match(gradle,/val playBillingEnabled = providers\.gradleProperty\("jodloEnablePlayBilling"\)\.orNull == "true"/);
-  assert.match(gradle,/if \(playBillingEnabled\) \{\s*java\.srcDir\("src\/playBilling\/kotlin"\)/);\n  assert.match(gradle,/else \{\s*java\.srcDir\("src\/noPlay\/kotlin"\)/);
+  assert.match(gradle,/if \(playBillingEnabled\) \{\s*java\.srcDir\("src\/playBilling\/kotlin"\)/);
+  assert.match(gradle,/else \{\s*java\.srcDir\("src\/noPlay\/kotlin"\)/);
   assert.match(gradle,/if \(playBillingEnabled\) implementation\("com\.android\.billingclient:billing:9\.1\.0"\)/);
   assert.match(gradle,/buildConfigField\("boolean", "PLAY_BILLING_ENABLED", playBillingEnabled\.toString\(\)\)/);
   assert.doesNotMatch(gradle,/buildConfigField\("String", "PLAY_PRODUCT/);
