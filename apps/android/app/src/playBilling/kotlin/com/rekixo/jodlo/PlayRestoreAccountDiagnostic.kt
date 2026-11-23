@@ -68,6 +68,7 @@ internal fun PlayRestoreAccountDiagnostic(
             // Retire all pending Play callbacks BEFORE a later session is
             // allowed to open this UI, even if the checkout sheet is open.
             alive.set(false)
+            main.removeCallbacksAndMessages(null)
             client.invalidateCheckoutForAccountChange()
             client.close()
         }
@@ -89,9 +90,17 @@ internal fun PlayRestoreAccountDiagnostic(
                     result else ManualPlayRestoreStatus.AccountChanged
             }
         }
+        // A lost Play service-connection callback must not leave the UI
+        // spinning indefinitely or start a late receipt check.
+        val connectionTimeout = Runnable {
+            if (connectionHandled.compareAndSet(false,true))
+                finish(ManualPlayRestoreStatus.Unavailable)
+        }
+        main.postDelayed(connectionTimeout,20_000L)
         try {
             client.connect { ready ->
                 if (!connectionHandled.compareAndSet(false,true)) return@connect
+                main.removeCallbacks(connectionTimeout)
                 main.post {
                     if (!alive.get()) return@post
                     if (session.accountPrivateReadMarker() != owner) {
@@ -110,6 +119,8 @@ internal fun PlayRestoreAccountDiagnostic(
                 }
             }
         } catch (_: RuntimeException) {
+            connectionHandled.set(true)
+            main.removeCallbacks(connectionTimeout)
             finish(ManualPlayRestoreStatus.Unavailable)
         }
     }
