@@ -6,7 +6,7 @@ import {stageTrustedPlayConsumable,holdVoidedPlayConsume} from
   "../src/modules/interactions/play-consumable-outbox.ts";
 import {recordTrustedPlayRevocation} from
   "../src/modules/interactions/google-play-rtdn-fences.ts";
-import {readOwnCallCreditSnapshot} from
+import {readOwnCallCreditSnapshot,readOwnCallCreditBalance} from
   "../src/modules/interactions/private-call-credits.ts";
 import {handleRequest} from "../src/http/router.ts";
 
@@ -174,6 +174,9 @@ test("private hold reads use the scoped D1 index and fail closed on malformed SK
     const denied=await handleRequest(new Request(PATH,{headers:bearer(alice)}),
       gate(adapter));
     assert.equal(denied.status,503);
+    assert.deepEqual(await readOwnCallCreditBalance(adapter,alice),
+      {availableSeconds:300,revision:1},
+      "legacy internal balance-only reads must not depend on held Play SKU");
     const data=await denied.text();
     for(const secret of [ALICE,alice,id(222),"jodlo.minutes6","source_key_hash"])
       assert.ok(!data.includes(secret),"fail-closed error leaked private data");
