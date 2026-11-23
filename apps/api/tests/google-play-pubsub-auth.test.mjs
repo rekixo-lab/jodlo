@@ -296,3 +296,55 @@ test("failed OAuth, mismatched Google purchase state, rate limits and purchase h
     assert.ok(playCalls>0);
   }finally{db.close();}
 });
+
+
+test("unsigned or foreign RTDN traffic cannot drain legitimate Pub/Sub shared quota", async()=>{
+  const c=await context();
+  const validJwt=await signed(c);
+  const otherEmailJwt=await signed(c,{
+    email:"attacker@jodlo-2027.iam.gserviceaccount.com",
+  });
+  const {db,adapter}=openLocalDatabase();
+  try{
+    let limits=0,oauth=0,playGets=0;
+    const env={
+      DB:adapter,PLAY_RTDN_ENABLED:"1",
+      PLAY_RTDN_AUDIENCE:POLICY.audience,
+      PLAY_RTDN_PUSH_EMAIL:POLICY.email,
+      PLAY_RTDN_SUBSCRIPTION:POLICY.subscription,
+      PLAY_SERVICE_ACCOUNT_EMAIL:"jodlo-androidpublisher@jodlo-2027.iam.gserviceaccount.com",
+      PLAY_SERVICE_ACCOUNT_PRIVATE_KEY:c.privateKey,
+      PLAY_RTDN_LIMITER:{limit:async({key})=>{
+        assert.equal(key,"google-play-rtdn");
+        limits++;
+        return {success:false};
+      }},
+    };
+    const deps={
+      keys:c.keys,nowMs:NOW,
+      oauthRequest:async()=>{oauth++;throw Error("provider must not be called");},
+      playRequest:async()=>{playGets++;throw Error("provider must not be called");},
+    };
+    for(const malformed of [
+      request("bad.jwt.signature"),
+      request(otherEmailJwt),
+      request(validJwt,body("cancel",
+        "projects/jodlo-2027/subscriptions/foreign-sub")),
+    ]){
+      const result=await handleConfiguredJodloPlayRtdn(malformed,env,deps);
+      assert.equal(result.status,401,"unauthenticated push must not be throttled as Google");
+      assert.equal(limits,0,"foreign/unsigned messages may not spend shared retry quota");
+    }
+    const throttled=await handleConfiguredJodloPlayRtdn(
+      request(validJwt),env,deps);
+    assert.equal(throttled.status,429,
+      "fully Google-authenticated push still obeys configured limit");
+    assert.equal(throttled.headers.get("Retry-After"),"60");
+    assert.equal(limits,1);
+    assert.equal(oauth,0);
+    assert.equal(playGets,0);
+    assert.equal(count(db,"play_revocation_fences"),0);
+    assert.equal(count(db,"call_credit_events"),0);
+    assert.equal(count(db,"play_consume_outbox"),0);
+  }finally{db.close();}
+});
