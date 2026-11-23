@@ -95,7 +95,12 @@ android {
     sourceSets.getByName("main") {
         java.srcDir(if (agoraEnabled) "src/agora/kotlin" else "src/noAgora/kotlin")
         java.srcDir(if (fcmEnabled) "src/fcm/kotlin" else "src/noFcm/kotlin")
-        if (playBillingEnabled) java.srcDir("src/playBilling/kotlin")
+        if (playBillingEnabled) {
+            java.srcDir("src/playBilling/kotlin")
+        } else {
+            // Same tiny UI seam, no SDK types/Google Play dependency in normal APK.
+            java.srcDir("src/noPlay/kotlin")
+        }
     }
     namespace = "com.rekixo.jodlo"
     compileSdk = 35
