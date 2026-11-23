@@ -601,6 +601,13 @@
     <string name="play_overview_packs_title">प्रस्तावित मिनट-पैक (खरीद अभी बंद)</string>
     <string name="play_overview_pack">%1$d मिनट</string>
     <string name="play_overview_price_pending">ऐप तैयार होने पर कीमत Google Play से दिखाई जाएगी।</string>
+    <string name="play_overview_holds_title">रोक पर रखी गई खरीदें</string>
+    <string name="play_overview_holds_scope">यहाँ सिर्फ इसी JODLO खाते से जुड़े hold दिखते हैं। Hold का मतलब रिफंड पूरा होना, बैलेंस कटना या मिनट जुड़ना नहीं है। Google Play की दूसरी वापसी यहाँ न भी दिखे।</string>
+    <string name="play_overview_hold_cancel">खरीद रद्द होने की रोक दर्ज है</string>
+    <string name="play_overview_hold_void">रिफंड या निरस्त खरीद से जुड़ी रोक दर्ज है</string>
+    <string name="play_overview_hold_review">खरीद की समीक्षा चल रही है</string>
+    <string name="play_overview_hold_entry">%1$d मिनट पैक: %2$s • %3$s</string>
+    <string name="play_overview_hold_more">सिर्फ हाल की 5 रोक दिखाई गई हैं।</string>
     <string name="play_overview_history_title">हाल की मिनट गतिविधि</string>
     <string name="play_overview_history_scope">यहाँ केवल खाते में सचमुच जुड़े या सत्यापित रूप से खर्च हुए सेकंड दिखते हैं। Google Play की प्रारंभिक जाँच, रिफंड या रोक को नए मिनट नहीं माना जाएगा।</string>
     <string name="play_overview_history_empty">इस खाते में मिनटों की कोई गतिविधि दर्ज नहीं है।</string>
