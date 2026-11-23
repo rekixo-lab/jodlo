@@ -1,4 +1,5 @@
 import { withinPlayDeadline, readPlayBoundedJson } from "./play-provider-bounds.ts";
+import { scanJodloPlayVoidedPurchases } from "./play-voided-purchase-scan.ts";
 import type { D1Database } from "../../data/d1.ts";
 import {
   type AuthenticatedPlayPush,
@@ -11,8 +12,6 @@ import {
 } from "./google-play-purchase-preflight.ts";
 
 const MAX_PROVIDER_MS = 5_000;
-const MAX_VOIDS = 8;
-const PAGE_SIZE = 200;
 const MAX_PROVIDER_BODY = 128 * 1024;
 const VOID_SEARCH_MS = 8 * 24 * 60 * 60 * 1000;
 const publisher = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/" +
@@ -51,58 +50,12 @@ async function productVoided(
   push: AuthenticatedPlayPush, nowMs: number,
   get: (endpoint: string) => Promise<Record<string, unknown>>,
 ): Promise<boolean> {
-  const first = nowMs - VOID_SEARCH_MS;
-  if (push.hint.eventTimeMs < first) return false;
-  let cursor: string | null = null;
-  const seen = new Set<string>();
-  let processed = 0;
-  for (let page = 0; page < MAX_VOIDS; page++) {
-    const endpoint = new URL(publisher + "/purchases/voidedpurchases");
-    endpoint.searchParams.set("type", "0");
-    endpoint.searchParams.set("includeQuantityBasedPartialRefund", "true");
-    endpoint.searchParams.set("pageSelection.maxResults", String(PAGE_SIZE));
-    if (cursor === null) {
-      endpoint.searchParams.set("startTime", String(first));
-      endpoint.searchParams.set("endTime", String(nowMs));
-    } else endpoint.searchParams.set("pageSelection.token", cursor);
-    const data = await get(endpoint.toString());
-    const rows = data.voidedPurchases;
-    if (rows !== undefined && (!Array.isArray(rows) || rows.length > PAGE_SIZE))
-      return false;
-    const pagination = data.tokenPagination === undefined
-      ? null : obj(data.tokenPagination);
-    if (data.tokenPagination !== undefined && !pagination) return false;
-    const next = pagination?.nextPageToken;
-    if (next !== undefined && next !== null &&
-        (typeof next !== "string" || next.length < 1 || next.length > 4096 ||
-         !/^[A-Za-z0-9._~+\/-]+={0,2}$/.test(next)))
-      return false;
-    const records = rows === undefined ? [] : rows as unknown[];
-    if (next && !records.length) return false;
-    for (const row of records) {
-      const item = obj(row);
-      if (!item || item.kind !== "androidpublisher#voidedPurchase" ||
-          typeof item.purchaseToken !== "string" || !item.purchaseToken)
-        return false;
-      // An authenticated provider's exact token match is sufficient proof
-      // of revocation; later pages cannot reverse a matching void entry.
-      if (item.purchaseToken === push.purchaseToken) return true;
-    }
-    processed += records.length;
-    const info = obj(data.pageInfo);
-    if (info?.totalResults !== undefined &&
-        (!Number.isSafeInteger(info.totalResults) ||
-         (info.totalResults as number) < 0)) return false;
-    if (!next) {
-      if (info?.totalResults !== undefined &&
-          (info.totalResults as number) > processed) return false;
-      return false; // no authoritative matching row yet: retry later
-    }
-    if (seen.has(next)) return false;
-    seen.add(next);
-    cursor = next as string;
-  }
-  return false; // not a complete lookup, no revocation write
+  if (push.hint.eventTimeMs < nowMs - VOID_SEARCH_MS) return false;
+  // Only an exact Google voided-token match can create a durable D1 fence.
+  // Incomplete scans remain retryable, never interpreted as confirmed voids.
+  return await scanJodloPlayVoidedPurchases(
+    push.purchaseToken, nowMs - VOID_SEARCH_MS, nowMs, get,
+  ) === "matched";
 }
 
 /**
