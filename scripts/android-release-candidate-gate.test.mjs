@@ -92,3 +92,25 @@ test("Google Play 2026 Android 16 target is enforced in source, native CI and lo
   assert.match(mainActivity, /safeDrawingPadding\(\)/);
   assert.match(mainActivity, /BackHandler\(/);
 });
+
+test("CI compiles disposable unsigned API36 release AAB with no publication path", () => {
+  const ci = read(".github/workflows/android-native.yml");
+  const beginning = ci.indexOf("      - name: Compile disposable unsigned API 36 release AAB with synthetic config (never upload)");
+  const ending = ci.indexOf("      - name: Compile FCM and Agora together using synthetic CI-only Firebase configuration", beginning);
+  assert.ok(beginning > 0 && ending > beginning,
+    "separate isolated release AAB compile check must be present");
+  const section = ci.slice(beginning, ending);
+  assert.match(section, /if: matrix\.java-version == '21'/);
+  assert.match(section, /-PincludeAndroidApp=true/);
+  assert.match(section, /-PjodloReleaseCandidate=true/);
+  assert.match(section, /-PjodloApiOrigin=https:\/\/api\.jodlo\.rekixo\.com/);
+  assert.match(section, /-PjodloGoogleWebClientId=123456789012-jodlo-ci-only\.apps\.googleusercontent\.com/);
+  assert.match(section, /-PjodloReleaseVersionName=1\.0\.0/);
+  assert.match(section, /-PjodloReleaseVersionCode=2/);
+  assert.match(section, /:app:bundleRelease --no-daemon/);
+  assert.match(section, /test -s "\$BUNDLE"/);
+  assert.match(section, /unzip -Z -1 "\$BUNDLE"/);
+  assert.match(section, /rm -f "\$BUNDLE"/);
+  assert.match(section, /test ! -e "\$BUNDLE"/);
+  assert.doesNotMatch(section, /actions\/upload-artifact|fastlane|gradle.*:app:publish|wrangler deploy/);
+});

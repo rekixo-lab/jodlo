@@ -126,6 +126,25 @@ jobs:
             exit 1
           fi
           grep -q 'Manual Play restore is only available in an explicitly configured debug-only Billing build' "$RUNNER_TEMP/jodlo-restore-unsafe-release.txt"
+      - name: Compile disposable unsigned API 36 release AAB with synthetic config (never upload)
+        if: matrix.java-version == '21'
+        run: |
+          # Offline build proof only. Synthetic Web OAuth and release values are
+          # not operational credentials; do NOT sign, publish or upload this AAB.
+          gradle -p apps/android \
+            -PincludeAndroidApp=true \
+            -PjodloReleaseCandidate=true \
+            -PjodloApiOrigin=https://api.jodlo.rekixo.com \
+            -PjodloGoogleWebClientId=123456789012-jodlo-ci-only.apps.googleusercontent.com \
+            -PjodloReleaseVersionName=1.0.0 \
+            -PjodloReleaseVersionCode=2 \
+            :app:bundleRelease --no-daemon
+          BUNDLE=apps/android/app/build/outputs/bundle/release/app-release.aab
+          test -s "$BUNDLE"
+          unzip -Z -1 "$BUNDLE" | grep -Fxq 'base/manifest/AndroidManifest.xml'
+          # Refuse to hand a synthetic release AAB to later steps/artifacts.
+          rm -f "$BUNDLE"
+          test ! -e "$BUNDLE"
       - name: Compile FCM and Agora together using synthetic CI-only Firebase configuration
         if: matrix.java-version == '21'
         run: |
