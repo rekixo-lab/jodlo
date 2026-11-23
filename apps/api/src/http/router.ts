@@ -28,7 +28,7 @@ import { prepareAccountErasure, eraseOwnD1Account } from "../modules/identity/ac
 import { ownAccountOverview, exportOwnAccountData } from "../modules/identity/account-self-service.ts";
 import { validGoogleClientId, verifyGoogleIdToken } from "../modules/identity/google.ts";
 import { resolveGoogleAccount } from "../modules/identity/google-accounts.ts";
-import { issueSession, makeSessionVerifier, validSessionToken, revokeAllSessions, revokeSession, SESSION_TTL_SECONDS } from "../modules/identity/sessions.ts";
+import { issueSession, makeSessionVerifier, readWithSameActiveSession, validSessionToken, revokeAllSessions, revokeSession, SESSION_TTL_SECONDS } from "../modules/identity/sessions.ts";
 import { readCallDeviceBody, hasEmptyBody, readGoogleLoginBody, readServiceListingBody, readCategoryEditBody, readVersionedCategoryEditBody, readResumeOwnListingBody, readPublicationRevisionBody, readAccountErasureBody, readServiceCityBody, readServiceDetailsBody, readServicePhotoBody, readServiceCaseReason } from "./body.ts";
 import { validCategoryId } from "../modules/shared/identifiers.ts";
 import { publishListing, myListings, pageMyListings, pageManagedOwnListings, exactManagedOwnListing, exactManagedOwnListingByCategory, exactVersionedOwnListing, parseOwnListingsPage, publicListings, pagePublicListings, publicListingDetail, publicApprovedServiceDetail, pageAllPublicListings, unpublishListing, editOwnListingCategory, editOwnListingCategoryVersioned, resumeOwnListing, changeOwnListingPublication, createOwnListing } from "../modules/workers/listings.ts";
@@ -105,10 +105,15 @@ export async function handleRequest(
     const bearer = bearerToken(request);
     if (!validSessionToken(bearer))
       return json({ok:false,error:{code:"UNAUTHORIZED",message:"Authentication required"}},401);
-    if (!env.DB || env.PLAY_CATALOG_ENABLED !== "1")
+    const overviewDb = env.DB;
+    if (!overviewDb || env.PLAY_CATALOG_ENABLED !== "1")
       return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Overview unavailable"}},503);
     try {
-      const snapshot = await readOwnCallCreditSnapshot(env.DB,bearer);
+      // The ledger and owner-bound void holds perform async D1 reads.
+      // Revalidate the SAME active account after both reads before disclosure.
+      const snapshot = await readWithSameActiveSession(
+        overviewDb,bearer,()=>readOwnCallCreditSnapshot(overviewDb,bearer),
+      );
       if (snapshot === null)
         return json({ok:false,error:{code:"UNAUTHORIZED",message:"Authentication required"}},401);
       return json({ok:true,data:{
@@ -553,7 +558,8 @@ export async function handleRequest(
     if ((url.search && version === 1) || !(await hasEmptyBody(request))) {
       return json({ ok: false, error: { code: "INVALID_QUERY", message: "Unexpected input" } }, 400);
     }
-    if (!env.DB) {
+    const accountDb = env.DB;
+    if (!accountDb) {
       return json({ ok: false, error: { code: "SERVICE_UNAVAILABLE", message: "Account unavailable" } }, 503);
     }
     const token = bearerToken(request);
@@ -561,9 +567,13 @@ export async function handleRequest(
       return json({ ok: false, error: { code: "UNAUTHORIZED", message: "Authentication required" } }, 401);
     }
     try {
-      const data = url.pathname.endsWith("/overview")
-        ? await ownAccountOverview(env.DB, token)
-        : await exportOwnAccountData(env.DB, token, version);
+      // Account summary and full identity export have the same privacy
+      // boundary. Do not return a row captured before logout/disable/expiry.
+      const data = await readWithSameActiveSession(accountDb, token, () =>
+        url.pathname.endsWith("/overview")
+          ? ownAccountOverview(accountDb, token)
+          : exportOwnAccountData(accountDb, token, version),
+      );
       if (!data) {
         return json({ ok: false, error: { code: "UNAUTHORIZED", message: "Authentication required" } }, 401);
       }
