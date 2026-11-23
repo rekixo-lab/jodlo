@@ -224,15 +224,31 @@ private fun privateMinutesPreviewIsOwnerFencedAndRejectsPricesOrEntitlements() {
         {"change":"added","seconds":300,"occurredAtMs":1800000000200},
         {"change":"used","seconds":17,"occurredAtMs":1800000000100}
     ],"hasMore":false}""".replace("\n","")
+    val holds = """{"entries":[
+        {"minutes":5,"state":"voided","recordedAtMs":1800000000300}
+    ],"hasMore":false}""".replace("\n","")
     val good = """{"ok":true,"data":{"balance":{"availableSeconds":125,"revision":7},
-        "catalog":$catalog,"history":$activity}}""".replace("\n","")
+        "catalog":$catalog,"history":$activity,"holds":$holds}}""".replace("\n","")
     val reply=JodloReplyDecoder.playAccountOverview(TransportReply(200,good))
     check(reply == ApiOutcome.Ok(PlayMinuteAccountOverview(125,7,
         PlayMinutePackCatalog(listOf(PlayMinutePack("jodlo.minutes5",5)),"google_play",false),
         PlayMinuteActivityHistory(listOf(
             PlayMinuteActivityEntry(PlayMinuteActivityChange.ADDED,300,1800000000200L),
             PlayMinuteActivityEntry(PlayMinuteActivityChange.USED,17,1800000000100L),
+        ),hasMore=false),
+        PlayMinuteHoldHistory(listOf(
+            PlayMinuteHoldEntry(5,PlayMinuteHoldState.VOIDED,1800000000300L),
         ),hasMore=false))))
+    // A missing owner-linked frozen outbox is a valid, empty hold preview,
+    // NOT proof that no refund or cancellation exists anywhere on Google.
+    val noHolds=good.replace(holds,"""{"entries":[],"hasMore":false}""")
+    check((JodloReplyDecoder.playAccountOverview(
+        TransportReply(200,noHolds)) as ApiOutcome.Ok).value.holds.entries.isEmpty())
+    for (reason in listOf("canceled","review")) {
+        val adjusted=good.replace(""""state":"voided"""",""""state":"$reason"""")
+        check(JodloReplyDecoder.playAccountOverview(TransportReply(200,adjusted))
+            is ApiOutcome.Ok)
+    }
     val owner=AccountPrivateReadMarker(31L,1L)
     val otherOwner=AccountPrivateReadMarker(32L,1L)
     val changedWorker=AccountPrivateReadMarker(31L,2L)
@@ -277,6 +293,22 @@ private fun privateMinutesPreviewIsOwnerFencedAndRejectsPricesOrEntitlements() {
         good.replace(""""change":"added"""",""""change":"added","orderId":"secret""""),
         good.replace(""""change":"added"""",""""change":"added","source_key_hash":"secret""""),
         good.replace(""""change":"added"""",""""change":"added","change":"added""""),
+        good.replace(""""state":"voided"""",""""state":"refunded_and_paid""""),
+        good.replace(""""state":"voided"""",""""state":"voided","accountId":"foreign""""),
+        good.replace(""""state":"voided"""",""""state":"voided","purchaseToken":"secret""""),
+        good.replace(""""state":"voided"""",""""state":"voided","orderId":"secret""""),
+        good.replace(""""state":"voided"""",""""state":"voided","sourceKeyHash":"secret""""),
+        good.replace(""""state":"voided"""",""""state":"voided","state":"voided""""),
+        good.replace(""""minutes":5,"state":""",""""minutes":6,"state":"""),
+        good.replace(""""minutes":5,"state":""",""""minutes":0,"state":"""),
+        good.replace(""""minutes":5,"state":""",""""minutes":"5","state":"""),
+        good.replace(""""recordedAtMs":1800000000300""",""""recordedAtMs":0"""),
+        good.replace(""""recordedAtMs":1800000000300""",""""recordedAtMs":"1800000000300""""),
+        good.replace(""""recordedAtMs":1800000000300""",""""recordedAtMs":9999999999999999"""),
+        good.replace(holds,holds.replace(""""hasMore":false""",""""hasMore":true""")),
+        good.replace(""""holds":""",""""holds":{"accountId":"foreign"},"bad":"""),
+        good.replace(holds,"""{"entries":{},"hasMore":false}"""),
+        good.replace(holds,"""{"entries":[],"hasMore":"false"}"""),
     )) {
         check(JodloReplyDecoder.playAccountOverview(TransportReply(200,invalid)) ==
             ApiOutcome.Failed(FailureKind.BAD_RESPONSE,false)) {
