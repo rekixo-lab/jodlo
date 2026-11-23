@@ -433,14 +433,44 @@ object JodloReplyDecoder {
      * paid/purchasable flags; reuse the exact same SKU/pack decoder. */
     fun playAccountOverview(reply: TransportReply): ApiOutcome<PlayMinuteAccountOverview> =
         decode(reply) { data ->
-            data.keysOnly(setOf("balance","catalog"))
+            data.keysOnly(setOf("balance","catalog","history"))
             val balance = data.required("balance").obj()
             balance.keysOnly(setOf("availableSeconds","revision"))
             val seconds = balance.required("availableSeconds").number()
             val revision = balance.required("revision").number()
             if (seconds < 0 || revision < 0) bad()
+            val history = data.required("history").obj()
+            history.keysOnly(setOf("entries","hasMore"))
+            val items=history.required("entries").arr()
+            if (items.size > 10 || (revision < items.size)) bad()
+            val mapped=items.map { event ->
+                val entry=event.obj()
+                entry.keysOnly(setOf("change","seconds","occurredAtMs"))
+                val change=when(entry.required("change").str()) {
+                    "added" -> PlayMinuteActivityChange.ADDED
+                    "used" -> PlayMinuteActivityChange.USED
+                    else -> bad()
+                }
+                val eventSeconds=entry.required("seconds").number()
+                if (eventSeconds !in 1..30_000 ||
+                    (change == PlayMinuteActivityChange.ADDED && eventSeconds % 60 != 0)) bad()
+                val whenMs=entry.required("occurredAtMs").jsonPrimitive
+                if (whenMs.isString ||
+                    !Regex("[1-9][0-9]{0,15}").matches(whenMs.content)) bad()
+                val timestamp=whenMs.longOrNull ?: bad()
+                if (timestamp <= 0 || timestamp > 9_007_199_254_740_991L) bad()
+                PlayMinuteActivityEntry(change,eventSeconds,timestamp)
+            }
+            // Identical timestamps are legitimate. The backend orders ties
+            // using private IDs which must NOT be sent to the UI.
+            if (mapped.zipWithNext().any { (newer,older) ->
+                newer.occurredAtMs < older.occurredAtMs
+            }) bad()
+            val hasMore=history.required("hasMore").bool()
+            if (hasMore && items.size != 10) bad()
             PlayMinuteAccountOverview(seconds,revision,
-                playCatalog(data.required("catalog").obj()))
+                playCatalog(data.required("catalog").obj()),
+                PlayMinuteActivityHistory(mapped,hasMore))
         }
 
     fun browse(reply: TransportReply): ApiOutcome<CatalogBrowse> = decode(reply) { data ->
