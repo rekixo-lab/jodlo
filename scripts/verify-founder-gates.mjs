@@ -141,8 +141,12 @@ export async function auditFounderGates(root = rootDefault) {
     errors.push("Play verification must remain behind default-OFF owner gate");
   if (routes.includes("/api/v1/me/play-overview") &&
       (!router.includes('env.PLAY_ACCOUNT_VIEW_ENABLED === "1"') ||
-       !router.includes('readOwnCallCreditSnapshot(env.DB,bearer)') ||
-       !router.includes('env.PLAY_CATALOG_ENABLED !== "1"')))
+       !router.includes('env.PLAY_CATALOG_ENABLED !== "1"') ||
+       // A reader that verifies ownership only inside its SQL can return
+       // a stale private snapshot after logout. This release guard requires
+       // the NEW shared same-owner before/after fence, not a raw D1 SELECT.
+       !router.includes('const snapshot = await readWithSameActiveSession(') ||
+       !router.includes('overviewDb,bearer,()=>readOwnCallCreditSnapshot(overviewDb,bearer)')))
     errors.push("Private Play overview must stay default OFF and session-owned");
   for(const route of allowedRoutes)
     if(route!=="/api/v1/play/rtdn" && route!=="/api/v1/me/play-packs" && route!=="/api/v1/me/play-verify" && route!=="/api/v1/me/play-overview" &&
