@@ -352,7 +352,14 @@ test("existing Purchase Status displays only newest private minute activity and 
   assert.match(server,/const MAX_ACTIVITY_ROWS = 10/);
   assert.match(server,/change: row\.eventKind === "purchase_grant" \? "added" : "used"/);
   assert.match(router,/env\.PLAY_ACCOUNT_VIEW_ENABLED === "1"/);
-  assert.match(router,/readOwnCallCreditSnapshot\(env\.DB,bearer\)/);
+  // A raw D1 ledger snapshot can outlive a second-device logout.
+  // Require the shared SAME-owner revalidation before returning private data.
+  const sessions=readFileSync(new URL(
+    "../src/modules/identity/sessions.ts",import.meta.url),"utf8");
+  assert.match(router,/const snapshot = await readWithSameActiveSession\(/);
+  assert.match(router,/overviewDb,bearer,\(\)=>readOwnCallCreditSnapshot\(overviewDb,bearer\)/);
+  assert.match(sessions,/const owner = await findSessionAccount\(db,bearer\)/);
+  assert.match(sessions,/return await findSessionAccount\(db,bearer\) === owner \? value : null/);
   assert.match(router,/history:snapshot\.history/);
   assert.match(server,/LEFT JOIN play_consume_outbox AS o ON o\.account_id=a\.id/);
   assert.match(server,/AND o\.status='void_hold'/);
