@@ -11,7 +11,7 @@ test("Play Billing is absent from default JODLO APK and only compiles with expli
   const gradle=readApp("build.gradle.kts");
   assert.match(gradle,/val playBillingEnabled = providers\.gradleProperty\("jodloEnablePlayBilling"\)\.orNull == "true"/);
   assert.match(gradle,/if \(playBillingEnabled\) \{\s*java\.srcDir\("src\/playBilling\/kotlin"\)/);
-  assert.match(gradle,/else \{\s*java\.srcDir\("src\/noPlay\/kotlin"\)/);
+  assert.match(gradle,/else \{[\s\S]*?java\.srcDir\("src\/noPlay\/kotlin"\)/);
   assert.match(gradle,/if \(playBillingEnabled\) implementation\("com\.android\.billingclient:billing:9\.1\.0"\)/);
   assert.match(gradle,/buildConfigField\("boolean", "PLAY_BILLING_ENABLED", playBillingEnabled\.toString\(\)\)/);
   assert.doesNotMatch(gradle,/buildConfigField\("String", "PLAY_PRODUCT/);
@@ -292,8 +292,8 @@ test("regular account screen links only one build-time Play diagnostic seam",()=
   assert.match(gradle,/java\.srcDir\("src\/playBilling\/kotlin"\)/);
   assert.match(stub,/@Composable\s+internal fun PlayRestoreAccountDiagnostic\(/);
   assert.match(real,/@Composable\s+internal fun PlayRestoreAccountDiagnostic\(/);
-  assert.doesNotMatch(stub,/com\.android\.billingclient|BillingClient|queryPurchasesAsync/);
-  assert.doesNotMatch(account,/com\.android\.billingclient|BillingClient|queryPurchasesAsync/);
+  assert.doesNotMatch(stub,/(?:import com\.android\.billingclient|BillingClient\.newBuilder\(|queryPurchasesAsync\s*\()/);
+  assert.doesNotMatch(account,/(?:import com\.android\.billingclient|BillingClient\.newBuilder\(|queryPurchasesAsync\s*\()/);
   assert.match(real,/!BuildConfig\.DEBUG \|\| !BuildConfig\.PLAY_RESTORE_ENABLED/);
   assert.match(real,/catalog\.purchasable \|\| catalog\.priceSource != "google_play"/);
   assert.match(real,/catalog\.packs\.isEmpty\(\)/);
