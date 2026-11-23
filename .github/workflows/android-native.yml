@@ -35,20 +35,24 @@ jobs:
           java-version: ${{ matrix.java-version }}
       - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a
         with:
-          gradle-version: '8.10.2'
+          gradle-version: '8.11.1'
       - name: Install Android SDK platform and build tools (local build only)
         run: |
           test -n "$ANDROID_HOME"
           SDK_MANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"
           test -n "$SDK_MANAGER"
           yes | "$SDK_MANAGER" --licenses > /dev/null || true
-          "$SDK_MANAGER" "platforms;android-35" "build-tools;35.0.0"
+          "$SDK_MANAGER" "platforms;android-36" "build-tools;36.0.0"
       - name: Compile real Android debug APK (no production signing or deployment)
         run: gradle -p apps/android -PincludeAndroidApp=true :app:assembleDebug --no-daemon
       - name: Verify APK and Java 17 bytecode on selected JDK
         run: |
           test -s apps/android/app/build/outputs/apk/debug/app-debug.apk
           sha256sum apps/android/app/build/outputs/apk/debug/app-debug.apk
+          # Check the ACTUAL APK manifest, not only the Gradle source setting.
+          BADGING="$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging apps/android/app/build/outputs/apk/debug/app-debug.apk)"
+          grep -Fq "targetSdkVersion:'36'" <<< "$BADGING"
+          grep -Fq "sdkVersion:'26'" <<< "$BADGING"
           CORE_CLASS="$(find apps/android/core/build/classes/kotlin/main -type f -name '*.class' -print -quit)"
           test -n "$CORE_CLASS"
           javap -verbose "$CORE_CLASS" | grep -q 'major version: 61'
