@@ -42,11 +42,29 @@ data class PlayMinuteActivityHistory(
     val hasMore: Boolean,
 )
 
+/** Only an account-owned, frozen Play consume outbox row is visible.
+ * Standalone Google token revocation fences cannot be mapped to a user.
+ * This is a REVIEW/HOLD, not proof of a completed refund, reversal, debit
+ * or a new balance entitlement. Never expose source hashes or raw receipts. */
+enum class PlayMinuteHoldState { CANCELED, VOIDED, REVIEW }
+
+data class PlayMinuteHoldEntry(
+    val minutes: Int,
+    val state: PlayMinuteHoldState,
+    val recordedAtMs: Long,
+)
+
+data class PlayMinuteHoldHistory(
+    val entries: List<PlayMinuteHoldEntry>,
+    val hasMore: Boolean,
+)
+
 data class PlayMinuteAccountOverview(
     val availableSeconds: Int,
     val revision: Int,
     val catalog: PlayMinutePackCatalog,
     val history: PlayMinuteActivityHistory,
+    val holds: PlayMinuteHoldHistory,
 )
 
 /** A successful read is always tied to the currently authenticated session.
