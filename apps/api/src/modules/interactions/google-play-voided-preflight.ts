@@ -1,7 +1,7 @@
 import { withinPlayDeadline, readPlayBoundedJson } from "./play-provider-bounds.ts";
 import { scanJodloPlayVoidedPurchases } from "./play-voided-purchase-scan.ts";
 import {
-  inspectJodloPlayOneTimePurchase, JODLO_PLAY_PACKAGE,
+  inspectJodloPlayOneTimePurchase,
   PLAY_PREFLIGHT_TIMEOUT_MS,
 } from "./google-play-purchase-preflight.ts";
 import type { PlayPreflightDeps } from "./google-play-purchase-preflight.ts";
