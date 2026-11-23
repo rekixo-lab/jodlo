@@ -1,6 +1,7 @@
 import type { D1Database } from "../../data/d1.ts";
 import { sessionHash, validSessionToken } from "../identity/sessions.ts";
 import { validOpaqueId } from "../shared/identifiers.ts";
+import {jodloPlayMinuteProductMap} from "./play-minute-packs.ts";
 
 /** No client or public API may call the TRUSTED MUTATION in this module.
  * The separate owner-bound D1 read may be used by a default-off, strictly
@@ -79,9 +80,20 @@ export type OwnCallCreditSnapshot = Readonly<{
   availableSeconds: number;
   revision: number;
   history: Readonly<{entries: ReadonlyArray<OwnCallCreditActivity>; hasMore: boolean}>;
+  /** Outbox rows tied to this account ONLY; no standalone global token fences. */
+  holds: Readonly<{
+    entries: ReadonlyArray<OwnPlayRevocationHold>; hasMore: boolean;
+  }>;
+}>;
+
+export type OwnPlayRevocationHold = Readonly<{
+  minutes: number;
+  state: "canceled" | "voided" | "review";
+  recordedAtMs: number;
 }>;
 
 const MAX_ACTIVITY_ROWS = 10;
+const MAX_PLAY_HOLD_ROWS = 5;
 const MAX_LEDGER_SECONDS = 2_147_483_647;
 
 /** One indexed, bounded, atomically consistent D1 SELECT for balance and
@@ -91,9 +103,12 @@ const MAX_LEDGER_SECONDS = 2_147_483_647;
  */
 export async function readOwnCallCreditSnapshot(
   db: D1Database, bearer: string, nowMs = Date.now(),
+  includePlayHolds = true,
 ): Promise<OwnCallCreditSnapshot | null> {
   if (!validSessionToken(bearer) || !Number.isSafeInteger(nowMs) || nowMs <= 0)
     return null;
+  const ownerSessionHash=await sessionHash(bearer);
+  const expiresAfter=Math.floor(nowMs/1000);
   const {results} = await db.prepare(
     "SELECT COALESCE(b.available_seconds,0) AS availableSeconds, " +
     "COALESCE(b.revision,0) AS revision, " +
@@ -104,7 +119,7 @@ export async function readOwnCallCreditSnapshot(
     "LEFT JOIN call_credit_events AS e ON e.account_id=a.id " +
     "WHERE s.token_hash=? AND s.expires_at>? " +
     "ORDER BY e.created_at_ms DESC,e.id DESC LIMIT ?",
-  ).bind(await sessionHash(bearer),Math.floor(nowMs/1000),MAX_ACTIVITY_ROWS+1)
+  ).bind(ownerSessionHash,expiresAfter,MAX_ACTIVITY_ROWS+1)
     .all<{
       availableSeconds:number; revision:number;
       eventKind:string|null; eventSeconds:number|null; occurredAtMs:number|null;
@@ -136,12 +151,66 @@ export async function readOwnCallCreditSnapshot(
   }
   if (revision < entries.length)
     throw new Error("Corrupt private ledger revision");
+  const history={
+    entries:entries.slice(0,MAX_ACTIVITY_ROWS),
+    hasMore:entries.length>MAX_ACTIVITY_ROWS,
+  };
+  // Old internal balance readers never depended on Play outbox SKUs and
+  // must stay usable with test/legacy trusted events. The *optional Account
+  // preview* alone demands strict canonical Play hold validation.
+  if(!includePlayHolds) return {
+    availableSeconds,revision,history,holds:{entries:[],hasMore:false},
+  };
+  // Fences alone are global token hashes with NO account identity and
+  // MUST NEVER be attached to an arbitrary user. Only an existing, owner-
+  // bound outbox row with void_hold can produce a private status. Recheck the
+  // active bearer in this independent indexed read (revoked mid-request
+  // sessions fail closed). No token hash, order ID, price or account ID leaves.
+  const {results: holdRows}=await db.prepare(
+    "SELECT o.product_id AS productId,o.seconds AS seconds, " +
+    "o.updated_at_ms AS recordedAtMs,f.reason AS reason " +
+    "FROM auth_sessions AS s " +
+    "JOIN accounts AS a ON a.id=s.account_id AND a.status='active' " +
+    "LEFT JOIN play_consume_outbox AS o ON o.account_id=a.id " +
+    "AND o.status='void_hold' " +
+    "LEFT JOIN play_revocation_fences AS f " +
+    "ON f.source_key_hash=o.source_key_hash " +
+    "WHERE s.token_hash=? AND s.expires_at>? " +
+    "ORDER BY o.updated_at_ms DESC,o.source_key_hash DESC LIMIT ?",
+  ).bind(ownerSessionHash,expiresAfter,MAX_PLAY_HOLD_ROWS+1).all<{
+    productId:string|null;seconds:number|null;
+    recordedAtMs:number|null;reason:string|null;
+  }>();
+  if (holdRows.length===0)
+    return null; // Token revoked or account disabled between both reads.
+  const canonicalPacks=jodloPlayMinuteProductMap();
+  const holds:OwnPlayRevocationHold[]=[];
+  for(const row of holdRows){
+    if(row.productId===null && row.seconds===null &&
+       row.recordedAtMs===null && row.reason===null){
+      if(holdRows.length!==1) throw new Error("Invalid empty Play hold row");
+      continue;
+    }
+    if(!row.productId || !Number.isSafeInteger(row.seconds) ||
+       row.seconds!<60 || row.seconds!>MAX_CREDIT_EVENT_SECONDS ||
+       row.seconds!%60!==0 ||
+       canonicalPacks.get(row.productId)!==row.seconds!/60 ||
+       !Number.isSafeInteger(row.recordedAtMs) ||
+       row.recordedAtMs!<=0 || row.recordedAtMs!>Number.MAX_SAFE_INTEGER ||
+       (row.reason!==null && row.reason!=="one_time_canceled" &&
+        row.reason!=="voided_purchase"))
+      throw new Error("Invalid private Play hold state");
+    holds.push({
+      minutes:row.seconds!/60,
+      state:row.reason==="one_time_canceled"?"canceled":
+        row.reason==="voided_purchase"?"voided":"review",
+      recordedAtMs:row.recordedAtMs!,
+    });
+  }
   return {
-    availableSeconds,revision,
-    history: {
-      entries:entries.slice(0,MAX_ACTIVITY_ROWS),
-      hasMore:entries.length>MAX_ACTIVITY_ROWS,
-    },
+    availableSeconds,revision,history,
+    holds:{entries:holds.slice(0,MAX_PLAY_HOLD_ROWS),
+      hasMore:holds.length>MAX_PLAY_HOLD_ROWS},
   };
 }
 
@@ -151,7 +220,7 @@ export async function readOwnCallCreditSnapshot(
 export async function readOwnCallCreditBalance(
   db: D1Database, bearer: string, nowMs = Date.now(),
 ): Promise<{availableSeconds: number; revision: number} | null> {
-  const snapshot=await readOwnCallCreditSnapshot(db,bearer,nowMs);
+  const snapshot=await readOwnCallCreditSnapshot(db,bearer,nowMs,false);
   return snapshot===null?null:{
     availableSeconds:snapshot.availableSeconds,revision:snapshot.revision,
   };

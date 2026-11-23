@@ -354,11 +354,29 @@ test("existing Purchase Status displays only newest private minute activity and 
   assert.match(router,/env\.PLAY_ACCOUNT_VIEW_ENABLED === "1"/);
   assert.match(router,/readOwnCallCreditSnapshot\(env\.DB,bearer\)/);
   assert.match(router,/history:snapshot\.history/);
-  assert.match(kotlin,/data\.keysOnly\(setOf\("balance","catalog","history"\)\)/);
+  assert.match(server,/LEFT JOIN play_consume_outbox AS o ON o\.account_id=a\.id/);
+  assert.match(server,/AND o\.status='void_hold'/);
+  assert.match(server,/LEFT JOIN play_revocation_fences AS f/);
+  assert.match(server,/ON f\.source_key_hash=o\.source_key_hash/);
+  assert.match(server,/const MAX_PLAY_HOLD_ROWS = 5/);
+  assert.match(server,/row\.reason==="voided_purchase"\?"voided":"review"/);
+  assert.match(router,/holds:snapshot\.holds/);
+  assert.match(kotlin,/data\.keysOnly\(setOf\("balance","catalog","history","holds"\)\)/);
   assert.match(kotlin,/entry\.keysOnly\(setOf\("change","seconds","occurredAtMs"\)\)/);
   assert.match(kotlin,/items\.size > 10/);
   assert.match(kotlin,/val hasMore=history\.required\("hasMore"\)\.bool\(\)/);
   assert.match(types,/enum class PlayMinuteActivityChange \{ ADDED, USED \}/);
+  assert.match(types,/enum class PlayMinuteHoldState \{ CANCELED, VOIDED, REVIEW \}/);
+  assert.match(kotlin,/holds\.keysOnly\(setOf\("entries","hasMore"\)\)/);
+  assert.match(kotlin,/h\.keysOnly\(setOf\("minutes","state","recordedAtMs"\)\)/);
+  assert.match(kotlin,/if\(holdItems\.size > 5\) bad\(\)/);
+  assert.match(kotlin,/playAccountTimestamp\(h\.required\("recordedAtMs"\)\)/);
+  assert.match(screen,/current\.holds\.entries\.isNotEmpty\(\)/);
+  assert.match(screen,/PlayMinuteHoldState\.CANCELED/);
+  assert.match(screen,/PlayMinuteHoldState\.VOIDED/);
+  assert.match(screen,/PlayMinuteHoldState\.REVIEW/);
+  assert.match(screen,/Date\(hold\.recordedAtMs\)/);
+  assert.match(screen,/current\.holds\.hasMore/);
   assert.match(screen,/current\.history\.entries/);
   assert.match(screen,/PlayMinuteActivityChange\.ADDED/);
   assert.match(screen,/Date\(event\.occurredAtMs\)/);
@@ -369,7 +387,11 @@ test("existing Purchase Status displays only newest private minute activity and 
     for(const name of ["play_overview_history_title","play_overview_history_scope",
       "play_overview_history_empty","play_overview_history_added",
       "play_overview_history_used","play_overview_history_entry",
-      "play_overview_history_more"])
+      "play_overview_history_more",
+      "play_overview_holds_title","play_overview_holds_scope",
+      "play_overview_hold_cancel","play_overview_hold_void",
+      "play_overview_hold_review","play_overview_hold_entry",
+      "play_overview_hold_more"])
       assert.ok(strings.includes('name="'+name+'"'),locale+" missing "+name);
   }
   for(const forbidden of [

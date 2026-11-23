@@ -27,6 +27,7 @@ test("one owner-scoped D1 snapshot gives exact descending activity capped at 10 
     const bob=(await issueSession(adapter,OTHER)).accessToken;
     assert.deepEqual(await readOwnCallCreditSnapshot(adapter,alice),{
       availableSeconds:0,revision:0,history:{entries:[],hasMore:false},
+      holds:{entries:[],hasMore:false},
     });
     const when=Date.now()-25000;
     for(let i=1;i<=13;i++){
@@ -49,6 +50,8 @@ test("one owner-scoped D1 snapshot gives exact descending activity capped at 10 
     assert.deepEqual(data.balance,{availableSeconds:3883,revision:14});
     assert.equal(data.history.entries.length,10);
     assert.equal(data.history.hasMore,true);
+    assert.deepEqual(data.holds,{entries:[],hasMore:false},
+      "plain credit events are NOT Play purchase holds");
     assert.deepEqual(data.history.entries[0],{
       change:"used",seconds:17,occurredAtMs:when+99,
     });
@@ -72,6 +75,9 @@ test("one owner-scoped D1 snapshot gives exact descending activity capped at 10 
     const other=await handleRequest(new Request(PATH,{headers:auth(bob)}),flags(adapter));
     assert.equal(other.status,200);
     assert.deepEqual((await other.json()).data.history,{entries:[],hasMore:false});
+    assert.deepEqual((await (await handleRequest(new Request(PATH,{
+      headers:auth(bob)}),flags(adapter))).json()).data.holds,
+      {entries:[],hasMore:false});
     assert.deepEqual(counts(db),before,"GET must never edit private D1 ledger");
     assert.equal(await revokeSession(adapter,alice),true);
     assert.equal((await handleRequest(new Request(PATH,{headers:auth(alice)}),

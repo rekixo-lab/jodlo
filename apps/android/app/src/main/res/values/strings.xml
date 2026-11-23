@@ -601,6 +601,13 @@
     <string name="play_overview_packs_title">Proposed minute packs (not for sale yet)</string>
     <string name="play_overview_pack">%1$d minutes</string>
     <string name="play_overview_price_pending">Price will be shown by Google Play once the app is ready.</string>
+    <string name="play_overview_holds_title">Purchases on hold</string>
+    <string name="play_overview_holds_scope">Only holds attached to this JODLO account are shown. A hold does not confirm a completed refund, deduction, or new minutes. Other Google Play reversals may not appear here.</string>
+    <string name="play_overview_hold_cancel">Cancellation hold recorded</string>
+    <string name="play_overview_hold_void">Voided or refund-related hold recorded</string>
+    <string name="play_overview_hold_review">Purchase held for review</string>
+    <string name="play_overview_hold_entry">%1$d min pack: %2$s • %3$s</string>
+    <string name="play_overview_hold_more">Only the 5 most recent holds are shown.</string>
     <string name="play_overview_history_title">Recent minute activity</string>
     <string name="play_overview_history_scope">Only internal credited or verified-used seconds appear here. A Google Play screening, refund, or hold is not proof of added minutes.</string>
     <string name="play_overview_history_empty">No recorded minute activity in this account.</string>

@@ -114,6 +114,7 @@ export async function handleRequest(
       return json({ok:true,data:{
         balance:{availableSeconds:snapshot.availableSeconds,revision:snapshot.revision},
         history:snapshot.history,
+        holds:snapshot.holds,
         catalog:priceIndependentPlayCatalog(),
       }});
     } catch {

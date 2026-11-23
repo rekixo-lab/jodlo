@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import com.rekixo.jodlo.core.network.PlayMinuteActivityChange
+import com.rekixo.jodlo.core.network.PlayMinuteHoldState
 import java.util.Date
 import com.rekixo.jodlo.core.network.AccountPrivateReadMarker
 import com.rekixo.jodlo.core.network.InMemorySessionCoordinator
@@ -95,6 +96,7 @@ internal fun PrivatePlayMinuteAccountSection(
             Text(stringResource(R.string.navigation_purchase_unavailable),
                 color = MaterialTheme.colorScheme.error)
         if (current != null) {
+            val dateFormat = android.text.format.DateFormat.getMediumDateFormat(context)
             JodloCard(modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(JodloSizes.CardPadding),
                     verticalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
@@ -108,6 +110,28 @@ internal fun PrivatePlayMinuteAccountSection(
                         style = MaterialTheme.typography.bodySmall)
                 }
             }
+            // A hold is shown ONLY when the user's own Play outbox is
+            // explicitly frozen in D1. Anonymous global token tombstones
+            // must never be guessed as belonging to the signed-in account.
+            // This notice DOES NOT claim a completed refund or balance debit.
+            if (current.holds.entries.isNotEmpty()) {
+                Text(stringResource(R.string.play_overview_holds_title),
+                    style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.play_overview_holds_scope),
+                    style = MaterialTheme.typography.bodySmall)
+                for (hold in current.holds.entries) {
+                    val reason = stringResource(when (hold.state) {
+                        PlayMinuteHoldState.CANCELED -> R.string.play_overview_hold_cancel
+                        PlayMinuteHoldState.VOIDED -> R.string.play_overview_hold_void
+                        PlayMinuteHoldState.REVIEW -> R.string.play_overview_hold_review
+                    })
+                    Text(stringResource(R.string.play_overview_hold_entry,hold.minutes,
+                        reason,dateFormat.format(Date(hold.recordedAtMs))))
+                }
+                if (current.holds.hasMore)
+                    Text(stringResource(R.string.play_overview_hold_more),
+                        style = MaterialTheme.typography.bodySmall)
+            }
             // These are INTERNAL minute ledger events, not Play purchases.
             // No receipt, amount, provider event key, or inferred refund.
             Text(stringResource(R.string.play_overview_history_title),
@@ -117,7 +141,6 @@ internal fun PrivatePlayMinuteAccountSection(
             if (current.history.entries.isEmpty()) {
                 Text(stringResource(R.string.play_overview_history_empty))
             } else {
-                val dateFormat = android.text.format.DateFormat.getMediumDateFormat(context)
                 for (event in current.history.entries) {
                     val change = stringResource(if (event.change == PlayMinuteActivityChange.ADDED)
                         R.string.play_overview_history_added else R.string.play_overview_history_used)
