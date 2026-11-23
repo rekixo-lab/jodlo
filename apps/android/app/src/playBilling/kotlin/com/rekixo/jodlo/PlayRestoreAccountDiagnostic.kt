@@ -4,6 +4,7 @@ import android.os.Handler
 import android.os.Looper
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -37,6 +38,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * No raw receipt, access token, Google order, account binding or Play price
  * enters Compose, logs, saved state or a persistent preference.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun PlayRestoreAccountDiagnostic(
     session: InMemorySessionCoordinator,
