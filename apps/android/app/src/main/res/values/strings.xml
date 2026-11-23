@@ -601,6 +601,18 @@
     <string name="play_overview_packs_title">Proposed minute packs (not for sale yet)</string>
     <string name="play_overview_pack">%1$d minutes</string>
     <string name="play_overview_price_pending">Price will be shown by Google Play once the app is ready.</string>
+    <string name="play_restore_qa_title">Play purchase check (test build only)</string>
+    <string name="play_restore_qa_notice">Select one minute pack to check a previous unacknowledged purchase with Google Play and your signed-in JODLO account. This does not restore or add minutes.</string>
+    <string name="play_restore_qa_action">Check selected purchase</string>
+    <string name="play_restore_qa_checking">Checking Google Play and JODLO account…</string>
+    <string name="play_restore_qa_disabled">Purchase checking is disabled.</string>
+    <string name="play_restore_qa_busy">A purchase check is already underway.</string>
+    <string name="play_restore_qa_actor_changed">Account changed. Sign in again before another check.</string>
+    <string name="play_restore_qa_unavailable">Purchase check is unavailable or uncertain. No minutes were added.</string>
+    <string name="play_restore_qa_none">No matching unacknowledged purchase found. No minutes were added.</string>
+    <string name="play_restore_qa_ambiguous">Multiple or unexpected purchases need individual review. No minutes were added.</string>
+    <string name="play_restore_qa_not_eligible">Google Play screening did not confirm eligibility. No minutes were added.</string>
+    <string name="play_restore_qa_pending_settlement">Google Play screening completed; settlement is still pending. No minutes were added.</string>
     <string name="navigation_manage_service">Manage service</string>
     <string name="navigation_service_photo">Service photo</string>
 </resources>

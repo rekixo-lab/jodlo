@@ -101,6 +101,27 @@ jobs:
       - name: Compile optional Play Billing 9.1 read-only client (no checkout)
         if: matrix.java-version == '21'
         run: gradle -p apps/android -PincludeAndroidApp=true -PjodloEnablePlayBilling=true :app:compileDebugKotlin --no-daemon
+      - name: Compile manual Play restore UI in isolated configured QA debug mode (no payment)
+        if: matrix.java-version == '21'
+        run: |
+          gradle -p apps/android -PincludeAndroidApp=true \
+            -PjodloEnablePlayBilling=true -PjodloEnablePlayRestore=true \
+            -PjodloApiOrigin=https://api.jodlo.example \
+            -PjodloGoogleWebClientId=123456789012-ci-restore-only.apps.googleusercontent.com \
+            :app:compileDebugKotlin --no-daemon
+      - name: Reject restored purchase UI in release candidates even with credentials
+        if: matrix.java-version == '21'
+        run: |
+          if gradle -p apps/android -PincludeAndroidApp=true \
+            -PjodloEnablePlayBilling=true -PjodloEnablePlayRestore=true \
+            -PjodloReleaseCandidate=true \
+            -PjodloApiOrigin=https://api.jodlo.rekixo.com \
+            -PjodloGoogleWebClientId=123456789012-ci-restore-only.apps.googleusercontent.com \
+            :app:help --no-daemon > "$RUNNER_TEMP/jodlo-restore-unsafe-release.txt" 2>&1; then
+            echo "Unsafe: Play restore UI enabled in release candidate"
+            exit 1
+          fi
+          grep -q 'Manual Play restore is only available in an explicitly configured debug-only Billing build' "$RUNNER_TEMP/jodlo-restore-unsafe-release.txt"
       - name: Compile FCM and Agora together using synthetic CI-only Firebase configuration
         if: matrix.java-version == '21'
         run: |

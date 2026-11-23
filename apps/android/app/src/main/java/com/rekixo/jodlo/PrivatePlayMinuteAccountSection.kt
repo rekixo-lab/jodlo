@@ -118,6 +118,12 @@ internal fun PrivatePlayMinuteAccountSection(
                     }
                 }
             }
+            // Build-time no-op in the default APK. The optional Play source
+            // implements a read-only manual diagnostic with its OWN debug
+            // build gate; this account screen never handles receipt tokens.
+            if (marker != null) {
+                PlayRestoreAccountDiagnostic(session,marker,current.catalog,accountBusy)
+            }
         }
     }
 }
