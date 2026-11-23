@@ -19,9 +19,10 @@ test("private minute dashboard shows only the active account ledger and one cano
     db.exec("INSERT INTO accounts(id) VALUES ('play-owner-account-a'),('play-owner-account-b')");
     const a=(await issueSession(adapter,ALICE)).accessToken;
     const b=(await issueSession(adapter,BOB)).accessToken;
+    const grantedAt = Date.now();
     assert.equal(await recordTrustedCallCreditEvent(adapter,{
       accountId:ALICE,kind:"purchase_grant",sourceKeyHash:"a".repeat(64),
-      seconds:20*60,createdAtMs:Date.now(),
+      seconds:20*60,createdAtMs:grantedAt,
     }),"applied","synthetic internal-only test fixture, not an API payment");
     const before={
       events:count(db,"call_credit_events"),
@@ -36,6 +37,8 @@ test("private minute dashboard shows only the active account ledger and one cano
     assert.deepEqual(alice,{
       ok:true,data:{
         balance:{availableSeconds:1200,revision:1},
+        history:{entries:[{change:"added",seconds:1200,occurredAtMs:grantedAt}],
+          hasMore:false},
         catalog:priceIndependentPlayCatalog(),
       },
     });
@@ -50,8 +53,11 @@ test("private minute dashboard shows only the active account ledger and one cano
 
     response=await handleRequest(new Request(PATH,{headers:bearer(b)}),gate(adapter));
     assert.equal(response.status,200);
-    assert.deepEqual((await response.json()).data.balance,
-      {availableSeconds:0,revision:0},"different signed-in account never sees paid seconds");
+    const bob=(await response.json()).data;
+    assert.deepEqual(bob.balance,{availableSeconds:0,revision:0},
+      "different signed-in account never sees paid seconds");
+    assert.deepEqual(bob.history,{entries:[],hasMore:false},
+      "different signed-in account never sees another account's activity");
     assert.equal(await revokeSession(adapter,a),true);
     assert.equal((await handleRequest(new Request(PATH,{headers:bearer(a)}),gate(adapter))).status,401);
     assert.deepEqual({
