@@ -431,9 +431,19 @@ object JodloReplyDecoder {
     /** A private session-bound D1 snapshot, never a Play purchase status.
      * Strictly reject prices, actor IDs, tokens, invented entitlements and
      * paid/purchasable flags; reuse the exact same SKU/pack decoder. */
+    /** One strict positive timestamp parser for both private activity and
+     * owner-only Play holds; never interpret string dates as trusted JSON. */
+    private fun playAccountTimestamp(element: JsonElement): Long {
+        val raw=element.jsonPrimitive
+        if(raw.isString || !Regex("[1-9][0-9]{0,15}").matches(raw.content)) bad()
+        val timestamp=raw.longOrNull ?: bad()
+        if(timestamp<=0 || timestamp>9_007_199_254_740_991L) bad()
+        return timestamp
+    }
+
     fun playAccountOverview(reply: TransportReply): ApiOutcome<PlayMinuteAccountOverview> =
         decode(reply) { data ->
-            data.keysOnly(setOf("balance","catalog","history"))
+            data.keysOnly(setOf("balance","catalog","history","holds"))
             val balance = data.required("balance").obj()
             balance.keysOnly(setOf("availableSeconds","revision"))
             val seconds = balance.required("availableSeconds").number()
@@ -454,12 +464,8 @@ object JodloReplyDecoder {
                 val eventSeconds=entry.required("seconds").number()
                 if (eventSeconds !in 1..30_000 ||
                     (change == PlayMinuteActivityChange.ADDED && eventSeconds % 60 != 0)) bad()
-                val whenMs=entry.required("occurredAtMs").jsonPrimitive
-                if (whenMs.isString ||
-                    !Regex("[1-9][0-9]{0,15}").matches(whenMs.content)) bad()
-                val timestamp=whenMs.longOrNull ?: bad()
-                if (timestamp <= 0 || timestamp > 9_007_199_254_740_991L) bad()
-                PlayMinuteActivityEntry(change,eventSeconds,timestamp)
+                PlayMinuteActivityEntry(change,eventSeconds,
+                    playAccountTimestamp(entry.required("occurredAtMs")))
             }
             // Identical timestamps are legitimate. The backend orders ties
             // using private IDs which must NOT be sent to the UI.
@@ -468,9 +474,36 @@ object JodloReplyDecoder {
             }) bad()
             val hasMore=history.required("hasMore").bool()
             if (hasMore && items.size != 10) bad()
+
+            // The outbox supplies ONLY a user-associated void_hold. A
+            // revocation token-hash fence with no owner must never appear.
+            val holds=data.required("holds").obj()
+            holds.keysOnly(setOf("entries","hasMore"))
+            val holdItems=holds.required("entries").arr()
+            if(holdItems.size > 5) bad()
+            val mappedHolds=holdItems.map { item ->
+                val h=item.obj()
+                h.keysOnly(setOf("minutes","state","recordedAtMs"))
+                val minutes=h.required("minutes").number()
+                if(minutes !in listOf(5,20,50,100,300,500)) bad()
+                val state=when(h.required("state").str()){
+                    "canceled" -> PlayMinuteHoldState.CANCELED
+                    "voided" -> PlayMinuteHoldState.VOIDED
+                    "review" -> PlayMinuteHoldState.REVIEW
+                    else -> bad()
+                }
+                PlayMinuteHoldEntry(minutes,state,
+                    playAccountTimestamp(h.required("recordedAtMs")))
+            }
+            if(mappedHolds.zipWithNext().any { (newer,older) ->
+                newer.recordedAtMs < older.recordedAtMs
+            }) bad()
+            val moreHolds=holds.required("hasMore").bool()
+            if(moreHolds && holdItems.size != 5) bad()
             PlayMinuteAccountOverview(seconds,revision,
                 playCatalog(data.required("catalog").obj()),
-                PlayMinuteActivityHistory(mapped,hasMore))
+                PlayMinuteActivityHistory(mapped,hasMore),
+                PlayMinuteHoldHistory(mappedHolds,moreHolds))
         }
 
     fun browse(reply: TransportReply): ApiOutcome<CatalogBrowse> = decode(reply) { data ->
