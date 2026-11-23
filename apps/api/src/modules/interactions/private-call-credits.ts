@@ -66,23 +66,93 @@ export async function recordTrustedCallCreditEvent(
     existing.results[0]?.seconds === event.seconds ? "replay" : "denied";
 }
 
-/** Private owner-only D1 read seam; optional default-off HTTP adapter
- * must authenticate the active session itself (never caller-supplied owner).
- * An account with no events has exactly zero seconds, never implied credit.
+/** Only recent, nonfinancial account activity is ever presented to the app:
+ * no provider receipt, provider order, key hash, caller identity or payment.
+ * "added" is an internal trusted ledger event, NOT proof of completed payment. */
+export type OwnCallCreditActivity = Readonly<{
+  change: "added" | "used";
+  seconds: number;
+  occurredAtMs: number;
+}>;
+
+export type OwnCallCreditSnapshot = Readonly<{
+  availableSeconds: number;
+  revision: number;
+  history: Readonly<{entries: ReadonlyArray<OwnCallCreditActivity>; hasMore: boolean}>;
+}>;
+
+const MAX_ACTIVITY_ROWS = 10;
+const MAX_LEDGER_SECONDS = 2_147_483_647;
+
+/** One indexed, bounded, atomically consistent D1 SELECT for balance and
+ * latest events. Owner is resolved ONLY via the active signed-in session.
+ * LEFT JOIN returns zero balance and no events for a newly-created account.
+ * Neither caller nor UI can choose a raw account ID, offset or arbitrary SQL.
  */
-export async function readOwnCallCreditBalance(
+export async function readOwnCallCreditSnapshot(
   db: D1Database, bearer: string, nowMs = Date.now(),
-): Promise<{availableSeconds: number; revision: number} | null> {
+): Promise<OwnCallCreditSnapshot | null> {
   if (!validSessionToken(bearer) || !Number.isSafeInteger(nowMs) || nowMs <= 0)
     return null;
   const {results} = await db.prepare(
-    "SELECT COALESCE(b.available_seconds,0) AS availableSeconds," +
-    "COALESCE(b.revision,0) AS revision " +
+    "SELECT COALESCE(b.available_seconds,0) AS availableSeconds, " +
+    "COALESCE(b.revision,0) AS revision, " +
+    "e.kind AS eventKind,e.seconds AS eventSeconds,e.created_at_ms AS occurredAtMs " +
     "FROM auth_sessions AS s " +
     "JOIN accounts AS a ON a.id=s.account_id AND a.status='active' " +
     "LEFT JOIN call_credit_balances AS b ON b.account_id=a.id " +
-    "WHERE s.token_hash=? AND s.expires_at>?",
-  ).bind(await sessionHash(bearer), Math.floor(nowMs / 1000))
-    .all<{availableSeconds:number; revision:number}>();
-  return results[0] ?? null;
+    "LEFT JOIN call_credit_events AS e ON e.account_id=a.id " +
+    "WHERE s.token_hash=? AND s.expires_at>? " +
+    "ORDER BY e.created_at_ms DESC,e.id DESC LIMIT ?",
+  ).bind(await sessionHash(bearer),Math.floor(nowMs/1000),MAX_ACTIVITY_ROWS+1)
+    .all<{
+      availableSeconds:number; revision:number;
+      eventKind:string|null; eventSeconds:number|null; occurredAtMs:number|null;
+    }>();
+  if (results.length === 0) return null;
+  const {availableSeconds,revision}=results[0];
+  if (!Number.isSafeInteger(availableSeconds) || availableSeconds < 0 ||
+      availableSeconds > MAX_LEDGER_SECONDS ||
+      !Number.isSafeInteger(revision) || revision < 0 ||
+      revision > MAX_LEDGER_SECONDS) throw new Error("Invalid private credit snapshot");
+  const entries: OwnCallCreditActivity[] = [];
+  for (const row of results) {
+    if (row.availableSeconds !== availableSeconds || row.revision !== revision)
+      throw new Error("Inconsistent private ledger snapshot");
+    if (row.eventKind === null && row.eventSeconds === null &&
+        row.occurredAtMs === null) {
+      if (results.length !== 1) throw new Error("Unexpected empty ledger row");
+      continue;
+    }
+    if ((row.eventKind !== "purchase_grant" && row.eventKind !== "verified_usage") ||
+        !Number.isSafeInteger(row.eventSeconds) || row.eventSeconds! < 1 ||
+        row.eventSeconds! > MAX_CREDIT_EVENT_SECONDS ||
+        !Number.isSafeInteger(row.occurredAtMs) || row.occurredAtMs! <= 0)
+      throw new Error("Unrecognized private ledger event");
+    entries.push({
+      change: row.eventKind === "purchase_grant" ? "added" : "used",
+      seconds: row.eventSeconds!, occurredAtMs: row.occurredAtMs!,
+    });
+  }
+  if (revision < entries.length)
+    throw new Error("Corrupt private ledger revision");
+  return {
+    availableSeconds,revision,
+    history: {
+      entries:entries.slice(0,MAX_ACTIVITY_ROWS),
+      hasMore:entries.length>MAX_ACTIVITY_ROWS,
+    },
+  };
+}
+
+/** Compatibility read for server-internal callers; it reuses the
+ * single authenticated, bounded credit snapshot rather than duplicating the
+ * session/balance SQL. No public credit or payment action is exposed. */
+export async function readOwnCallCreditBalance(
+  db: D1Database, bearer: string, nowMs = Date.now(),
+): Promise<{availableSeconds: number; revision: number} | null> {
+  const snapshot=await readOwnCallCreditSnapshot(db,bearer,nowMs);
+  return snapshot===null?null:{
+    availableSeconds:snapshot.availableSeconds,revision:snapshot.revision,
+  };
 }
