@@ -41,11 +41,6 @@ export async function handleConfiguredJodloPlayRtdn(
     return unavailable();
 
   try {
-    const limit = await env.PLAY_RTDN_LIMITER.limit({key:"google-play-rtdn"});
-    if (!limit.success)
-      return new Response(null,{
-        status:429, headers:{"Retry-After":"60","Cache-Control":"no-store"},
-      });
     const policy = {
       audience:env.PLAY_RTDN_AUDIENCE,
       email:env.PLAY_RTDN_PUSH_EMAIL,
@@ -56,6 +51,15 @@ export async function handleConfiguredJodloPlayRtdn(
     if (authenticated.kind === "rejected")
       return new Response(null,{status:401,headers:{"Cache-Control":"no-store"}});
     if (authenticated.kind !== "authenticated")return unavailable();
+    // Only a fully Google-signed, exact-subscription payload may consume the
+    // shared RTDN quota. Otherwise arbitrary unsigned traffic could exhaust
+    // the quota and starve legitimate Pub/Sub retries of refund revocations.
+    // Authentication is still bounded by the fixed Google JWKS and body caps.
+    const limit = await env.PLAY_RTDN_LIMITER.limit({key:"google-play-rtdn"});
+    if (!limit.success)
+      return new Response(null,{
+        status:429, headers:{"Retry-After":"60","Cache-Control":"no-store"},
+      });
 
     const accessToken = createPlayAndroidPublisherAccessTokenSource({
       email:env.PLAY_SERVICE_ACCOUNT_EMAIL,
