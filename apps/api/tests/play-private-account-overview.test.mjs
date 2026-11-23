@@ -39,6 +39,7 @@ test("private minute dashboard shows only the active account ledger and one cano
         balance:{availableSeconds:1200,revision:1},
         history:{entries:[{change:"added",seconds:1200,occurredAtMs:grantedAt}],
           hasMore:false},
+        holds:{entries:[],hasMore:false},
         catalog:priceIndependentPlayCatalog(),
       },
     });
@@ -58,6 +59,8 @@ test("private minute dashboard shows only the active account ledger and one cano
       "different signed-in account never sees paid seconds");
     assert.deepEqual(bob.history,{entries:[],hasMore:false},
       "different signed-in account never sees another account's activity");
+    assert.deepEqual(bob.holds,{entries:[],hasMore:false},
+      "other owner never inherits a canceled or voided token-hash fence");
     assert.equal(await revokeSession(adapter,a),true);
     assert.equal((await handleRequest(new Request(PATH,{headers:bearer(a)}),gate(adapter))).status,401);
     assert.deepEqual({
