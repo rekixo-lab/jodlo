@@ -103,6 +103,7 @@ const MAX_LEDGER_SECONDS = 2_147_483_647;
  */
 export async function readOwnCallCreditSnapshot(
   db: D1Database, bearer: string, nowMs = Date.now(),
+  includePlayHolds = true,
 ): Promise<OwnCallCreditSnapshot | null> {
   if (!validSessionToken(bearer) || !Number.isSafeInteger(nowMs) || nowMs <= 0)
     return null;
@@ -150,6 +151,16 @@ export async function readOwnCallCreditSnapshot(
   }
   if (revision < entries.length)
     throw new Error("Corrupt private ledger revision");
+  const history={
+    entries:entries.slice(0,MAX_ACTIVITY_ROWS),
+    hasMore:entries.length>MAX_ACTIVITY_ROWS,
+  };
+  // Old internal balance readers never depended on Play outbox SKUs and
+  // must stay usable with test/legacy trusted events. The *optional Account
+  // preview* alone demands strict canonical Play hold validation.
+  if(!includePlayHolds) return {
+    availableSeconds,revision,history,holds:{entries:[],hasMore:false},
+  };
   // Fences alone are global token hashes with NO account identity and
   // MUST NEVER be attached to an arbitrary user. Only an existing, owner-
   // bound outbox row with void_hold can produce a private status. Recheck the
@@ -197,11 +208,7 @@ export async function readOwnCallCreditSnapshot(
     });
   }
   return {
-    availableSeconds,revision,
-    history: {
-      entries:entries.slice(0,MAX_ACTIVITY_ROWS),
-      hasMore:entries.length>MAX_ACTIVITY_ROWS,
-    },
+    availableSeconds,revision,history,
     holds:{entries:holds.slice(0,MAX_PLAY_HOLD_ROWS),
       hasMore:holds.length>MAX_PLAY_HOLD_ROWS},
   };
@@ -213,7 +220,7 @@ export async function readOwnCallCreditSnapshot(
 export async function readOwnCallCreditBalance(
   db: D1Database, bearer: string, nowMs = Date.now(),
 ): Promise<{availableSeconds: number; revision: number} | null> {
-  const snapshot=await readOwnCallCreditSnapshot(db,bearer,nowMs);
+  const snapshot=await readOwnCallCreditSnapshot(db,bearer,nowMs,false);
   return snapshot===null?null:{
     availableSeconds:snapshot.availableSeconds,revision:snapshot.revision,
   };
