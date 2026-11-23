@@ -1,4 +1,5 @@
 import { withinPlayDeadline, readPlayBoundedJson } from "./play-provider-bounds.ts";
+import { scanJodloPlayVoidedPurchases } from "./play-voided-purchase-scan.ts";
 import {
   inspectJodloPlayOneTimePurchase, JODLO_PLAY_PACKAGE,
   PLAY_PREFLIGHT_TIMEOUT_MS,
@@ -9,18 +10,11 @@ import type { PlayPreflightDeps } from "./google-play-purchase-preflight.ts";
  * mistake a clean scan for a complete historical purchase/refund ledger.
  * Old purchases and incomplete pagination cannot be cleared. */
 export const PLAY_VOIDED_SAFE_WINDOW_MS = 29 * 24 * 60 * 60 * 1000;
-const MAX_PAGES = 8;
-const PAGE_SIZE = 200;
 const MAX_JSON_BYTES = 128 * 1024;
 
 type ScreenedResult =
   | Readonly<{kind: "screened_candidate"; productId: string; seconds: number; sourceKeyHash: string}>
   | Readonly<{kind: "not_eligible" | "unavailable" | "unconfigured"}>;
-
-function object(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown> : null;
-}
 
 /** Returns a NON-PRIVILEGED candidate only after BOTH a Google V2 read and
  * a complete bounded one-time-product voided-purchases scan. This module:
@@ -42,8 +36,9 @@ export async function inspectJodloPlayPurchaseWithVoids(
       initial.purchasedAtMs > nowMs + 60_000)
     return {kind: "unavailable"};
 
-  // The 29-day window is deliberate: the API cannot reliably answer
-  // whether a purchase older than its 30-day lookup window was refunded.
+  // A recent clear scan is only screening, never lifetime refund proof.
+  // The canonical pagination, cursor and malformed-provider policy is shared
+  // with authenticated RTDN revocation processing.
   const startTime = nowMs - PLAY_VOIDED_SAFE_WINDOW_MS;
   const timeoutMs = deps.timeoutMs ?? PLAY_PREFLIGHT_TIMEOUT_MS;
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 ||
@@ -58,86 +53,26 @@ export async function inspectJodloPlayPurchaseWithVoids(
       return {kind: "unavailable"};
 
     const request = deps.request ?? fetch;
-    const seenPageTokens = new Set<string>();
-    let nextPage: string | null = null;
-    let scannedCount = 0;
-    for (let page = 0; page < MAX_PAGES; page++) {
-      const endpoint = new URL("https://androidpublisher.googleapis.com/androidpublisher/v3/applications/" +
-        JODLO_PLAY_PACKAGE + "/purchases/voidedpurchases");
-      // Only in-app products; include quantity-based partial refunds.
-      endpoint.searchParams.set("type", "0");
-      endpoint.searchParams.set("includeQuantityBasedPartialRefund", "true");
-      endpoint.searchParams.set("pageSelection.maxResults", String(PAGE_SIZE));
-      if (nextPage === null) {
-        endpoint.searchParams.set("startTime", String(startTime));
-        endpoint.searchParams.set("endTime", String(nowMs));
-      } else {
-        endpoint.searchParams.set("pageSelection.token", nextPage);
-      }
-
-      const response = await withinPlayDeadline(() => request(endpoint.toString(), {
-        method: "GET",
-        redirect: "error",
-        cache: "no-store",
-        signal: AbortSignal.timeout(Math.max(1, timeLeft())),
-        headers: {Authorization: "Bearer " + oauth, Accept: "application/json"},
-      }), timeLeft);
-      if (response.status !== 200) {
-        void response.body?.cancel().catch(() => {});
-        return {kind: "unavailable"};
-      }
-      const responseObject = object(await readPlayBoundedJson(response, timeLeft, MAX_JSON_BYTES));
-      if (!responseObject) return {kind: "unavailable"};
-      const rows = responseObject.voidedPurchases;
-      if (rows !== undefined && (!Array.isArray(rows) || rows.length > PAGE_SIZE))
-        return {kind: "unavailable"};
-      const pagination = responseObject.tokenPagination === undefined
-        ? null : object(responseObject.tokenPagination);
-      if (responseObject.tokenPagination !== undefined && !pagination)
-        return {kind: "unavailable"};
-      const rawNext = pagination?.nextPageToken;
-      if (rawNext !== undefined && rawNext !== null &&
-          (typeof rawNext !== "string" || rawNext.length < 1 ||
-           rawNext.length > 4096 || !/^[A-Za-z0-9._~+\/-]+={0,2}$/.test(rawNext)))
-        return {kind: "unavailable"};
-      const records = rows === undefined ? [] : rows as unknown[];
-      // A continuation without any returned records can indicate a broken
-      // or filtered pagination window; never classify that as complete.
-      if (records.length === 0 && rawNext) return {kind: "unavailable"};
-      const pageInfo = object(responseObject.pageInfo);
-      if (records.length === 0 && pageInfo &&
-          typeof pageInfo.totalResults === "number" && pageInfo.totalResults > 0)
-        return {kind: "unavailable"};
-      if (pageInfo?.totalResults !== undefined &&
-          (!Number.isSafeInteger(pageInfo.totalResults) ||
-           (pageInfo.totalResults as number) < 0))
-        return {kind: "unavailable"};
-      for (const row of records) {
-        const item = object(row);
-        // Missing token in a void record means we cannot safely exclude it.
-        if (!item || item.kind !== "androidpublisher#voidedPurchase" ||
-            typeof item.purchaseToken !== "string" || !item.purchaseToken)
-          return {kind: "unavailable"};
-        if (item.purchaseToken === purchaseToken) return {kind: "not_eligible"};
-      }
-      scannedCount += records.length;
-      const nextCursor = typeof rawNext === "string" ? rawNext : null;
-      if (nextCursor === null) {
-        // A reported total larger than the scanned records means Google
-        // omitted the continuation; do not issue a "clear" result.
-        if (pageInfo?.totalResults !== undefined &&
-            (pageInfo.totalResults as number) > scannedCount)
-          return {kind: "unavailable"};
-        if (timeLeft() <= 0) return {kind: "unavailable"};
-        return {kind: "screened_candidate", productId: initial.productId,
-          seconds: initial.seconds, sourceKeyHash: initial.sourceKeyHash};
-      }
-      if (seenPageTokens.has(nextCursor)) return {kind: "unavailable"};
-      seenPageTokens.add(nextCursor);
-      nextPage = nextCursor;
-    }
-    // Never assert "not refunded" if there are more pages beyond our budget.
-    return {kind: "unavailable"};
+    const outcome = await scanJodloPlayVoidedPurchases(
+      purchaseToken, startTime, nowMs, async endpoint => {
+        const response = await withinPlayDeadline(() => request(endpoint, {
+          method: "GET",
+          redirect: "error",
+          cache: "no-store",
+          signal: AbortSignal.timeout(Math.max(1, timeLeft())),
+          headers: {Authorization: "Bearer " + oauth, Accept: "application/json"},
+        }), timeLeft);
+        if (response.status !== 200) {
+          void response.body?.cancel().catch(() => {});
+          throw Error("Google Play voided purchases unavailable");
+        }
+        return readPlayBoundedJson(response, timeLeft, MAX_JSON_BYTES);
+      },
+    );
+    if (outcome === "matched") return {kind: "not_eligible"};
+    if (outcome !== "clear" || timeLeft() <= 0) return {kind: "unavailable"};
+    return {kind: "screened_candidate", productId: initial.productId,
+      seconds: initial.seconds, sourceKeyHash: initial.sourceKeyHash};
   } catch {
     // OAuth, unreadable response, timeouts and provider errors all fail closed.
     return {kind: "unavailable"};
