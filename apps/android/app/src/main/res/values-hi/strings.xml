@@ -601,6 +601,18 @@
     <string name="play_overview_packs_title">प्रस्तावित मिनट-पैक (खरीद अभी बंद)</string>
     <string name="play_overview_pack">%1$d मिनट</string>
     <string name="play_overview_price_pending">ऐप तैयार होने पर कीमत Google Play से दिखाई जाएगी।</string>
+    <string name="play_restore_qa_title">Play खरीद की जाँच (केवल टेस्ट ऐप)</string>
+    <string name="play_restore_qa_notice">एक मिनट-पैक चुनें और अपने JODLO अकाउंट से जुड़ी पुरानी, अभी स्वीकार नहीं हुई Google Play खरीद जाँचें। इससे मिनट नहीं जुड़ेंगे।</string>
+    <string name="play_restore_qa_action">चुनी हुई खरीद जाँचें</string>
+    <string name="play_restore_qa_checking">Google Play और JODLO खाते की जाँच हो रही है…</string>
+    <string name="play_restore_qa_disabled">खरीद की जाँच बंद है।</string>
+    <string name="play_restore_qa_busy">एक खरीद की जाँच पहले से चल रही है।</string>
+    <string name="play_restore_qa_actor_changed">अकाउंट बदल गया। अगली जाँच से पहले दोबारा साइन इन करें।</string>
+    <string name="play_restore_qa_unavailable">खरीद की जाँच उपलब्ध नहीं है या परिणाम अनिश्चित है। मिनट नहीं जोड़े गए।</string>
+    <string name="play_restore_qa_none">इस पैक की स्वीकार न हुई खरीद नहीं मिली। मिनट नहीं जोड़े गए।</string>
+    <string name="play_restore_qa_ambiguous">कई या अनपेक्षित खरीदें मिलीं। अलग समीक्षा ज़रूरी है। मिनट नहीं जोड़े गए।</string>
+    <string name="play_restore_qa_not_eligible">Google Play से पात्रता की पुष्टि नहीं हुई। मिनट नहीं जोड़े गए।</string>
+    <string name="play_restore_qa_pending_settlement">Google Play की प्रारंभिक जाँच पूरी है, लेकिन भुगतान निपटान लंबित है। मिनट नहीं जोड़े गए।</string>
     <string name="navigation_manage_service">सेवा प्रबंधन</string>
     <string name="navigation_service_photo">सेवा की तस्वीर</string>
 </resources>
