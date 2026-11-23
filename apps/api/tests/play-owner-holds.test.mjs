@@ -153,3 +153,32 @@ test("unrelated token fences and direct local credit events cannot invent purcha
     assert.equal(count(db,"call_credit_events"),0);
   }finally{db.close();}
 });
+
+test("private hold reads use the scoped D1 index and fail closed on malformed SKU evidence",async()=>{
+  const {db,adapter}=openLocalDatabase();
+  try {
+    const indexes=db.prepare("PRAGMA index_list('play_consume_outbox')").all();
+    assert.ok(indexes.some(x=>x.name==="idx_play_consume_outbox_owner_void_hold" &&
+      x.partial===1),"hold-only, owner-keyed forward migration must exist");
+    db.exec("INSERT INTO accounts(id) VALUES ('play-hold-owner-alice')");
+    const alice=(await issueSession(adapter,ALICE)).accessToken;
+    const now=Date.now()-5000;
+    assert.equal(await stage(adapter,ALICE,222,now),"applied");
+    assert.equal(await holdVoidedPlayConsume(adapter,ALICE,id(222),now+100),true);
+    assert.equal((await handleRequest(new Request(PATH,{headers:bearer(alice)}),
+      gate(adapter))).status,200);
+    // Simulate corrupted/trusted-internal SQL rather than a forged public
+    // request. A valid-looking but unapproved SKU MUST NOT reach the UI.
+    db.prepare("UPDATE play_consume_outbox SET product_id=? WHERE source_key_hash=?")
+      .run("jodlo.minutes6",id(222));
+    const denied=await handleRequest(new Request(PATH,{headers:bearer(alice)}),
+      gate(adapter));
+    assert.equal(denied.status,503);
+    const data=await denied.text();
+    for(const secret of [ALICE,alice,id(222),"jodlo.minutes6","source_key_hash"])
+      assert.ok(!data.includes(secret),"fail-closed error leaked private data");
+    assert.equal(state(db,id(222)),"void_hold");
+    assert.equal(count(db,"call_credit_events"),1,
+      "read failure must never create/erase any credit");
+  }finally{db.close();}
+});
