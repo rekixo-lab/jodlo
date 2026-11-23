@@ -127,9 +127,9 @@ if [[ "$mode" == install || "$mode" == run || "$mode" == call-qa ]]; then
   printf 'JODLO: Selected device(s): %s\n' "${chosen_devices[*]}"
 fi
 
-[[ -d "$sdk/platforms/android-35" ]] || die "Android SDK platform 35 missing. Install sdkmanager 'platforms;android-35'."
-[[ -d "$sdk/build-tools/35.0.0" ]] || die "Android build-tools 35.0.0 missing. Install sdkmanager 'build-tools;35.0.0'."
-# Gradle 8.10.2 can build JODLO on a full JDK 17 OR 21.
+[[ -d "$sdk/platforms/android-36" ]] || die "Android SDK platform 36 missing. Install sdkmanager 'platforms;android-36'."
+[[ -d "$sdk/build-tools/36.0.0" ]] || die "Android build-tools 36.0.0 missing. Install sdkmanager 'build-tools;36.0.0'."
+# Android Gradle Plugin 8.10.1 requires Gradle 8.11.1; Java 17/21 are supported.
 # Both :core and :app still compile Java 17 bytecode.
 # Respect the developer's already working JAVA_HOME; never change system Java.
 jdk_candidates=()
@@ -173,10 +173,10 @@ export PATH="$JAVA_HOME/bin:$PATH"
 printf 'JODLO: Using full JDK %s: %s (Java 17 bytecode target)\n' "$jdk_major" "$JAVA_HOME"
 if command -v gradle >/dev/null 2>&1; then
   gradle_bin="$(command -v gradle)"
-elif [[ -x "$HOME/.local/opt/gradle-8.10.2/bin/gradle" ]]; then
-  gradle_bin="$HOME/.local/opt/gradle-8.10.2/bin/gradle"
+elif [[ -x "$HOME/.local/opt/gradle-8.11.1/bin/gradle" ]]; then
+  gradle_bin="$HOME/.local/opt/gradle-8.11.1/bin/gradle"
 else
-  die "Gradle missing. Install Gradle 8.10.2."
+  die "Gradle missing. Install Gradle 8.11.1."
 fi
 # Two-phone QA is opt-in; ordinary debug APK has no Google/Agora/FCM config.
 gradle_qa_args=()

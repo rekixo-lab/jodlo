@@ -4,7 +4,7 @@ set -Eeuo pipefail
 source_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-mkdir -p "$tmp/repo/scripts" "$tmp/bin" "$tmp/sdk/platforms/android-35" "$tmp/sdk/build-tools/35.0.0" "$tmp/jdk17/bin" "$tmp/jdk21/bin"
+mkdir -p "$tmp/repo/scripts" "$tmp/bin" "$tmp/sdk/platforms/android-36" "$tmp/sdk/build-tools/36.0.0" "$tmp/jdk17/bin" "$tmp/jdk21/bin"
 cp "$source_dir/android-device.sh" "$tmp/repo/scripts/android-device.sh"
 cat > "$tmp/jdk17/bin/javac" <<'MOCK_JAVAC'
 #!/usr/bin/env bash
@@ -87,6 +87,20 @@ has() {
 lacks() {
   if grep -Fq -- "$1" "$MOCK_CALLS"; then echo "Unexpected call: $1" >&2; exit 1; fi
 }
+reset
+# No Gradle or ADB is invoked when either Android 16 component is absent.
+rmdir "$tmp/sdk/platforms/android-36"
+bad build
+lacks gradle
+grep -Fq 'Android SDK platform 36 missing' "$tmp/result"
+mkdir -p "$tmp/sdk/platforms/android-36"
+rmdir "$tmp/sdk/build-tools/36.0.0"
+bad build
+lacks gradle
+grep -Fq 'Android build-tools 36.0.0 missing' "$tmp/result"
+mkdir -p "$tmp/sdk/build-tools/36.0.0"
+echo '✓ missing Android 16 SDK/build tools cannot build or install'
+
 reset
 MOCK_DEVICES=$'D1\tdevice'
 export JODLO_JDK_HOME="$tmp/jdk21"

@@ -64,3 +64,31 @@ test("CI proves an explicit, synthetic release candidate can be configured witho
   assert.doesNotMatch(section, /:app:(assembleRelease|bundleRelease|publish|sign)/);
   assert.doesNotMatch(section, /upload-artifact|wrangler deploy|google-play|fastlane|gh release/i);
 });
+
+test("Google Play 2026 Android 16 target is enforced in source, native CI and local QA", () => {
+  const workflow = read(".github/workflows/android-native.yml");
+  const foundation = read(".github/workflows/checks.yml");
+  const localDevice = read("scripts/android-device.sh");
+  const localMocks = read("scripts/android-device.test.sh");
+  const mainActivity = read("apps/android/app/src/main/java/com/rekixo/jodlo/MainActivity.kt");
+
+  assert.match(gradle, /id\("com\.android\.application"\) version "8\.10\.1"/);
+  assert.match(gradle, /\bcompileSdk = 36\b/);
+  assert.match(gradle, /\btargetSdk = 36\b/);
+  assert.match(gradle, /\bminSdk = 26\b/);
+  assert.doesNotMatch(gradle, /\b(?:compileSdk|targetSdk) = 35\b/);
+  assert.match(workflow, /gradle-version: '8\.11\.1'/);
+  assert.match(foundation, /gradle-version: '8\.11\.1'/);
+  assert.match(workflow, /"platforms;android-36" "build-tools;36\.0\.0"/);
+  // This must be tested from aapt's APK manifest, not assumed from build.gradle.
+  assert.match(workflow, /aapt" dump badging apps\/android\/app\/build\/outputs\/apk\/debug\/app-debug\.apk/);
+  assert.ok(workflow.includes("targetSdkVersion:'36'"));
+  assert.ok(workflow.includes("sdkVersion:'26'"));
+  assert.match(localDevice, /platforms\/android-36/);
+  assert.match(localDevice, /build-tools\/36\.0\.0/);
+  assert.match(localDevice, /gradle-8\.11\.1/);
+  assert.match(localMocks, /missing Android 16 SDK\/build tools/);
+  assert.match(mainActivity, /enableEdgeToEdge\(/);
+  assert.match(mainActivity, /safeDrawingPadding\(\)/);
+  assert.match(mainActivity, /BackHandler\(/);
+});

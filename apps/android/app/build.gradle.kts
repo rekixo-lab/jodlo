@@ -1,7 +1,7 @@
 import java.net.URI
 
 plugins {
-    id("com.android.application") version "8.6.1"
+    id("com.android.application") version "8.10.1"
     id("org.jetbrains.kotlin.android") version "1.9.24"
     id("com.google.gms.google-services") version "4.4.4" apply false
 }
@@ -103,12 +103,12 @@ android {
         }
     }
     namespace = "com.rekixo.jodlo"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.rekixo.jodlo"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         versionCode = if (releaseCandidateRequested) requireNotNull(candidateVersionCode) else 1
         versionName = if (releaseCandidateRequested) candidateVersionName else "0.1.0-dev"
         manifestPlaceholders["callMessagingServiceEnabled"] = fcmEnabled
