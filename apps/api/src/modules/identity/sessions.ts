@@ -51,6 +51,28 @@ export async function findSessionAccount(db: D1Database, token: string): Promise
   return results[0]?.accountId ?? null;
 }
 
+/**
+ * Owner-fenced read-only private response. Checking a session only inside
+ * a SELECT is insufficient: D1, Google or response projection may await
+ * while another device logs out, disables this account or the bearer expires.
+ *
+ * A single shared guard ensures the SAME active owner before and after the
+ * asynchronous read. A revoked/rebound session cannot receive its old data.
+ * It does not lock logout transactions; the final check narrows, but cannot
+ * make the last network byte atomic with all concurrent logout operations.
+ * Call only for read-only private endpoints, never as a mutation approval.
+ */
+export async function readWithSameActiveSession<T>(
+  db: D1Database, bearer: string,
+  read: () => Promise<T | null>,
+): Promise<T | null> {
+  const owner = await findSessionAccount(db,bearer);
+  if (!owner) return null;
+  const value = await read();
+  if (value === null) return null;
+  return await findSessionAccount(db,bearer) === owner ? value : null;
+}
+
 export function makeSessionVerifier(db: D1Database): IdentityVerifier {
   return { async verify(token) {
     const accountId = await findSessionAccount(db, token);
