@@ -332,3 +332,51 @@ test("regular account screen links only one build-time Play diagnostic seam",()=
       assert.ok(strings.includes('name="'+key+'"'),"missing "+locale+" "+key);
   }
 });
+
+
+test("existing Purchase Status displays only newest private minute activity and never leaks ledger identities",()=>{
+  const screen=readApp("src/main/java/com/rekixo/jodlo/PrivatePlayMinuteAccountSection.kt");
+  const kotlin=readFileSync(new URL(
+    "../../android/core/src/main/kotlin/com/rekixo/jodlo/core/network/JodloReplyDecoder.kt",
+    import.meta.url),"utf8");
+  const types=readFileSync(new URL(
+    "../../android/core/src/main/kotlin/com/rekixo/jodlo/core/network/PlayMinutePackCatalog.kt",
+    import.meta.url),"utf8");
+  const server=readFileSync(new URL(
+    "../src/modules/interactions/private-call-credits.ts",import.meta.url),"utf8");
+  const router=readFileSync(new URL("../src/http/router.ts",import.meta.url),"utf8");
+  assert.match(server,/function readOwnCallCreditSnapshot\(/);
+  assert.match(server,/LEFT JOIN call_credit_events AS e ON e\.account_id=a\.id/);
+  assert.match(server,/WHERE s\.token_hash=\? AND s\.expires_at>\?/);
+  assert.match(server,/ORDER BY e\.created_at_ms DESC,e\.id DESC LIMIT \?/);
+  assert.match(server,/const MAX_ACTIVITY_ROWS = 10/);
+  assert.match(server,/change: row\.eventKind === "purchase_grant" \? "added" : "used"/);
+  assert.match(router,/env\.PLAY_ACCOUNT_VIEW_ENABLED === "1"/);
+  assert.match(router,/readOwnCallCreditSnapshot\(env\.DB,bearer\)/);
+  assert.match(router,/history:snapshot\.history/);
+  assert.match(kotlin,/data\.keysOnly\(setOf\("balance","catalog","history"\)\)/);
+  assert.match(kotlin,/entry\.keysOnly\(setOf\("change","seconds","occurredAtMs"\)\)/);
+  assert.match(kotlin,/items\.size > 10/);
+  assert.match(kotlin,/val hasMore=history\.required\("hasMore"\)\.bool\(\)/);
+  assert.match(types,/enum class PlayMinuteActivityChange \{ ADDED, USED \}/);
+  assert.match(screen,/current\.history\.entries/);
+  assert.match(screen,/PlayMinuteActivityChange\.ADDED/);
+  assert.match(screen,/Date\(event\.occurredAtMs\)/);
+  assert.match(screen,/current\.history\.hasMore/);
+  assert.match(screen,/snapshot = null/);
+  for(const locale of ["values","values-hi"]){
+    const strings=readApp("src/main/res/"+locale+"/strings.xml");
+    for(const name of ["play_overview_history_title","play_overview_history_scope",
+      "play_overview_history_empty","play_overview_history_added",
+      "play_overview_history_used","play_overview_history_entry",
+      "play_overview_history_more"])
+      assert.ok(strings.includes('name="'+name+'"'),locale+" missing "+name);
+  }
+  for(const forbidden of [
+    /launchBillingFlow\s*\(/, /acknowledgePurchase\s*\(/,
+    /consumeAsync\s*\(/, /purchaseToken/, /sourceKeyHash/,
+    /accountId/, /orderId/, /priceInr|pricePaise|Razorpay/,
+    /"₹[0-9]+"/, /availableSeconds\s*\+\=/,
+  ])assert.doesNotMatch(screen,forbidden,
+    "private activity rendering must not become a payment or credential surface");
+});

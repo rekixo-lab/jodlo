@@ -13,7 +13,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import com.rekixo.jodlo.core.network.PlayMinuteActivityChange
+import java.util.Date
 import com.rekixo.jodlo.core.network.AccountPrivateReadMarker
 import com.rekixo.jodlo.core.network.InMemorySessionCoordinator
 import com.rekixo.jodlo.core.network.PrivatePlayMinuteAccountSnapshot
@@ -40,6 +43,7 @@ internal fun PrivatePlayMinuteAccountSection(
     accountBusy: Boolean,
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val marker = session.accountPrivateReadMarker()
     var snapshot by remember(session,marker) {
         mutableStateOf<PrivatePlayMinuteAccountSnapshot?>(null)
@@ -101,6 +105,28 @@ internal fun PrivatePlayMinuteAccountSection(
                         current.availableSeconds % 60),
                         style = MaterialTheme.typography.titleMedium)
                     Text(stringResource(R.string.play_overview_balance_notice),
+                        style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            // These are INTERNAL minute ledger events, not Play purchases.
+            // No receipt, amount, provider event key, or inferred refund.
+            Text(stringResource(R.string.play_overview_history_title),
+                style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.play_overview_history_scope),
+                style = MaterialTheme.typography.bodySmall)
+            if (current.history.entries.isEmpty()) {
+                Text(stringResource(R.string.play_overview_history_empty))
+            } else {
+                val dateFormat = android.text.format.DateFormat.getMediumDateFormat(context)
+                for (event in current.history.entries) {
+                    val change = stringResource(if (event.change == PlayMinuteActivityChange.ADDED)
+                        R.string.play_overview_history_added else R.string.play_overview_history_used)
+                    val date = dateFormat.format(Date(event.occurredAtMs))
+                    Text(stringResource(R.string.play_overview_history_entry,change,
+                        event.seconds / 60,event.seconds % 60,date))
+                }
+                if (current.history.hasMore) {
+                    Text(stringResource(R.string.play_overview_history_more),
                         style = MaterialTheme.typography.bodySmall)
                 }
             }

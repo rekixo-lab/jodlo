@@ -220,10 +220,19 @@ private fun privateMinutesPreviewIsOwnerFencedAndRejectsPricesOrEntitlements() {
     check(!route.toString().contains(token))
     val one = """{"productId":"jodlo.minutes5","minutes":5}"""
     val catalog = """{"packs":[$one],"priceSource":"google_play","purchasable":false}"""
-    val good = """{"ok":true,"data":{"balance":{"availableSeconds":125,"revision":7},"catalog":$catalog}}"""
+    val activity = """{"entries":[
+        {"change":"added","seconds":300,"occurredAtMs":1800000000200},
+        {"change":"used","seconds":17,"occurredAtMs":1800000000100}
+    ],"hasMore":false}""".replace("\n","")
+    val good = """{"ok":true,"data":{"balance":{"availableSeconds":125,"revision":7},
+        "catalog":$catalog,"history":$activity}}""".replace("\n","")
     val reply=JodloReplyDecoder.playAccountOverview(TransportReply(200,good))
     check(reply == ApiOutcome.Ok(PlayMinuteAccountOverview(125,7,
-        PlayMinutePackCatalog(listOf(PlayMinutePack("jodlo.minutes5",5)),"google_play",false))))
+        PlayMinutePackCatalog(listOf(PlayMinutePack("jodlo.minutes5",5)),"google_play",false),
+        PlayMinuteActivityHistory(listOf(
+            PlayMinuteActivityEntry(PlayMinuteActivityChange.ADDED,300,1800000000200L),
+            PlayMinuteActivityEntry(PlayMinuteActivityChange.USED,17,1800000000100L),
+        ),hasMore=false))))
     val owner=AccountPrivateReadMarker(31L,1L)
     val otherOwner=AccountPrivateReadMarker(32L,1L)
     val changedWorker=AccountPrivateReadMarker(31L,2L)
@@ -253,6 +262,21 @@ private fun privateMinutesPreviewIsOwnerFencedAndRejectsPricesOrEntitlements() {
         good.replace(""""purchasable":false""",""""purchasable":false,"price":"NOT_GOOGLE_PRICE""""),
         good.replace(""""balance":{""",""""balance":[],"old":{"""),
         good.replace(""""catalog":""",""""catalog":{"cash":true},"other":"""),
+        good.replace(""""history":""",""""history":{"purchaseToken":"secret"},"other":"""),
+        good.replace(""""hasMore":false""",""""hasMore":true"""),
+        good.replace(""""hasMore":false""",""""hasMore":"false""""),
+        good.replace(""""change":"added"""",""""change":"refund""""),
+        good.replace(""""seconds":300""",""""seconds":301"""),
+        good.replace(""""seconds":300""",""""seconds":-300"""),
+        good.replace(""""seconds":17""",""""seconds":"17""""),
+        good.replace(""""occurredAtMs":1800000000200""",""""occurredAtMs":"1800000000200""""),
+        good.replace(""""occurredAtMs":1800000000200""",""""occurredAtMs":0"""),
+        good.replace(""""occurredAtMs":1800000000200""",""""occurredAtMs":9999999999999999"""),
+        good.replace(""""occurredAtMs":1800000000100""",""""occurredAtMs":1800000000300"""),
+        good.replace(""""change":"added"""",""""change":"added","accountId":"secret""""),
+        good.replace(""""change":"added"""",""""change":"added","orderId":"secret""""),
+        good.replace(""""change":"added"""",""""change":"added","source_key_hash":"secret""""),
+        good.replace(""""change":"added"""",""""change":"added","change":"added""""),
     )) {
         check(JodloReplyDecoder.playAccountOverview(TransportReply(200,invalid)) ==
             ApiOutcome.Failed(FailureKind.BAD_RESPONSE,false)) {

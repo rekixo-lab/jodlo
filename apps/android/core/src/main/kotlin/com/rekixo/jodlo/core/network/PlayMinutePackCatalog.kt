@@ -25,10 +25,28 @@ class RemotePlayMinutePackRepository(private val sender: RequestSender) {
 
 /** Private, server-owned D1 ledger seconds and the canonical proposed packs.
  * This is NOT confirmation that any purchase was made or may be bought. */
+/** Exactly the newest 10 private D1 accounting events. An 'added' event
+ * does not prove any Play order; 'used' is verified media usage only.
+ * A revocation hold/refund cannot be inferred from this private ledger.
+ * Never put account, event IDs, digests or receipts in this DTO. */
+enum class PlayMinuteActivityChange { ADDED, USED }
+
+data class PlayMinuteActivityEntry(
+    val change: PlayMinuteActivityChange,
+    val seconds: Int,
+    val occurredAtMs: Long,
+)
+
+data class PlayMinuteActivityHistory(
+    val entries: List<PlayMinuteActivityEntry>,
+    val hasMore: Boolean,
+)
+
 data class PlayMinuteAccountOverview(
     val availableSeconds: Int,
     val revision: Int,
     val catalog: PlayMinutePackCatalog,
+    val history: PlayMinuteActivityHistory,
 )
 
 /** A successful read is always tied to the currently authenticated session.

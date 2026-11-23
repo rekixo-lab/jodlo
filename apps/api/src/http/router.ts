@@ -2,7 +2,7 @@ import { readOwnWorkerAvailability, setOwnWorkerAvailability } from "../modules/
 import { handleConfiguredJodloPlayRtdn } from "../modules/interactions/google-play-pubsub-handler.ts";
 import { handleConfiguredJodloPlayVerification } from "../modules/interactions/google-play-verification-handler.ts";
 import { priceIndependentPlayCatalog } from "../modules/interactions/play-minute-packs.ts";
-import { readOwnCallCreditBalance } from "../modules/interactions/private-call-credits.ts";
+import { readOwnCallCreditSnapshot } from "../modules/interactions/private-call-credits.ts";
 import { issueOwnAgoraAudioGrant } from "../modules/interactions/private-agora-media.ts";
 import { validIdempotencyKey } from "../modules/shared/identifiers.ts";
 import { ownPrivateCallSignal, validCallAction } from "../modules/interactions/private-call-signaling.ts";
@@ -108,11 +108,13 @@ export async function handleRequest(
     if (!env.DB || env.PLAY_CATALOG_ENABLED !== "1")
       return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Overview unavailable"}},503);
     try {
-      const balance = await readOwnCallCreditBalance(env.DB,bearer);
-      if (balance === null)
+      const snapshot = await readOwnCallCreditSnapshot(env.DB,bearer);
+      if (snapshot === null)
         return json({ok:false,error:{code:"UNAUTHORIZED",message:"Authentication required"}},401);
       return json({ok:true,data:{
-        balance, catalog:priceIndependentPlayCatalog(),
+        balance:{availableSeconds:snapshot.availableSeconds,revision:snapshot.revision},
+        history:snapshot.history,
+        catalog:priceIndependentPlayCatalog(),
       }});
     } catch {
       return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Overview unavailable"}},503);

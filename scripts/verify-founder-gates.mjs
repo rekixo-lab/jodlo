@@ -141,7 +141,7 @@ export async function auditFounderGates(root = rootDefault) {
     errors.push("Play verification must remain behind default-OFF owner gate");
   if (routes.includes("/api/v1/me/play-overview") &&
       (!router.includes('env.PLAY_ACCOUNT_VIEW_ENABLED === "1"') ||
-       !router.includes('readOwnCallCreditBalance(env.DB,bearer)') ||
+       !router.includes('readOwnCallCreditSnapshot(env.DB,bearer)') ||
        !router.includes('env.PLAY_CATALOG_ENABLED !== "1"')))
     errors.push("Private Play overview must stay default OFF and session-owned");
   for(const route of allowedRoutes)

@@ -601,6 +601,13 @@
     <string name="play_overview_packs_title">प्रस्तावित मिनट-पैक (खरीद अभी बंद)</string>
     <string name="play_overview_pack">%1$d मिनट</string>
     <string name="play_overview_price_pending">ऐप तैयार होने पर कीमत Google Play से दिखाई जाएगी।</string>
+    <string name="play_overview_history_title">हाल की मिनट गतिविधि</string>
+    <string name="play_overview_history_scope">यहाँ केवल खाते में सचमुच जुड़े या सत्यापित रूप से खर्च हुए सेकंड दिखते हैं। Google Play की प्रारंभिक जाँच, रिफंड या रोक को नए मिनट नहीं माना जाएगा।</string>
+    <string name="play_overview_history_empty">इस खाते में मिनटों की कोई गतिविधि दर्ज नहीं है।</string>
+    <string name="play_overview_history_added">मिनट जुड़े</string>
+    <string name="play_overview_history_used">मिनट खर्च हुए</string>
+    <string name="play_overview_history_entry">%1$s: %2$d मिनट %3$d सेकंड • %4$s</string>
+    <string name="play_overview_history_more">सिर्फ हाल की 10 गतिविधियाँ दिखाई गई हैं।</string>
     <string name="play_restore_qa_title">Play खरीद की जाँच (केवल टेस्ट ऐप)</string>
     <string name="play_restore_qa_notice">एक मिनट-पैक चुनें और अपने JODLO अकाउंट से जुड़ी पुरानी, अभी स्वीकार नहीं हुई Google Play खरीद जाँचें। इससे मिनट नहीं जुड़ेंगे।</string>
     <string name="play_restore_qa_action">चुनी हुई खरीद जाँचें</string>
