@@ -26,6 +26,10 @@ const failure=(status:number,code:string)=>reply(status,false,{
  * signed-in JODLO account, Google's ProductPurchaseV2 and a complete
  * bounded recent Voided Purchases scan.
  *
+ * Owner authentication is revalidated after the rate limit, after a paused
+ * request body and after Google network verification. A revoked/disabled
+ * session cannot receive a delayed owner binding or purchase result.
+ *
  * Neither result authorizes call credit. No D1 writes, token persistence,
  * Play acknowledgement/consume, or checkout are possible here. The router
  * never provides the test-only OAuth / Google request adapters.
@@ -65,14 +69,26 @@ export async function handleConfiguredJodloPlayVerification(
       return new Response(JSON.stringify({ok:false,error:{
         code:"RATE_LIMITED",message:"Play verification temporarily limited",
       }}),{status:429,headers:{...HEADERS,"Retry-After":"60"}});
+    // The limiter and request-body reader are asynchronous. Logout, account
+    // disable or expiry may have occurred since the first session read.
+    // Never begin a provider verification with a stale owner session.
+    if(await findSessionAccount(env.DB,bearer)!==owner)
+      return failure(401,"UNAUTHORIZED");
     if(request.method==="GET"){
       if(!(await hasEmptyBody(request)))return failure(400,"INVALID_QUERY");
       const accountBinding=await jodloPlayAccountBinding(owner);
       if(!accountBinding)return failure(503,"SERVICE_UNAVAILABLE");
+      // No account binding may leave the Worker after logout or disable.
+      if(await findSessionAccount(env.DB,bearer)!==owner)
+        return failure(401,"UNAUTHORIZED");
       return reply(200,true,{accountBinding,verificationOnly:true});
     }
     const purchaseToken=await readPlayPurchaseTokenBody(request);
     if(!purchaseToken)return failure(400,"INVALID_QUERY");
+    // A slow/paused POST upload is another revocation window. This check
+    // precedes OAuth and all Google network calls.
+    if(await findSessionAccount(env.DB,bearer)!==owner)
+      return failure(401,"UNAUTHORIZED");
     const accessToken=testOnly?.accessToken ??
       createPlayAndroidPublisherAccessTokenSource({
         email:env.PLAY_SERVICE_ACCOUNT_EMAIL,
@@ -84,6 +100,12 @@ export async function handleConfiguredJodloPlayVerification(
       request:testOnly?.playRequest,
       now:testOnly?.now,
     });
+    // Google V2 and void-history reads can take seconds. Recheck the SAME
+    // bearer against the SAME active owner before returning any screened
+    // purchase status; another device's logout-all must win this race.
+    // This is a read-only boundary, NOT entitlement settlement.
+    if(await findSessionAccount(env.DB,bearer)!==owner)
+      return failure(401,"UNAUTHORIZED");
     if(screened.kind==="unavailable"||screened.kind==="unconfigured")
       return failure(503,"SERVICE_UNAVAILABLE");
     if(screened.kind!=="screened_candidate")
