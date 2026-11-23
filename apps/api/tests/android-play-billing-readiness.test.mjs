@@ -10,7 +10,7 @@ const workflow = readFileSync(
 test("Play Billing is absent from default JODLO APK and only compiles with explicit opt-in",()=>{
   const gradle=readApp("build.gradle.kts");
   assert.match(gradle,/val playBillingEnabled = providers\.gradleProperty\("jodloEnablePlayBilling"\)\.orNull == "true"/);
-  assert.match(gradle,/if \(playBillingEnabled\) java\.srcDir\("src\/playBilling\/kotlin"\)/);
+  assert.match(gradle,/if \(playBillingEnabled\) \{\s*java\.srcDir\("src\/playBilling\/kotlin"\)/);\n  assert.match(gradle,/else \{\s*java\.srcDir\("src\/noPlay\/kotlin"\)/);
   assert.match(gradle,/if \(playBillingEnabled\) implementation\("com\.android\.billingclient:billing:9\.1\.0"\)/);
   assert.match(gradle,/buildConfigField\("boolean", "PLAY_BILLING_ENABLED", playBillingEnabled\.toString\(\)\)/);
   assert.doesNotMatch(gradle,/buildConfigField\("String", "PLAY_PRODUCT/);
@@ -216,7 +216,11 @@ test("manual Play restore has a separate default-off, non-release build gate",()
   assert.match(gradle,/val playRestoreEnabled = providers\.gradleProperty\("jodloEnablePlayRestore"\)\.orNull == "true"/);
   assert.match(gradle,/!playRestoreEnabled \|\| \(playBillingEnabled && !releaseCandidateRequested/);
   assert.match(gradle,/buildConfigField\("boolean", "PLAY_RESTORE_ENABLED", playRestoreEnabled\.toString\(\)\)/);
-  assert.doesNotMatch(workflow,/-PjodloEnablePlayRestore=true/);
+  // Synthetic QA compilation explicitly exercises the only visible restore
+  // screen, while a separate CI step proves it cannot ship in release.
+  assert.match(workflow,/Compile manual Play restore UI in isolated configured QA debug mode/);
+  assert.match(workflow,/-PjodloEnablePlayBilling=true -PjodloEnablePlayRestore=true/);
+  assert.match(workflow,/Reject restored purchase UI in release candidates even with credentials/);
   const app=readApp("src/main/java/com/rekixo/jodlo/MainActivity.kt");
   const screen=readApp("src/main/java/com/rekixo/jodlo/PrivatePlayMinuteAccountSection.kt");
   for(const source of [app,screen])assert.doesNotMatch(source,
@@ -273,4 +277,57 @@ test("explicit owner-bound manual restore reuses one Play connection, no grantin
     /fun autoRestoreOnStart/,
   ])assert.doesNotMatch(source,forbidden,
     "manual restore cannot change money, local credit, or start an automatic replay");
+});
+
+
+test("regular account screen links only one build-time Play diagnostic seam",()=>{
+  const account=readApp("src/main/java/com/rekixo/jodlo/PrivatePlayMinuteAccountSection.kt");
+  const stub=readApp("src/noPlay/kotlin/com/rekixo/jodlo/PlayRestoreAccountDiagnostic.kt");
+  const real=readApp("src/playBilling/kotlin/com/rekixo/jodlo/PlayRestoreAccountDiagnostic.kt");
+  const gradle=readApp("build.gradle.kts");
+  assert.match(account,/PlayRestoreAccountDiagnostic\(session,marker,current\.catalog,accountBusy\)/);
+  assert.match(account,/if \(marker != null\)/);
+  assert.match(gradle,/java\.srcDir\("src\/noPlay\/kotlin"\)/);
+  assert.match(gradle,/java\.srcDir\("src\/playBilling\/kotlin"\)/);
+  assert.match(stub,/@Composable\s+internal fun PlayRestoreAccountDiagnostic\(/);
+  assert.match(real,/@Composable\s+internal fun PlayRestoreAccountDiagnostic\(/);
+  assert.doesNotMatch(stub,/com\.android\.billingclient|BillingClient|queryPurchasesAsync/);
+  assert.doesNotMatch(account,/com\.android\.billingclient|BillingClient|queryPurchasesAsync/);
+  assert.match(real,/!BuildConfig\.DEBUG \|\| !BuildConfig\.PLAY_RESTORE_ENABLED/);
+  assert.match(real,/catalog\.purchasable \|\| catalog\.priceSource != "google_play"/);
+  assert.match(real,/catalog\.packs\.isEmpty\(\)/);
+  assert.match(real,/remember\(context,session,owner,catalog\)/);
+  assert.match(real,/DisposableEffect\(client\)/);
+  assert.match(real,/alive\.set\(false\)/);
+  assert.match(real,/client\.invalidateCheckoutForAccountChange\(\)/);
+  assert.match(real,/client\.close\(\)/);
+  assert.match(real,/client\.connect \{ ready ->/);
+  assert.match(real,/if \(!connectionHandled\.compareAndSet\(false,true\)\) return@connect/);
+  assert.match(real,/main\.postDelayed\(connectionTimeout,20_000L\)/);
+  assert.match(real,/selected !in approved/);
+  assert.match(real,/session\.accountPrivateReadMarker\(\) != owner/);
+  assert.match(real,/client\.inspectOneOwnedPlayPurchaseManually\(/);
+  assert.match(real,/JodloButton\(\s*onClick = ::reviewSelectedPack/);
+  assert.match(real,/ManualPlayRestoreStatus\.ScreenedPendingSettlement/);
+  for(const forbidden of [
+    /launchBillingFlow\s*\(/,
+    /acknowledgePurchase\s*\(/,
+    /consumeAsync\s*\(/,
+    /purchaseToken/,
+    /setObfuscatedAccountId/,
+    /priceInr|pricePaise|amountInr|Razorpay/,
+    /"₹[0-9]+"/,
+    /availableSeconds\s*\+\=/,
+    /Log\.|println\(|Timber\./,
+    /rememberSaveable|SharedPreferences|SavedStateHandle/,
+  ]) assert.doesNotMatch(real,forbidden,"restore UI cannot pay, log or retain receipts");
+  for(const locale of ["values","values-hi"]) {
+    const strings=readApp("src/main/res/"+locale+"/strings.xml");
+    for(const key of ["play_restore_qa_title","play_restore_qa_notice",
+      "play_restore_qa_action","play_restore_qa_checking","play_restore_qa_disabled",
+      "play_restore_qa_busy","play_restore_qa_actor_changed","play_restore_qa_unavailable",
+      "play_restore_qa_none","play_restore_qa_ambiguous",
+      "play_restore_qa_not_eligible","play_restore_qa_pending_settlement"])
+      assert.ok(strings.includes('name="'+key+'"'),"missing "+locale+" "+key);
+  }
 });
