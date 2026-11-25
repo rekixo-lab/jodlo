@@ -1123,7 +1123,8 @@ internal fun WorkerDashboard(
                                             loadOwnPage()
                                             message = if (confirmed) R.string.worker_area_saved else R.string.worker_area_failed
                                         }
-                                        if (servicePane == WorkerServicePane.DETAILS) WorkerServiceDetailsEditor(session, currentOwnRow.id, enabled = canWrite) { notice ->
+                                        if (servicePane == WorkerServicePane.DETAILS) WorkerServiceDetailsEditor(session, currentOwnRow.id, enabled = canWrite,
+                                            categoryId = currentOwnRow.categoryId, catalog = catalog) { notice ->
                                             loadOwnPage()
                                             message = notice
                                         }

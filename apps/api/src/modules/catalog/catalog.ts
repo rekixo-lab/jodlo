@@ -4,6 +4,7 @@ import { PUBLIC_LISTING_ELIGIBILITY } from "../workers/listings.ts";
 import { validServiceCity, type ServiceCity } from "../workers/service-area.ts";
 import { validCategoryId } from "../shared/identifiers.ts";
 import { ambiguousWorkCategoryIds, resolveConservativeWorkIntent } from "./intent-aliases.ts";
+import { APPROVED_SERVICE_HIERARCHY_SQL } from "./approved-services.ts";
 
 export type CatalogLanguage = "en" | "hi";
 export type PublicCategory = { id: string; slug: string; name: string };
@@ -270,9 +271,14 @@ export function parseCatalogSearch(params: URLSearchParams): CatalogSearchOption
  * locality, verification labels, exact GPS or seed content. All terms are bound.
  * instr() makes SQL LIKE % and _ literal, preventing wildcard amplification.
  */
-const MATCH_PUBLIC_CATEGORY_TERM =
-  "(instr(lower(name_en), lower(?)) > 0 " +
-  "OR instr(name_hi, ?) > 0 OR instr(slug, lower(?)) > 0)";
+function matchPublicCategoryTerm(alias:"categories"|"anchor"="categories"):string {
+  // A reviewed service name is a scoped search term for its Category. It is
+  // never copied from the historical archive or treated as Worker supply.
+  return "(instr(lower("+alias+".name_en),lower(?))>0 OR instr("+alias+".name_hi,?)>0 OR instr("+alias+".slug,lower(?))>0 " +
+    "OR EXISTS(SELECT 1 FROM catalog_services s WHERE s.category_id="+alias+".id AND s.is_active=1 AND "+
+    APPROVED_SERVICE_HIERARCHY_SQL+" AND (instr(lower(s.name_en),lower(?))>0 OR instr(s.name_hi,?)>0)))";
+}
+const MATCH_PUBLIC_CATEGORY_TERM=matchPublicCategoryTerm();
 
 /** One SQL statement must both validate a continuation anchor and fetch the
  * next public Category page. The earlier separate anchor SELECT permitted a
@@ -298,7 +304,7 @@ function currentAnchorSql(availableOnly:boolean,termCount:number,
   return "EXISTS (SELECT 1 FROM categories AS anchor " +
     "WHERE anchor.id=? AND anchor.sort_order=? AND anchor.is_active=1" +
     (termCount ? " AND " +
-      Array(termCount).fill(MATCH_PUBLIC_CATEGORY_TERM).join(" AND ") : "") +
+      Array(termCount).fill(matchPublicCategoryTerm("anchor")).join(" AND ") : "") +
     (availableOnly ? " AND " + eligibility : "") + ")";
 }
 const PUBLIC_CATEGORY_SORT_PAGE = " ORDER BY sort_order ASC, id ASC LIMIT ? OFFSET ?";
@@ -381,7 +387,7 @@ export async function searchPublicCategories(
     // Search, not a change to legacy offset pagination or choice confirmation.
     if(alias.kind==="ambiguous")return {categories:[],nextCursor:null};
     const terms=intent??[opts.query];
-    const values=terms.flatMap(term=>[term,term,term]);
+    const values=terms.flatMap(term=>[term,term,term,term,term]);
     // For continuation, the page SQL rechecks this source Category and all
     // search/availability terms atomically with the page itself.
     // Cursor mode cannot emit the legacy includeChoices response. When the
@@ -437,7 +443,7 @@ export async function searchPublicCategories(
       choices: choices.map(({id,slug,name})=>({id,slug,name})) };
   }
   const terms = intent ?? [opts.query];
-  const values = terms.flatMap(term => [term, term, term]);
+  const values = terms.flatMap(term => [term, term, term, term, term]);
   const sql = terms.length === 1
     ? (opts.availableOnly ? SEARCH_AVAILABLE_PUBLIC_CATEGORIES_QUERY : SEARCH_PUBLIC_CATEGORIES_QUERY)
     : searchQuery(terms.length, opts.availableOnly);

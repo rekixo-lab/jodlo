@@ -365,6 +365,130 @@ private fun manualPlayRestoreNeverConfusesReceiptScreeningWithCredits() {
     }
 }
 
+private fun settlementCapabilityCannotBeConfusedWithDiagnostics() {
+    val binding = "c".repeat(64)
+    val good = """{"ok":true,"data":{"accountBinding":"$binding","policyVersion":"jodlo-play-minutes-v1","settlementEnabled":true}}"""
+    var calls = 0
+    val repository = RemotePlaySettlementRepository(RequestSender { request ->
+        calls++
+        check(request.method == HttpMethod.GET && request.resource == "/api/v1/me/play-settle")
+        check(request.headers()["Authorization"] == "Bearer $testSession")
+        check(request.bodyUtf8() == null)
+        TransportReply(200, good)
+    })
+    val result = repository.capability(testSession)
+    check(result is ApiOutcome.Ok && result.value.accountBinding == binding &&
+        result.value.policyVersion == PLAY_MINUTE_POLICY_VERSION)
+    check(!result.toString().contains(binding))
+    check(calls == 1)
+    for (invalid in listOf(
+        good.replace("jodlo-play-minutes-v1", "unapproved-policy"),
+        good.replace("\"settlementEnabled\":true", "\"settlementEnabled\":false"),
+        good.replace("\"settlementEnabled\":true", "\"settlementEnabled\":true,\"price\":1"),
+        good.replace("\"settlementEnabled\":true", "\"settlementEnabled\":true,\"settlementEnabled\":true"),
+        good.replace(binding, "not-a-binding"),
+        """{"ok":true,"data":{"accountBinding":"$binding","verificationOnly":true}}""",
+    )) check(JodloReplyDecoder.playSettlementCapability(TransportReply(200, invalid)) ==
+        ApiOutcome.Failed(FailureKind.BAD_RESPONSE, false))
+}
+
+private fun settlementIsStrictOneShotAndDoesNotInventBalance() {
+    val proof = "synthetic.jodlo.settlement.receipt.123456"
+    val settled = """{"ok":true,"data":{"status":"settled","productId":"jodlo.minutes20","minutes":20}}"""
+    var calls = 0
+    val repo = RemotePlaySettlementRepository(RequestSender { request ->
+        calls++
+        check(request.method == HttpMethod.POST && request.resource == "/api/v1/me/play-settle")
+        check(request.bodyUtf8()!!.decodeToString() ==
+            """{"purchaseToken":"$proof","policyVersion":"jodlo-play-minutes-v1"}""")
+        check(!request.toString().contains(proof) && !request.resource.contains(proof))
+        TransportReply(200, settled)
+    })
+    check(repo.settle(testSession, proof, PLAY_MINUTE_POLICY_VERSION) ==
+        ApiOutcome.Ok(PlayPurchaseSettlement.Settled("jodlo.minutes20", 20)))
+    check(calls == 1)
+    check(runCatching { repo.settle(testSession, proof, "other-policy") }.isFailure)
+    check(runCatching { repo.settle(testSession, "token.with.\"injection", PLAY_MINUTE_POLICY_VERSION) }.isFailure)
+    check(calls == 1)
+    val statuses = mapOf(
+        "pending_reconciliation" to PlayPurchaseSettlement.PendingReconciliation,
+        "not_eligible" to PlayPurchaseSettlement.NotEligible,
+        "manual_review" to PlayPurchaseSettlement.ManualReview,
+    )
+    for ((status, expected) in statuses) {
+        check(JodloReplyDecoder.playPurchaseSettlement(TransportReply(200,
+            """{"ok":true,"data":{"status":"$status"}}""")) == ApiOutcome.Ok(expected))
+        check(JodloReplyDecoder.playPurchaseSettlement(TransportReply(200,
+            """{"ok":true,"data":{"status":"$status","minutes":20}}""")) ==
+            ApiOutcome.Failed(FailureKind.BAD_RESPONSE, false))
+    }
+    for (invalid in listOf(
+        settled.replace("\"minutes\":20", "\"minutes\":21"),
+        settled.replace("\"minutes\":20", "\"minutes\":\"20\""),
+        settled.replace("\"minutes\":20", "\"minutes\":20,\"balance\":20"),
+        settled.replace("\"minutes\":20", "\"minutes\":20,\"purchaseToken\":\"private\""),
+        settled.replace("\"minutes\":20", "\"minutes\":20,\"minutes\":20"),
+        settled.replace("\"minutes\":20", "\"minutes\":0"),
+        settled.replace("settled", "screened_pending_settlement"),
+        """{"ok":true,"data":{"status":"settled"}}""",
+    )) check(JodloReplyDecoder.playPurchaseSettlement(TransportReply(200, invalid)) ==
+        ApiOutcome.Failed(FailureKind.BAD_RESPONSE, false))
+    check(PlayPurchaseSettlement.Settled("jodlo.minutes20",20)
+        .matchesSelectedPack(PlayMinutePack("jodlo.minutes20",20)))
+    check(!PlayPurchaseSettlement.Settled("jodlo.minutes50",50)
+        .matchesSelectedPack(PlayMinutePack("jodlo.minutes20",20)))
+    for (code in listOf(401,404,429,503)) {
+        var attempts = 0
+        val failing = RemotePlaySettlementRepository(RequestSender {
+            attempts++
+            TransportReply(code, """{"ok":false,"error":{"code":"ERROR","message":"private"}}""")
+        })
+        check(failing.settle(testSession, proof, PLAY_MINUTE_POLICY_VERSION) is ApiOutcome.Failed)
+        check(attempts == 1)
+    }
+}
+
+private fun settlementInvalidatesOldBalanceAndFencesAccountChanges() {
+    val proof = "synthetic.jodlo.settlement.receipt.123456"
+    fun issued(token: String = testSession) = TransportReply(200,
+        """{"ok":true,"data":{"accessToken":"$token","tokenType":"Bearer","expiresInSeconds":3600}}""")
+    fun settled() = TransportReply(200,
+        """{"ok":true,"data":{"status":"settled","productId":"jodlo.minutes20","minutes":20}}""")
+    lateinit var session: InMemorySessionCoordinator
+    var attempts = 0
+    var replaceDuringPost = false
+    var loseReply = false
+    val sender = RequestSender { request ->
+        check(request.resource == "/api/v1/me/play-settle")
+        attempts++
+        check(session.accountPrivateReadMarker() == null) { "A mutating settlement invalidates old reads immediately" }
+        if (replaceDuringPost) session.acceptIssuedSession(issued("q".repeat(43)))
+        if (loseReply) throw java.io.IOException("synthetic network loss")
+        settled()
+    }
+    session = InMemorySessionCoordinator(RemoteWorkerRepository(sender), sender) { 0L }
+    session.acceptIssuedSession(issued())
+    val original = requireNotNull(session.accountPrivateReadMarker())
+    check(session.settleOwnedPlayPurchase(original, proof, PLAY_MINUTE_POLICY_VERSION) ==
+        SessionResult.Success(PlayPurchaseSettlement.Settled("jodlo.minutes20",20)))
+    check(session.accountPrivateReadMarker() == original.copy(writeRevision=original.writeRevision+1))
+    check(session.settleOwnedPlayPurchase(original, proof, PLAY_MINUTE_POLICY_VERSION) is SessionResult.Failed)
+    check(attempts == 1) { "Stale owner markers never replay a prior purchase" }
+    val beforeLoss = requireNotNull(session.accountPrivateReadMarker())
+    loseReply = true
+    check(session.settleOwnedPlayPurchase(beforeLoss, proof, PLAY_MINUTE_POLICY_VERSION) ==
+        SessionResult.Failed(SessionFailure.REMOTE_FAILURE, FailureKind.OFFLINE_OR_TIMEOUT))
+    check(session.accountPrivateReadMarker() == beforeLoss.copy(writeRevision=beforeLoss.writeRevision+1))
+    check(attempts == 2) { "A lost response is not retried" }
+    loseReply = false
+    replaceDuringPost = true
+    val beforeReplacement = requireNotNull(session.accountPrivateReadMarker())
+    check(session.settleOwnedPlayPurchase(beforeReplacement, proof, PLAY_MINUTE_POLICY_VERSION) ==
+        SessionResult.Failed(SessionFailure.REPLACED))
+    check(requireNotNull(session.accountPrivateReadMarker()).sessionGeneration != beforeReplacement.sessionGeneration)
+    check(attempts == 3)
+}
+
 fun main() {
     acceptsCanonicalCatalog()
     rejectsInventedPricesAndWrongPackMapping()
@@ -375,5 +499,8 @@ fun main() {
     playCheckoutOfferContractIsStrictAndHasNoLocallyInventedPrice()
     privateMinutesPreviewIsOwnerFencedAndRejectsPricesOrEntitlements()
     manualPlayRestoreNeverConfusesReceiptScreeningWithCredits()
+    settlementCapabilityCannotBeConfusedWithDiagnostics()
+    settlementIsStrictOneShotAndDoesNotInventBalance()
+    settlementInvalidatesOldBalanceAndFencesAccountChanges()
     println("JODLO Play catalog: authenticated, price-independent, strictly decoded, checkout disabled OK")
 }

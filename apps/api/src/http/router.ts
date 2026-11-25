@@ -1,8 +1,11 @@
 import { readOwnWorkerAvailability, setOwnWorkerAvailability } from "../modules/interactions/agora-private-safety-state.ts";
 import { handleConfiguredJodloPlayRtdn } from "../modules/interactions/google-play-pubsub-handler.ts";
 import { handleConfiguredJodloPlayVerification } from "../modules/interactions/google-play-verification-handler.ts";
+import {handleConfiguredJodloPlaySettlement} from "../modules/interactions/google-play-settlement-handler.ts";
+import {handleAgoraUsageWebhook,callUsageConfigured} from "../modules/interactions/agora-usage-webhook.ts";
+import {closeCallUsage} from "../modules/interactions/verified-call-usage.ts";
 import { priceIndependentPlayCatalog } from "../modules/interactions/play-minute-packs.ts";
-import { readOwnCallCreditSnapshot } from "../modules/interactions/private-call-credits.ts";
+import { readOwnCallCreditSnapshot,readOwnCallCreditBalance } from "../modules/interactions/private-call-credits.ts";
 import { issueOwnAgoraAudioGrant } from "../modules/interactions/private-agora-media.ts";
 import { validIdempotencyKey } from "../modules/shared/identifiers.ts";
 import { ownPrivateCallSignal, validCallAction } from "../modules/interactions/private-call-signaling.ts";
@@ -15,7 +18,10 @@ import type { Env } from "../data/d1.ts";
 import { validOpaqueId } from "../modules/shared/identifiers.ts";
 import { browsePublicCategories, parseCatalogBrowse, parseCatalogSearch, searchPublicCategories, parsePublicCategoryLabels, resolveApprovedCategoryLabels } from "../modules/catalog/catalog.ts";
 import { healthData } from "../modules/system/health.ts";
+import {handleOperations} from "../modules/system/operations.ts";
+import {equalOperatorSecret} from "../modules/shared/secret-auth.ts";
 import { parseHierarchy, readApprovedHierarchy } from "../modules/catalog/hierarchy.ts";
+import {parseApprovedServices,readApprovedServices} from "../modules/catalog/approved-services.ts";
 import { clearServicePhoto, ownServicePhoto, pendingServicePhotos, publicServicePhoto, reviewServicePhoto, servicePhotoForReview, submitServicePhoto, validServicePhoto } from "../modules/workers/service-photos.ts";
 import { clearOwnServiceDetails, parseServiceDetails, pendingServiceDetails, readOwnServiceDetails, reviewServiceDetails, submitOwnServiceDetails } from "../modules/workers/service-details.ts";
 import { appealServiceCase, decideServiceCase, ownReportStatus, ownServiceAppealCase, reportService, serviceCaseEvidence, serviceCaseQueue, validAppealReason, validCaseDecision, validReportReason } from "../modules/moderation/service-cases.ts";
@@ -65,10 +71,7 @@ function bearerToken(request: Request): string | null {
 
 /** Moderation key is a separate server-only credential, never a JODLO bearer. */
 function authorizedServiceModerator(token: string | null, key: string | undefined): boolean {
-  if (!key || !/^[a-f0-9]{64}$/.test(key) || !token || !/^[a-f0-9]{64}$/.test(token)) return false;
-  let difference = 0;
-  for (let i = 0; i < key.length; i++) difference |= key.charCodeAt(i) ^ token.charCodeAt(i);
-  return difference === 0;
+  return equalOperatorSecret(token,key);
 }
 
 function getOnly(request: Request): Response | null {
@@ -84,6 +87,14 @@ export async function handleRequest(
   verifyGoogle: typeof verifyGoogleIdToken = verifyGoogleIdToken,
 ): Promise<Response> {
   const url = new URL(request.url);
+  if(env.OPERATIONS_ENABLED === "1" && (url.pathname === "/api/v1/operations/readiness" ||
+    url.pathname === "/api/v1/operations/refund-reviews"))return handleOperations(request,env);
+  if(url.pathname === "/api/v1/agora/usage" && env.CALL_USAGE_ENABLED === "1"){
+    return handleAgoraUsageWebhook(request,env);
+  }
+  if(url.pathname === "/api/v1/me/play-settle" && env.PLAY_SETTLEMENT_ENABLED === "1"){
+    return handleConfiguredJodloPlaySettlement(request,env);
+  }
   if (url.pathname === "/api/v1/play/rtdn" && env.PLAY_RTDN_ENABLED === "1") {
     // Default OFF. Only Google-signed Pub/Sub push plus a second live
     // AndroidPublisher check can fence a purchase; this route never grants.
@@ -167,6 +178,14 @@ export async function handleRequest(
       return json({ok:false,error:{
         code:"SERVICE_UNAVAILABLE",message:"Catalog unavailable"}},503);
     }
+  }
+  if(url.pathname === "/api/v1/catalog/services"){
+    const methodError=getOnly(request);if(methodError)return methodError;
+    const options=parseApprovedServices(url.searchParams);
+    if(!options||!(await hasEmptyBody(request)))return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid service catalog query"}},400);
+    if(!env.DB)return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Catalog unavailable"}},503);
+    try{return json({ok:true,data:await readApprovedServices(env.DB,options)});}
+    catch{return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Catalog unavailable"}},503);}
   }
   if (url.pathname === "/api/v1/catalog/search") {
     const methodError = getOnly(request);
@@ -303,7 +322,9 @@ export async function handleRequest(
     }
     try {
       if (!env.DB || !env.AGORA_APP_CERTIFICATE) throw new Error("Missing media setup");
-      const grant = await issueOwnAgoraAudioGrant(env.DB, bearer, id, env.AGORA_APP_CERTIFICATE);
+      if(env.CALL_USAGE_ENABLED==="1"&&!callUsageConfigured(env))throw new Error("Missing usage setup");
+      const grant = await issueOwnAgoraAudioGrant(env.DB, bearer, id, env.AGORA_APP_CERTIFICATE,
+        Date.now(),env.CALL_USAGE_ENABLED==="1"?{approvalHash:env.CALL_USAGE_APPROVAL_SHA256!}:undefined);
       if (grant) return json({ok:true,data:grant});
       return json({ok:false,error:{code:"NOT_FOUND",message:"Call unavailable"}},404);
     } catch {
@@ -334,6 +355,12 @@ export async function handleRequest(
       const db = env.DB;
       if (!db) throw new Error("Missing call storage");
       if (starting && validIdempotencyKey(attemptKey)) {
+        if(env.CALL_USAGE_ENABLED==="1"){
+          if(!callUsageConfigured(env))throw new Error("Missing usage setup");
+          const balance=await readOwnCallCreditBalance(db,bearer);
+          if(!balance)return json({ok:false,error:{code:"UNAUTHORIZED",message:"Authentication required"}},401);
+          if(balance.availableSeconds<1)return json({ok:false,error:{code:"FORBIDDEN",message:"Call minutes unavailable"}},403);
+        }
         const {FCM_PROJECT_ID:projectId, FCM_SERVICE_ACCOUNT_EMAIL:email,
           FCM_SERVICE_ACCOUNT_PRIVATE_KEY:privateKey} = env;
         if (!projectId || !email || !privateKey || env.CALL_DEVICES_ENABLED !== "1") {
@@ -354,6 +381,8 @@ export async function handleRequest(
         }
       } else {
         const signal = await ownPrivateCallSignal(db, bearer, id, validCallAction(action) ? action : undefined);
+        if(signal&&env.CALL_USAGE_ENABLED==="1"&&["ended","cancelled","declined","missed"].includes(signal.phase))
+          await closeCallUsage(db,id);
         if (signal) return json({ok:true,data:signal});
       }
       return json({ok:false,error:{code:"NOT_FOUND",message:"Call unavailable"}},404);
@@ -554,7 +583,7 @@ export async function handleRequest(
     if (methodError) return methodError;
     const requestedVersion = url.searchParams.get("version");
     const version = url.pathname.endsWith("/data-export") && url.searchParams.size === 1 &&
-      (requestedVersion === "2" || requestedVersion === "3") ? Number(requestedVersion) : 1;
+      (requestedVersion === "2" || requestedVersion === "3" || requestedVersion === "4") ? Number(requestedVersion) : 1;
     if ((url.search && version === 1) || !(await hasEmptyBody(request))) {
       return json({ ok: false, error: { code: "INVALID_QUERY", message: "Unexpected input" } }, 400);
     }

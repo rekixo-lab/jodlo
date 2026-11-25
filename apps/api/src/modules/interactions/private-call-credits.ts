@@ -2,6 +2,7 @@ import type { D1Database } from "../../data/d1.ts";
 import { sessionHash, validSessionToken } from "../identity/sessions.ts";
 import { validOpaqueId } from "../shared/identifiers.ts";
 import {jodloPlayMinuteProductMap} from "./play-minute-packs.ts";
+import {refundReviewDemandSql} from "./play-refund-review.ts";
 
 /** No client or public API may call the TRUSTED MUTATION in this module.
  * The separate owner-bound D1 read may be used by a default-off, strictly
@@ -110,7 +111,10 @@ export async function readOwnCallCreditSnapshot(
   const ownerSessionHash=await sessionHash(bearer);
   const expiresAfter=Math.floor(nowMs/1000);
   const {results} = await db.prepare(
-    "SELECT COALESCE(b.available_seconds,0) AS availableSeconds, " +
+    "SELECT max(0,COALESCE(b.available_seconds,0)-COALESCE((" +
+    "SELECT SUM(u.reserved_seconds) FROM call_usage_sessions AS u " +
+    "WHERE u.caller_account_id=a.id AND u.state='active'),0)-" +
+    refundReviewDemandSql("a.id")+") AS availableSeconds, " +
     "COALESCE(b.revision,0) AS revision, " +
     "e.kind AS eventKind,e.seconds AS eventSeconds,e.created_at_ms AS occurredAtMs " +
     "FROM auth_sessions AS s " +

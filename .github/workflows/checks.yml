@@ -47,6 +47,8 @@ jobs:
         run: npm run android:device-tests
       - name: Node API and design-guard fixture tests
         run: npm test
+      - name: Verify local release schema and source readiness without manual evidence claims
+        run: node scripts/release-readiness.mjs --source-check
       - name: Apply catalog D1 migrations locally (no remote resources)
         run: npm run db:migrate:local
       - name: Bundle local D1 Worker (never deploy)

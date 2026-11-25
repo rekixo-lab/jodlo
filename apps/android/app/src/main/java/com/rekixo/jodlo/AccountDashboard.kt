@@ -63,6 +63,7 @@ internal fun AccountDashboard(
     openWorker: () -> Unit,
     openHome: () -> Unit,
     startAtCallSettings: Boolean = false,
+    startAtMinutePacks: Boolean = false,
 ) {
     val scope = rememberCoroutineScope()
     var login by remember(session) {
@@ -75,8 +76,12 @@ internal fun AccountDashboard(
     }
     var busy by remember(session) { mutableStateOf(false) }
     var notice by remember(session) { mutableStateOf(0) }
-    var pane by remember(session, startAtCallSettings) {
-        mutableStateOf(if (startAtCallSettings) AccountPane.CALLS else AccountPane.OVERVIEW)
+    var pane by remember(session, startAtCallSettings, startAtMinutePacks) {
+        mutableStateOf(when {
+            startAtMinutePacks -> AccountPane.PURCHASE_STATUS
+            startAtCallSettings -> AccountPane.CALLS
+            else -> AccountPane.OVERVIEW
+        })
     }
     var signOutReview by remember(session) { mutableStateOf<AccountPrivateReadMarker?>(null) }
     var erasureReview by remember(session) { mutableStateOf<AccountPrivateReadMarker?>(null) }
@@ -211,7 +216,7 @@ internal fun AccountDashboard(
         exportMarker = null
         scope.launch {
             val result = try {
-                withContext(Dispatchers.IO) { session.accountDataExport(version = 3) }
+                withContext(Dispatchers.IO) { session.accountDataExport(version = 4) }
             } catch (_: Exception) { null }
             val current = session.accountPrivateReadMarker()
             login = session.snapshot()
@@ -406,7 +411,8 @@ internal fun AccountDashboard(
                 AccountPane.BLOCKED -> ContactBlockList(session, busy)
                 AccountPane.HISTORY -> CallHistorySection(session, busy)
                 AccountPane.BILLING -> {
-                    Text(stringResource(R.string.navigation_billing_off))
+                    Text(stringResource(if (BuildConfig.PLAY_CHECKOUT_ENABLED)
+                        R.string.play_purchase_intro else R.string.navigation_billing_off))
                     JodloTextAction(onClick = { pane = AccountPane.PURCHASE_STATUS },
                         modifier = Modifier.fillMaxWidth(), enabled = !busy) {
                         Text(stringResource(R.string.navigation_purchase_status))

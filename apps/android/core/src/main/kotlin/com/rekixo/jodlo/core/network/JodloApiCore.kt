@@ -77,6 +77,15 @@ object JodloRoutes {
     internal fun requireListingId(id: String) =
         require(LISTING.matches(id)) { "Invalid opaque Listing ID" }
 
+    fun catalogServiceSuggestions(categoryId: String, language: Language, limit: Int = 25,
+        after: String? = null): ApiCall {
+        requireCategoryId(categoryId)
+        require(limit in 1..25)
+        require(after == null || validApprovedServiceId(after))
+        return ApiCall.get("/api/v1/catalog/services?categoryId=${enc(categoryId)}&lang=${language.code}&limit=$limit" +
+            (after?.let { "&after=${enc(it)}" } ?: ""))
+    }
+
     fun browse(lang: Language, availableOnly: Boolean = false,
                limit: Int? = null, after: String? = null,
                city: NearbyPilotCity? = null): ApiCall {
@@ -373,6 +382,19 @@ object JodloRoutes {
             """{"purchaseToken":"$purchaseToken"}""")
     }
 
+    /** Independent, default-OFF configured capability for real settlement. */
+    fun playSettlementCapability(token: String): ApiCall =
+        ApiCall.getOwned("/api/v1/me/play-settle", token)
+
+    fun settlePlayPurchase(token: String, purchaseToken: String, policyVersion: String): ApiCall {
+        require(Regex("^[A-Za-z0-9._~+/=-]{20,4096}$").matches(purchaseToken)) {
+            "Invalid Google Play purchase proof"
+        }
+        require(policyVersion == PLAY_MINUTE_POLICY_VERSION) { "Unsupported Play purchase policy" }
+        return ApiCall.post("/api/v1/me/play-settle", token,
+            """{"purchaseToken":"$purchaseToken","policyVersion":"$policyVersion"}""")
+    }
+
     /** Authenticated, default-off Play pack preview. No checkout or price;
      * all localized prices are owned by Google Play's ProductDetails. */
     fun playMinutePacks(token: String): ApiCall =
@@ -443,7 +465,7 @@ object JodloRoutes {
      * The API response is private, and no export is fetched before a user action.
      */
     fun accountDataExport(token: String, version: Int = 1): ApiCall {
-        require(version in 1..3)
+        require(version in 1..4)
         return ApiCall.getOwned("/api/v1/me/data-export" + if (version > 1) "?version=$version" else "", token)
     }
 

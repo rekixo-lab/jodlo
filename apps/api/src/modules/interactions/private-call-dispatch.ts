@@ -35,7 +35,11 @@ WHERE i.id=? AND i.receiver_account_id=? AND i.created_at_ms<=? AND i.ring_deadl
 ON CONFLICT(receiver_account_id) DO UPDATE SET
   invitation_id=excluded.invitation_id, expires_at_ms=excluded.expires_at_ms,
   caller_session_hash=excluded.caller_session_hash
-WHERE private_call_dispatch_slots.expires_at_ms<=?
+WHERE private_call_dispatch_slots.expires_at_ms<=? OR EXISTS (
+  SELECT 1 FROM private_call_invitations AS terminal
+  WHERE terminal.id=private_call_dispatch_slots.invitation_id
+    AND terminal.phase IN ('declined','cancelled','ended')
+)
 RETURNING invitation_id AS invitationId,expires_at_ms AS ringDeadlineMs
 `;
 
@@ -43,7 +47,9 @@ type DispatchSlot = Readonly<{invitationId: string; ringDeadlineMs: number}>;
 
 /** Internal claim. reachableReceiverId must come from an authenticated provider
  * presence check. Neither the request body nor the availability preference is
- * a source of reachability. The claim reserves an unsent slot only.
+ * a source of reachability. The claim reserves an unsent slot only. A confirmed
+ * terminal invitation may yield its receiver slot immediately; a ringing,
+ * accepted or uncertain-delivery attempt cannot be replaced before expiry.
  */
 export async function claimPrivateCallDispatch(
   db: D1Database, callerBearer: string, invitationId: string,

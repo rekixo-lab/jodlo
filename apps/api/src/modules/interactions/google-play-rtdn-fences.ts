@@ -119,20 +119,30 @@ export type TrustedPlayRevocation = Readonly<{
  */
 export async function recordTrustedPlayRevocation(
   db: D1Database, notification: TrustedPlayRevocation,
+  ownerSession?: Readonly<{accountId: string; sessionHash: string}>,
 ): Promise<"applied" | "replay" | "denied"> {
   if (!notification || typeof notification.sourceKeyHash !== "string" ||
       !/^[0-9a-f]{64}$/.test(notification.sourceKeyHash) ||
       (notification.reason !== "one_time_canceled" &&
        notification.reason !== "voided_purchase") ||
       !Number.isSafeInteger(notification.recordedAtMs) ||
-      notification.recordedAtMs <= 0)
+      notification.recordedAtMs <= 0 || (ownerSession !== undefined &&
+        (!/^[A-Za-z0-9_-]{8,128}$/.test(ownerSession.accountId) ||
+         !/^[a-f0-9]{64}$/.test(ownerSession.sessionHash))))
     return "denied";
   const { results } = await db.prepare(
     "INSERT INTO play_revocation_fences(source_key_hash,reason,recorded_at_ms) " +
-    "VALUES (?,?,?) ON CONFLICT(source_key_hash) DO NOTHING RETURNING source_key_hash",
-  ).bind(notification.sourceKeyHash,notification.reason,notification.recordedAtMs)
+    (ownerSession ? "SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM play_consume_outbox AS o " +
+      "JOIN accounts AS a ON a.id=o.account_id AND a.status='active' " +
+      "JOIN auth_sessions AS s ON s.account_id=a.id AND s.token_hash=? AND s.expires_at>unixepoch() " +
+      "WHERE o.account_id=? AND o.source_key_hash=?) " : "VALUES (?,?,?) ") +
+    "ON CONFLICT(source_key_hash) DO NOTHING RETURNING source_key_hash",
+  ).bind(notification.sourceKeyHash,notification.reason,notification.recordedAtMs,
+    ...(ownerSession ? [ownerSession.sessionHash, ownerSession.accountId, notification.sourceKeyHash] : []))
     .all<{source_key_hash:string}>();
-  return results.length === 1 ? "applied" : "replay";
+  if (results.length === 1) return "applied";
+  if (ownerSession && !await isPlayPurchaseRevoked(db, notification.sourceKeyHash)) return "denied";
+  return "replay";
 }
 
 /** Private operational visibility only, not a public HTTP route. Even a

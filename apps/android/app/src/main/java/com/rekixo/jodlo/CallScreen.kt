@@ -53,6 +53,7 @@ import com.rekixo.jodlo.core.network.Language
 import com.rekixo.jodlo.core.network.NearbyPilotCity
 import com.rekixo.jodlo.core.network.InMemorySessionCoordinator
 import com.rekixo.jodlo.core.network.SessionResult
+import com.rekixo.jodlo.core.network.FailureKind
 import com.rekixo.jodlo.ui.theme.JodloButton
 import com.rekixo.jodlo.ui.theme.JodloAppBar
 import com.rekixo.jodlo.ui.theme.JodloPalette
@@ -110,6 +111,7 @@ internal fun CallScreen(
     activity: ComponentActivity,
     request: CallScreenRequest,
     session: InMemorySessionCoordinator,
+    openMinuteAccount: (() -> Unit)? = null,
     close: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -144,6 +146,7 @@ internal fun CallScreen(
     // A lost POST response is NOT proof an invitation or termination failed.
     // Keep the original idempotency key; never auto-repeat a mutation.
     var dialUncertain by remember(request) { mutableStateOf(false) }
+    var admissionBlocked by remember(request) { mutableStateOf(false) }
     // ACCEPT may commit on the server even if the HTTP response is lost.
     // Do not start RTC, silently retry ACCEPT, or claim it was rejected.
     var acceptUncertain by remember(request) { mutableStateOf(false) }
@@ -397,6 +400,7 @@ internal fun CallScreen(
         if (busy || invitationId != null) return
         busy = true
         error = null
+        admissionBlocked = false
         scope.launch {
             try {
                 // On an uncertain first response, retry uses the SAME key.
@@ -411,6 +415,13 @@ internal fun CallScreen(
                     dialUncertain = false
                     setRingDeadline(result.value.ringDeadlineMs)
                     invitationId = result.value.id
+                } else if (result is SessionResult.Failed && result.networkKind == FailureKind.FORBIDDEN) {
+                    // A definite admission refusal differs from a lost POST.
+                    // The shared error code also covers availability/safety;
+                    // never claim insufficient funds is the only cause.
+                    dialUncertain = false
+                    admissionBlocked = true
+                    error = R.string.call_admission_help
                 } else {
                     dialUncertain = true
                     error = R.string.call_dial_unconfirmed
@@ -680,6 +691,17 @@ internal fun CallScreen(
                         JodloTextAction(onClick = { reviewLocalClose = true },
                             modifier = Modifier.fillMaxWidth(), enabled = !busy) {
                             Text(stringResource(R.string.call_close_local))
+                        }
+                    }
+                    admissionBlocked && invitationId == null -> {
+                        if (openMinuteAccount != null) JodloButton(onClick = {
+                            audio.close()
+                            openMinuteAccount()
+                        }, modifier = Modifier.fillMaxWidth(), enabled = !busy) {
+                            Text(stringResource(R.string.call_open_minute_account))
+                        }
+                        JodloTextAction(onClick = close, modifier = Modifier.fillMaxWidth()) {
+                            Text(stringResource(R.string.call_close))
                         }
                     }
                     dialUncertain && invitationId == null -> {

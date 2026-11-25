@@ -68,7 +68,9 @@ test("Actual data controls are described without pretending legal approvals or d
   assert.match(html, /Export and sign-out do not erase account data/);
   assert.match(html, /साइन-आउट से डेटा नहीं मिटता/);
   assert.match(html, /not a final Privacy Policy/);
-  assert.match(html, /staffed support contact are not yet implemented or approved/);
+  assert.match(html, /staffed support contact and final legal policies still require owner approval/);
+  assert.match(html, /The app implements D1 account erasure, service reports, appeals and contact controls/);
+  assert.match(html, /submit a photo for review/);
   assert.match(html, /no identity, location or support-submission form/);
   assert.match(html, /Bilaspur|nearby Worker matching/);
 });

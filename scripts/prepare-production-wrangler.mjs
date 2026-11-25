@@ -15,6 +15,7 @@
 import { readFile, open, rename } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {applyOperationalSettings,verifyOperationalFields,productionOperationsTemplate} from "./production-operations.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const generatedPath = join(root, "apps/api/wrangler.production.generated.jsonc");
@@ -23,6 +24,7 @@ const localOnlyD1 = "00000000-0000-0000-0000-000000000001";
 const allowedKeys = [
   "name", "main", "compatibility_date", "workers_dev", "send_metrics",
   "account_id", "d1_databases", "ratelimits", "preview_urls",
+  "vars", "triggers", "observability",
 ];
 
 function requireAccountId(value) {
@@ -122,7 +124,7 @@ export function verifyProductionConfig(config) {
       db.migrations_dir !== "../../infra/migrations")
     throw new Error("Wrong D1 binding/migration path: refuse");
   const databaseId = requireD1Id(db.database_id);
-  if (!Array.isArray(config.ratelimits) || config.ratelimits.length !== 2)
+  if (!Array.isArray(config.ratelimits) || config.ratelimits.length < 2 || config.ratelimits.length > 7)
     throw new Error("Both login guards are mandatory");
   for (const [index, expected] of [
     {name:"LOGIN_BURST_LIMITER", limit:100, period:10},
@@ -139,6 +141,7 @@ export function verifyProductionConfig(config) {
   }
   if (config.ratelimits[0].namespace_id === config.ratelimits[1].namespace_id)
     throw new Error("Shared rate namespaces are forbidden for distinct login guards");
+  verifyOperationalFields(config);
   return { accountId, databaseId };
 }
 
@@ -160,7 +163,7 @@ async function readBaseline() {
   return JSON.parse(text.replace(/^\s*\/\/[^\n]*$/gm, ""));
 }
 
-export async function main(mode, env = process.env) {
+export async function main(mode, env = process.env, settingsPath=undefined) {
   if (mode === "--write") {
     const config = buildProductionConfig(env, await readBaseline());
     verifyProductionConfig(config);
@@ -169,6 +172,20 @@ export async function main(mode, env = process.env) {
     try { await file.writeFile(JSON.stringify(config, null, 2) + "\n", "utf8"); }
     finally { await file.close(); }
     process.stdout.write("Real-ID production config written to gitignored apps/api/wrangler.production.generated.jsonc. NO Cloudflare requests or deployment.\n");
+  } else if (mode === "--operations-template") {
+    process.stdout.write(JSON.stringify(productionOperationsTemplate(),null,2)+"\n");
+  } else if (mode === "--configure") {
+    if(typeof settingsPath!=="string"||!settingsPath)throw Error("A local operational settings JSON file is required");
+    const old=JSON.parse(await readFile(generatedPath,"utf8"));
+    verifyProductionConfig(old);
+    const settingsText=await readFile(resolve(settingsPath),"utf8");
+    if(Buffer.byteLength(settingsText)>65536)throw Error("Operational settings file too large");
+    const configured=applyOperationalSettings(old,JSON.parse(settingsText));
+    verifyProductionConfig(configured);
+    const next=generatedPath+".next",file=await open(next,"wx",0o600);
+    try{await file.writeFile(JSON.stringify(configured,null,2)+"\n","utf8");}finally{await file.close();}
+    await rename(next,generatedPath);
+    process.stdout.write("Operator-supplied features, limiters, schedules and sampled logs configured LOCALLY. Rebuild the domain config before release. No provider call or activation occurred.\n");
   } else if (mode === "--harden") {
     const old = JSON.parse(await readFile(generatedPath, "utf8"));
     const hardened = hardenProductionConfig(old);
@@ -194,14 +211,14 @@ export async function main(mode, env = process.env) {
       throw new Error("Generated production config points to a DIFFERENT D1 database");
     process.stdout.write("Production config shape validated (not a provider connection/backup/deployment).\n");
   } else {
-    throw new Error("Use --write (real IDs), --harden (existing file) or --check");
+    throw new Error("Use --write, --harden, --check, --operations-template or --configure SETTINGS.json");
   }
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  main(process.argv[2]).catch(error => {
+  main(process.argv[2],process.env,process.argv[3]).catch(error => {
     // No input environment values or token data are printed.
-    process.stderr.write("JODLO production preflight: " + error.message + "\n");
+    process.stderr.write("JODLO production preflight: " + (error instanceof SyntaxError?"Invalid local JSON configuration":error.message) + "\n");
     process.exitCode = 1;
   });
 }

@@ -57,6 +57,7 @@ class InMemorySessionCoordinator(
     private var writesOnWire: Int = 0
     private val googleBackend = BackendGoogleSessionExchange(authSender)
     private val playVerification = RemotePlayVerificationRepository(authSender)
+    private val playSettlement = RemotePlaySettlementRepository(authSender)
 
     /** Non-secret optional contract capability, not an authorization check.
      * Legacy WorkerRepository fakes cannot run the paged diagnostic, so a
@@ -625,6 +626,31 @@ class InMemorySessionCoordinator(
         call = { token -> playVerification.verify(token,purchaseToken) },
         update = { reply, _ -> outcome(reply) },
         expectedOwner = owner, consistentRead = true, cancellation = cancellation,
+    )
+
+    /** Fetch immediately before a user-triggered checkout/recovery. The
+     * diagnostic /play-verify endpoint never authorizes this operation. */
+    fun playSettlementCapability(
+        owner: AccountPrivateReadMarker,
+        cancellation: CancellationSignal? = null,
+    ): SessionResult<PlaySettlementCapability> = withSession(
+        call = { token -> playSettlement.capability(token) },
+        update = { reply, _ -> outcome(reply) },
+        expectedOwner = owner, consistentRead = true, cancellation = cancellation,
+    )
+
+    /** A real server mutation: invalidates all prior private balance snapshots
+     * even if the response is lost. Never retry automatically. A new owner
+     * marker must be obtained before refreshing the authoritative balance. */
+    fun settleOwnedPlayPurchase(
+        owner: AccountPrivateReadMarker,
+        purchaseToken: String,
+        policyVersion: String,
+        cancellation: CancellationSignal? = null,
+    ): SessionResult<PlayPurchaseSettlement> = withSession(
+        call = { token -> playSettlement.settle(token, purchaseToken, policyVersion) },
+        update = { reply, _ -> outcome(reply) },
+        expectedOwner = owner, mutation = true, cancellation = cancellation,
     )
 
     /** Account-bound read of canonical Play packs and internal D1 call seconds.
