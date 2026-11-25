@@ -94,12 +94,17 @@ const SERVICE_DETAILS_JSON =
 const ONE_STRING_FIELD_JSON =
   /^\s*\{\s*"(?:[^"\\\x00-\x1f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"\s*:\s*"(?:[^"\\\x00-\x1f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"\s*\}\s*$/;
 
+/** Both wire orders are accepted; duplicates, aliases, nested values and
+ * client-selected owners/SKUs/amounts are rejected before JSON.parse. */
+const PLAY_SETTLEMENT_JSON =
+  /^\s*\{\s*(?:"purchaseToken"\s*:\s*"[A-Za-z0-9._~+/=-]{20,4096}"\s*,\s*"policyVersion"\s*:\s*"[A-Za-z0-9._-]{1,64}"|"policyVersion"\s*:\s*"[A-Za-z0-9._-]{1,64}"\s*,\s*"purchaseToken"\s*:\s*"[A-Za-z0-9._~+/=-]{20,4096}")\s*\}\s*$/;
+
 /** Bounded JSON parser reused by both authentication and service publication.
  * Rejects streaming overflow regardless of Content-Length. No logging payloads.
  * A malicious/unproductive source cannot accumulate unlimited empty chunks.
  */
 async function readBoundedObject(request: Request, maxBytes: number,
-  format: "single" | "edit-category" | "edit-versioned" | "resume-own" | "publication-revision" | "account-erasure" | "service-details" = "single"):
+  format: "single" | "edit-category" | "edit-versioned" | "resume-own" | "publication-revision" | "account-erasure" | "service-details" | "play-settlement" = "single"):
   Promise<Record<string, unknown> | null> {
   const type = request.headers.get("Content-Type") ?? "";
   if (!/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(type)) return null;
@@ -134,7 +139,9 @@ async function readBoundedObject(request: Request, maxBytes: number,
     let pos = 0;
     for (const c of chunks) { joined.set(c, pos); pos += c.byteLength; }
     const source = new TextDecoder("utf-8", { fatal: true }).decode(joined);
-    if (!(format === "single"
+    if (!(format === "play-settlement"
+      ? PLAY_SETTLEMENT_JSON.test(source)
+      : format === "single"
       ? ONE_STRING_FIELD_JSON.test(source)
       : format === "edit-category"
         ? EDIT_CATEGORY_JSON.test(source)
@@ -171,6 +178,15 @@ export async function readPlayPurchaseTokenBody(request: Request): Promise<strin
   if (!obj || Object.keys(obj).length !== 1 ||
       !validJodloPlayPurchaseToken(obj.purchaseToken)) return null;
   return obj.purchaseToken;
+}
+
+export async function readPlaySettlementBody(request: Request): Promise<
+  {purchaseToken: string; policyVersion: string} | null
+> {
+  const obj = await readBoundedObject(request, 4608, "play-settlement");
+  return obj && validJodloPlayPurchaseToken(obj.purchaseToken) &&
+    typeof obj.policyVersion === "string"
+    ? {purchaseToken: obj.purchaseToken, policyVersion: obj.policyVersion} : null;
 }
 
 export async function readGoogleLoginBody(request: Request): Promise<string | null> {

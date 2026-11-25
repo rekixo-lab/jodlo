@@ -14,6 +14,7 @@ private fun requireRejected(label: String, call: () -> Unit) =
     check(runCatching(call).isFailure) { "Expected rejection: $label" }
 
 fun main() {
+    verifyApprovedServiceSuggestions()
     // Entire private owner list is filtered in memory, not on the server.
     // A "visible" row is only the LAST OWNER projection, not a fresh public fact.
     val loaded=listOf(
@@ -1173,4 +1174,43 @@ fun main() {
         WorkerCustomerServicePreviewPhase.NOT_PUBLIC_WHEN_CHECKED)
 
     println("JODLO repositories: typed browse/search, explicit worker publishing, mismatched response rejection and no auto-retry and public Listing pagination OK")
+}
+
+private fun verifyApprovedServiceSuggestions() {
+    val response = """{"categoryId":"plumber","language":"hi","items":[{"id":"jodlo_s_01","name":"नल की मरम्मत"},{"id":"jodlo_s_02","name":"पाइप लगाना"}],"nextCursor":"jodlo_s_02"}"""
+    var attempts = 0
+    val repository = RemoteCatalogRepository(RequestSender { call ->
+        attempts++
+        check(call.method == HttpMethod.GET && call.headers()["Authorization"] == null)
+        check(call.resource == "/api/v1/catalog/services?categoryId=plumber&lang=hi&limit=2")
+        ok(response)
+    })
+    val result = repository.serviceSuggestions("plumber", Language.HI, 2)
+    check(result is ApiOutcome.Ok && result.value.items.size == 2 && result.value.nextCursor == "jodlo_s_02")
+    check(attempts == 1)
+    for (invalid in listOf(
+        response.replace("\"categoryId\":\"plumber\"", "\"categoryId\":\"carpenter\""),
+        response.replace("\"language\":\"hi\"", "\"language\":\"en\""),
+        response.replace("jodlo_s_01", "jodlo_s_02"),
+        response.replace("\"nextCursor\":\"jodlo_s_02\"", "\"nextCursor\":\"jodlo_s_03\""),
+        response.replace("\"name\":\"पाइप लगाना\"", "\"name\":\"पाइप लगाना\",\"workerCount\":50"),
+        response.replace("नल की मरम्मत", "x".repeat(121)),
+        response.replace("\"items\":", "\"accountId\":\"private\",\"items\":"),
+    )) {
+        val unsafe = RemoteCatalogRepository(RequestSender { ok(invalid) })
+        check(unsafe.serviceSuggestions("plumber",Language.HI,2) == bad())
+    }
+    val anchor = "jodlo_s_01"
+    val next = RemoteCatalogRepository(RequestSender { call ->
+        check(call.resource.endsWith("&after=$anchor"))
+        ok("""{"categoryId":"plumber","language":"en","items":[{"id":"jodlo_s_02","name":"Pipe repair"}],"nextCursor":null}""")
+    })
+    check(next.serviceSuggestions("plumber",Language.EN,25,anchor) is ApiOutcome.Ok)
+    val backward = RemoteCatalogRepository(RequestSender {
+        ok("""{"categoryId":"plumber","language":"en","items":[{"id":"$anchor","name":"Pipe repair"}],"nextCursor":null}""")
+    })
+    check(backward.serviceSuggestions("plumber",Language.EN,25,anchor) == bad())
+    check(runCatching { JodloRoutes.catalogServiceSuggestions("../private",Language.EN) }.isFailure)
+    check(runCatching { JodloRoutes.catalogServiceSuggestions("plumber",Language.EN,26) }.isFailure)
+    check(runCatching { JodloRoutes.catalogServiceSuggestions("plumber",Language.EN,25,"unapproved") }.isFailure)
 }

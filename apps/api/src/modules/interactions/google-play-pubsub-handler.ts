@@ -4,6 +4,7 @@ import { reconcileAuthenticatedJodloPlayRevocation } from "./google-play-rtdn-re
 import { createPlayAndroidPublisherAccessTokenSource } from
   "./google-play-androidpublisher-oauth.ts";
 import type { JWTVerifyGetKey } from "jose";
+import { configuredPlayRefundPolicy } from "./play-refund-review.ts";
 
 /**
  * Default-OFF, narrowly scoped RTDN push ingress. This endpoint CANNOT
@@ -41,6 +42,8 @@ export async function handleConfiguredJodloPlayRtdn(
     return unavailable();
 
   try {
+    const refundPolicy = configuredPlayRefundPolicy(env);
+    if (env.PLAY_REFUND_HOLDS_ENABLED === "1" && !refundPolicy) return unavailable();
     const policy = {
       audience:env.PLAY_RTDN_AUDIENCE,
       email:env.PLAY_RTDN_PUSH_EMAIL,
@@ -70,6 +73,7 @@ export async function handleConfiguredJodloPlayRtdn(
         accessToken,
         request:testOnly?.playRequest,
         now:()=>testOnly?.nowMs ?? Date.now(),
+        ...(refundPolicy ? {refundPolicy} : {}),
       });
     if (result === "applied" || result === "replay")
       return new Response(null,{status:204,headers:{"Cache-Control":"no-store"}});

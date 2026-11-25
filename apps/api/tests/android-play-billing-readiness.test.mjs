@@ -107,12 +107,16 @@ test("Play proof handoff is strictly owner-bound, one-shot, redacted and never s
 });
 
 
-test("debug-only Android checkout is gated and cannot be bundled into an approved release",()=>{
+test("Android checkout requires explicit configured settlement policy and remains absent from default builds",()=>{
   const gradle=readApp("build.gradle.kts");
   assert.match(gradle,/val playCheckoutEnabled = providers\.gradleProperty\("jodloEnablePlayCheckout"\)\.orNull == "true"/);
-  assert.match(gradle,/!playCheckoutEnabled \|\| \(playBillingEnabled && !releaseCandidateRequested/);
+  assert.match(gradle,/!playCheckoutEnabled \|\| \(playBillingEnabled &&/);
+  assert.match(gradle,/playPolicyVersion == "jodlo-play-minutes-v1"/);
+  assert.match(gradle,/apiOrigin\.isNotBlank\(\) && googleWebClientId\.isNotBlank\(\)/);
   assert.match(gradle,/buildConfigField\("boolean", "PLAY_CHECKOUT_ENABLED", playCheckoutEnabled\.toString\(\)\)/);
-  assert.doesNotMatch(workflow,/-PjodloEnablePlayCheckout=true/);
+  // Native CI may now compile opt-in checkout with synthetic settings. The
+  // compiled feature still requires authenticated server capability before
+  // a real Google purchase, and no CI step signs/publishes the artifact.
   // The standard app never imports, invokes or exposes the opt-in engine.
   const app=readApp("src/main/java/com/rekixo/jodlo/MainActivity.kt");
   assert.doesNotMatch(app,/JodloPlayCheckoutController|prepareAndLaunchOwnerBoundCheckout/);
@@ -171,7 +175,7 @@ test("pure checkout review is defined once in Kotlin Core and rejects changed Go
 });
 
 
-test("private account minute dashboard is owner-fenced and has no hardcoded money or checkout",()=>{
+test("private minute dashboard keeps owner-safe refresh and delegates configured checkout without local credit",()=>{
   const dashboard=readApp("src/main/java/com/rekixo/jodlo/AccountDashboard.kt");
   const screen=readApp("src/main/java/com/rekixo/jodlo/PrivatePlayMinuteAccountSection.kt");
   const session=readFileSync(
@@ -180,7 +184,10 @@ test("private account minute dashboard is owner-fenced and has no hardcoded mone
     new URL("../../android/core/src/main/kotlin/com/rekixo/jodlo/core/network/JodloReplyDecoder.kt",import.meta.url),"utf8");
   assert.match(dashboard,/AccountPane\.PURCHASE_STATUS -> \{\s*PrivatePlayMinuteAccountSection\(session, busy\)/);
   assert.match(screen,/session\.accountPrivateReadMarker\(\)/);
-  assert.match(screen,/remember\(session,marker\)/);
+  assert.match(screen,/accountGeneration = session\.accountExportSessionMarker\(\)/);
+  assert.match(screen,/remember\(session,accountGeneration\)/);
+  assert.match(screen,/snapshot\?\.forCurrent\(marker\)/);
+  assert.match(screen,/PlayMinutePurchaseSection\(/);
   assert.match(screen,/session\.playAccountOverview\(owner\)/);
   assert.match(screen,/PrivatePlayMinuteAccountSnapshot\.confirmed\(owner,now,result\)/);
   assert.match(screen,/snapshot = null/);
@@ -212,16 +219,17 @@ test("private account minute dashboard is owner-fenced and has no hardcoded mone
 });
 
 
-test("manual Play restore has a separate default-off, non-release build gate",()=>{
+test("manual Play restore is default OFF and configured release recovery requires the checkout policy",()=>{
   const gradle=readApp("build.gradle.kts");
   assert.match(gradle,/val playRestoreEnabled = providers\.gradleProperty\("jodloEnablePlayRestore"\)\.orNull == "true"/);
-  assert.match(gradle,/!playRestoreEnabled \|\| \(playBillingEnabled && !releaseCandidateRequested/);
+  assert.match(gradle,/!playRestoreEnabled \|\| \(playBillingEnabled &&/);
+  assert.match(gradle,/!releaseCandidateRequested \|\| \(playCheckoutEnabled && playPolicyVersion == "jodlo-play-minutes-v1"\)/);
   assert.match(gradle,/buildConfigField\("boolean", "PLAY_RESTORE_ENABLED", playRestoreEnabled\.toString\(\)\)/);
   // Synthetic QA compilation explicitly exercises the only visible restore
   // screen, while a separate CI step proves it cannot ship in release.
   assert.match(workflow,/Compile manual Play restore UI in isolated configured QA debug mode/);
   assert.match(workflow,/-PjodloEnablePlayBilling=true -PjodloEnablePlayRestore=true/);
-  assert.match(workflow,/Reject restored purchase UI in release candidates even with credentials/);
+  assert.match(workflow,/Reject restored purchase UI in release candidates without the checkout policy/);
   const app=readApp("src/main/java/com/rekixo/jodlo/MainActivity.kt");
   const screen=readApp("src/main/java/com/rekixo/jodlo/PrivatePlayMinuteAccountSection.kt");
   for(const source of [app,screen])assert.doesNotMatch(source,

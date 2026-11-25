@@ -20,14 +20,14 @@ import com.android.billingclient.api.QueryPurchasesParams
  * Google Play Billing 9 single-connection, opt-in native source.
  *
  * Read-only catalog and existing-purchase preview remain the default.
- * An independent BUILD and SESSION gate can activate the private DEBUG
- * checkout controller (never built into default or release candidate).
+ * Independent build-policy and live server/session gates can activate
+ * checkout in an explicitly configured build.
  * The optional checkout delegates to this SAME BillingClient instance and
  * sends no paid entitlement. This adapter cannot acknowledge or consume.
  * PURCHASED is still NOT a server-verified JODLO entitlement.
  *
- * Not referenced by the app. The main Android build does not compile this
- * file unless -PjodloEnablePlayBilling=true is explicitly passed.
+ * The default Android build does not compile this file unless
+ * -PjodloEnablePlayBilling=true is explicitly passed.
  */
 internal class JodloPlayBillingReadOnlyClient(
     context: Context,
@@ -59,6 +59,8 @@ internal class JodloPlayBillingReadOnlyClient(
             send(proof)
             return true
         }
+        @Synchronized
+        fun discard() { secretToken = null }
         override fun toString(): String = "OwnerBoundUnverifiedProof(<redacted>)"
     }
 
@@ -83,7 +85,7 @@ internal class JodloPlayBillingReadOnlyClient(
     private var closed = false
 
     // Lazy: no second BillingClient, no Play checkout outside an explicit
-    // debug build. Keeps the same product/receipt readers as the preview.
+    // configured build. Keeps the same product/receipt readers as the preview.
     private val checkout: JodloPlayCheckoutController by lazy {
         JodloPlayCheckoutController(
             client, approvedIds, ::queryApprovedProductDetails, ::ownerBoundProof,
@@ -260,6 +262,27 @@ internal class JodloPlayBillingReadOnlyClient(
         }
     }
 
+    /** Read-only resume recovery, restricted to the current JODLO account.
+     * No raw receipt or binding is exposed to UI state. */
+    fun queryOwnerBoundPurchaseStates(
+        accountBinding: String,
+        callback: (ReadResult<UnverifiedPlayPurchase>) -> Unit,
+    ) {
+        if (!VALID_ACCOUNT_BINDING.matches(accountBinding)) {
+            callback(ReadResult.Unavailable)
+            return
+        }
+        queryOneTimePurchases { result ->
+            when (result) {
+                is ReadResult.Available -> callback(ReadResult.Available(
+                    result.items.filter {
+                        it.accountIdentifiers?.obfuscatedAccountId == accountBinding
+                    }.mapNotNull(::unverified)))
+                ReadResult.Unavailable -> callback(ReadResult.Unavailable)
+            }
+        }
+    }
+
     /** Existing owned receipts may be submitted for Google verification, but
      * NOT for local credit. Valid binding is fetched from signed-in Cloudflare,
      * never computed from email, Google subject or an arbitrary client user ID.
@@ -270,29 +293,56 @@ internal class JodloPlayBillingReadOnlyClient(
         accountBinding: String,
         callback: (ReadResult<OwnerBoundUnverifiedProof>) -> Unit,
     ) {
-        if (!VALID_ACCOUNT_BINDING.matches(accountBinding)) {
-            callback(ReadResult.Unavailable)
-            return
-        }
-        queryOneTimePurchases { result ->
+        queryOwnerBoundRecovery(accountBinding) { result ->
             when (result) {
-                is ReadResult.Available ->
-                    callback(ReadResult.Available(result.items.mapNotNull {
-                        ownerBoundProof(it,accountBinding)
-                    }))
-                ReadResult.Unavailable -> callback(ReadResult.Unavailable)
+                is RecoveryRead.Available -> callback(ReadResult.Available(result.proofs))
+                RecoveryRead.Unavailable -> callback(ReadResult.Unavailable)
             }
         }
     }
 
-    /** Explicit review-on-tap, not wired to any app screen.
-     * This is always disabled in the default/release build. The Cloudflare
+    internal sealed interface RecoveryRead {
+        class Available(val proofs: List<OwnerBoundUnverifiedProof>, val pendingProducts: Set<String>) : RecoveryRead {
+            override fun toString(): String = "RecoveryRead.Available(<private>)"
+        }
+        data object Unavailable : RecoveryRead
+    }
+
+    /** One Play query observes pending and purchased together, so a pending
+     * payment is never mislabeled as no purchase and offered another checkout. */
+    fun queryOwnerBoundRecovery(
+        accountBinding: String,
+        callback: (RecoveryRead) -> Unit,
+    ) {
+        if (!VALID_ACCOUNT_BINDING.matches(accountBinding)) {
+            callback(RecoveryRead.Unavailable)
+            return
+        }
+        queryOneTimePurchases { result ->
+            when (result) {
+                is ReadResult.Available -> {
+                    val owned = result.items.filter {
+                        it.accountIdentifiers?.obfuscatedAccountId == accountBinding
+                    }
+                    callback(RecoveryRead.Available(
+                        owned.mapNotNull { ownerBoundProof(it, accountBinding) },
+                        owned.mapNotNull(::unverified).filter { it.state == PurchaseState.PENDING }
+                            .flatMap { it.productIds }.toSet(),
+                    ))
+                }
+                ReadResult.Unavailable -> callback(RecoveryRead.Unavailable)
+            }
+        }
+    }
+
+    /** Explicit review-on-tap, disabled in the default build. The Cloudflare
      * verification-only binding cannot authorize credit or consume. */
     fun prepareAndLaunchOwnerBoundCheckout(
         activity: android.app.Activity,
         productId: String,
         displayedGooglePrice: String,
         currentServerBinding: String,
+        ownerIsCurrent: () -> Boolean,
         onEvent: (JodloPlayCheckoutController.Event) -> Unit,
     ) {
         if (closed || !BuildConfig.PLAY_CHECKOUT_ENABLED) {
@@ -300,7 +350,7 @@ internal class JodloPlayBillingReadOnlyClient(
             return
         }
         checkout.prepareAndLaunch(
-            activity,productId,displayedGooglePrice,currentServerBinding,onEvent,
+            activity,productId,displayedGooglePrice,currentServerBinding,ownerIsCurrent,onEvent,
         )
     }
 
@@ -311,6 +361,8 @@ internal class JodloPlayBillingReadOnlyClient(
         checkout.invalidateSession()
         manualRestore.invalidateSession()
     }
+
+    fun retireUncertainCheckout() { checkout.retireUncertainAttempt() }
 
     /** EXPLICIT manual one-SKU purchase check, not a restore of paid minutes.
      * Requires current signed-in owner marker, an approved SKU, independent

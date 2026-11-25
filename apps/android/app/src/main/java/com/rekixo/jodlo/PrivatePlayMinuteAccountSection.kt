@@ -17,6 +17,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import com.rekixo.jodlo.core.network.PlayMinuteActivityChange
 import com.rekixo.jodlo.core.network.PlayMinuteHoldState
+import com.rekixo.jodlo.core.network.PlayPurchaseSettlement
 import java.util.Date
 import com.rekixo.jodlo.core.network.AccountPrivateReadMarker
 import com.rekixo.jodlo.core.network.InMemorySessionCoordinator
@@ -31,12 +32,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Account -> Purchase status. One explicit Cloudflare GET on tap only:
- * absolutely no payment UI, BillingClient checkout, hardcoded Google price,
- * local balance mutation, automatic retries, or public account identifier.
- *
- * This is not a transaction screen or entitlement proof. The backend route
- * is default-OFF until separately configured and its packs are not for sale.
+ * Account -> Minute packs. The private overview is always a server read.
+ * An optional native source-set seam adds explicitly configured checkout;
+ * default builds keep the read-only preview. Neither branch creates local
+ * credit, hardcodes prices, exposes account IDs, or retries a lost POST.
  */
 @Composable
 internal fun PrivatePlayMinuteAccountSection(
@@ -46,11 +45,16 @@ internal fun PrivatePlayMinuteAccountSection(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val marker = session.accountPrivateReadMarker()
-    var snapshot by remember(session,marker) {
+    val accountGeneration = session.accountExportSessionMarker()
+    var purchaseNotice by remember(session, accountGeneration) { mutableStateOf<Int?>(null) }
+    // Keep the mutable container through THIS owner's write revision change;
+    // forCurrent(marker) still hides stale balances. A settlement callback can
+    // then populate its fresh GET instead of writing into a retired container.
+    var snapshot by remember(session,accountGeneration) {
         mutableStateOf<PrivatePlayMinuteAccountSnapshot?>(null)
     }
-    var loading by remember(session,marker) { mutableStateOf(false) }
-    var unavailable by remember(session,marker) { mutableStateOf(false) }
+    var loading by remember(session,accountGeneration) { mutableStateOf(false) }
+    var unavailable by remember(session,accountGeneration) { mutableStateOf(false) }
     val current = snapshot?.forCurrent(marker)
 
     fun refresh(owner: AccountPrivateReadMarker) {
@@ -80,10 +84,13 @@ internal fun PrivatePlayMinuteAccountSection(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
-        Text(stringResource(R.string.navigation_billing_off),
+        Text(stringResource(if (BuildConfig.PLAY_CHECKOUT_ENABLED)
+            R.string.play_account_overview_intro else R.string.navigation_billing_off),
             style = MaterialTheme.typography.bodySmall)
-        Text(stringResource(R.string.play_overview_readonly_notice),
-            style = MaterialTheme.typography.bodySmall)
+        if (!BuildConfig.PLAY_CHECKOUT_ENABLED) {
+            Text(stringResource(R.string.play_overview_readonly_notice),
+                style = MaterialTheme.typography.bodySmall)
+        }
         JodloTextAction(
             onClick = { marker?.let(::refresh) },
             enabled = !accountBusy && !loading && marker != null,
@@ -95,6 +102,7 @@ internal fun PrivatePlayMinuteAccountSection(
         if (unavailable || marker == null)
             Text(stringResource(R.string.navigation_purchase_unavailable),
                 color = MaterialTheme.colorScheme.error)
+        purchaseNotice?.let { Text(stringResource(it), style = MaterialTheme.typography.bodySmall) }
         if (current != null) {
             val dateFormat = android.text.format.DateFormat.getMediumDateFormat(context)
             JodloCard(modifier = Modifier.fillMaxWidth()) {
@@ -107,6 +115,8 @@ internal fun PrivatePlayMinuteAccountSection(
                         current.availableSeconds % 60),
                         style = MaterialTheme.typography.titleMedium)
                     Text(stringResource(R.string.play_overview_balance_notice),
+                        style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(R.string.play_overview_reservation_notice),
                         style = MaterialTheme.typography.bodySmall)
                 }
             }
@@ -153,25 +163,39 @@ internal fun PrivatePlayMinuteAccountSection(
                         style = MaterialTheme.typography.bodySmall)
                 }
             }
-            Text(stringResource(R.string.play_overview_packs_title),
-                style = MaterialTheme.typography.titleMedium)
-            for (pack in current.catalog.packs) {
-                JodloCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(JodloSizes.CardPadding),
-                        verticalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
-                        Text(stringResource(R.string.play_overview_pack,pack.minutes))
-                        // No price until owner sets Play Console SKUs and
-                        // Google Play provides the actual localized amount.
-                        Text(stringResource(R.string.play_overview_price_pending),
-                            style = MaterialTheme.typography.bodySmall)
+            if (!BuildConfig.PLAY_CHECKOUT_ENABLED) {
+                Text(stringResource(R.string.play_overview_packs_title),
+                    style = MaterialTheme.typography.titleMedium)
+                for (pack in current.catalog.packs) {
+                    JodloCard(modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(JodloSizes.CardPadding),
+                            verticalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
+                            Text(stringResource(R.string.play_overview_pack,pack.minutes))
+                            Text(stringResource(R.string.play_overview_price_pending),
+                                style = MaterialTheme.typography.bodySmall)
+                        }
                     }
                 }
             }
-            // Build-time no-op in the default APK. The optional Play source
-            // implements a read-only manual diagnostic with its OWN debug
-            // build gate; this account screen never handles receipt tokens.
+            // Both native seams are no-ops in the default APK. One branch
+            // owns the BillingClient; this account screen handles no tokens.
             if (marker != null) {
-                PlayRestoreAccountDiagnostic(session,marker,current.catalog,accountBusy)
+                if (BuildConfig.PLAY_CHECKOUT_ENABLED) {
+                    PlayMinutePurchaseSection(session, marker, current.catalog, accountBusy) { result ->
+                        val freshOwner = session.accountPrivateReadMarker()
+                        if (freshOwner != null && freshOwner.sessionGeneration == accountGeneration) {
+                            snapshot = null
+                            purchaseNotice = when (result) {
+                                is PlayPurchaseSettlement.Settled -> R.string.play_purchase_settled
+                                PlayPurchaseSettlement.PendingReconciliation -> R.string.play_purchase_reconciling
+                                PlayPurchaseSettlement.NotEligible -> R.string.play_purchase_not_eligible
+                                PlayPurchaseSettlement.ManualReview -> R.string.play_purchase_manual_review
+                                null -> R.string.play_purchase_uncertain
+                            }
+                            refresh(freshOwner)
+                        }
+                    }
+                } else PlayRestoreAccountDiagnostic(session,marker,current.catalog,accountBusy)
             }
         }
     }

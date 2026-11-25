@@ -8,14 +8,15 @@ plugins {
 
 val agoraEnabled = providers.gradleProperty("jodloEnableAgora").orNull == "true"
 val fcmEnabled = providers.gradleProperty("jodloEnableFcm").orNull == "true"
-// Opt-in library compile only; no real product IDs, checkout or entitlement route is authorized.
+// Billing remains absent unless explicitly configured. A separate policy gate
+// enables the checkout UI; production backend capability is also checked per tap.
 val playBillingEnabled = providers.gradleProperty("jodloEnablePlayBilling").orNull == "true"
-/** Engineering-only checkout simulator integration. Not included in default
- * debug builds and forbidden in release candidate builds until owner tests. */
 val playCheckoutEnabled = providers.gradleProperty("jodloEnablePlayCheckout").orNull == "true"
-/** A second independent read-only manual restore QA gate, OFF by default.
- * No automatic Play queries, checkout or credit in the shipped app. */
 val playRestoreEnabled = providers.gradleProperty("jodloEnablePlayRestore").orNull == "true"
+val playPolicyVersion = providers.gradleProperty("jodloPlayPolicyVersion").orNull?.trim().orEmpty()
+require(playPolicyVersion.isEmpty() || playPolicyVersion == "jodlo-play-minutes-v1") {
+    "Unsupported JODLO Play settlement policy version"
+}
 if (fcmEnabled) {
     require(file("google-services.json").isFile) {
         "Place JODLO's google-services.json in the Android app module before enabling FCM"
@@ -58,13 +59,15 @@ require(googleWebClientId.isEmpty() ||
 val releaseCandidateRequested = providers.gradleProperty("jodloReleaseCandidate").orNull == "true"
 val candidateVersionName = providers.gradleProperty("jodloReleaseVersionName").orNull?.trim().orEmpty()
 val candidateVersionCode = providers.gradleProperty("jodloReleaseVersionCode").orNull?.toIntOrNull()
-require(!playRestoreEnabled || (playBillingEnabled && !releaseCandidateRequested &&
-    apiOrigin.isNotBlank() && googleWebClientId.isNotBlank())) {
-    "Manual Play restore is only available in an explicitly configured debug-only Billing build"
+require(!playRestoreEnabled || (playBillingEnabled &&
+    apiOrigin.isNotBlank() && googleWebClientId.isNotBlank() &&
+    (!releaseCandidateRequested || (playCheckoutEnabled && playPolicyVersion == "jodlo-play-minutes-v1")))) {
+    "Play recovery needs configured Billing; a release candidate also needs the explicit checkout policy"
 }
-require(!playCheckoutEnabled || (playBillingEnabled && !releaseCandidateRequested &&
-    apiOrigin.isNotBlank() && googleWebClientId.isNotBlank())) {
-    "Checkout is only allowed in an explicitly configured Play Billing debug build"
+require(!playCheckoutEnabled || (playBillingEnabled &&
+    apiOrigin.isNotBlank() && googleWebClientId.isNotBlank() &&
+    playPolicyVersion == "jodlo-play-minutes-v1")) {
+    "Checkout requires configured Play Billing, API, Google identity and explicit settlement policy"
 }
 if (releaseCandidateRequested) {
     require(apiOrigin == "https://api.jodlo.rekixo.com") {
@@ -115,9 +118,11 @@ android {
         buildConfigField("boolean", "FCM_ENABLED", fcmEnabled.toString())
         buildConfigField("boolean", "AGORA_ENABLED", agoraEnabled.toString())
         buildConfigField("boolean", "PLAY_BILLING_ENABLED", playBillingEnabled.toString())
-        // OFF for all default and release-candidate builds; no app UI wires this.
+        // OFF by default, including ordinary release candidates. Explicitly
+        // configured builds still require live server readiness before checkout.
         buildConfigField("boolean", "PLAY_CHECKOUT_ENABLED", playCheckoutEnabled.toString())
         buildConfigField("boolean", "PLAY_RESTORE_ENABLED", playRestoreEnabled.toString())
+        buildConfigField("String", "PLAY_POLICY_VERSION", "\"" + playPolicyVersion + "\"")
         buildConfigField("String", "API_ORIGIN", "\"" + apiOrigin + "\"")
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"" + googleWebClientId + "\"")
     }

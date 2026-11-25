@@ -1,5 +1,6 @@
 import type { D1Database } from "../../data/d1.ts";
 import { sessionHash, validSessionToken } from "./sessions.ts";
+import {refundReviewDemandSql} from "../interactions/play-refund-review.ts";
 
 /**
  * Owner-only account overview. This is NOT a public Worker profile: never
@@ -79,7 +80,7 @@ function exportQuery(version: number): string {
       "SELECT id,category_id AS categoryId,status,moderation_status AS moderationStatus,created_at AS createdAt" +
       (includeCity ? ",service_city AS city" : "") +
       " FROM worker_listings WHERE worker_account_id=overview.accountId ORDER BY created_at,id"),
-    ...(version === 3 ? [exportCollection("serviceDetails",
+    ...(version >= 3 ? [exportCollection("serviceDetails",
       ["listingId", "categoryId", "displayName", "description", "experienceYears", "visitRateInr", "status", "revision"],
       "SELECT d.listing_id AS listingId,d.category_id AS categoryId,d.display_name AS displayName," +
       "d.description,d.experience_years AS experienceYears,d.visit_rate_inr AS visitRateInr," +
@@ -98,6 +99,28 @@ function exportQuery(version: number): string {
       "FROM service_report_cases AS r JOIN worker_listings AS wl ON wl.id=r.listing_id " +
       "WHERE wl.worker_account_id=overview.accountId AND r.status IN ('upheld','appealed','restored','appeal_denied') " +
       "ORDER BY r.created_at,r.id")] : []),
+    ...(version >= 4 ? [
+      exportCollection("minuteBalance",["availableSeconds","reservedSeconds","revision"],
+        "SELECT max(0,available_seconds-"+refundReviewDemandSql("b.account_id")+
+        "-COALESCE((SELECT SUM(u.reserved_seconds) FROM call_usage_sessions u WHERE u.caller_account_id=b.account_id AND u.state='active'),0)) AS availableSeconds,"+
+        "COALESCE((SELECT SUM(u.reserved_seconds) " +
+        "FROM call_usage_sessions u WHERE u.caller_account_id=b.account_id AND u.state='active'),0) AS reservedSeconds," +
+        "revision FROM call_credit_balances b WHERE b.account_id=overview.accountId"),
+      exportCollection("minuteActivity",["kind","seconds","occurredAtMs"],
+        "SELECT kind,seconds,created_at_ms AS occurredAtMs FROM call_credit_events " +
+        "WHERE account_id=overview.accountId ORDER BY created_at_ms,id"),
+      exportCollection("purchaseStatus",["productId","seconds","status","updatedAtMs"],
+        "SELECT product_id AS productId,seconds,status,updated_at_ms AS updatedAtMs FROM play_consume_outbox " +
+        "WHERE account_id=overview.accountId ORDER BY created_at_ms,source_key_hash"),
+      exportCollection("callUsage",["startedAtMs","endedAtMs","status","reservedSeconds","chargedSeconds"],
+        "SELECT authorized_from_ms AS startedAtMs,ended_at_ms AS endedAtMs,state AS status," +
+        "reserved_seconds AS reservedSeconds,charged_seconds AS chargedSeconds FROM call_usage_sessions " +
+        "WHERE caller_account_id=overview.accountId ORDER BY authorized_from_ms,invitation_id"),
+      exportCollection("refundReviews",["productId","seconds","reason","status","openedAtMs","resolvedAtMs"],
+        "SELECT p.product_id AS productId,r.seconds,r.reason,r.state AS status,r.opened_at_ms AS openedAtMs,"+
+        "r.resolved_at_ms AS resolvedAtMs FROM play_refund_reviews r JOIN play_consume_outbox p ON p.source_key_hash=r.source_key_hash "+
+        "WHERE r.account_id=overview.accountId ORDER BY r.opened_at_ms,r.source_key_hash"),
+    ] : []),
     exportCollection("callPreferences", ["callsEnabled", "revision"],
       "SELECT calls_enabled AS callsEnabled,revision FROM worker_agora_call_preferences WHERE account_id=overview.accountId"),
     exportCollection("availabilityPreferences", ["acceptingCalls", "revision"],
@@ -117,7 +140,8 @@ function exportQuery(version: number): string {
 
 type ExportSnapshot = OverviewRow & Record<
   "identity" | "services" | "callPreferences" | "availabilityPreferences" |
-  "blocksMade" | "abuseCounters" | "sessions" | "serviceDetails" | "servicePhotos" | "serviceReports" | "serviceAppeals", string
+  "blocksMade" | "abuseCounters" | "sessions" | "serviceDetails" | "servicePhotos" | "serviceReports" | "serviceAppeals" |
+  "minuteBalance" | "minuteActivity" | "purchaseStatus" | "callUsage" | "refundReviews", string
 >;
 
 function decodeExportCollection(encoded: string): unknown[] {
@@ -132,7 +156,7 @@ function decodeExportCollection(encoded: string): unknown[] {
 export async function exportOwnAccountData(
   db: D1Database, bearer: string, version = 1,
 ): Promise<Record<string, unknown> | null> {
-  if (!validSessionToken(bearer)) return null;
+  if (!validSessionToken(bearer)||![1,2,3,4].includes(version)) return null;
   const {results} = await db.prepare(exportQuery(version))
     .bind(await sessionHash(bearer), Math.floor(Date.now() / 1000)).all<ExportSnapshot>();
   const row = results[0];
@@ -142,11 +166,18 @@ export async function exportOwnAccountData(
     account: { accountId: row.accountId, ...projectOverview(row) },
     identity: decodeExportCollection(row.identity),
     services: decodeExportCollection(row.services),
-    ...(version === 3 ? {
+    ...(version >= 3 ? {
       serviceDetails: decodeExportCollection(row.serviceDetails),
       servicePhotos: decodeExportCollection(row.servicePhotos),
       serviceReports: decodeExportCollection(row.serviceReports),
       serviceAppeals: decodeExportCollection(row.serviceAppeals),
+    } : {}),
+    ...(version >= 4 ? {
+      minuteBalance:decodeExportCollection(row.minuteBalance),
+      minuteActivity:decodeExportCollection(row.minuteActivity),
+      purchaseStatus:decodeExportCollection(row.purchaseStatus),
+      callUsage:decodeExportCollection(row.callUsage),
+      refundReviews:decodeExportCollection(row.refundReviews),
     } : {}),
     callPreferences: decodeExportCollection(row.callPreferences),
     availabilityPreferences: decodeExportCollection(row.availabilityPreferences),
@@ -158,7 +189,9 @@ export async function exportOwnAccountData(
       "No Google, Cloudflare backup, third-party provider, notification or device data included",
       "No server-side token hashes or bearer credentials exported",
       "Accounts that blocked this user are never disclosed",
-      ...(version === 3 ? ["Download each uploaded JPEG from its owner service photo screen"] : []),
+      ...(version >= 3 ? ["Download each uploaded JPEG from its owner service photo screen"] : []),
+      ...(version >= 4 ? ["Available minutes exclude active call reservations and confirmed refund review holds",
+        "No raw Play purchase tokens, provider event identifiers or other call participant identity included"] : []),
     ],
   };
   // Never send a partial/truncated data export. The native one-shot UTF-8

@@ -7,6 +7,45 @@ import { sendPrivateCallRing } from "../src/modules/interactions/private-call-ri
 import { preparePrivateCallInvitation, purgeExpiredPrivateInvitations } from "../src/modules/interactions/private-call-invitation.ts";
 import { openLocalDatabase } from "./helpers/local-db.mjs";
 
+test("only confirmed terminal calls release an unexpired dispatch slot; repeated and uncertain sends remain fenced",async()=>{
+  for(const phase of ["ringing","accepted","uncertain","declined","cancelled","ended"]){
+    const {db,adapter}=openLocalDatabase();
+    try{
+      const now=Date.now(),listing=crypto.randomUUID();
+      db.exec(`INSERT INTO accounts(id) VALUES('dispatch-caller'),('dispatch-worker');
+        INSERT INTO categories(id,slug,name_en,is_active) VALUES('dispatch-repair','dispatch-repair','Repair',1);
+        INSERT INTO worker_profiles(account_id,status) VALUES('dispatch-worker','draft');
+        INSERT INTO worker_agora_call_preferences VALUES('dispatch-worker',1,1);
+        INSERT INTO worker_agora_availability_preferences VALUES('dispatch-worker',1,1);`);
+      db.prepare("INSERT INTO worker_listings(id,worker_account_id,category_id,status) VALUES(?,'dispatch-worker','dispatch-repair','published')").run(listing);
+      const caller=(await issueSession(adapter,"dispatch-caller")).accessToken;
+      const worker=(await issueSession(adapter,"dispatch-worker")).accessToken;
+      const first=await preparePrivateCallInvitation(adapter,caller,listing,"first-dispatch-attempt",now);
+      assert.equal(first.kind,"created");
+      let posts=0;
+      const deps={projectId:"jodlo-test",accessToken:async()=>"synthetic-access-token",
+        resolveReachableDevice:async()=>({accountId:"dispatch-worker",registrationToken:"synthetic-device-token"}),
+        request:async()=>{posts++;throw Error("synthetic uncertain send");},now:()=>now};
+      if(phase==="uncertain")assert.equal(await sendPrivateCallRing(adapter,caller,first.invitationId,deps),"delivery_unconfirmed");
+      else assert.ok(await claimPrivateCallDispatch(adapter,caller,first.invitationId,"dispatch-worker",now));
+      if(phase==="accepted"||phase==="ended")assert.equal((await ownPrivateCallSignal(adapter,worker,first.invitationId,"accept",now)).phase,"accepted");
+      if(phase==="ended")await ownPrivateCallSignal(adapter,worker,first.invitationId,"hangup",now+1);
+      if(phase==="declined")await ownPrivateCallSignal(adapter,worker,first.invitationId,"decline",now+1);
+      if(phase==="cancelled")await ownPrivateCallSignal(adapter,caller,first.invitationId,"cancel",now+1);
+      const next=await preparePrivateCallInvitation(adapter,caller,listing,"second-dispatch-attempt",now+1000);
+      assert.equal(next.kind,"created");
+      const claims=await Promise.all([1,2].map(()=>claimPrivateCallDispatch(adapter,caller,next.invitationId,"dispatch-worker",now+1000)));
+      const terminal=["declined","cancelled","ended"].includes(phase);
+      assert.equal(claims.filter(Boolean).length,terminal?1:0,phase);
+      assert.equal(db.prepare("SELECT invitation_id FROM private_call_dispatch_slots WHERE receiver_account_id='dispatch-worker'").get().invitation_id,
+        terminal?next.invitationId:first.invitationId);
+      assert.equal(await claimPrivateCallDispatch(adapter,caller,first.invitationId,"dispatch-worker",now+1000),null);
+      assert.equal(await sendPrivateCallRing(adapter,caller,first.invitationId,{...deps,now:()=>now+1000}),"not_sent");
+      assert.equal(posts,phase==="uncertain"?1:0,"an old or uncertain attempt never issues a duplicate notification");
+    }finally{db.close();}
+  }
+});
+
 test("private invitation commits with quota, deduplicates retries and rolls back on failure", async () => {
   const {db, adapter} = openLocalDatabase();
   try {

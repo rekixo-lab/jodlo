@@ -248,6 +248,35 @@ fun main() {
     val serviceExport = cityExport.replace("\"schemaVersion\":2", "\"schemaVersion\":3")
         .replace("\"services\":[]", "\"services\":[],\"serviceDetails\":[],\"servicePhotos\":[],\"serviceReports\":[],\"serviceAppeals\":[]")
     check(JodloReplyDecoder.accountDataExport(TransportReply(200, envelope(serviceExport))) is ApiOutcome.Ok)
+    val financialFields = """
+        "minuteBalance":[{"availableSeconds":900,"reservedSeconds":300,"revision":2}],
+        "minuteActivity":[{"kind":"purchase_grant","seconds":1200,"occurredAtMs":1800000000000}],
+        "purchaseStatus":[{"productId":"jodlo.minutes20","seconds":1200,"status":"consumed","updatedAtMs":1800000000100}],
+        "callUsage":[{"startedAtMs":1800000000200,"endedAtMs":null,"status":"active","reservedSeconds":300,"chargedSeconds":0}],
+        "refundReviews":[{"productId":"jodlo.minutes20","seconds":1200,"reason":"voided_purchase","status":"open","openedAtMs":1800000000300,"resolvedAtMs":null}],
+    """.trimIndent()
+    val financialExport = serviceExport.replace("\"schemaVersion\":3", "\"schemaVersion\":4")
+        .replace("\"limitations\":", financialFields + "\"limitations\":")
+    val financialResult = JodloReplyDecoder.accountDataExport(TransportReply(200, envelope(financialExport)))
+    check(financialResult is ApiOutcome.Ok && financialResult.value.json.contains("\"refundReviews\""))
+    check(JodloRoutes.accountDataExport("z".repeat(43),4).resource == "/api/v1/me/data-export?version=4")
+    for (invalid in listOf(
+        financialExport.replace("\"schemaVersion\":4", "\"schemaVersion\":5"),
+        financialExport.replace("\"availableSeconds\":900", "\"availableSeconds\":-1"),
+        financialExport.replace("\"reservedSeconds\":300", "\"reservedSeconds\":\"300\""),
+        financialExport.replace("\"revision\":2", "\"revision\":2,\"purchaseToken\":\"private\""),
+        financialExport.replace("\"kind\":\"purchase_grant\"", "\"kind\":\"fabricated_refund\""),
+        financialExport.replace("\"productId\":\"jodlo.minutes20\"", "\"productId\":\"jodlo.minutes50\""),
+        financialExport.replace("\"status\":\"consumed\"", "\"status\":\"fake_status\""),
+        financialExport.replace("\"startedAtMs\":1800000000200", "\"startedAtMs\":0"),
+        financialExport.replace("\"chargedSeconds\":0", "\"chargedSeconds\":-1"),
+        financialExport.replace("\"chargedSeconds\":0", "\"chargedSeconds\":301"),
+        financialExport.replace("\"chargedSeconds\":0", "\"chargedSeconds\":1"),
+        financialExport.replace("\"endedAtMs\":null", "\"endedAtMs\":1800000000000"),
+        financialExport.replace("\"status\":\"open\"", "\"status\":\"released\""),
+        financialExport.replace("\"reason\":\"voided_purchase\"", "\"reason\":\"guessed_refund\""),
+        financialExport.replace("\"resolvedAtMs\":null", "\"resolvedAtMs\":null,\"peerAccountId\":\"private\""),
+    )) rejects(envelope(invalid),parse=JodloReplyDecoder::accountDataExport)
     for (badExport in listOf(
         ownExportData.replace("\"schemaVersion\":1", "\"schemaVersion\":4"),
         cityExport.replace("\"schemaVersion\":2", "\"schemaVersion\":3"),

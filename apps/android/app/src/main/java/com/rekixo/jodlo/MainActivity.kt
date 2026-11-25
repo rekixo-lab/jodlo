@@ -264,7 +264,13 @@ private fun JodloApp(
             clearIncoming()
         }
     }
-    if (session != null) callScreen?.let { CallScreen(activity, it, session) { callScreen = null } }
+    if (session != null) callScreen?.let {
+        CallScreen(activity, it, session, openMinuteAccount = {
+            callScreen = null
+            accountFromAlerts = false
+            section = "minute-account"
+        }) { callScreen = null }
+    }
 
     LaunchedEffect(session) {
         CallNotifications.attach(session)
@@ -380,6 +386,7 @@ private fun JodloApp(
             }
         }
         val primary = if (section == "city-feed") JodloDestination.SERVICES
+            else if (section == "minute-account") JodloDestination.ACCOUNT
             else JodloDestination.entries.firstOrNull { it.route == section }
         val previous = when (section) {
             "home" -> null
@@ -580,6 +587,7 @@ private fun JodloApp(
                     openWorker = { section = "worker" },
                     openHome = { section = "home" },
                     startAtCallSettings = accountFromAlerts,
+                    startAtMinutePacks = section == "minute-account",
                 )
             }
         }

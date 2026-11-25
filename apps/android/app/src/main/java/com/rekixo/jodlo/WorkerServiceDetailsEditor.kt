@@ -14,6 +14,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.rekixo.jodlo.core.network.AccountPrivateReadMarker
+import com.rekixo.jodlo.core.network.ApprovedServiceSuggestionsRepository
 import com.rekixo.jodlo.core.network.InMemorySessionCoordinator
 import com.rekixo.jodlo.core.network.OwnServiceDetails
 import com.rekixo.jodlo.core.network.ServiceProfile
@@ -35,6 +36,8 @@ import kotlinx.coroutines.withContext
 @Composable
 internal fun WorkerServiceDetailsEditor(
     session: InMemorySessionCoordinator?, listingId: String, enabled: Boolean,
+    categoryId: String? = null,
+    catalog: ApprovedServiceSuggestionsRepository? = null,
     onWriteFinished: (Int) -> Unit,
 ) {
     if (session == null) return
@@ -149,6 +152,19 @@ internal fun WorkerServiceDetailsEditor(
             JodloSearchField(description, { description = it.take(400); edited = true },
                 label = { Text(stringResource(R.string.worker_details_description)) },
                 modifier = Modifier.fillMaxWidth(), singleLine = false)
+            if (catalog != null && categoryId != null && marker != null) {
+                WorkerServiceSuggestions(catalog, session, marker, categoryId, enabled && !busy,
+                    canAddDescription = { label ->
+                        !description.contains(label) &&
+                            (if (description.isBlank()) label.length else description.trimEnd().length + 2 + label.length) <= 400
+                    }) { label ->
+                    val next = if (description.isBlank()) label else description.trimEnd() + "; " + label
+                    if (!description.contains(label) && next.length <= 400) {
+                        description = next
+                        edited = true
+                    }
+                }
+            }
             JodloSearchField(experience, { experience = it.filter(Char::isDigit).take(2); edited = true },
                 label = { Text(stringResource(R.string.worker_details_experience)) },
                 modifier = Modifier.fillMaxWidth())
