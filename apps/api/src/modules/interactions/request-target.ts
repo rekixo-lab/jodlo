@@ -49,7 +49,7 @@ export const READ_CURRENT_REQUEST_TARGET_QUERY =
  */
 const SESSION_BOUND_TARGET_QUERY =
   REQUEST_TARGET_SOURCE_QUERY +
-  "JOIN auth_sessions AS session ON session.token_hash=? AND session.expires_at>? " +
+  "JOIN auth_sessions AS session ON session.token_hash=? AND session.expires_at>MAX(?,unixepoch()) " +
   "JOIN accounts AS requester ON requester.id=session.account_id " +
   "WHERE wl.id=? AND requester.status='active' ";
 
@@ -122,7 +122,7 @@ export type CallerAgoraConsentEpochPreview = Readonly<{
 const WORKER_SESSION_OWNER_CONDITION =
   "AND EXISTS (SELECT 1 FROM auth_sessions AS worker_session " +
   "WHERE worker_session.account_id=worker.id " +
-  "AND worker_session.token_hash=? AND worker_session.expires_at>?) ";
+  "AND worker_session.token_hash=? AND worker_session.expires_at>MAX(?,unixepoch())) ";
 
 /** Default-OFF founder-approved worker Agora call opt-in must be read
  * in the SAME current-session/listing SELECT, not from a cached profile.
@@ -149,7 +149,7 @@ export const READ_WORKER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY =
   REQUEST_TARGET_SOURCE_QUERY +
   "JOIN auth_sessions AS participant_session " +
   "ON participant_session.account_id=worker.id " +
-  "AND participant_session.token_hash=? AND participant_session.expires_at>? " +
+  "AND participant_session.token_hash=? AND participant_session.expires_at>MAX(?,unixepoch()) " +
   "JOIN accounts AS requester ON requester.id=? " +
   "WHERE wl.id=? AND worker.status='active' AND requester.status='active' " +
   "AND requester.id<>worker.id AND wp.status='draft' " +

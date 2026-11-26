@@ -23,6 +23,8 @@ const routes=[
     capture:query=>query.startsWith("SELECT overview.*, ")},
   {name:"own financial data export v4",path:"/api/v1/me/data-export?version=4",
     capture:query=>query.startsWith("SELECT overview.*, ")},
+  {name:"own financial data export v5",path:"/api/v1/me/data-export?version=5",
+    capture:query=>query.startsWith("SELECT overview.*, ")},
   {name:"Play balance/activity/refund hold overview",path:"/api/v1/me/play-overview",
     capture:query=>query.includes("LEFT JOIN play_consume_outbox AS o")},
 ];
@@ -84,7 +86,7 @@ async function assertPrivateDenied(response,secret) {
     assert.ok(!text.includes(forbidden),"late private response exposed "+forbidden);
 }
 
-test("all 6 private read endpoints deny old snapshots after a second-device logout",async()=>{
+test("all 7 private account snapshots deny old data after a second-device logout",async()=>{
   for(const route of routes) {
     const {db,adapter,alice,bob}=await setup();
     try {
@@ -207,7 +209,7 @@ test("valid same-owner responses remain usable, isolated and read-only",async()=
       }else if(route.path.includes("data-export")){
         assert.equal(body.data.account.accountId,ALICE);
         assert.equal(body.data.schemaVersion,
-          route.path.includes("version=4")?4:route.path.includes("version=3")?3:route.path.includes("version=2")?2:1);
+          Number(new URL(ROOT+route.path).searchParams.get("version")??1));
       }else{
         assert.equal(typeof body.data.activeSessions,"number");
         assert.equal(body.data.workerEnabled,false);

@@ -222,9 +222,9 @@ internal fun WorkerDashboard(
                     ApiOutcome.Failed(FailureKind.BAD_RESPONSE,false)
                 }
             }
+            if (namesRevision == generation) namesBusy = false
             if(namesRevision!=generation ||
                 session?.accountPrivateReadMarker()!=accountMarker) return@launch
-            namesBusy=false
             when(result) {
                 is ApiOutcome.Failed -> namesFailed=true
                 is ApiOutcome.Ok -> {
@@ -305,6 +305,11 @@ internal fun WorkerDashboard(
             }
             busy = false
             updateSession()
+            if (login !is LoginState.SignedIn) {
+                // Worker is also a sign-out entrypoint. Forget the old local
+                // notice even when the server revocation reply is uncertain.
+                CallNotifications.clearLocal(activity.applicationContext)
+            }
             message = if (result is SessionResult.Success) successMessage
                 else R.string.worker_operation_failed
         }
@@ -658,15 +663,17 @@ internal fun WorkerDashboard(
                 } catch (_:Exception) {
                     ApiOutcome.Failed(FailureKind.BAD_RESPONSE,false)
                 }
-            // A stale result must not clear the loading state of a newer
-            // selection/login/owner write. It cannot promote any private row.
+            // The single Worker action has finished even if an asynchronous
+            // FCM registration, expiry or account change invalidated its read.
+            // Release its global busy flag before discarding stale evidence;
+            // otherwise every Worker control stays disabled indefinitely.
+            busy=false
             if(generation!=previewRevision ||
                 activeSession.accountPrivateReadMarker()!=actor ||
                 ownerRowsMarker!=actor ||
                 (activeSession.snapshot() as? LoginState.SignedIn)?.worker!=WorkerState.DRAFT ||
                 selectedListing!=chosen.id || categoryLanguage!=lang ||
                 ownListings.firstOrNull{it.id==chosen.id}!=chosen) return@launch
-            busy=false
             publicPreview=WorkerCustomerServicePreview.fromPublicRead(chosen,lang,reply)
         }
     }
@@ -725,6 +732,13 @@ internal fun WorkerDashboard(
                             } catch (_: Exception) { null }
                             busy = false
                             updateSession()
+                            if (result is SessionResult.Success) {
+                                // Match the Account sign-in path: the new
+                                // owner must not inherit the old notice and
+                                // needs a freshly consent-checked FCM binding.
+                                CallNotifications.clearLocal(activity.applicationContext)
+                                CallNotifications.sync(activity.applicationContext)
+                            }
                             message = if (result is SessionResult.Success)
                                 R.string.worker_login_success else R.string.worker_login_failed
                         }

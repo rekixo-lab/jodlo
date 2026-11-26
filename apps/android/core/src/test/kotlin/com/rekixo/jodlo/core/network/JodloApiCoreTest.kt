@@ -172,9 +172,68 @@ fun main() {
     rejects("no network on main thread") {
         HttpsTransport("https://example.com").execute(JodloRoutes.publicListings("plumber"))
     }
+    // Exercise the actual transport body admission with real route builders.
+    // The previous generic 256/512-byte caps silently blocked valid checkout,
+    // FCM, erasure, Hindi profiles and almost every service photo before HTTPS.
+    val maxGoogleProof = "a".repeat(4092) + ".b.c"
+    val maxErasureChallenge = "a".repeat(1020) + ".b.c"
+    val maxPurchaseProof = "p".repeat(4096)
+    val serviceId = "11111111-1111-4111-8111-111111111111"
+    val hindiProfile = ServiceProfileDraftValidator.validate(
+        "कार्य".repeat(10), "मरम्मत".repeat(60), "80", "10000000",
+    ).profile ?: error("Valid Hindi service profile rejected")
+    val realLargeBodies = listOf(
+        JodloRoutes.googleExchange(maxGoogleProof),
+        JodloRoutes.verifyPlayReceipt(TOKEN, maxPurchaseProof),
+        JodloRoutes.settlePlayPurchase(TOKEN, maxPurchaseProof, PLAY_MINUTE_POLICY_VERSION),
+        JodloRoutes.eraseAccount(TOKEN, maxErasureChallenge, maxGoogleProof),
+        JodloRoutes.callDevice(TOKEN, "f".repeat(4096)),
+        JodloRoutes.changeServiceDetails(TOKEN, serviceId, 0, hindiProfile),
+        JodloRoutes.changeServicePhoto(TOKEN, serviceId, 0, "A".repeat(57344)),
+    )
+    for (call in realLargeBodies) {
+        val actual = call.checkedBodyUtf8() ?: error("Expected JSON body")
+        check(actual.size > 512)
+        check(actual.contentEquals(call.bodyUtf8()))
+    }
+    check(JodloRoutes.changeServicePhoto(TOKEN, serviceId, 0, null).checkedBodyUtf8() == null)
+    // A bigger photo allowance is limited to its exact write route; a nearby
+    // endpoint, wrong verb or forged suffix cannot inherit it.
+    for (path in listOf("/api/v1/me/service-photo-other", "/api/v1/me/service-photo/extra")) {
+        rejects("upload budget cannot leak to another route") {
+            ApiCall.put(path, TOKEN, "x".repeat(513)).checkedBodyUtf8()
+        }
+    }
+    rejects("photo POST has no upload budget") {
+        ApiCall.post("/api/v1/me/service-photo", TOKEN, "x".repeat(257)).checkedBodyUtf8()
+    }
+    rejects("photo envelope remains bounded") {
+        ApiCall.put("/api/v1/me/service-photo?id=$serviceId", TOKEN,
+            "x".repeat(58001)).checkedBodyUtf8()
+    }
+    rejects("UTF-8 bytes, not UTF-16 character count, enforce the write cap") {
+        ApiCall.put("/api/v1/me/service-details?id=$serviceId", TOKEN,
+            "ह".repeat(1400)).checkedBodyUtf8()
+    }
+    rejects("receipt budget cannot leak through a route suffix") {
+        ApiCall.post("/api/v1/me/play-verify-other", TOKEN,
+            "x".repeat(257)).checkedBodyUtf8()
+    }
     // Read-limit and strict UTF-8 tests run without HTTPS, an Android SDK or credentials.
     val exactlyMax = "a".repeat(65_536).toByteArray(StandardCharsets.UTF_8)
     check(readBoundedUtf8Reply(ByteArrayInputStream(exactlyMax)).length == 65_536)
+    // A full API account export is capped at 60,000 bytes. Transport must allow
+    // that payload and envelope without relaxing its independent 64 KiB cap.
+    val fullExportEnvelope = "{\"ok\":true,\"data\":" + " ".repeat(60_000) + "{}}"
+    check(readBoundedUtf8Reply(ByteArrayInputStream(fullExportEnvelope.toByteArray(
+        StandardCharsets.UTF_8))) == fullExportEnvelope)
+    val portableLimit = LocalPublicServiceBackup.MAX_BYTES
+    check(readBoundedUtf8Text(ByteArrayInputStream(ByteArray(portableLimit) {
+        'a'.code.toByte()
+    }), portableLimit).length == portableLimit)
+    rejects("portable imports retain their smaller byte budget") {
+        readBoundedUtf8Text(ByteArrayInputStream(ByteArray(portableLimit + 1)), portableLimit)
+    }
     val splitHindi = "a".repeat(4095) + "ह" // 3-byte UTF-8 crosses 4096-byte chunks.
     check(readBoundedUtf8Reply(ByteArrayInputStream(splitHindi.toByteArray(
         StandardCharsets.UTF_8))) == splitHindi)
@@ -200,6 +259,11 @@ fun main() {
     }
     rejects("unproductive zero-byte input has a finite read bound") {
         readBoundedUtf8Reply(endlessZero)
+    }
+    check(zeroReads == MAX_EMPTY_REPLY_READS + 1)
+    zeroReads = 0
+    rejects("a broken document provider cannot trap portable import in a busy loop") {
+        readBoundedUtf8Text(endlessZero, portableLimit)
     }
     check(zeroReads == MAX_EMPTY_REPLY_READS + 1)
 

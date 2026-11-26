@@ -84,7 +84,8 @@ try {
 INSERT INTO categories(id,slug,name_en,name_hi,is_active,sort_order) VALUES
  ('synthetic-fixture-active','synthetic-fixture-active','Fixture Plumber','परीक्षण प्लंबर',1,10),
  ('synthetic-fixture-hidden','synthetic-fixture-hidden','Fixture Carpenter','परीक्षण बढ़ई',1,20),
- ('synthetic-fixture-inactive','synthetic-fixture-inactive','Fixture Painter','परीक्षण पेंटर',0,30);
+ ('synthetic-fixture-inactive','synthetic-fixture-inactive','Fixture Painter','परीक्षण पेंटर',0,30),
+ ('jodlo_c_smoke_pipe','plumber','Local pipe work','पाइप का काम',1,40);
 INSERT INTO accounts(id) VALUES ('account-fixture-001'),('account-fixture-002'),('account-fixture-003');
 INSERT INTO worker_profiles(account_id) VALUES ('account-fixture-001'),('account-fixture-002');
 INSERT INTO worker_listings(id,worker_account_id,category_id,moderation_status) VALUES
@@ -120,14 +121,23 @@ INSERT INTO auth_sessions(token_hash,account_id,expires_at) VALUES
 
   const browse = (await get("/api/v1/catalog?lang=hi")).data.categories;
   assert.deepEqual(browse.map(x => x.id),
-    ["synthetic-fixture-active", "synthetic-fixture-hidden"]);
-  assert.deepEqual(browse.map(x => x.name), ["परीक्षण प्लंबर", "परीक्षण बढ़ई"]);
+    ["synthetic-fixture-active", "synthetic-fixture-hidden", "jodlo_c_smoke_pipe"]);
+  assert.deepEqual(browse.map(x => x.name), ["परीक्षण प्लंबर", "परीक्षण बढ़ई", "पाइप का काम"]);
   assert.deepEqual((await get("/api/v1/catalog?availableOnly=1")).data.categories
     .map(x => x.id), ["synthetic-fixture-active"]);
   assert.deepEqual((await get("/api/v1/catalog/search?q=Fixture")).data.categories
     .map(x => x.id), ["synthetic-fixture-active", "synthetic-fixture-hidden"]);
   assert.deepEqual((await get("/api/v1/catalog/search?q=Fixture&availableOnly=1"))
     .data.categories.map(x => x.id), ["synthetic-fixture-active"]);
+  // Native D1 executes the combined alias/literal/availability CTE, including
+  // canonical slug lookup after category IDs are remapped by the importer.
+  assert.deepEqual((await get("/api/v1/catalog/search?q=tap%20repair&cursor=1&lang=hi"))
+    .data.categories,[{id:"jodlo_c_smoke_pipe",slug:"plumber",name:"पाइप का काम"}]);
+  assert.deepEqual((await get("/api/v1/catalog/search?q=tap%20repair&cursor=1&availableOnly=1&city=raipur"))
+    .data.categories,[]);
+  const aliasChoices=(await get("/api/v1/catalog/search?q=tap%20repair%20and%20wooden%20furniture&includeChoices=1")).data;
+  assert.equal(aliasChoices.needsChoice,true);
+  assert.deepEqual(aliasChoices.choices.map(row=>row.id),["jodlo_c_smoke_pipe"]);
 
   const visible = (await get("/api/v1/listings?categoryId=synthetic-fixture-active"))
     .data.listings;

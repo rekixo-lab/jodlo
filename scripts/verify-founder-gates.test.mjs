@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtemp, mkdir, writeFile, rm, symlink } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm, symlink, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { auditFounderGates } from "./verify-founder-gates.mjs";
@@ -242,6 +242,33 @@ test("symlinked workflow files are rejected rather than inspected through a link
 test("actual source tree passes narrow founder gate audit",async()=>{
   const result=await auditFounderGates();
   assert.deepEqual(result.errors,[],result.errors.join("\n"));
+});
+
+test("pending refund review permission preserves the bounded decision journal, no raw tokens and immutable submission fence",async()=>{
+  const names=["0024_private_call_credit_ledger.sql","0025_play_consumable_outbox.sql","0026_play_revocation_fences.sql",
+    "0028_play_settlement_policy.sql","0031_play_refund_review_holds.sql","0032_play_purchase_environment.sql",
+    "0034_play_pending_refund_reviews.sql"];
+  const sources=Object.fromEntries(await Promise.all(names.map(async name=>["infra/migrations/"+name,
+    await readFile(new URL("../infra/migrations/"+name,import.meta.url),"utf8")])));
+  const install=files=>{
+    Object.assign(files,sources);
+    files["apps/api/src/http/router.ts"]+='\nif(env.OPERATIONS_ENABLED === "1" && (url.pathname==="/api/v1/operations/refund-reviews" || url.pathname==="/api/v1/operations/pending-refund-reviews")) return;';
+  };
+  assert.deepEqual((await fixture(install)).errors,[]);
+  const path="infra/migrations/0034_play_pending_refund_reviews.sql";
+  for(const edit of [
+    files=>{files[path]=files[path].replace("  state TEXT", "  pending_refund_token TEXT,\n  state TEXT");},
+    files=>{files[path]=files[path].replace("immutable_pending_play_refund_review","missing_pending_refund_fence");},
+    files=>{files[path]=files[path].replace("submission_started_at_ms INTEGER,","");},
+  ]){
+    const result=await fixture(files=>{install(files);edit(files);});
+    assert.match(result.errors.join("\n"),/Pending Play refund migration must keep/);
+  }
+  const absent=await fixture(files=>{install(files);delete files["infra/migrations/0032_play_purchase_environment.sql"];});
+  assert.match(absent.errors.join("\n"),/require the reviewed policy and immutable purchase-environment/);
+  const altered=await fixture(files=>{install(files);files["infra/migrations/0099_rogue.sql"]=
+    "ALTER TABLE play_pending_refund_reviews ADD COLUMN pending_refund_token TEXT;";});
+  assert.match(altered.errors.join("\n"),/Unauthorized pending Play refund journal schema mutation/);
 });
 
 test("notification receipt permission never admits recipient, push token, contact or rogue migration",async()=>{

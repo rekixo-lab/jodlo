@@ -7,7 +7,7 @@ export const OPERATIONAL_FLAGS=Object.freeze([
   "CONTACT_BLOCKS_ENABLED","CALL_HISTORY_ENABLED","CALL_DEVICES_ENABLED",
   "CALL_SIGNALING_ENABLED","CALL_MEDIA_VERIFICATION_ENABLED","CALL_USAGE_ENABLED",
   "PLAY_CATALOG_ENABLED","PLAY_ACCOUNT_VIEW_ENABLED","PLAY_VERIFICATION_ENABLED",
-  "PLAY_SETTLEMENT_ENABLED","PLAY_RTDN_ENABLED","PLAY_REFUND_HOLDS_ENABLED","OPERATIONS_ENABLED",
+  "PLAY_SETTLEMENT_ENABLED","PLAY_RTDN_ENABLED","PLAY_REFUND_HOLDS_ENABLED","PLAY_LICENSE_TEST_ENABLED","OPERATIONS_ENABLED",
 ]);
 export const OPTIONAL_LIMITERS=Object.freeze({
   PLAY_VERIFICATION_LIMITER:{limit:6,period:60},
@@ -31,10 +31,11 @@ function publicValue(name,value){
   if(name.endsWith("POLICY_VERSION"))return value===({PLAY_SETTLEMENT_POLICY_VERSION:"jodlo-play-minutes-v1",CALL_USAGE_POLICY_VERSION:"agora-overlap-v1",PLAY_REFUND_POLICY_VERSION:"jodlo-play-refund-hold-v1"}[name]);
   if(name==="BUILD_COMMIT_SHA")return /^[a-f0-9]{40}$/.test(value)&&!/^0+$/.test(value);
   if(name==="GOOGLE_CLIENT_ID"||name==="GOOGLE_ANDROID_CLIENT_ID")return /^[0-9]{6,32}-[a-z0-9-]{5,100}\.apps\.googleusercontent\.com$/.test(value);
-  if(name==="FCM_PROJECT_ID")return /^[a-z][a-z0-9-]{4,61}[a-z0-9]$/.test(value);
+  if(name==="FCM_PROJECT_ID")return /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/.test(value);
+  if(name==="PLAY_RTDN_PUSH_EMAIL")return /^[a-z0-9._-]{3,100}@[a-z0-9.-]{3,160}\.iam\.gserviceaccount\.com$/.test(value);
   if(name.endsWith("EMAIL"))return /^[a-z0-9][a-z0-9._-]{1,100}@[a-z][a-z0-9-]{4,61}[a-z0-9]\.iam\.gserviceaccount\.com$/.test(value);
   if(name==="PLAY_RTDN_AUDIENCE")return value==="https://api.jodlo.rekixo.com/api/v1/play/rtdn";
-  if(name==="PLAY_RTDN_SUBSCRIPTION")return /^projects\/[a-z][a-z0-9-]{4,61}[a-z0-9]\/subscriptions\/[A-Za-z][A-Za-z0-9._~+%-]{2,254}$/.test(value);
+  if(name==="PLAY_RTDN_SUBSCRIPTION")return /^projects\/[a-z][a-z0-9-]{4,61}[a-z0-9]\/subscriptions\/[A-Za-z][A-Za-z0-9._~+%-]{2,200}$/.test(value);
   return false;
 }
 export function productionOperationsTemplate(){
@@ -100,6 +101,7 @@ export function verifyOperationalFields(config){
     requireVars(["PLAY_SETTLEMENT_POLICY_VERSION","PLAY_SETTLEMENT_APPROVAL_SHA256"]);
     if(!seen.has("PLAY_SETTLEMENT_LIMITER"))throw Error("Play settlement requires a dedicated limiter");
   }
+  if(enabled("PLAY_LICENSE_TEST_ENABLED"))requireFlags(["PLAY_SETTLEMENT_ENABLED"]);
   if(enabled("PLAY_REFUND_HOLDS_ENABLED"))requireVars(["PLAY_REFUND_POLICY_VERSION","PLAY_REFUND_APPROVAL_SHA256"]);
   if(enabled("OPERATIONS_ENABLED")){
     requireVars(["BUILD_COMMIT_SHA"]);
@@ -128,11 +130,16 @@ export function applyOperationalSettings(config,settings){
 }
 /** Names only; this tool never reads or stores provider secret values. */
 export function requiredOperationalSecrets(config){
-  const v=config.vars??{},out=[];
+  // These core account/privacy and Worker moderation routes are gated by
+  // their server key, not an optional feature flag. A release handoff must
+  // include them even when call/billing flags are off. Listing names does not
+  // install a key or authorize account erasure/moderation.
+  const v=config.vars??{},out=["SERVICE_MODERATION_KEY","ACCOUNT_ERASURE_RELEASE_KEY"];
   if(v.CALL_SIGNALING_ENABLED==="1")out.push("FCM_SERVICE_ACCOUNT_PRIVATE_KEY");
   if(v.CALL_MEDIA_VERIFICATION_ENABLED==="1")out.push("AGORA_APP_CERTIFICATE");
   if(v.CALL_USAGE_ENABLED==="1")out.push("AGORA_NOTIFICATIONS_SECRET");
   if(v.PLAY_VERIFICATION_ENABLED==="1"||v.PLAY_RTDN_ENABLED==="1")out.push("PLAY_SERVICE_ACCOUNT_PRIVATE_KEY");
+  if(v.PLAY_LICENSE_TEST_ENABLED==="1")out.push("PLAY_LICENSE_TEST_ACCOUNT_BINDINGS");
   if(v.OPERATIONS_ENABLED==="1")out.push("OPERATIONS_KEY");
   return out;
 }

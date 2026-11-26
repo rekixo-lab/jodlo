@@ -39,22 +39,24 @@ export async function readBodyChunkUntil(
 export async function hasEmptyBody(request: Request): Promise<boolean> {
   if (request.body === null) return true;
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  let complete = false;
   try {
     reader = request.body.getReader();
     let emptyChunks = 0;
     const deadline = Date.now() + BODY_READ_DEADLINE_MS;
     while (true) {
       const { done, value } = await readBodyChunkUntil(reader, deadline);
-      if (done) return true;
+      if (done) { complete = true; return true; }
       if (!value || value.byteLength > 0 || ++emptyChunks > MAX_EMPTY_CHUNKS) {
         return false;
       }
     }
   } catch {
-    // Never await hostile cancel() implementations; returning the error is bounded.
-    if (reader) void reader.cancel().catch(() => {});
     return false;
   } finally {
+    // Rejecting a nonempty or unproductive stream must stop its producer too.
+    // Never await an untrusted cancel() implementation.
+    if (reader && !complete) void reader.cancel().catch(() => {});
     reader?.releaseLock();
   }
 }
@@ -107,7 +109,8 @@ async function readBoundedObject(request: Request, maxBytes: number,
   format: "single" | "edit-category" | "edit-versioned" | "resume-own" | "publication-revision" | "account-erasure" | "service-details" | "play-settlement" = "single"):
   Promise<Record<string, unknown> | null> {
   const type = request.headers.get("Content-Type") ?? "";
-  if (!/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(type)) return null;
+  if (!/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(type) ||
+      request.headers.has("Content-Encoding")) return null;
   const declared = request.headers.get("Content-Length");
   if (declared !== null && (!/^\d+$/.test(declared) || Number(declared) > maxBytes)) return null;
   if (!request.body) return null;
@@ -116,12 +119,13 @@ async function readBoundedObject(request: Request, maxBytes: number,
   const chunks: Uint8Array[] = [];
   let size = 0;
   let emptyChunks = 0;
+  let complete = false;
   const deadline = Date.now() + BODY_READ_DEADLINE_MS;
   try {
     reader = request.body.getReader();
     while (true) {
       const { done, value } = await readBodyChunkUntil(reader, deadline);
-      if (done) break;
+      if (done) { complete = true; break; }
       if (!value) return null;
       if (value.byteLength === 0) {
         if (++emptyChunks > MAX_EMPTY_CHUNKS) return null;
@@ -129,8 +133,6 @@ async function readBoundedObject(request: Request, maxBytes: number,
       }
       size += value.byteLength;
       if (size > maxBytes) {
-        // A hostile stream's cancel() promise can hang; do not wait for it.
-        void reader.cancel().catch(() => {});
         return null;
       }
       chunks.push(value);
@@ -158,9 +160,9 @@ async function readBoundedObject(request: Request, maxBytes: number,
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
     return parsed as Record<string, unknown>;
   } catch {
-    if (reader) void reader.cancel().catch(() => {});
     return null;
   } finally {
+    if (reader && !complete) void reader.cancel().catch(() => {});
     reader?.releaseLock();
   }
 }

@@ -59,6 +59,10 @@ export interface Env {
   PLAY_SETTLEMENT_POLICY_VERSION?: string;
   PLAY_SETTLEMENT_APPROVAL_SHA256?: string;
   PLAY_SETTLEMENT_LIMITER?: RateLimitBinding;
+  /** Default OFF: Google license-test cards are limited to exact operator-approved
+   * obfuscated JODLO account bindings. The allowlist is a server-only secret. */
+  PLAY_LICENSE_TEST_ENABLED?: string;
+  PLAY_LICENSE_TEST_ACCOUNT_BINDINGS?: string;
   PLAY_REFUND_HOLDS_ENABLED?: string;
   PLAY_REFUND_POLICY_VERSION?: string;
   PLAY_REFUND_APPROVAL_SHA256?: string;

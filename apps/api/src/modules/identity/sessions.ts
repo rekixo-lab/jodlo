@@ -13,7 +13,7 @@ export function validSessionToken(value: unknown): value is string {
 export const OWN_SESSION_QUERY =
   "SELECT a.id AS accountId FROM auth_sessions AS s " +
   "JOIN accounts AS a ON a.id = s.account_id " +
-  "WHERE s.token_hash = ? AND s.expires_at > ? AND a.status = 'active' LIMIT 1";
+  "WHERE s.token_hash = ? AND s.expires_at > MAX(?,unixepoch()) AND a.status = 'active' LIMIT 1";
 
 /** SQLite performs count + conditional insert as one atomic write statement.
  * No read-before-write race and no separate rate-limit tracking data is stored.
@@ -23,14 +23,14 @@ export const INSERT_BOUNDED_SESSION_QUERY =
   "SELECT ?, a.id, ? FROM accounts AS a " +
   "WHERE a.id = ? AND a.status = 'active' " +
   "AND (SELECT COUNT(*) FROM auth_sessions AS s " +
-  "WHERE s.account_id = a.id AND s.expires_at > ?) < ?";
+  "WHERE s.account_id = a.id AND s.expires_at > MAX(?,unixepoch())) < ?";
 
 /** Index-backed bounded opportunistic cleanup: no cron or global table scan.
  * This is hygiene, NOT an approved personal-data retention/deletion policy.
  */
 export const PRUNE_EXPIRED_QUERY =
   "DELETE FROM auth_sessions WHERE token_hash IN (" +
-  "SELECT token_hash FROM auth_sessions WHERE expires_at <= ? LIMIT ?)";
+  "SELECT token_hash FROM auth_sessions WHERE expires_at <= MAX(?,unixepoch()) LIMIT ?)";
 
 function newOpaqueSecret(): string {
   const bytes = new Uint8Array(32);
@@ -43,8 +43,30 @@ export async function sessionHash(token: string): Promise<string> {
   return Array.from(new Uint8Array(buffer), b => b.toString(16).padStart(2, "0")).join("");
 }
 
+/** Legacy worker helpers also serve trusted in-process callers. HTTP mutations
+ * must supply their verified bearer's hash so ownership is checked again INSIDE
+ * the write, after any asynchronous body read or database queue wait. A prior
+ * actor lookup alone cannot authorize a write after logout, expiry or rebinding.
+ * The account's active-state condition remains in each caller's own query.
+ */
+export function activeSessionWriteFence(accountId: string, tokenHash?: string): {
+  sql: string; values: string[];
+} {
+  if (tokenHash === undefined) return {sql: "", values: []};
+  if (!/^[0-9a-f]{64}$/.test(tokenHash)) throw new Error("Invalid write session");
+  return {
+    sql: " AND EXISTS (SELECT 1 FROM auth_sessions AS write_session " +
+      "WHERE write_session.token_hash=? AND write_session.account_id=? " +
+      "AND write_session.expires_at>unixepoch()) ",
+    values: [tokenHash, accountId],
+  };
+}
+
 export async function findSessionAccount(db: D1Database, token: string): Promise<string | null> {
   if (!validSessionToken(token)) return null;
+  // D1 may execute after the bound application timestamp. The SQL clock
+  // floor rejects natural expiry during that queue, including a final read
+  // guard; it must not require an explicit expires_at update to take effect.
   const { results } = await db.prepare(OWN_SESSION_QUERY)
     .bind(await sessionHash(token), Math.floor(Date.now() / 1000))
     .all<{ accountId: string }>();
@@ -104,7 +126,7 @@ export async function issueSession(db: D1Database, accountId: string): Promise<I
  * so an already-revoked/expired/disabled session can never report success.
  */
 export const REVOKE_SESSION_QUERY =
-  "DELETE FROM auth_sessions WHERE token_hash = ? AND expires_at > ? " +
+  "DELETE FROM auth_sessions WHERE token_hash = ? AND expires_at > MAX(?,unixepoch()) " +
   "AND account_id IN (SELECT id FROM accounts WHERE status = 'active')";
 
 /**
@@ -116,14 +138,17 @@ export const REVOKE_ALL_SESSIONS_QUERY =
   "DELETE FROM auth_sessions WHERE account_id = (" +
   "SELECT s.account_id FROM auth_sessions AS s " +
   "JOIN accounts AS a ON a.id = s.account_id " +
-  "WHERE s.token_hash = ? AND s.expires_at > ? AND a.status = 'active' LIMIT 1)";
+  "WHERE s.token_hash = ? AND s.expires_at > MAX(?,unixepoch()) AND a.status = 'active' LIMIT 1)";
 
 export async function revokeSession(db: D1Database, token: string): Promise<boolean> {
   if (!validSessionToken(token)) return false;
   const now = Math.floor(Date.now() / 1000);
-  const { meta } = await db.prepare(REVOKE_SESSION_QUERY)
-    .bind(await sessionHash(token), now).run();
-  return meta.changes === 1;
+  const hash = await sessionHash(token);
+  // D1 includes call/history trigger effects in meta.changes. The directly
+  // deleted session alone proves this logout succeeded.
+  const { results } = await db.prepare(REVOKE_SESSION_QUERY + " RETURNING token_hash")
+    .bind(hash, now).all<{token_hash: string}>();
+  return results.length === 1 && results[0]?.token_hash === hash;
 }
 
 /** Revoke all devices using a single owner-scoped database statement. */

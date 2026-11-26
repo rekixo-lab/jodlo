@@ -109,7 +109,7 @@ test("Optional FCM call-device registration is epoch-scoped, consent-safe and co
     assert.doesNotMatch(fcm,/SharedPreferences|DataStore|FileOutputStream|Log\./);
     assert.match(workflow,/jodloEnableFcm=true :app:assembleDebug --no-daemon/);
     assert.match(workflow,/jodloEnableAgora=true -PjodloEnableFcm=true/);
-    assert.match(workflow,/trap 'rm -f "\$CONFIG"' EXIT/);
+    assert.match(workflow,/trap 'rm -f "\$CONFIG" "\$COMBINED_BUNDLE"' EXIT/);
     assert.match(workflow,/synthetic-not-a-real-credential/);
     assert.match(ignored,/apps\/android\/app\/google-services\.json/);
 });

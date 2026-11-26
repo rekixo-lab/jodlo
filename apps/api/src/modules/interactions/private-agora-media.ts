@@ -15,12 +15,12 @@ const MEDIA_ELIGIBILITY = `
   FROM private_call_invitations AS i
   JOIN private_call_dispatch_slots AS slot ON slot.invitation_id=i.id
   JOIN auth_sessions AS calling_session ON calling_session.token_hash=slot.caller_session_hash
-    AND calling_session.account_id=i.caller_account_id AND calling_session.expires_at>?2
+    AND calling_session.account_id=i.caller_account_id AND calling_session.expires_at>MAX(?2,unixepoch())
   JOIN auth_sessions AS answering_session ON answering_session.token_hash=i.accepted_session_hash
-    AND answering_session.account_id=i.receiver_account_id AND answering_session.expires_at>?2
+    AND answering_session.account_id=i.receiver_account_id AND answering_session.expires_at>MAX(?2,unixepoch())
   JOIN accounts AS caller ON caller.id=i.caller_account_id AND caller.status='active'
   ${CURRENT_RING_ELIGIBILITY_JOINS}
-  WHERE i.id=?3 AND i.phase='accepted' AND i.expires_at_ms>?4
+  WHERE i.id=?3 AND i.phase='accepted' AND i.expires_at_ms>MAX(?4,unixepoch()*1000)
     AND ?1 IN (calling_session.token_hash,answering_session.token_hash)
     AND ${CURRENT_RING_ELIGIBILITY}
 `;

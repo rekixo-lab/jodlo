@@ -25,7 +25,7 @@ export async function readOwnCallHistory(
     "LEFT JOIN call_history AS anchor ON anchor.id=? AND anchor.account_id=a.id AND anchor.ended_at>? AND anchor.ended_at<=? " +
     "LEFT JOIN call_history AS h ON h.account_id=a.id AND h.ended_at>? AND h.ended_at<=? " +
     "AND (? IS NULL OR (h.ended_at,h.id)<(anchor.ended_at,anchor.id)) " +
-    "WHERE s.token_hash=? AND s.expires_at>? ORDER BY h.ended_at DESC,h.id DESC LIMIT ?",
+    "WHERE s.token_hash=? AND s.expires_at>MAX(?,unixepoch()) ORDER BY h.ended_at DESC,h.id DESC LIMIT ?",
   ).bind(after, now - CALL_HISTORY_RETENTION_SECONDS, now, now - CALL_HISTORY_RETENTION_SECONDS,
     now, after, await sessionHash(bearer), now, HISTORY_PAGE_SIZE + 1)
     .all<CallHistorySummary | {id: null}>();
@@ -58,11 +58,21 @@ export async function clearOwnCallHistory(
   db: D1Database, bearer: string, now = Math.floor(Date.now() / 1000),
 ): Promise<boolean> {
   if (!validSessionToken(bearer) || !Number.isSafeInteger(now) || now <= 0) return false;
-  await db.prepare(
+  const hash = await sessionHash(bearer);
+  const removed = await db.prepare(
     "DELETE FROM call_history WHERE account_id=(" +
     "SELECT s.account_id FROM auth_sessions AS s " +
     "JOIN accounts AS a ON a.id=s.account_id AND a.status='active' " +
-    "WHERE s.token_hash=? AND s.expires_at>?)",
-  ).bind(await sessionHash(bearer), now).run();
-  return true; // Already empty is an idempotent success, never a failure.
+    "WHERE s.token_hash=? AND s.expires_at>MAX(?,unixepoch()))",
+  ).bind(hash, now).run();
+  if (removed.meta.changes > 0) return true;
+  // Zero deleted rows may mean "already empty" or a session that expired
+  // while the DELETE was queued. Only a still-authorized empty history can
+  // report idempotent success; never tell an expired caller data was erased.
+  const {results} = await db.prepare(
+    "SELECT 1 AS cleared FROM auth_sessions AS s JOIN accounts AS a ON a.id=s.account_id AND a.status='active' " +
+    "WHERE s.token_hash=? AND s.expires_at>MAX(?,unixepoch()) " +
+    "AND NOT EXISTS(SELECT 1 FROM call_history AS h WHERE h.account_id=a.id)",
+  ).bind(hash, now).all<{cleared: number}>();
+  return results[0]?.cleared === 1;
 }

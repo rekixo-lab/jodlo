@@ -6,6 +6,7 @@ import { claimPrivateCallDispatch, releaseUnsentPrivateCallDispatch } from "../s
 import { sendPrivateCallRing } from "../src/modules/interactions/private-call-ring.ts";
 import { preparePrivateCallInvitation, purgeExpiredPrivateInvitations } from "../src/modules/interactions/private-call-invitation.ts";
 import { openLocalDatabase } from "./helpers/local-db.mjs";
+import { registerOwnCallDevice } from "../src/modules/notifications/private-call-devices.ts";
 
 test("only confirmed terminal calls release an unexpired dispatch slot; repeated and uncertain sends remain fenced",async()=>{
   for(const phase of ["ringing","accepted","uncertain","declined","cancelled","ended"]){
@@ -20,6 +21,7 @@ test("only confirmed terminal calls release an unexpired dispatch slot; repeated
       db.prepare("INSERT INTO worker_listings(id,worker_account_id,category_id,status) VALUES(?,'dispatch-worker','dispatch-repair','published')").run(listing);
       const caller=(await issueSession(adapter,"dispatch-caller")).accessToken;
       const worker=(await issueSession(adapter,"dispatch-worker")).accessToken;
+      assert.equal(await registerOwnCallDevice(adapter,worker,"synthetic-device-token"),true);
       const first=await preparePrivateCallInvitation(adapter,caller,listing,"first-dispatch-attempt",now);
       assert.equal(first.kind,"created");
       let posts=0;
@@ -122,6 +124,7 @@ test("private invitation commits with quota, deduplicates retries and rolls back
     assert.equal(await claim(freshId, null), null, "availability alone is not reachability");
     assert.equal(await claim(freshId, caller), null);
     const {accessToken:receiverToken} = await issueSession(adapter, receiver);
+    assert.equal(await registerOwnCallDevice(adapter,receiverToken,"synthetic-device-token"),true);
     assert.equal(await claim(freshId, receiver, now, receiverToken), null);
     for (const [blocker, blocked] of [[caller, receiver], [receiver, caller]]) {
       db.prepare("INSERT INTO agora_account_blocks(blocker_account_id,blocked_account_id) VALUES(?,?)")

@@ -24,7 +24,7 @@ test("export v4 includes only current owner's financial records and bounded usag
     const raw=JSON.stringify(data);
     for(const hidden of [bearer,"a".repeat(64),"b".repeat(64),"export-other","purchaseToken","source_key_hash"])assert.ok(!raw.includes(hidden));
     assert.equal((await handleRequest(new Request("https://example.invalid/api/v1/me/data-export?version=4"),{DB:adapter})).status,401);
-    assert.equal((await handleRequest(new Request("https://example.invalid/api/v1/me/data-export?version=5",{headers:{Authorization:"Bearer "+bearer}}),{DB:adapter})).status,400);
+    assert.equal((await handleRequest(new Request("https://example.invalid/api/v1/me/data-export?version=6",{headers:{Authorization:"Bearer "+bearer}}),{DB:adapter})).status,400);
   }finally{db.close();}
 });
 
@@ -90,5 +90,52 @@ test("export v4 projects real purchase, call and refund records with the same sp
     assert.equal(released.refundReviews[0].resolvedAtMs,now+20);
     assert.equal(released.purchaseStatus[0].status,"void_hold");
     assert.ok(!JSON.stringify(released).includes("d".repeat(64)));
+  }finally{db.close();}
+});
+
+test('export v5 labels immutable production and license-test purchases while preserving v4 shape',async()=>{
+  const {db,adapter}=openLocalDatabase();
+  try{
+    db.exec("INSERT INTO accounts(id) VALUES('export-test-environment'),('export-hidden-owner')");
+    const bearer=(await issueSession(adapter,'export-test-environment')).accessToken;
+    const hash=await sessionHash(bearer),now=Date.now()-10000;
+    for(const [index,environment] of ['production','license_test'].entries()){
+      assert.equal(await stageTrustedPlayConsumable(adapter,{
+        accountId:'export-test-environment',sourceKeyHash:String(index+1).repeat(64),
+        productId:'jodlo.minutes5',seconds:300,createdAtMs:now+index,
+      },new Map([['jodlo.minutes5',5]]),{sessionHash:hash,policyVersion:'jodlo-play-minutes-v1',
+        approvalSha256:'b'.repeat(64),purchasedAtMs:now-1000,purchaseEnvironment:environment}),'applied');
+    }
+    const request=version=>new Request('https://jodlo.example/api/v1/me/data-export?version='+version,{headers:{Authorization:'Bearer '+bearer}});
+    const response=await handleRequest(request(5),{DB:adapter});
+    assert.equal(response.status,200);
+    const {data}=await response.json();
+    assert.equal(data.schemaVersion,5);
+    assert.deepEqual(data.purchaseStatus.map(p=>p.environment),['production','license_test']);
+    const legacy=(await (await handleRequest(request(4),{DB:adapter})).json()).data;
+    assert.deepEqual(data.purchaseStatus.map(({environment,...p})=>p),legacy.purchaseStatus);
+    assert.ok(legacy.purchaseStatus.every(p=>!Object.hasOwn(p,'environment')));
+    const raw=JSON.stringify(data);
+    for(const hidden of [bearer,hash,'b'.repeat(64),'1'.repeat(64),'2'.repeat(64),'export-hidden-owner','pendingRefundToken'])assert.ok(!raw.includes(hidden));
+  }finally{db.close();}
+});
+
+test('v5 export includes only own persisted call history and preserves legacy export shapes',async()=>{
+  const {db,adapter}=openLocalDatabase();
+  try{
+    db.exec("INSERT INTO accounts(id) VALUES('export-history-owner'),('export-history-other')");
+    const bearer=(await issueSession(adapter,'export-history-owner')).accessToken;
+    const id='11111111-1111-4111-8111-111111111111',foreign='22222222-2222-4222-8222-222222222222';
+    const endedAt=Math.floor(Date.now()/1000)-10;
+    const insert=db.prepare('INSERT INTO call_history(id,account_id,direction,outcome,ended_at,connected_seconds) VALUES(?,?,?,?,?,?)');
+    insert.run(id,'export-history-owner','outgoing','ended',endedAt,30);
+    insert.run(foreign,'export-history-other','incoming','ended',endedAt,30);
+    const request=v=>new Request('https://jodlo.example/api/v1/me/data-export?version='+v,{headers:{Authorization:'Bearer '+bearer}});
+    const response=await handleRequest(request(5),{DB:adapter});
+    assert.equal(response.status,200);const {data}=await response.json();
+    assert.deepEqual(data.callHistory,[{id,direction:'outgoing',outcome:'ended',endedAt,connectedSeconds:30}]);
+    assert.ok(!JSON.stringify(data).includes(foreign));
+    assert.ok(!JSON.stringify(data).includes('export-history-other'));
+    for(const version of [2,3,4])assert.ok(!Object.hasOwn((await (await handleRequest(request(version),{DB:adapter})).json()).data,'callHistory'));
   }finally{db.close();}
 });

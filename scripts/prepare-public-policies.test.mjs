@@ -108,7 +108,7 @@ async function withFixtureRepo(run){
     const git=args=>execFileSync("git",args,{cwd:dir,encoding:"utf8",stdio:["ignore","pipe","ignore"]}).trim();
     git(["init","-q"]);git(["add","."]);
     git(["-c","user.name=Fixture","-c","user.email=fixture@jodlo-fixture.org","commit","-qm","Synthetic policy test fixture"]);
-    await run(dir,git(["rev-parse","HEAD"]));
+    await run(dir,git(["rev-parse","HEAD"]),git);
   }finally{await rm(dir,{recursive:true,force:true});}
 }
 
@@ -142,4 +142,22 @@ test("policy evidence rejects symlinked files and writer rejects a redirected ou
     try{await symlink(target,join(dir,".local-release"));await assert.rejects(writePublicPolicyCandidate(manifest(sha),{root:dir,now}),/Unsafe private release directory/);}
     finally{await rm(target,{recursive:true,force:true});}
   });
+});
+
+test("clean committed symlinks cannot copy external mutable source bytes into public policies",async()=>{
+  for(const name of ["styles.css","public"]){
+    await withFixtureRepo(async(dir,_sha,git)=>{
+      const outside=await mkdtemp(join(tmpdir(),"jodlo-untracked-policy-source-"));
+      try{
+        const target=join(outside,"private-source");await writeFile(target,"SYNTHETIC PRIVATE CONTENT MUST NOT BE PUBLISHED");
+        const source=join(dir,"apps/web",name);await rm(source,{recursive:true});
+        await symlink(name==="public"?outside:target,source);
+        git(["add","apps/web"]);
+        git(["-c","user.name=Fixture","-c","user.email=fixture@jodlo-fixture.org","commit","-qm","Synthetic symlink fixture"]);
+        const sourceCommit=git(["rev-parse","HEAD"]);
+        await assert.rejects(writePublicPolicyCandidate(manifest(sourceCommit),{root:dir,now}),/Unsafe.*policy source/);
+        assert.equal((await verifyPublicPolicyCandidate(dir,sourceCommit)).status,"missing");
+      }finally{await rm(outside,{recursive:true,force:true});}
+    });
+  }
 });

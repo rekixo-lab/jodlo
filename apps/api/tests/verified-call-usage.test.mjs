@@ -14,11 +14,16 @@ import {handleAgoraUsageWebhook} from "../src/modules/interactions/agora-usage-w
 import {stageTrustedPlayConsumable} from "../src/modules/interactions/play-consumable-outbox.ts";
 import {recordTrustedPlayRevocation} from "../src/modules/interactions/google-play-rtdn-fences.ts";
 import {registerPlayRefundPolicy} from "../src/modules/interactions/play-refund-review.ts";
+import {setOwnWorkerAgoraCallPreference} from "../src/modules/workers/agora-call-preference.ts";
+import {setOwnWorkerAvailability,setOwnAgoraAccountBlock} from "../src/modules/interactions/agora-private-safety-state.ts";
+import {changeOwnAgoraListingBlock} from "../src/modules/interactions/agora-listing-blocks.ts";
+import {prepareAccountErasure,eraseOwnD1Account} from "../src/modules/identity/account-erasure.ts";
 
 const APPROVAL="a".repeat(64),SECRET="synthetic-agora-notification-secret";
-async function fixture(seconds=300){
+async function fixture(seconds=300,offsetMs=0){
   const f=openLocalDatabase(),{db,adapter}=f;
-  const now=Math.floor(Date.now()/1000)*1000,listing=crypto.randomUUID();
+  const now=Math.floor(Date.now()/1000)*1000+offsetMs,listing=crypto.randomUUID();
+  db.function("unixepoch",()=>Math.floor(now/1000));
   db.exec(`INSERT INTO accounts(id) VALUES('usage-caller'),('usage-worker'),('usage-outsider');
     INSERT INTO categories(id,slug,name_en,is_active) VALUES('repair','repair','Repair',1);
     INSERT INTO worker_profiles(account_id,status) VALUES('usage-worker','draft');
@@ -328,4 +333,141 @@ test("an immediate end holds zero seconds, cannot produce a charge and releases 
     assert.equal((await readOwnCallCreditBalance(adapter,caller)).availableSeconds,0,
       "settling the old zero-time call cannot release the new reservation");
   }finally{db.close();}
+});
+
+test("withdrawing current call authorization ends the peer signal and caps verified billing in the same mutation",async()=>{
+  const cases=[
+    ["consent",async f=>assert.equal((await setOwnWorkerAgoraCallPreference(f.adapter,f.worker,false,1)).kind,"updated")],
+    ["availability",async f=>assert.equal((await setOwnWorkerAvailability(f.adapter,f.worker,false,1)).kind,"updated")],
+    ["caller block",async f=>assert.equal(await changeOwnAgoraListingBlock(f.adapter,f.caller,f.listing,true),true)],
+    ["receiver block",async f=>assert.equal((await setOwnAgoraAccountBlock(f.adapter,f.worker,"usage-caller",true)).kind,"updated")],
+    ["unpublish",async f=>f.db.exec("UPDATE worker_listings SET status='unpublished'")],
+    ["moderation",async f=>f.db.exec("UPDATE worker_listings SET moderation_status='hidden'")],
+    ["report hold",async f=>f.db.exec("UPDATE worker_listings SET report_hold=1")],
+    ["consent row deletion",async f=>f.db.exec("DELETE FROM worker_agora_call_preferences")],
+    ["availability row deletion",async f=>f.db.exec("DELETE FROM worker_agora_availability_preferences")],
+    ["listing deletion",async f=>f.db.exec("DELETE FROM worker_listings")],
+    ["worker withdrawal",async f=>f.db.exec("DELETE FROM worker_profiles")],
+    ["category withdrawal",async f=>f.db.exec("UPDATE categories SET is_active=0")],
+  ];
+  for(const [name,revoke] of cases){
+    const f=await fixture(300,-60_000);const {db,adapter,id,caller,now}=f;
+    try{
+      assert.ok(await reserveOwnCallUsage(adapter,caller,id,APPROVAL,now),name);
+      const before=(await readOwnCallCreditBalance(adapter,caller)).revision;
+      db.function("unixepoch",()=>Math.floor(Date.now()/1000));
+      // Cloudflare may count trigger side effects in meta.changes. A mutation
+      // must prove its own RETURNING row, not assume exactly one total write.
+      f.adapter={...adapter,prepare(sql){
+        const statement=adapter.prepare(sql),run=statement.run.bind(statement);
+        statement.run=async()=>{
+          const initial=db.prepare("SELECT total_changes() AS n").get().n;
+          const result=await run();
+          return {...result,meta:{...result.meta,changes:db.prepare("SELECT total_changes() AS n").get().n-initial}};
+        };
+        return statement;
+      }};
+      await revoke(f);
+      const row=db.prepare("SELECT ended_at_ms AS end,reserved_seconds AS held,settle_after_ms AS due FROM call_usage_sessions WHERE invitation_id=?").get(id);
+      assert.ok(row.end>=now+60_000&&row.end<=Date.now(),name);
+      assert.equal(row.held,Math.ceil((row.end-now)/1000),name);
+      assert.equal(row.due,row.end+120_000,name);
+      assert.ok((await readOwnCallCreditBalance(adapter,caller)).revision>before,name);
+      const signal=await ownPrivateCallSignal(adapter,caller,id);
+      assert.ok(signal===null||signal.phase==="ended",name+" cannot keep the peer in an accepted call");
+      assert.equal(await issueOwnAgoraAudioGrant(adapter,caller,id,"b".repeat(32),Date.now(),{approvalHash:APPROVAL}),null,name);
+      assert.equal(await reserveOwnCallUsage(adapter,caller,id,APPROVAL,Date.now()),null,name);
+      for(const uid of [1,2])assert.equal(await recordVerifiedCallInterval(adapter,{invitationId:id,uid,clientSeq:1,
+        startedAtSeconds:now/1000+10,endedAtSeconds:now/1000+90,reason:1},now+90_000),"recorded",name);
+      const expected=Math.floor(row.end/1000)-(now/1000+10);
+      assert.ok(expected>=50&&expected<80,name+" only pre-withdrawal overlap may be billed");
+      assert.deepEqual(await settleDueCallUsage(adapter,now+420_000),{settled:1,charged:expected},name);
+      assert.equal(db.prepare("SELECT count(*) AS n FROM call_credit_events WHERE kind='verified_usage'").get().n,1,name);
+      assert.deepEqual(db.prepare("PRAGMA foreign_key_check").all(),[],name);
+    }finally{db.close();}
+  }
+});
+
+test("later opt-in, unblock or republication cannot revive an accepted authorization that was withdrawn",async()=>{
+  for(const kind of ["consent","availability","block","listing"]){
+    const f=await fixture();
+    try{
+      assert.ok(await reserveOwnCallUsage(f.adapter,f.caller,f.id,APPROVAL,f.now));
+      if(kind==="consent"){
+        assert.equal((await setOwnWorkerAgoraCallPreference(f.adapter,f.worker,false,1)).kind,"updated");
+        assert.equal((await setOwnWorkerAgoraCallPreference(f.adapter,f.worker,true,2)).kind,"updated");
+      }else if(kind==="availability"){
+        assert.equal((await setOwnWorkerAvailability(f.adapter,f.worker,false,1)).kind,"updated");
+        assert.equal((await setOwnWorkerAvailability(f.adapter,f.worker,true,2)).kind,"updated");
+      }else if(kind==="block"){
+        assert.equal(await changeOwnAgoraListingBlock(f.adapter,f.caller,f.listing,true),true);
+        assert.equal(await changeOwnAgoraListingBlock(f.adapter,f.caller,f.listing,false),true);
+      }else{
+        f.db.exec("UPDATE worker_listings SET status='unpublished'");
+        f.db.exec("UPDATE worker_listings SET status='published'");
+      }
+      assert.equal((await ownPrivateCallSignal(f.adapter,f.caller,f.id)).phase,"ended",kind);
+      assert.equal(await issueOwnAgoraAudioGrant(f.adapter,f.caller,f.id,"b".repeat(32),Date.now(),{approvalHash:APPROVAL}),null,kind);
+      assert.equal(f.db.prepare("SELECT count(*) AS n FROM call_history").get().n,2,kind+" records one end per participant");
+      assert.equal(f.db.prepare("SELECT count(*) AS n FROM call_credit_events WHERE kind='verified_usage'").get().n,0,kind);
+    }finally{f.db.close();}
+  }
+});
+
+test("authorization withdrawn immediately before reservation cannot leave a fresh credit hold",async()=>{
+  const f=await fixture();
+  try{
+    let revoked=false;
+    const racing={...f.adapter,prepare(sql){
+      const stmt=f.adapter.prepare(sql),run=stmt.run.bind(stmt);
+      stmt.run=async()=>{
+        if(sql.includes("INSERT INTO call_usage_sessions")&&!revoked){
+          revoked=true;f.db.exec("UPDATE worker_agora_call_preferences SET calls_enabled=0,revision=revision+1");
+        }
+        return run();
+      };
+      return stmt;
+    }};
+    assert.equal(await reserveOwnCallUsage(racing,f.caller,f.id,APPROVAL,f.now),null);
+    assert.equal(f.db.prepare("SELECT count(*) AS n FROM call_usage_sessions").get().n,0);
+    assert.equal((await readOwnCallCreditBalance(f.adapter,f.caller)).availableSeconds,300);
+  }finally{f.db.close();}
+});
+
+test("real account erasure cascades accepted calls, usage, dispatch and existing history without resurrecting deleted parents",async()=>{
+  for(const role of ["caller","worker"]){
+    const f=await fixture();
+    try{
+      const account=role==="caller"?"usage-caller":"usage-worker",subject="synthetic-erase-"+role;
+      f.db.prepare("INSERT INTO google_identities(google_sub,account_id) VALUES(?,?)").run(subject,account);
+      assert.ok(await reserveOwnCallUsage(f.adapter,f.caller,f.id,APPROVAL,f.now));
+      assert.equal((await ownPrivateCallSignal(f.adapter,f.worker,f.id,"hangup",f.now+1000)).phase,"ended");
+      assert.equal(f.db.prepare("SELECT count(*) AS n FROM call_history").get().n,2);
+      const active=await nextAcceptedInvitation(f,f.now+2000,"erasure-with-existing-history");
+      assert.ok(await reserveOwnCallUsage(f.adapter,f.caller,active,APPROVAL,f.now+2000));
+      await recordVerifiedCallInterval(f.adapter,{invitationId:active,uid:1,clientSeq:1,
+        startedAtSeconds:f.now/1000+2,endedAtSeconds:f.now/1000+20,reason:1},f.now+20000);
+      assert.equal(f.db.prepare("SELECT count(*) AS n FROM private_call_dispatch_slots").get().n,1);
+      assert.equal(f.db.prepare("SELECT count(*) AS n FROM call_usage_sessions").get().n,2);
+      const signingKey=new Uint8Array(32).fill(79);
+      const challenge=await prepareAccountErasure(f.adapter,f[role],signingKey);
+      assert.ok(challenge);
+      let checks=0;
+      const verifyGoogle=async(token,audience,_keys,_android,nonce)=>{
+        checks++;assert.equal(token,"synthetic-google-erasure-proof");
+        assert.equal(audience,"synthetic-client");assert.equal(nonce,challenge.nonce);return subject;
+      };
+      assert.equal(await eraseOwnD1Account(f.adapter,f[role],challenge.challenge,"synthetic-google-erasure-proof",
+        {signingKey,googleAudience:"synthetic-client"},verifyGoogle),true,role);
+      assert.equal(checks,1);
+      for(const table of ["private_call_invitations","private_call_dispatch_slots","call_usage_sessions","call_usage_intervals"])
+        assert.equal(f.db.prepare("SELECT count(*) AS n FROM "+table).get().n,0,role+":"+table);
+      assert.equal(f.db.prepare("SELECT count(*) AS n FROM call_history WHERE account_id=?").get(account).n,0);
+      assert.equal(f.db.prepare("SELECT count(*) AS n FROM call_history").get().n,1,
+        "the existing other-participant summary survives; cascades do not manufacture a new history row");
+      assert.deepEqual(f.db.prepare("PRAGMA foreign_key_check").all(),[]);
+      if(role==="worker")assert.equal((await readOwnCallCreditBalance(f.adapter,f.caller)).availableSeconds,300,
+        "receiver erasure releases every operational reservation without charging for unconfirmed use");
+    }finally{f.db.close();}
+  }
 });

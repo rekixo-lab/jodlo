@@ -173,13 +173,30 @@ export function renderPublicPolicies(m,baseHtml,options){
   return {documents,proof};
 }
 const staticFiles=["styles.css","app.js","_headers","public/jodlo-mark.png","public/favicon.png"];
+async function readPolicySources(root){
+  // A clean Git commit records a symlink's target, not the bytes outside the
+  // repository that it points to. Never copy those mutable/private bytes into
+  // a supposedly source-bound public policy candidate.
+  for(const directory of ["apps","apps/web","apps/web/public"]){
+    const stat=await lstat(join(root,directory));
+    if(!stat.isDirectory()||stat.isSymbolicLink())throw Error("Unsafe policy source directory");
+  }
+  const files={};
+  for(const name of ["index.html",...staticFiles]){
+    const path=join(root,"apps/web",name),stat=await lstat(path);
+    if(!stat.isFile()||stat.isSymbolicLink()||stat.size>5*1024*1024)throw Error("Unsafe or oversized policy source file");
+    files[name]=await readFile(path);
+  }
+  return files;
+}
 async function readManifest(path){const raw=await readFile(path);if(raw.length>131072)throw Error("Policy manifest too large");return JSON.parse(raw.toString("utf8"));}
 function commitAt(root){return execFileSync("git",["rev-parse","HEAD"],{cwd:root,encoding:"utf8",stdio:["ignore","pipe","ignore"]}).trim();}
 export async function writePublicPolicyCandidate(m,{root=ROOT,now=Date.now()}={}){
   const sourceCommit=commitAt(root);
   const changes=execFileSync("git",["status","--porcelain"],{cwd:root,encoding:"utf8",stdio:["ignore","pipe","ignore"]});
   if(changes.trim())throw Error("Commit the exact reviewed source before preparing a publication candidate");
-  const rendered=renderPublicPolicies(m,await readFile(join(root,"apps/web/index.html"),"utf8"),{sourceCommit,now});
+  const sourceFiles=await readPolicySources(root);
+  const rendered=renderPublicPolicies(m,sourceFiles["index.html"].toString("utf8"),{sourceCommit,now});
   const privateRoot=join(root,".local-release");await mkdir(privateRoot,{recursive:true});
   const stat=await lstat(privateRoot);if(!stat.isDirectory()||stat.isSymbolicLink())throw Error("Unsafe private release directory");
   const directory=".local-release/website-"+rendered.proof.scopeSha256.slice(0,16),out=join(root,directory);
@@ -189,7 +206,7 @@ export async function writePublicPolicyCandidate(m,{root=ROOT,now=Date.now()}={}
     const files={};
     for(const [name,content] of Object.entries(rendered.documents)){await writeFile(join(temporary,name),content,{flag:"wx",mode:0o644});files[name]=sha(content);}
     await mkdir(join(temporary,"public"));
-    for(const name of staticFiles){const bytes=await readFile(join(root,"apps/web",name));await writeFile(join(temporary,name),bytes,{flag:"wx",mode:0o644});files[name]=sha(bytes);}
+    for(const name of staticFiles){const bytes=sourceFiles[name];await writeFile(join(temporary,name),bytes,{flag:"wx",mode:0o644});files[name]=sha(bytes);}
     try{await lstat(out);throw Error("This policy candidate already exists; inspect it before preparing another version");}catch(error){if(error?.code!=="ENOENT")throw error;}
     await rename(temporary,out);installed=true;
     const evidence={kind:"JODLO_PUBLIC_POLICY_CANDIDATE_V1",sourceCommit,scopeSha256:rendered.proof.scopeSha256,directory,files,

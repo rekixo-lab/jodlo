@@ -5,12 +5,16 @@ import { createPlayAndroidPublisherAccessTokenSource } from
   "./google-play-androidpublisher-oauth.ts";
 import type { JWTVerifyGetKey } from "jose";
 import { configuredPlayRefundPolicy } from "./play-refund-review.ts";
+import { recordAuthenticatedPendingPlayRefundReview } from "./play-pending-refund-review.ts";
 
 /**
  * Default-OFF, narrowly scoped RTDN push ingress. This endpoint CANNOT
- * process purchases, grant minutes, acknowledge/consume purchases or debit a
+ * grant minutes, acknowledge/consume purchases or debit a
  * refunded balance. Only independently Google-confirmed cancellation/void
  * records can create token-hash revocation fences in the local D1 schema.
+ * Separately verified pending chargebacks wait for an explicit operator
+ * recommendation. A signed redelivery can send that immutable decision once;
+ * it never chooses a refund verdict or changes a customer balance/hold.
  *
  * Production uses fixed Google JWKS + actual OAuth. Injected keys/network
  * adapters are used ONLY by isolated tests, never by the Worker router.
@@ -53,7 +57,16 @@ export async function handleConfiguredJodloPlayRtdn(
       request, policy, testOnly?.nowMs ?? Date.now(),testOnly?.keys);
     if (authenticated.kind === "rejected")
       return new Response(null,{status:401,headers:{"Cache-Control":"no-store"}});
-    if (authenticated.kind !== "authenticated")return unavailable();
+    // Acknowledge only the notification envelope. Purchases are settled by
+    // the authenticated owner's separate provider-verification endpoint;
+    // Console probes have no entitlement to change. Retrying either event
+    // forever would starve the same subscription's refund notifications.
+    if (authenticated.kind === "authenticated_noop" ||
+        authenticated.kind === "authenticated" && authenticated.hint.kind === "purchase_hint")
+      return new Response(null,{status:204,headers:{"Cache-Control":"no-store"}});
+    if (authenticated.kind !== "authenticated" && authenticated.kind !== "authenticated_pending_refund_review")
+      return unavailable();
+    if (authenticated.kind === "authenticated_pending_refund_review" && !refundPolicy) return unavailable();
     // Only a fully Google-signed, exact-subscription payload may consume the
     // shared RTDN quota. Otherwise arbitrary unsigned traffic could exhaust
     // the quota and starve legitimate Pub/Sub retries of refund revocations.
@@ -68,7 +81,10 @@ export async function handleConfiguredJodloPlayRtdn(
       email:env.PLAY_SERVICE_ACCOUNT_EMAIL,
       privateKey:env.PLAY_SERVICE_ACCOUNT_PRIVATE_KEY,
     },testOnly?.oauthRequest);
-    const result = await reconcileAuthenticatedJodloPlayRevocation(
+    const result = authenticated.kind === "authenticated_pending_refund_review"
+      ? await recordAuthenticatedPendingPlayRefundReview(env.DB, authenticated, {
+        accessToken, request:testOnly?.playRequest, now:()=>testOnly?.nowMs ?? Date.now(), refundPolicy:refundPolicy!,
+      }) : await reconcileAuthenticatedJodloPlayRevocation(
       env.DB, authenticated,{
         accessToken,
         request:testOnly?.playRequest,

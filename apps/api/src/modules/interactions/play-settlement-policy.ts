@@ -3,6 +3,8 @@
  * configured separately. No price, refund clawback or operator approval is
  * inferred from this source constant or a client request.
  */
+import type { PlayPurchaseEnvironment } from "./play-license-test-policy.ts";
+
 export const JODLO_PLAY_SETTLEMENT_POLICY_VERSION = "jodlo-play-minutes-v1";
 
 export type PlaySettlementAuthority = Readonly<{
@@ -10,6 +12,7 @@ export type PlaySettlementAuthority = Readonly<{
   policyVersion: string;
   approvalSha256: string;
   purchasedAtMs: number;
+  purchaseEnvironment?: PlayPurchaseEnvironment;
 }>;
 
 export function validPlaySettlementAuthority(value: PlaySettlementAuthority): boolean {
@@ -17,5 +20,7 @@ export function validPlaySettlementAuthority(value: PlaySettlementAuthority): bo
     value.policyVersion === JODLO_PLAY_SETTLEMENT_POLICY_VERSION &&
     /^[a-f0-9]{64}$/.test(value.approvalSha256) &&
     value.approvalSha256 !== "0".repeat(64) &&
-    Number.isSafeInteger(value.purchasedAtMs) && value.purchasedAtMs > 0;
+    Number.isSafeInteger(value.purchasedAtMs) && value.purchasedAtMs > 0 &&
+    (value.purchaseEnvironment === undefined || value.purchaseEnvironment === "production" ||
+      value.purchaseEnvironment === "license_test");
 }

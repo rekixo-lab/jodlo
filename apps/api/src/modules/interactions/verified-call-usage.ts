@@ -2,6 +2,7 @@ import type {D1Database} from "../../data/d1.ts";
 import {sessionHash, validSessionToken} from "../identity/sessions.ts";
 import {validOpaqueId} from "../shared/identifiers.ts";
 import {refundReviewDemandSql} from "./play-refund-review.ts";
+import {CURRENT_RING_ELIGIBILITY, CURRENT_RING_ELIGIBILITY_JOINS} from "./private-call-dispatch.ts";
 
 export const CALL_USAGE_POLICY_VERSION = "agora-overlap-v1";
 export const CALL_USAGE_CLEANUP_CRON = "* * * * *";
@@ -29,25 +30,26 @@ export async function reserveOwnCallUsage(db:D1Database,bearer:string,id:string,
     "-COALESCE((SELECT SUM(held.reserved_seconds) FROM call_usage_sessions AS held "+
     "WHERE held.caller_account_id=i.caller_account_id AND held.state='active'),0))";
   const deadline="min(i.expires_at_ms,calling.expires_at*1000,answering.expires_at*1000)";
+  const authorizationStart="max(?3,unixepoch()*1000)";
   await db.prepare(`
     INSERT INTO call_usage_sessions(invitation_id,caller_account_id,receiver_account_id,
       policy_version,approval_hash,source_key_hash,reserved_seconds,
       authorized_from_ms,authorized_until_ms,settle_after_ms)
     SELECT i.id,i.caller_account_id,i.receiver_account_id,?4,?5,?6,
-      min(${spendable},30000,CAST((${deadline}-?3)/1000 AS INTEGER)),
-      ?3, min(${deadline},?3+min(${spendable},30000)*1000),
-      min(${deadline},?3+min(${spendable},30000)*1000)+?7
+      min(${spendable},30000,CAST((${deadline}-${authorizationStart})/1000 AS INTEGER)),
+      ${authorizationStart}, min(${deadline},${authorizationStart}+min(${spendable},30000)*1000),
+      min(${deadline},${authorizationStart}+min(${spendable},30000)*1000)+?7
     FROM private_call_invitations AS i
-    JOIN accounts AS a ON a.id=i.caller_account_id AND a.status='active'
-    JOIN accounts AS r ON r.id=i.receiver_account_id AND r.status='active'
+    JOIN accounts AS caller ON caller.id=i.caller_account_id AND caller.status='active'
+    ${CURRENT_RING_ELIGIBILITY_JOINS}
     JOIN private_call_dispatch_slots AS slot ON slot.invitation_id=i.id
     JOIN auth_sessions AS calling ON calling.token_hash=slot.caller_session_hash
-      AND calling.account_id=i.caller_account_id AND calling.expires_at>CAST(?3/1000 AS INTEGER)
+      AND calling.account_id=i.caller_account_id AND calling.expires_at>MAX(CAST(?3/1000 AS INTEGER),unixepoch())
     JOIN auth_sessions AS answering ON answering.token_hash=i.accepted_session_hash
-      AND answering.account_id=i.receiver_account_id AND answering.expires_at>CAST(?3/1000 AS INTEGER)
+      AND answering.account_id=i.receiver_account_id AND answering.expires_at>MAX(CAST(?3/1000 AS INTEGER),unixepoch())
     JOIN auth_sessions AS s ON s.token_hash=?1 AND s.token_hash IN(calling.token_hash,answering.token_hash)
     JOIN call_credit_balances AS b ON b.account_id=i.caller_account_id
-    WHERE i.id=?2 AND i.phase='accepted' AND ${deadline}>=?3+1000
+    WHERE i.id=?2 AND i.phase='accepted' AND ${CURRENT_RING_ELIGIBILITY} AND ${deadline}>=${authorizationStart}+1000
       AND ${spendable}>0 AND NOT EXISTS(SELECT 1 FROM call_usage_sessions AS old
         WHERE old.caller_account_id=i.caller_account_id AND old.state='active' AND old.ended_at_ms IS NULL)
     ON CONFLICT(invitation_id) DO NOTHING
@@ -57,12 +59,12 @@ export async function reserveOwnCallUsage(db:D1Database,bearer:string,id:string,
     SELECT u.authorized_until_ms AS deadlineMs FROM call_usage_sessions AS u
     JOIN private_call_invitations AS i ON i.id=u.invitation_id AND i.phase='accepted'
     JOIN private_call_dispatch_slots AS slot ON slot.invitation_id=i.id
-    JOIN auth_sessions AS s ON s.token_hash=?1 AND s.expires_at>CAST(?3/1000 AS INTEGER)
+    JOIN auth_sessions AS s ON s.token_hash=?1 AND s.expires_at>MAX(CAST(?3/1000 AS INTEGER),unixepoch())
       AND s.token_hash IN(slot.caller_session_hash,i.accepted_session_hash)
       AND s.account_id IN(u.caller_account_id,u.receiver_account_id)
     JOIN accounts AS a ON a.id=s.account_id AND a.status='active'
     WHERE u.invitation_id=?2 AND u.state='active' AND u.ended_at_ms IS NULL
-      AND u.authorized_until_ms>?3 AND u.policy_version=?4 AND u.approval_hash=?5
+      AND u.authorized_until_ms>MAX(?3,unixepoch()*1000) AND u.policy_version=?4 AND u.approval_hash=?5
   `).bind(tokenHash,id,now,CALL_USAGE_POLICY_VERSION,approvalHash).all<{deadlineMs:number}>();
   return results[0]??null;
 }
@@ -98,10 +100,10 @@ export async function recordVerifiedCallInterval(db:D1Database,event:ProviderCal
     event.endedAtSeconds,event.reason,now] as const;
   await db.prepare(`INSERT INTO call_usage_intervals(event_hash,invitation_id,uid,client_seq,
       started_at_s,ended_at_s,reason,received_at_ms)
-    SELECT ?1,u.invitation_id,?3,?4,?5,?6,?7,?8 FROM call_usage_sessions AS u
+    SELECT ?1,u.invitation_id,?3,?4,?5,?6,?7,MAX(?8,unixepoch()*1000) FROM call_usage_sessions AS u
     WHERE u.invitation_id=?2 AND u.state='active'
       AND (EXISTS(SELECT 1 FROM call_usage_intervals WHERE event_hash=?1)
-        OR (u.settle_after_ms>=?8 AND ?6*1000>=u.authorized_from_ms
+        OR (u.settle_after_ms>=MAX(?8,unixepoch()*1000) AND ?6*1000>=u.authorized_from_ms
           AND ?5*1000<=u.authorized_until_ms
           AND (SELECT count(*) FROM call_usage_intervals WHERE invitation_id=u.invitation_id)<256))
     ON CONFLICT(event_hash) DO NOTHING`).bind(...values).run();

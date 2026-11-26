@@ -34,7 +34,7 @@ import { prepareAccountErasure, eraseOwnD1Account } from "../modules/identity/ac
 import { ownAccountOverview, exportOwnAccountData } from "../modules/identity/account-self-service.ts";
 import { validGoogleClientId, verifyGoogleIdToken } from "../modules/identity/google.ts";
 import { resolveGoogleAccount } from "../modules/identity/google-accounts.ts";
-import { issueSession, makeSessionVerifier, readWithSameActiveSession, validSessionToken, revokeAllSessions, revokeSession, SESSION_TTL_SECONDS } from "../modules/identity/sessions.ts";
+import { issueSession, makeSessionVerifier, readWithSameActiveSession, sessionHash, validSessionToken, revokeAllSessions, revokeSession, SESSION_TTL_SECONDS } from "../modules/identity/sessions.ts";
 import { readCallDeviceBody, hasEmptyBody, readGoogleLoginBody, readServiceListingBody, readCategoryEditBody, readVersionedCategoryEditBody, readResumeOwnListingBody, readPublicationRevisionBody, readAccountErasureBody, readServiceCityBody, readServiceDetailsBody, readServicePhotoBody, readServiceCaseReason } from "./body.ts";
 import { validCategoryId } from "../modules/shared/identifiers.ts";
 import { publishListing, myListings, pageMyListings, pageManagedOwnListings, exactManagedOwnListing, exactManagedOwnListingByCategory, exactVersionedOwnListing, parseOwnListingsPage, publicListings, pagePublicListings, publicListingDetail, publicApprovedServiceDetail, pageAllPublicListings, unpublishListing, editOwnListingCategory, editOwnListingCategoryVersioned, resumeOwnListing, changeOwnListingPublication, createOwnListing } from "../modules/workers/listings.ts";
@@ -79,6 +79,22 @@ function getOnly(request: Request): Response | null {
   return json({ ok: false, error: { code: "METHOD_NOT_ALLOWED", message: "Method not allowed" } }, 405, { Allow: "GET" });
 }
 
+/** Protect private replies after asynchronous reads; preserve disabled routes. */
+function privateReadNeedsFinalSession(path: string, env: Env): boolean {
+  if (path === "/api/v1/me/worker-profile" || path === "/api/v1/me/listings") return !env.AUTH;
+  if (["/api/v1/me/service-photo", "/api/v1/me/service-details", "/api/v1/me/service-area",
+    "/api/v1/me/call-preference"].includes(path)) return true;
+  if (path === "/api/v1/me/call" || path === "/api/v1/me/call-availability")
+    return env.CALL_SIGNALING_ENABLED === "1";
+  if (path === "/api/v1/me/call-device") return env.CALL_DEVICES_ENABLED === "1";
+  if (path === "/api/v1/me/call-history") return env.CALL_HISTORY_ENABLED === "1";
+  if (path === "/api/v1/me/contact-block" || path === "/api/v1/me/contact-blocks")
+    return env.CONTACT_BLOCKS_ENABLED === "1";
+  if (path === "/api/v1/me/service-report" || path === "/api/v1/me/service-appeal")
+    return /^[a-f0-9]{64}$/.test(env.SERVICE_MODERATION_KEY ?? "");
+  return false;
+}
+
 /** Production uses the fixed Google-JWKS verifier; injectable only through direct
  * router unit tests (the deployed Worker entrypoint never supplies a replacement).
  */
@@ -86,9 +102,28 @@ export async function handleRequest(
   request: Request, env: Env = {},
   verifyGoogle: typeof verifyGoogleIdToken = verifyGoogleIdToken,
 ): Promise<Response> {
+  try {
+    const token = bearerToken(request);
+    if (request.method === "GET" && env.DB && validSessionToken(token) &&
+        privateReadNeedsFinalSession(new URL(request.url).pathname, env)) {
+      const response = await readWithSameActiveSession(env.DB, token,
+        () => routeRequest(request, env, verifyGoogle));
+      return response ?? json({ok:false,error:{code:"UNAUTHORIZED",message:"Authentication required"}},401);
+    }
+    return await routeRequest(request, env, verifyGoogle);
+  } catch {
+    // Never expose failed final-session checks, database errors or partial data.
+    return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Request unavailable"}},503);
+  }
+}
+
+async function routeRequest(
+  request: Request, env: Env, verifyGoogle: typeof verifyGoogleIdToken,
+): Promise<Response> {
   const url = new URL(request.url);
   if(env.OPERATIONS_ENABLED === "1" && (url.pathname === "/api/v1/operations/readiness" ||
-    url.pathname === "/api/v1/operations/refund-reviews"))return handleOperations(request,env);
+    url.pathname === "/api/v1/operations/refund-reviews" ||
+    url.pathname === "/api/v1/operations/pending-refund-reviews"))return handleOperations(request,env);
   if(url.pathname === "/api/v1/agora/usage" && env.CALL_USAGE_ENABLED === "1"){
     return handleAgoraUsageWebhook(request,env);
   }
@@ -583,7 +618,7 @@ export async function handleRequest(
     if (methodError) return methodError;
     const requestedVersion = url.searchParams.get("version");
     const version = url.pathname.endsWith("/data-export") && url.searchParams.size === 1 &&
-      (requestedVersion === "2" || requestedVersion === "3" || requestedVersion === "4") ? Number(requestedVersion) : 1;
+      (requestedVersion === "2" || requestedVersion === "3" || requestedVersion === "4" || requestedVersion === "5") ? Number(requestedVersion) : 1;
     if ((url.search && version === 1) || !(await hasEmptyBody(request))) {
       return json({ ok: false, error: { code: "INVALID_QUERY", message: "Unexpected input" } }, 400);
     }
@@ -961,7 +996,7 @@ export async function handleRequest(
         return json({ ok: false, error: { code: "UNAUTHORIZED", message: "Authentication required" } }, 401);
       }
       const profile = request.method === "POST"
-        ? await optInAsWorker(env.DB, actor.accountId)
+        ? await optInAsWorker(env.DB, actor.accountId, env.AUTH ? undefined : await sessionHash(token))
         : await ownWorkerDraft(env.DB, actor.accountId);
       if (!profile) {
         return request.method === "POST"
@@ -1085,6 +1120,10 @@ export async function handleRequest(
       if(!actor||!validOpaqueId(actor.accountId)) {
         return json({ok:false,error:{code:"UNAUTHORIZED",message:"Authentication required"}},401);
       }
+      // Retain the trusted test-only AUTH seam. Real HTTP writes must bind
+      // their SAME bearer to the actor in the atomic SQL mutation, including
+      // when logout/expiry overtakes a pending request body or database call.
+      const writeSessionHash = request.method === "GET" || env.AUTH ? undefined : await sessionHash(token);
       if(request.method==="GET") {
         // Optional EXACT owner read for editing stale-device status and
         // deliberate uncertain-write observation. Never fall through to
@@ -1151,7 +1190,7 @@ export async function handleRequest(
             return json({ok:false,error:{
               code:"INVALID_QUERY",message:"Invalid resume input"}},400);
           const listing=await resumeOwnListing(env.DB,actor.accountId,
-            input.listingId,input.expectedCategoryId);
+            input.listingId,input.expectedCategoryId,writeSessionHash);
           if(!listing)return json({ok:false,error:{
             code:"CONFLICT",message:"Listing changed or unavailable"}},409);
           return json({ok:true,data:{listing}});
@@ -1160,8 +1199,8 @@ export async function handleRequest(
         if(!validCategoryId(categoryId))
           return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid listing input"}},400);
         const listing = create
-          ? await createOwnListing(env.DB, actor.accountId, categoryId)
-          : await publishListing(env.DB, actor.accountId, categoryId);
+          ? await createOwnListing(env.DB, actor.accountId, categoryId, writeSessionHash)
+          : await publishListing(env.DB, actor.accountId, categoryId, writeSessionHash);
         if (!listing) {
           if (create) return json({ok:false,error:{
             code:"CONFLICT",message:"Service already exists or is unavailable"}},409);
@@ -1180,7 +1219,7 @@ export async function handleRequest(
               code:"INVALID_QUERY",message:"Invalid publication change"}},400);
           const listing = await changeOwnListingPublication(
             env.DB, actor.accountId, input.listingId, input.expectedCategoryId,
-            input.expectedRevision, publication);
+            input.expectedRevision, publication, writeSessionHash);
           if (!listing) return json({ok:false,error:{
             code:"CONFLICT",message:"Listing changed or unavailable"}},409);
           return json({ok:true,data:{listing}});
@@ -1208,7 +1247,7 @@ export async function handleRequest(
           const changed=await editOwnListingCategoryVersioned(
             env.DB,actor.accountId,edit.listingId,
             edit.expectedCategoryId,edit.nextCategoryId,
-            edit.expectedRevision);
+            edit.expectedRevision,writeSessionHash);
           if(!changed)return json({ok:false,error:{
             code:"CONFLICT",message:"Listing changed or unavailable"}},409);
           return json({ok:true,data:{listing:changed}});
@@ -1223,7 +1262,7 @@ export async function handleRequest(
         }
         const listing=await editOwnListingCategory(
           env.DB,actor.accountId,edit.listingId,
-          edit.expectedCategoryId,edit.nextCategoryId);
+          edit.expectedCategoryId,edit.nextCategoryId,writeSessionHash);
         if(!listing) return json({ok:false,error:{
           code:"CONFLICT",message:"Listing changed or unavailable"}},409);
         return json({ok:true,data:{listing}});
@@ -1233,7 +1272,7 @@ export async function handleRequest(
           !validOpaqueId(url.searchParams.get("id"))) {
         return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid listing ID"}},400);
       }
-      const changed=await unpublishListing(env.DB,actor.accountId,url.searchParams.get("id")!);
+      const changed=await unpublishListing(env.DB,actor.accountId,url.searchParams.get("id")!,writeSessionHash);
       if(!changed)return json({ok:false,error:{code:"NOT_FOUND",message:"Listing not found"}},404);
       return json({ok:true,data:{unpublished:true}});
     } catch {

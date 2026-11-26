@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {openLocalDatabase} from "./helpers/local-db.mjs";
-import {issueSession,revokeSession} from "../src/modules/identity/sessions.ts";
+import {issueSession,revokeSession,sessionHash} from "../src/modules/identity/sessions.ts";
+import {registerPlayRefundPolicy} from "../src/modules/interactions/play-refund-review.ts";
 import {stageTrustedPlayConsumable,holdVoidedPlayConsume} from
   "../src/modules/interactions/play-consumable-outbox.ts";
 import {recordTrustedPlayRevocation} from
@@ -183,5 +184,35 @@ test("private hold reads use the scoped D1 index and fail closed on malformed SK
     assert.equal(state(db,id(222)),"void_hold");
     assert.equal(count(db,"call_credit_events"),1,
       "read failure must never create/erase any credit");
+  }finally{db.close();}
+});
+
+test("a concurrent reviewed refund cannot combine a stale spendable balance with a new hold",async()=>{
+  const {db,adapter}=openLocalDatabase();
+  try{
+    db.exec("INSERT INTO accounts(id) VALUES('play-hold-owner-alice')");
+    const alice=(await issueSession(adapter,ALICE)).accessToken,now=Date.now();
+    await registerPlayRefundPolicy(adapter,{version:"jodlo-play-refund-hold-v1",approvalSha256:"a".repeat(64)},now);
+    assert.equal(await stageTrustedPlayConsumable(adapter,{accountId:ALICE,sourceKeyHash:id(333),
+      productId,seconds:300,createdAtMs:now},approved,{sessionHash:await sessionHash(alice),
+      policyVersion:"jodlo-play-minutes-v1",approvalSha256:"b".repeat(64),purchasedAtMs:now-1000}),"applied");
+    let raced=false;
+    const concurrent={...adapter,prepare(sql){
+      const stmt=adapter.prepare(sql),all=stmt.all.bind(stmt);
+      stmt.all=async()=>{
+        const result=await all();
+        if(!raced&&sql.includes("e.kind AS eventKind")){
+          raced=true;
+          await recordTrustedPlayRevocation(adapter,{sourceKeyHash:id(333),reason:"voided_purchase",recordedAtMs:now+1});
+        }
+        return result;
+      };
+      return stmt;
+    }};
+    await assert.rejects(readOwnCallCreditSnapshot(concurrent,alice),/Concurrent private credit change/);
+    const fresh=await readOwnCallCreditSnapshot(adapter,alice);
+    assert.equal(fresh.availableSeconds,0);
+    assert.equal(fresh.holds.entries.length,1);
+    assert.equal(count(db,"call_credit_events"),1,"coherence checks never grant or debit");
   }finally{db.close();}
 });

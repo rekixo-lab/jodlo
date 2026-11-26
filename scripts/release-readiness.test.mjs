@@ -1,12 +1,30 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {createHash} from "node:crypto";
-import {mkdtemp,mkdir,writeFile,rm,symlink} from "node:fs/promises";
+import {mkdtemp,mkdir,writeFile,rm,symlink,cp} from "node:fs/promises";
 import {join} from "node:path";
 import {tmpdir} from "node:os";
-import {releaseEvidenceTemplate,assessReleaseEvidence,RELEASE_EVIDENCE_GATES} from "./release-readiness.mjs";
+import {execFileSync} from "node:child_process";
+import {releaseEvidenceTemplate,assessReleaseEvidence,RELEASE_EVIDENCE_GATES,collectReleaseReadiness} from "./release-readiness.mjs";
 
 const commitSha="a".repeat(40),now=Date.parse("2026-11-25T12:00:00.000Z");
+test("release source checks preserve founder-audit errors instead of treating its result object as an empty error array",async()=>{
+  const root=await mkdtemp(join(tmpdir(),"jodlo-source-readiness-test-"));
+  try{
+    await mkdir(join(root,".github"),{recursive:true});
+    await cp(new URL("../.github/workflows/",import.meta.url),join(root,".github/workflows"),{recursive:true});
+    execFileSync("git",["init","-q"],{cwd:root,stdio:"ignore"});
+    execFileSync("git",["-c","user.name=Synthetic Test","-c","user.email=fixture@invalid.local",
+      "commit","--allow-empty","-qm","Isolated test fixture"],{cwd:root,stdio:"ignore"});
+    const report=await collectReleaseReadiness({root,now});
+    assert.equal(report.codeChecks.find(x=>x.id==="workflow_trust_boundary").status,"passed");
+    const founder=report.codeChecks.find(x=>x.id==="source_privacy_and_release_guards");
+    assert.equal(founder.status,"failed");
+    assert.match(founder.detail,/Missing|missing|unavailable/);
+    assert.equal(report.summary.localChecksPassed,false);
+    assert.equal(report.summary.readyForOwnerReview,false);
+  }finally{await rm(root,{recursive:true,force:true});}
+});
 async function fixture(action){
   const root=await mkdtemp(join(tmpdir(),"jodlo-evidence-test-"));
   try{

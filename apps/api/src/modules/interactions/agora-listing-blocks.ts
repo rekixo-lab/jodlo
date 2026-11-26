@@ -6,7 +6,7 @@ import { PUBLIC_LISTING_ELIGIBILITY } from "../workers/listings.ts";
 const CURRENT_ACTOR =
   "SELECT actor.id FROM auth_sessions AS s " +
   "JOIN accounts AS actor ON actor.id=s.account_id " +
-  "WHERE s.token_hash=? AND s.expires_at>? AND actor.status='active'";
+  "WHERE s.token_hash=? AND s.expires_at>MAX(?,unixepoch()) AND actor.status='active'";
 
 const ELIGIBLE_ACTOR_AND_LISTING =
   " FROM (" + CURRENT_ACTOR + ") AS actor " +
@@ -19,12 +19,12 @@ const ELIGIBLE_ACTOR_AND_LISTING =
 const BLOCK_LISTING_OWNER =
   "INSERT INTO agora_account_blocks(blocker_account_id,blocked_account_id) " +
   "SELECT actor.id,wl.worker_account_id" + ELIGIBLE_ACTOR_AND_LISTING +
-  " ON CONFLICT(blocker_account_id,blocked_account_id) DO NOTHING";
+  " ON CONFLICT(blocker_account_id,blocked_account_id) DO NOTHING RETURNING blocked_account_id";
 
 const UNBLOCK_LISTING_OWNER =
   "DELETE FROM agora_account_blocks " +
   "WHERE blocker_account_id=(" + CURRENT_ACTOR + ") " +
-  "AND blocked_account_id=(SELECT worker_account_id FROM worker_listings WHERE id=?)";
+  "AND blocked_account_id=(SELECT worker_account_id FROM worker_listings WHERE id=?) RETURNING blocked_account_id";
 
 const READ_OWN_LISTING_BLOCK =
   "SELECT EXISTS(SELECT 1 FROM agora_account_blocks AS b " +
@@ -55,9 +55,10 @@ export async function changeOwnAgoraListingBlock(
 ): Promise<boolean> {
   if (!validSessionToken(bearer) || !validOpaqueId(listingId) ||
       typeof blocked !== "boolean") return false;
-  const {meta} = await db.prepare(blocked ? BLOCK_LISTING_OWNER : UNBLOCK_LISTING_OWNER)
-    .bind(await sessionHash(bearer), Math.floor(Date.now() / 1000), listingId).run();
-  return meta.changes === 1;
+  const {results} = await db.prepare(blocked ? BLOCK_LISTING_OWNER : UNBLOCK_LISTING_OWNER)
+    .bind(await sessionHash(bearer), Math.floor(Date.now() / 1000), listingId)
+    .all<{blocked_account_id: string}>();
+  return results.length === 1;
 }
 
 export function validBlockManagementId(value: unknown): value is string {
@@ -88,8 +89,8 @@ export async function readOwnContactBlocks(db: D1Database, bearer: string, after
 
 export async function removeOwnContactBlock(db: D1Database, bearer: string, id: string): Promise<boolean> {
   if (!validSessionToken(bearer) || !validBlockManagementId(id)) return false;
-  const {meta} = await db.prepare(
-    "DELETE FROM agora_account_blocks WHERE blocker_account_id=(" + CURRENT_ACTOR + ") AND management_id=?",
-  ).bind(await sessionHash(bearer), Math.floor(Date.now() / 1000), id).run();
-  return meta.changes === 1;
+  const {results} = await db.prepare(
+    "DELETE FROM agora_account_blocks WHERE blocker_account_id=(" + CURRENT_ACTOR + ") AND management_id=? RETURNING management_id",
+  ).bind(await sessionHash(bearer), Math.floor(Date.now() / 1000), id).all<{management_id: string}>();
+  return results.length === 1 && results[0].management_id === id;
 }

@@ -216,7 +216,7 @@ internal fun AccountDashboard(
         exportMarker = null
         scope.launch {
             val result = try {
-                withContext(Dispatchers.IO) { session.accountDataExport(version = 4) }
+                withContext(Dispatchers.IO) { session.accountDataExport(version = 5) }
             } catch (_: Exception) { null }
             val current = session.accountPrivateReadMarker()
             login = session.snapshot()

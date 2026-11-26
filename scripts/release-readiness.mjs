@@ -115,7 +115,8 @@ async function configChecks(root,commitSha){
 }
 async function sourceChecks(root){
   const checks=[];
-  for(const [id,audit] of [["workflow_trust_boundary",auditCITrustBoundary],["source_privacy_and_release_guards",auditFounderGates]]){
+  for(const [id,audit] of [["workflow_trust_boundary",auditCITrustBoundary],
+    ["source_privacy_and_release_guards",async base=>(await auditFounderGates(base)).errors]]){
     const errors=await audit(root);checks.push({id,status:errors.length?"failed":"passed",detail:errors.length?errors.join("; "):"Current source guard passed; no provider or deployment was contacted."});
   }
   const db=new DatabaseSync(":memory:");

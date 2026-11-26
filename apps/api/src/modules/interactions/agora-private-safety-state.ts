@@ -23,7 +23,7 @@ export const READ_OWN_AVAILABILITY_QUERY =
   "JOIN worker_profiles AS profile ON profile.account_id=owner.id " +
   "LEFT JOIN worker_agora_availability_preferences AS avail " +
   "ON avail.account_id=owner.id " +
-  "WHERE s.token_hash=? AND s.expires_at>? AND owner.status='active' " +
+  "WHERE s.token_hash=? AND s.expires_at>MAX(?,unixepoch()) AND owner.status='active' " +
   "AND profile.status='draft' LIMIT 1";
 
 export const INSERT_OWN_AVAILABILITY_QUERY =
@@ -32,9 +32,9 @@ export const INSERT_OWN_AVAILABILITY_QUERY =
   "SELECT owner.id,?,1 FROM auth_sessions AS s " +
   "JOIN accounts AS owner ON owner.id=s.account_id " +
   "JOIN worker_profiles AS profile ON profile.account_id=owner.id " +
-  "WHERE s.token_hash=? AND s.expires_at>? " +
+  "WHERE s.token_hash=? AND s.expires_at>MAX(?,unixepoch()) " +
   "AND owner.status='active' AND profile.status='draft' " +
-  "ON CONFLICT(account_id) DO NOTHING";
+  "ON CONFLICT(account_id) DO NOTHING RETURNING accepting_calls AS acceptingCalls,revision";
 
 export const UPDATE_OWN_AVAILABILITY_QUERY =
   "UPDATE worker_agora_availability_preferences " +
@@ -43,8 +43,9 @@ export const UPDATE_OWN_AVAILABILITY_QUERY =
   "SELECT owner.id FROM auth_sessions AS s " +
   "JOIN accounts AS owner ON owner.id=s.account_id " +
   "JOIN worker_profiles AS profile ON profile.account_id=owner.id " +
-  "WHERE s.token_hash=? AND s.expires_at>? " +
-  "AND owner.status='active' AND profile.status='draft' LIMIT 1)";
+  "WHERE s.token_hash=? AND s.expires_at>MAX(?,unixepoch()) " +
+  "AND owner.status='active' AND profile.status='draft' LIMIT 1) " +
+  "RETURNING accepting_calls AS acceptingCalls,revision";
 
 export async function readOwnWorkerAvailability(
   db: D1Database, bearer: string,
@@ -94,8 +95,9 @@ export async function setOwnWorkerAvailability(
       : db.prepare(UPDATE_OWN_AVAILABILITY_QUERY)
         .bind(acceptingCalls ? 1 : 0, expectedRevision,
           MAX_REVISION, hash, now);
-    const { meta } = await statement.run();
-    if (meta?.changes !== 1) return DENIED;
+    const { results } = await statement.all<{acceptingCalls: number; revision: number}>();
+    if (results.length !== 1 || results[0].acceptingCalls !== (acceptingCalls ? 1 : 0) ||
+        results[0].revision !== expectedRevision + 1) return DENIED;
     return Object.freeze({
       kind: "updated" as const,
       preference: Object.freeze({
@@ -116,16 +118,16 @@ export const INSERT_OWN_AGORA_BLOCK_QUERY =
   "SELECT blocker.id,target.id FROM auth_sessions AS s " +
   "JOIN accounts AS blocker ON blocker.id=s.account_id " +
   "JOIN accounts AS target ON target.id=? AND target.status='active' " +
-  "WHERE s.token_hash=? AND s.expires_at>? " +
+  "WHERE s.token_hash=? AND s.expires_at>MAX(?,unixepoch()) " +
   "AND blocker.status='active' AND blocker.id<>target.id " +
-  "ON CONFLICT(blocker_account_id,blocked_account_id) DO NOTHING";
+  "ON CONFLICT(blocker_account_id,blocked_account_id) DO NOTHING RETURNING blocked_account_id";
 
 export const DELETE_OWN_AGORA_BLOCK_QUERY =
   "DELETE FROM agora_account_blocks WHERE blocked_account_id=? " +
   "AND blocker_account_id=(SELECT blocker.id FROM auth_sessions AS s " +
   "JOIN accounts AS blocker ON blocker.id=s.account_id " +
-  "WHERE s.token_hash=? AND s.expires_at>? " +
-  "AND blocker.status='active' LIMIT 1)";
+  "WHERE s.token_hash=? AND s.expires_at>MAX(?,unixepoch()) " +
+  "AND blocker.status='active' LIMIT 1) RETURNING blocked_account_id";
 
 /** Local authenticated and explicitly directed block/unblock rehearsal.
  * Denied is intentionally indistinguishable across absent target, forbidden
@@ -144,9 +146,9 @@ export async function setOwnAgoraAccountBlock(
     const now = Math.floor(Date.now() / 1000);
     const query = blocked
       ? INSERT_OWN_AGORA_BLOCK_QUERY : DELETE_OWN_AGORA_BLOCK_QUERY;
-    const { meta } = await db.prepare(query)
-      .bind(targetAccountId, hash, now).run();
-    return meta?.changes === 1
+    const { results } = await db.prepare(query)
+      .bind(targetAccountId, hash, now).all<{blocked_account_id: string}>();
+    return results.length === 1 && results[0].blocked_account_id === targetAccountId
       ? Object.freeze({ kind: "updated" as const })
       : DENIED;
   } catch {
@@ -182,7 +184,7 @@ export const READ_CALLER_AGORA_PRIVATE_SAFETY_QUERY =
   "ON pref.account_id=worker.id AND pref.calls_enabled=1 " +
   "LEFT JOIN worker_agora_availability_preferences AS avail " +
   "ON avail.account_id=worker.id " +
-  "WHERE s.token_hash=? AND s.expires_at>? " +
+  "WHERE s.token_hash=? AND s.expires_at>MAX(?,unixepoch()) " +
   "AND caller.status='active' AND worker.status='active' " +
   "AND caller.id<>worker.id AND wp.status='draft' " +
   "AND c.is_active=1 AND wl.status='published' " +
