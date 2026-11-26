@@ -1,0 +1,160 @@
+name: JODLO operator production release (manual only)
+
+# Never triggered by a push, PR, schedule or another workflow.
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: "plan checks only, or deploy after external owner approval"
+        type: choice
+        options: [plan, deploy]
+        required: true
+        default: plan
+      expected_sha:
+        description: "Exact 40-character main commit to release"
+        required: true
+        type: string
+      recovery_bookmark:
+        description: "D1 bookmark recorded before any changes"
+        required: true
+        type: string
+      confirmation:
+        description: "For deploy ONLY: DEPLOY_JODLO_PRODUCTION"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+concurrency:
+  group: jodlo-production-single-writer
+  cancel-in-progress: false
+
+jobs:
+  operator-release:
+    if: github.ref == 'refs/heads/main'
+    environment: jodlo-production
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Source and owner-operation gate
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          RECOVERY_BOOKMARK: ${{ inputs.recovery_bookmark }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+          OPERATION: ${{ inputs.operation }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          [[ "$EXPECTED_SHA" =~ ^[a-f0-9]{40}$ ]]
+          test "$EXPECTED_SHA" = "$GITHUB_SHA"
+          [[ "$RECOVERY_BOOKMARK" =~ ^[a-f0-9]{8}-[a-f0-9]{8}-[a-f0-9]{8}-[a-f0-9]{24}$ ]]
+          if [ "$OPERATION" = deploy ]; then
+            test "$CONFIRMATION" = DEPLOY_JODLO_PRODUCTION
+          else
+            test "$OPERATION" = plan
+          fi
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Verify complete tested source and locked dependencies
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+          npm run check
+          npm run release:source-check
+      - name: Generate exact owner-owned production configuration
+        shell: bash
+        env:
+          JODLO_CF_ACCOUNT_ID: 8f31060fbcfee2b3e9309138cad7f12f
+          JODLO_D1_DATABASE_ID: 723080b5-f165-4b31-839f-3063175824c7
+          JODLO_LOGIN_BURST_NAMESPACE_ID: '45130001'
+          JODLO_ACCOUNT_LOGIN_NAMESPACE_ID: '45130002'
+          OPERATOR_SETTINGS_JSON: ${{ vars.JODLO_OPERATIONS_SETTINGS_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$OPERATOR_SETTINGS_JSON"
+          umask 077
+          printf '%s' "$OPERATOR_SETTINGS_JSON" > "$RUNNER_TEMP/jodlo-operations.json"
+          npm run production:config:write
+          npm run production:operations:configure -- "$RUNNER_TEMP/jodlo-operations.json"
+          npm run production:config:check
+          npm run production:domain:write
+          npm run production:domain:check
+          node --input-type=module -e '
+            import {readFileSync} from "node:fs";
+            const p="apps/api/wrangler.production.domain.generated.jsonc";
+            const c=JSON.parse(readFileSync(p,"utf8"));
+            const v=c.vars??{};
+            const expected=process.env.GITHUB_SHA;
+            if(c.account_id!=="8f31060fbcfee2b3e9309138cad7f12f"||
+              c.d1_databases?.[0]?.database_id!=="723080b5-f165-4b31-839f-3063175824c7"||
+              v.BUILD_COMMIT_SHA!==expected) throw Error("Refuse wrong source/account/database");
+            for(const k of ["CALL_DEVICES_ENABLED","CALL_SIGNALING_ENABLED","CALL_MEDIA_VERIFICATION_ENABLED","CALL_USAGE_ENABLED","PLAY_SETTLEMENT_ENABLED","PLAY_RTDN_ENABLED","PLAY_LICENSE_TEST_ENABLED"]){
+              if(v[k]!=="0") throw Error("Unapproved provider activation: "+k);
+            }
+            if(v.CALL_HISTORY_ENABLED!=="1"||v.CONTACT_BLOCKS_ENABLED!=="1")
+              throw Error("Do not disable existing history or blocking");
+          '
+          rm -f "$RUNNER_TEMP/jodlo-operations.json"
+      - name: Authenticate to the owner-selected Cloudflare account
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 8f31060fbcfee2b3e9309138cad7f12f
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN"
+          npx wrangler whoami
+      - name: Remote D1 plan and fresh point-in-time recovery bookmark
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 8f31060fbcfee2b3e9309138cad7f12f
+        run: |
+          set -euo pipefail
+          CFG=apps/api/wrangler.production.domain.generated.jsonc
+          npx wrangler d1 time-travel info jodlo-production --config "$CFG"
+          npx wrangler d1 migrations list jodlo-production --remote --config "$CFG"
+      - name: Export production database before first mutation (ephemeral, never a public artifact)
+        if: inputs.operation == 'deploy'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 8f31060fbcfee2b3e9309138cad7f12f
+        run: |
+          set -euo pipefail
+          umask 077
+          npx wrangler d1 export jodlo-production --remote --skip-confirmation \
+            --output "$RUNNER_TEMP/jodlo-production-before.sql" \
+            --config apps/api/wrangler.production.domain.generated.jsonc
+          test -s "$RUNNER_TEMP/jodlo-production-before.sql"
+          echo "Private temporary export succeeded; Time Travel bookmark is the durable rollback reference."
+      - name: Apply only outstanding reviewed D1 migrations
+        if: inputs.operation == 'deploy'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 8f31060fbcfee2b3e9309138cad7f12f
+        run: |
+          set -euo pipefail
+          CFG=apps/api/wrangler.production.domain.generated.jsonc
+          npx wrangler d1 migrations apply jodlo-production --remote --config "$CFG"
+          npx wrangler d1 execute jodlo-production --remote --config "$CFG" \
+            --command 'PRAGMA quick_check;'
+          npx wrangler d1 execute jodlo-production --remote --config "$CFG" \
+            --command 'PRAGMA foreign_key_check;'
+      - name: Deploy reviewed JODLO Worker to exact API hostname
+        if: inputs.operation == 'deploy'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 8f31060fbcfee2b3e9309138cad7f12f
+        run: |
+          set -euo pipefail
+          npx wrangler deploy --config apps/api/wrangler.production.domain.generated.jsonc
+          curl --fail --silent --show-error --max-time 20 \
+            https://api.jodlo.rekixo.com/api/v1/health
+      - name: Report without exposing credentials or private database data
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/jodlo-production-before.sql" "$RUNNER_TEMP/jodlo-operations.json"
+          echo "Check the deployment, original production bindings and on-device/provider acceptance before enabling feature flags."
