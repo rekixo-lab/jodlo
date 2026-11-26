@@ -39,6 +39,40 @@ class ApiCall private constructor(
         if (idempotencyKey != null) put("Idempotency-Key", idempotencyKey)
     }
     fun bodyUtf8(): ByteArray? = json?.toByteArray(StandardCharsets.UTF_8)
+
+    /** The production transport must accept the same bounded envelopes as the
+     * API readers. Generic small-edit limits cannot carry a JPEG, Google proof,
+     * FCM registration or a Hindi service description. Match exact route and
+     * method, so a lookalike path does not inherit an upload-sized budget. */
+    internal fun checkedBodyUtf8(): ByteArray? {
+        val value = json ?: return null
+        val path = resource.substringBefore('?')
+        val maxBytes = when (method) {
+            HttpMethod.POST -> when (path) {
+                "/api/v1/auth/google" -> 8192
+                "/api/v1/me/play-verify" -> 4352
+                "/api/v1/me/play-settle" -> 4608
+                "/api/v1/me/listings" -> if (resource == "/api/v1/me/listings?resume=1") 384 else 256
+                "/api/v1/me/service-report", "/api/v1/me/service-appeal" -> 128
+                else -> 256
+            }
+            HttpMethod.PUT -> when (path) {
+                "/api/v1/me/service-photo" -> 58000
+                "/api/v1/me/service-details" -> 4096
+                "/api/v1/me/account-erasure" -> 5248
+                "/api/v1/me/call-device" -> 8192
+                "/api/v1/me/service-area" -> 128
+                "/api/v1/me/listings" -> if (resource == "/api/v1/me/listings?publication=pause" ||
+                    resource == "/api/v1/me/listings?publication=resume") 384 else 512
+                else -> 512
+            }
+            else -> 0
+        }
+        require(value.length <= maxBytes) { "Body over limit" }
+        return value.toByteArray(StandardCharsets.UTF_8).also {
+            require(it.size <= maxBytes) { "Body over limit" }
+        }
+    }
     override fun toString(): String =
         "ApiCall(method=$method, resource=<redacted>, bearer=<redacted>, body=<redacted>)"
 
@@ -465,7 +499,7 @@ object JodloRoutes {
      * The API response is private, and no export is fetched before a user action.
      */
     fun accountDataExport(token: String, version: Int = 1): ApiCall {
-        require(version in 1..4)
+        require(version in 1..5)
         return ApiCall.getOwned("/api/v1/me/data-export" + if (version > 1) "?version=$version" else "", token)
     }
 
@@ -629,7 +663,17 @@ internal const val MAX_EMPTY_REPLY_READS = 8
 internal fun readBoundedUtf8Reply(
     stream: InputStream,
     monotonicNanos: () -> Long = { System.nanoTime() },
+): String = readBoundedUtf8Text(stream, 65_536, monotonicNanos)
+
+/** Shared stream reader for HTTPS replies and explicitly selected local
+ * backup documents. Bounds bytes, cumulative nonproductive reads and elapsed
+ * time; its caller owns opening/closing the stream and any socket deadline. */
+fun readBoundedUtf8Text(
+    stream: InputStream,
+    maxBytes: Int,
+    monotonicNanos: () -> Long = { System.nanoTime() },
 ): String {
+    require(maxBytes in 1..65_536) { "Invalid text byte limit" }
     val output = java.io.ByteArrayOutputStream()
     val buffer = ByteArray(4096)
     val started = monotonicNanos()
@@ -651,7 +695,7 @@ internal fun readBoundedUtf8Reply(
             if (++emptyReads > MAX_EMPTY_REPLY_READS) throw InvalidReplyBodyException()
             continue
         }
-        if (n > buffer.size || size > 65_536 - n) throw InvalidReplyBodyException()
+        if (n > buffer.size || size > maxBytes - n) throw InvalidReplyBodyException()
         size += n
         output.write(buffer, 0, n)
     }
@@ -678,6 +722,7 @@ class HttpsTransport(origin: String) {
 
     fun execute(request: ApiCall): TransportReply {
         check(Thread.currentThread().name != "main") { "Never run on main thread" }
+        val body = request.checkedBodyUtf8()
         val c = root.resolve(request.resource).toURL().openConnection() as HttpsURLConnection
         try {
             c.instanceFollowRedirects = false
@@ -685,16 +730,9 @@ class HttpsTransport(origin: String) {
             c.readTimeout = 10_000
             c.requestMethod = request.method.name
             for ((k,v) in request.headers()) c.setRequestProperty(k, v)
-            val body = request.bodyUtf8()
             if (body != null) {
-                val maxBody = when {
-                    request.resource == "/api/v1/auth/google" -> 8192
-                    request.resource == "/api/v1/me/play-verify" -> 4352
-                    request.method == HttpMethod.PUT -> 512
-                    else -> 256
-                }
-                require(body.size <= maxBody) { "Body over limit" }
                 c.doOutput = true
+                c.setFixedLengthStreamingMode(body.size)
                 c.outputStream.use { it.write(body) }
             }
             val status = c.responseCode

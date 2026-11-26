@@ -372,3 +372,28 @@ test("FCM OAuth refresh test deadline is bounded to three seconds",()=>{
       /Invalid FCM OAuth deadline/);
   }
 });
+
+test("FCM OAuth rejects oversized, invalid UTF-8 and malformed token responses without poisoning refresh",async()=>{
+  const {privateKey}=generateKeyPairSync("rsa",{modulusLength:2048});
+  const account={email:"synthetic-ci@jodlo-test.iam.gserviceaccount.com",
+    privateKey:privateKey.export({format:"pem",type:"pkcs8"}).toString()};
+  const good={access_token:"synthetic-valid-token",token_type:"Bearer",expires_in:3600};
+  for(const kind of ["declared-size","streamed-size","invalid-utf8","empty-token","unsafe-token","array"]){
+    let attempts=0,cancelled=0;
+    const source=createFcmAccessTokenSource(account,async()=>{
+      if(++attempts>1)return new Response(JSON.stringify(good));
+      if(kind==="declared-size")return new Response(JSON.stringify(good),{headers:{"Content-Length":"999999999"}});
+      if(kind==="streamed-size")return new Response(new ReadableStream({
+        start(controller){controller.enqueue(new Uint8Array(8193));},cancel(){cancelled++;},
+      }));
+      if(kind==="invalid-utf8")return new Response(new Uint8Array([0xff,0xfe]));
+      if(kind==="array")return new Response(JSON.stringify([good]));
+      return new Response(JSON.stringify({...good,access_token:kind==="empty-token"?"":"bad token\r\nheader"}));
+    },500);
+    assert.equal(await source(),null,kind);
+    if(kind==="streamed-size")assert.equal(cancelled,1,"the oversize response stream is closed promptly");
+    assert.equal(await source(),good.access_token,kind+" permits a fresh validated attempt");
+    assert.equal(await source(),good.access_token);
+    assert.equal(attempts,2,kind+" only the valid token enters the cache");
+  }
+});

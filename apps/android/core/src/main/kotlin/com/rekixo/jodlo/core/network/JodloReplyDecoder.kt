@@ -937,28 +937,30 @@ object JodloReplyDecoder {
         CallInvitation(id, callDeadline(data))
     }
 
+    /** The history page and v5 owner export share one exact row contract. */
+    private fun callHistoryEntry(row: JsonObject): CallHistoryEntry {
+        row.keysOnly(setOf("id", "direction", "outcome", "endedAt", "connectedSeconds"))
+        val id = row.required("id").str()
+        val direction = row.required("direction").str()
+        val outcome = CallHistoryOutcome.entries.firstOrNull {
+            it.wire == row.required("outcome").str()
+        } ?: bad()
+        val endedAt = (row.required("endedAt") as? JsonPrimitive)?.takeUnless { it.isString }
+            ?.content?.toLongOrNull() ?: bad()
+        val duration = row.required("connectedSeconds").number()
+        if (!Regex("[A-Za-z0-9_-]{8,128}").matches(id) ||
+            direction !in setOf("incoming", "outgoing") || endedAt !in 1..253402300799L ||
+            duration < 0 || (outcome != CallHistoryOutcome.ENDED && duration != 0)
+        ) bad()
+        return CallHistoryEntry(id, direction == "incoming", outcome, endedAt)
+    }
+
     fun callHistory(reply: TransportReply): ApiOutcome<CallHistoryPage> = decode(reply) { data ->
         data.keysOnly(setOf("items", "nextCursor"))
         val items = data.required("items") as? JsonArray ?: bad()
         if (items.size > 25) bad()
-        val ids = mutableSetOf<String>()
-        val entries = items.map { item ->
-            val row = item as? JsonObject ?: bad()
-            row.keysOnly(setOf("id", "direction", "outcome", "endedAt", "connectedSeconds"))
-            val id = row.required("id").str()
-            val direction = row.required("direction").str()
-            val outcome = CallHistoryOutcome.entries.firstOrNull {
-                it.wire == row.required("outcome").str()
-            } ?: bad()
-            val endedAt = (row.required("endedAt") as? JsonPrimitive)?.takeUnless { it.isString }
-                ?.content?.toLongOrNull() ?: bad()
-            val duration = row.required("connectedSeconds").number()
-            if (!Regex("[A-Za-z0-9_-]{8,128}").matches(id) || !ids.add(id) ||
-                direction !in setOf("incoming", "outgoing") || endedAt !in 1..253402300799L ||
-                duration < 0 || (outcome != CallHistoryOutcome.ENDED && duration != 0)
-            ) bad()
-            CallHistoryEntry(id, direction == "incoming", outcome, endedAt)
-        }
+        val entries = items.map { callHistoryEntry(it.obj()) }
+        if (entries.map { it.id }.toSet().size != entries.size) bad()
         val cursor = data.optionalString("nextCursor")
         if (cursor != null && (entries.size != 25 || cursor != entries.last().id)) bad()
         CallHistoryPage(entries, cursor)
@@ -1033,14 +1035,14 @@ object JodloReplyDecoder {
     fun accountDataExport(reply: TransportReply): ApiOutcome<OwnAccountDataExport> =
         decode(reply) { data ->
             val version = data.required("schemaVersion").number()
-            if (version !in 1..4) bad()
+            if (version !in 1..5) bad()
             data.keysOnly(setOf(
                 "schemaVersion", "account", "identity", "services",
                 "callPreferences", "availabilityPreferences", "blocksMade",
                 "abuseCounters", "sessions", "limitations",
             ) + (if (version >= 3) setOf("serviceDetails") else emptySet()) +
-                (if (version == 4) setOf("minuteBalance", "minuteActivity", "purchaseStatus", "callUsage", "refundReviews")
-                    else emptySet()),
+                (if (version >= 4) setOf("minuteBalance", "minuteActivity", "purchaseStatus", "callUsage", "refundReviews")
+                    else emptySet()) + (if (version >= 5) setOf("callHistory") else emptySet()),
                 if (version >= 3) setOf("servicePhotos", "serviceReports", "serviceAppeals") else emptySet())
             val account = data.required("account").obj()
             account.keysOnly(setOf(
@@ -1112,7 +1114,7 @@ object JodloReplyDecoder {
                     ServiceCaseStatus.entries.none { it.wire == row.required("status").str() } ||
                     appeal != null && ServiceAppealReason.entries.none { it.wire == appeal }) bad()
             }
-            if (version == 4) {
+            if (version >= 4) {
                 fun seconds(element: JsonElement, allowZero: Boolean = false): Int =
                     element.number().also { if (it < (if (allowZero) 0 else 1)) bad() }
                 fun timestamp(element: JsonElement): Long =
@@ -1135,8 +1137,11 @@ object JodloReplyDecoder {
                     timestamp(row.required("occurredAtMs"))
                 }
                 rows("purchaseStatus", 1000) { row ->
-                    row.keysOnly(setOf("productId", "seconds", "status", "updatedAtMs"))
+                    row.keysOnly(setOf("productId", "seconds", "status", "updatedAtMs") +
+                        if (version >= 5) setOf("environment") else emptySet())
                     product(row)
+                    if (version >= 5 && row.required("environment").str() !in
+                        setOf("production", "license_test")) bad()
                     if (row.required("status").str() !in setOf("ready", "sending", "unknown", "consumed", "void_hold")) bad()
                     timestamp(row.required("updatedAtMs"))
                 }
@@ -1159,6 +1164,12 @@ object JodloReplyDecoder {
                     val resolved = row.required("resolvedAtMs").takeUnless { it == JsonNull }?.let(::timestamp)
                     if (status !in setOf("open", "released") || resolved != null && resolved < opened ||
                         (status == "released") != (resolved != null)) bad()
+                }
+            }
+            if (version >= 5) {
+                val historyIds = mutableSetOf<String>()
+                rows("callHistory", 1000) { row ->
+                    if (!historyIds.add(callHistoryEntry(row).id)) bad()
                 }
             }
             rows("callPreferences", 1) { row ->

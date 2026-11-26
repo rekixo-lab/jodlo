@@ -355,7 +355,7 @@ test("existing Purchase Status displays only newest private minute activity and 
   const router=readFileSync(new URL("../src/http/router.ts",import.meta.url),"utf8");
   assert.match(server,/function readOwnCallCreditSnapshot\(/);
   assert.match(server,/LEFT JOIN call_credit_events AS e ON e\.account_id=a\.id/);
-  assert.match(server,/WHERE s\.token_hash=\? AND s\.expires_at>\?/);
+  assert.match(server,/WHERE s\.token_hash=\? AND s\.expires_at>MAX\(\?,unixepoch\(\)\)/);
   assert.match(server,/ORDER BY e\.created_at_ms DESC,e\.id DESC LIMIT \?/);
   assert.match(server,/const MAX_ACTIVITY_ROWS = 10/);
   assert.match(server,/change: row\.eventKind === "purchase_grant" \? "added" : "used"/);

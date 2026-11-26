@@ -2,6 +2,7 @@ import { withinPlayDeadline, readPlayBoundedJson } from "./play-provider-bounds.
 import type { D1Database } from "../../data/d1.ts";
 import { validPlaySettlementAuthority, type PlaySettlementAuthority } from "./play-settlement-policy.ts";
 import { validOpaqueId } from "../shared/identifiers.ts";
+import { playPurchaseEnvironment, type PlayPurchaseEnvironment } from "./play-license-test-policy.ts";
 import {
   jodloPlayPurchaseFingerprint, jodloPlayAccountBinding, JODLO_PLAY_PACKAGE,
   PLAY_PREFLIGHT_TIMEOUT_MS,
@@ -30,7 +31,7 @@ export type PlayConsumeClaim = Readonly<{
 type OutboxState = "ready" | "sending" | "unknown" | "consumed" | "void_hold";
 
 /** INTERNAL ONLY. No caller may treat a read-only Play preflight candidate
- * as sufficient entitlement authorization. Future checkout must supply
+ * as sufficient entitlement authorization. Checkout must supply
  * independently verified ownership, refund/revocation policy and approved
  * SKU evidence before invoking this. The separately configured settlement
  * coordinator must also supply a live session and immutable reviewed policy.
@@ -60,8 +61,8 @@ export async function stageTrustedPlayConsumable(
     inserted = authority ? await db.prepare(
       "INSERT INTO play_consume_outbox(" +
       "source_key_hash,account_id,product_id,seconds,created_at_ms,updated_at_ms," +
-      "settlement_policy_version,settlement_approval_hash,verified_purchased_at_ms) " +
-      "SELECT ?,a.id,?,?,?,?,?,?,? FROM accounts AS a " +
+      "settlement_policy_version,settlement_approval_hash,verified_purchased_at_ms,purchase_environment) " +
+      "SELECT ?,a.id,?,?,?,?,?,?,?,? FROM accounts AS a " +
       "WHERE a.id=? AND a.status='active' AND EXISTS(" +
       "SELECT 1 FROM auth_sessions AS s WHERE s.account_id=a.id " +
       "AND s.token_hash=? AND s.expires_at>unixepoch()) " +
@@ -70,7 +71,8 @@ export async function stageTrustedPlayConsumable(
       "ON CONFLICT(source_key_hash) DO NOTHING RETURNING source_key_hash",
     ).bind(grant.sourceKeyHash,grant.productId,grant.seconds,
       grant.createdAtMs,grant.createdAtMs,authority.policyVersion,
-      authority.approvalSha256,authority.purchasedAtMs,grant.accountId,authority.sessionHash)
+      authority.approvalSha256,authority.purchasedAtMs,authority.purchaseEnvironment ?? "production",
+      grant.accountId,authority.sessionHash)
       .all<{source_key_hash:string}>() : await db.prepare(
       "INSERT INTO play_consume_outbox(" +
       "source_key_hash,account_id,product_id,seconds,created_at_ms,updated_at_ms) " +
@@ -94,10 +96,12 @@ export async function stageTrustedPlayConsumable(
     "ON a.id=o.account_id AND a.status='active' " +
     "WHERE o.source_key_hash=? AND o.account_id=?" + (authority ?
       " AND o.settlement_policy_version=? AND o.settlement_approval_hash=? " +
-      "AND o.verified_purchased_at_ms=? AND EXISTS(SELECT 1 FROM auth_sessions AS s " +
-      "WHERE s.account_id=o.account_id AND s.token_hash=? AND s.expires_at>unixepoch())" : ""),
+      "AND o.verified_purchased_at_ms=? AND o.purchase_environment=? AND EXISTS(SELECT 1 FROM auth_sessions AS s " +
+      "WHERE s.account_id=o.account_id AND s.token_hash=? AND s.expires_at>unixepoch())" :
+      " AND o.purchase_environment='production'"),
   ).bind(grant.sourceKeyHash,grant.accountId,...(authority ? [authority.policyVersion,
-    authority.approvalSha256,authority.purchasedAtMs,authority.sessionHash] : []))
+    authority.approvalSha256,authority.purchasedAtMs,authority.purchaseEnvironment ?? "production",
+    authority.sessionHash] : []))
     .all<{account_id:string;product_id:string;seconds:number;status:OutboxState}>();
   const row=existing.results[0];
   if (row?.product_id!==grant.productId || row?.seconds!==grant.seconds)
@@ -332,8 +336,9 @@ export async function deliverClaimedPlayConsume(
 /** Lost-response reconciliation: a fresh Google ProductPurchaseV2 GET must
  * prove the SAME token, JODLO account, SKU and PURCHASED + CONSUMED +
  * ACKNOWLEDGED state. This read never initiates a second consume, awards
- * additional credit or overrides a refund hold. Partial refunds and test
- * receipts cannot clear an ambiguous delivery.
+ * additional credit or overrides a refund hold. The Google test/production
+ * marker must match the original immutable journal, even if the server's
+ * license-test admission setting has since changed. No new grant occurs here.
  */
 export async function reconcileUnknownPlayConsume(
   db:D1Database,claim:PlayConsumeClaim,purchaseToken:string,deps:ConsumeProvider,
@@ -349,7 +354,7 @@ export async function reconcileUnknownPlayConsume(
     const digest=await withinPlayDeadline(()=>jodloPlayPurchaseFingerprint(purchaseToken),remaining);
     if(digest!==claim.sourceKeyHash)return "denied";
     const {results}=await withinPlayDeadline(()=>db.prepare(
-      "SELECT 1 AS ok FROM play_consume_outbox AS o JOIN accounts AS a " +
+      "SELECT o.purchase_environment AS purchaseEnvironment FROM play_consume_outbox AS o JOIN accounts AS a " +
       "ON a.id=o.account_id AND a.status='active' " +
       "WHERE o.source_key_hash=? AND o.account_id=? AND o.product_id=? " +
       "AND o.status='unknown' AND o.attempt_id=?" +
@@ -357,8 +362,9 @@ export async function reconcileUnknownPlayConsume(
         "WHERE s.account_id=o.account_id AND s.token_hash=? AND s.expires_at>unixepoch())" : ""),
     ).bind(claim.sourceKeyHash,claim.accountId,claim.productId,claim.attemptId,
       ...(claim.sessionHash?[claim.sessionHash]:[]))
-      .all<{ok:number}>(),remaining);
-    if(results[0]?.ok!==1)return "denied";
+      .all<{purchaseEnvironment:PlayPurchaseEnvironment}>(),remaining);
+    const environment=results[0]?.purchaseEnvironment;
+    if(environment!=="production" && environment!=="license_test")return "denied";
     const binding=await withinPlayDeadline(()=>jodloPlayAccountBinding(claim.accountId),remaining);
     if(!binding)return "denied";
     const auth=await withinPlayDeadline(deps.accessToken,remaining);
@@ -383,7 +389,7 @@ export async function reconcileUnknownPlayConsume(
         (context as Record<string,unknown>).purchaseState!=="PURCHASED" ||
         receipt.kind!=="androidpublisher#productPurchaseV2" ||
         receipt.obfuscatedExternalAccountId!==binding ||
-        receipt.testPurchaseContext!==undefined ||
+        playPurchaseEnvironment(receipt.testPurchaseContext)!==environment ||
         receipt.acknowledgementState!=="ACKNOWLEDGEMENT_STATE_ACKNOWLEDGED" ||
         !Array.isArray(receipt.productLineItem)||receipt.productLineItem.length!==1)
       return "unknown";

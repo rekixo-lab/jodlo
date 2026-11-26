@@ -3,9 +3,7 @@ package com.rekixo.jodlo
 import android.content.ContentResolver
 import android.net.Uri
 import com.rekixo.jodlo.core.network.LocalPublicServiceBackup
-import java.io.ByteArrayOutputStream
-import java.nio.ByteBuffer
-import java.nio.charset.CodingErrorAction
+import com.rekixo.jodlo.core.network.readBoundedUtf8Text
 import java.nio.charset.StandardCharsets
 
 /** Android Storage Access Framework file IO, only after a user-picked URI.
@@ -15,26 +13,12 @@ import java.nio.charset.StandardCharsets
 internal object LocalPortableFileIO {
     fun readBounded(resolver: ContentResolver, uri: Uri): String? {
         return try {
-        val bytes = resolver.openInputStream(uri)?.use { input ->
-            val out = ByteArrayOutputStream()
-            val chunk = ByteArray(4096)
-            while (true) {
-                val count = input.read(chunk)
-                if (count < 0) break
-                if (count == 0) continue
-                if (out.size() + count > LocalPublicServiceBackup.MAX_BYTES)
-                    return null
-                out.write(chunk, 0, count)
+            resolver.openInputStream(uri)?.use { input ->
+                readBoundedUtf8Text(input, LocalPublicServiceBackup.MAX_BYTES)
             }
-            out.toByteArray()
-        } ?: return null
-        StandardCharsets.UTF_8.newDecoder()
-            .onMalformedInput(CodingErrorAction.REPORT)
-            .onUnmappableCharacter(CodingErrorAction.REPORT)
-            .decode(ByteBuffer.wrap(bytes)).toString()
-    } catch (_: Exception) {
-        null // Never log a URI, source contents, provider exception or IDs.
-    }
+        } catch (_: Exception) {
+            null // Never log a URI, source contents, provider exception or IDs.
+        }
     }
 
     fun write(resolver: ContentResolver, uri: Uri, backup: LocalPublicServiceBackup): Boolean {

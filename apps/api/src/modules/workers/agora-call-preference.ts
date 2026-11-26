@@ -26,7 +26,7 @@ export const READ_OWN_AGORA_CALL_PREFERENCE_QUERY =
   "JOIN worker_profiles AS profile ON profile.account_id=account.id " +
   "LEFT JOIN worker_agora_call_preferences AS preference " +
   "ON preference.account_id=profile.account_id " +
-  "WHERE session.token_hash=? AND session.expires_at>? " +
+  "WHERE session.token_hash=? AND session.expires_at>MAX(?,unixepoch()) " +
   "AND account.status='active' AND profile.status='draft' LIMIT 1";
 
 /** New preference creation is a single conditional write: the caller must
@@ -38,7 +38,7 @@ export const INSERT_AGORA_CALL_PREFERENCE_QUERY =
   "SELECT account.id,?,1 FROM auth_sessions AS session " +
   "JOIN accounts AS account ON account.id=session.account_id " +
   "JOIN worker_profiles AS profile ON profile.account_id=account.id " +
-  "WHERE session.token_hash=? AND session.expires_at>? " +
+  "WHERE session.token_hash=? AND session.expires_at>MAX(?,unixepoch()) " +
   "AND account.status='active' AND profile.status='draft' " +
   "ON CONFLICT(account_id) DO NOTHING";
 
@@ -51,7 +51,7 @@ export const UPDATE_AGORA_CALL_PREFERENCE_QUERY =
   "SELECT account.id FROM auth_sessions AS session " +
   "JOIN accounts AS account ON account.id=session.account_id " +
   "JOIN worker_profiles AS profile ON profile.account_id=account.id " +
-  "WHERE session.token_hash=? AND session.expires_at>? " +
+  "WHERE session.token_hash=? AND session.expires_at>MAX(?,unixepoch()) " +
   "AND account.status='active' AND profile.status='draft' LIMIT 1)";
 
 export async function readOwnWorkerAgoraCallPreference(
@@ -102,11 +102,14 @@ export async function setOwnWorkerAgoraCallPreference(
     const now = Math.floor(Date.now() / 1000);
     const hash = await sessionHash(bearer);
     const statement = expectedRevision === 0 ?
-      db.prepare(INSERT_AGORA_CALL_PREFERENCE_QUERY).bind(enabled ? 1 : 0, hash, now) :
-      db.prepare(UPDATE_AGORA_CALL_PREFERENCE_QUERY).bind(
+      db.prepare(INSERT_AGORA_CALL_PREFERENCE_QUERY + " RETURNING calls_enabled AS enabled,revision").bind(enabled ? 1 : 0, hash, now) :
+      db.prepare(UPDATE_AGORA_CALL_PREFERENCE_QUERY + " RETURNING calls_enabled AS enabled,revision").bind(
         enabled ? 1 : 0, expectedRevision, MAX_REVISION, hash, now);
-    const { meta } = await statement.run();
-    if (meta?.changes !== 1) return { kind: "denied" };
+    // Revocation can also end accepted calls, close usage and record history
+    // through triggers. Only the directly returned preference proves this CAS.
+    const { results } = await statement.all<{enabled: number; revision: number}>();
+    if (results.length !== 1 || results[0]?.enabled !== (enabled ? 1 : 0) ||
+        results[0]?.revision !== expectedRevision + 1) return { kind: "denied" };
     return Object.freeze({
       kind: "updated" as const,
       preference: Object.freeze({ enabled, revision: expectedRevision + 1 }),

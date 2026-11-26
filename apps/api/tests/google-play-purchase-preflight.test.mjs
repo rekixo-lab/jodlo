@@ -127,12 +127,12 @@ test("Google V2 preflight refuses pending, cancelled, refunded, consumed, acknow
   ];
   assert.deepEqual(validatePlayProductPurchaseV2(positive,binding,PRODUCTS,NOW),{
     productId:"jodlo.testpack5",seconds:300,
-    purchasedAtMs:NOW-90_000,
+    purchasedAtMs:NOW-90_000,purchaseEnvironment:"production",
   });
   const withoutOrder={...positive};
   delete withoutOrder.orderId;
   assert.deepEqual(validatePlayProductPurchaseV2(withoutOrder,binding,PRODUCTS,NOW),{
-    productId:"jodlo.testpack5",seconds:300,purchasedAtMs:NOW-90_000,
+    productId:"jodlo.testpack5",seconds:300,purchasedAtMs:NOW-90_000,purchaseEnvironment:"production",
   },"Google Play promotional purchases need not have an order ID");
   for (const bad of changed) {
     assert.equal(validatePlayProductPurchaseV2({...positive,...bad},binding,PRODUCTS,NOW),null,

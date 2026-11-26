@@ -48,7 +48,7 @@ test("single D1 statement joins session hash, expiry, active caller and live lis
     assert.deepEqual(checked,existing);
     assert.equal(Object.isFrozen(checked),true);
     assert.match(READ_SESSION_BOUND_CALL_TARGET_QUERY,/session\.token_hash=\?/);
-    assert.match(READ_SESSION_BOUND_CALL_TARGET_QUERY,/session\.expires_at>\?/);
+    assert.match(READ_SESSION_BOUND_CALL_TARGET_QUERY,/session\.expires_at>MAX\(\?,unixepoch\(\)\)/);
     assert.match(READ_SESSION_BOUND_CALL_TARGET_QUERY,/requester\.status='active'/);
     assert.match(READ_SESSION_BOUND_CALL_TARGET_QUERY,/WHERE wl\.id=\?/);
     assert.equal((READ_SESSION_BOUND_CALL_TARGET_QUERY.match(/\?/g)||[]).length,3);

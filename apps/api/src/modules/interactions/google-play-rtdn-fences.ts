@@ -4,7 +4,7 @@ import { jodloPlayPurchaseFingerprint, JODLO_PLAY_PACKAGE } from "./google-play-
 /**
  * This parser accepts UNTRUSTED Pub/Sub push JSON and returns NON-AUTHORITATIVE
  * hints. It NEVER authenticates the Pub/Sub publisher, writes D1, grants
- * minutes or triggers a consume. Future RTDN HTTP ingestion MUST verify the
+ * minutes or triggers a consume. RTDN HTTP ingestion MUST verify the
  * Google-signed OIDC JWT, exact audience + service-account identity, and an
  * approved subscription before interpreting a hint as trusted evidence.
  */
@@ -13,6 +13,26 @@ export type PlayRtdnHint = Readonly<{
   sourceKeyHash: string;
   eventTimeMs: number;
   productId: string | null;
+}>;
+export const PLAY_PENDING_REFUND_RESPONSE_MS = 24 * 60 * 60 * 1000;
+export type PlayPendingRefundHint = Readonly<{
+  kind: "pending_refund_review_hint";
+  caseId: string;
+  /** Ephemeral provider lookup input. Never persist or return the raw order. */
+  orderId: string;
+  /** Kept only in this authenticated request's memory for an explicitly
+   * queued operator recommendation. Never persist, log or expose over HTTP. */
+  pendingRefundToken: string;
+  /** Google marks this hint optional; a fresh order/receipt must still prove
+   * the owner from the existing grant when it is absent. */
+  accountBinding: string | null;
+  providerMessageId: string;
+  eventTimeMs: number;
+  responseDeadlineMs: number;
+}>;
+export type PlayRtdnEvent = PlayRtdnHint | PlayPendingRefundHint | Readonly<{
+  kind: "test_hint";
+  eventTimeMs: number;
 }>;
 
 const MAX_PUBSUB_DATA_BASE64 = 8192;
@@ -47,9 +67,9 @@ function validBase64(value: unknown): value is string {
  * a syntactically valid RTDN body is not a verified refund or cancellation.
  * Purchase hints also NEVER grant credit.
  */
-export async function decodeUntrustedJodloRtdnHint(
+export async function decodeUntrustedJodloRtdnEvent(
   envelope: unknown, nowMs: number,
-): Promise<PlayRtdnHint | null> {
+): Promise<PlayRtdnEvent | null> {
   if (!Number.isSafeInteger(nowMs) || nowMs <= 0) return null;
   const wrapper = obj(envelope);
   const message = obj(wrapper?.message);
@@ -78,6 +98,25 @@ export async function decodeUntrustedJodloRtdnHint(
       data.testNotification,
     ].filter(value => value !== undefined);
     if (categories.length !== 1) return null;
+    const test = obj(data.testNotification);
+    if (test && test.version === "1.0" && Object.keys(test).length === 1)
+      return {kind: "test_hint", eventTimeMs};
+    const pending = obj(data.pendingRefundReviewNotification);
+    if (pending && pending.version === "1.0" && pending.refundReason === 7 &&
+        typeof pending.pendingRefundToken === "string" && /^[!-~]{1,4096}$/.test(pending.pendingRefundToken) &&
+        typeof pending.orderId === "string" && /^GPA\.[A-Za-z0-9.\-]{8,120}$/.test(pending.orderId) &&
+        (pending.obfuscatedAccountId === undefined ||
+          typeof pending.obfuscatedAccountId === "string" && /^[a-f0-9]{64}$/.test(pending.obfuscatedAccountId) &&
+          pending.obfuscatedAccountId !== "0".repeat(64))) {
+      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(
+        "jodlo-play-pending-refund-v1:" + JODLO_PLAY_PACKAGE + ":" + pending.pendingRefundToken));
+      const caseId = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
+      return {kind: "pending_refund_review_hint", caseId, orderId: pending.orderId,
+        pendingRefundToken: pending.pendingRefundToken,
+        accountBinding: typeof pending.obfuscatedAccountId === "string" ? pending.obfuscatedAccountId : null,
+        providerMessageId: message.messageId,
+        eventTimeMs, responseDeadlineMs: eventTimeMs + PLAY_PENDING_REFUND_RESPONSE_MS};
+    }
 
     let kind: PlayRtdnHint["kind"];
     let token: unknown;
@@ -101,6 +140,15 @@ export async function decodeUntrustedJodloRtdnHint(
   } catch {
     return null;
   }
+}
+
+/** Purchase-only seam for callers that cannot handle a Console connectivity
+ * probe. Neither this parser nor the event parser authenticates a publisher. */
+export async function decodeUntrustedJodloRtdnHint(
+  envelope: unknown, nowMs: number,
+): Promise<PlayRtdnHint | null> {
+  const event = await decodeUntrustedJodloRtdnEvent(envelope, nowMs);
+  return event?.kind === "test_hint" || event?.kind === "pending_refund_review_hint" ? null : event;
 }
 
 export type TrustedPlayRevocation = Readonly<{

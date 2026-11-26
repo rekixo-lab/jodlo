@@ -11,7 +11,7 @@
     "apps/api"
   ],
   "scripts": {
-    "test": "node --experimental-strip-types --test scripts/android-release-candidate-gate.test.mjs scripts/web-security-headers.test.mjs scripts/help-center.test.mjs scripts/worker-owner-private-ui.test.mjs scripts/hidden-service-integration.test.mjs scripts/nearby-city-search-integration.test.mjs scripts/local-backup-integration.test.mjs scripts/prepare-production-wrangler.test.mjs scripts/prepare-api-custom-domain.test.mjs apps/api/tests/*.test.mjs scripts/verify-design-guards.test.mjs scripts/verify-founder-gates.test.mjs scripts/verify-kotlin-suite-coverage.test.mjs scripts/verify-dependency-lock.test.mjs scripts/verify-npm-audit-policy.test.mjs scripts/approved-catalog-import.test.mjs scripts/production-operations.test.mjs scripts/release-readiness.test.mjs scripts/operations-client.test.mjs scripts/android-release-evidence.test.mjs scripts/prepare-public-policies.test.mjs",
+    "test": "node --experimental-strip-types --test scripts/*.test.mjs apps/api/tests/*.test.mjs",
     "typecheck": "tsc --noEmit -p apps/api/tsconfig.json",
     "check": "npm run audit:policy-check && npm run lock:check && npm run docs:check && npm run design:check && npm run founder:check && npm run reference:check && npm run test && npm run typecheck",
     "dev:api": "wrangler dev --config apps/api/wrangler.local.jsonc --local",

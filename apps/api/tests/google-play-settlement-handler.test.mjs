@@ -11,6 +11,7 @@ import { jodloPlayAccountBinding, jodloPlayPurchaseFingerprint } from
 import { recordTrustedPlayRevocation } from
   "../src/modules/interactions/google-play-rtdn-fences.ts";
 import { handleRequest } from "../src/http/router.ts";
+import { configuredPlayLicenseTestBindings } from "../src/modules/interactions/play-license-test-policy.ts";
 
 const OWNER = "play-settlement-owner";
 const OTHER = "play-settlement-other";
@@ -198,6 +199,7 @@ test("verified purchase grants once, consumes once and replays its trusted resul
     assert.equal(row.settlement_policy_version, VERSION);
     assert.equal(row.settlement_approval_hash, APPROVAL);
     assert.equal(row.verified_purchased_at_ms, Date.parse(f.receipt.purchaseCompletionTime));
+    assert.equal(row.purchase_environment, "production");
     assert.equal(JSON.stringify(row).includes(TOKEN), false);
     const previousRequests = f.requests.length;
     assert.deepEqual(await f.data(), {status: "settled", productId: SKU, minutes: 5});
@@ -210,6 +212,115 @@ test("verified purchase grants once, consumes once and replays its trusted resul
     assert.deepEqual(await f.data({env: {...f.env, PLAY_SETTLEMENT_APPROVAL_SHA256: "b".repeat(64)}}),
       {status: "manual_review"}, "a new policy cannot silently adopt an old authorization");
   } finally { f.db.close(); }
+});
+
+test("license-test admission is default OFF, server-only and limited to validated account bindings", async () => {
+  const f = await fixture();
+  try {
+    const binding = await jodloPlayAccountBinding(OWNER);
+    f.receipt.testPurchaseContext = {fopType: "TEST"};
+    for (const env of [f.env,
+      {...f.env, PLAY_LICENSE_TEST_ENABLED: "0", PLAY_LICENSE_TEST_ACCOUNT_BINDINGS: binding},
+      {...f.env, PLAY_LICENSE_TEST_ENABLED: "1", PLAY_LICENSE_TEST_ACCOUNT_BINDINGS: await jodloPlayAccountBinding(OTHER)},
+    ]) assert.deepEqual(await f.data({env}), {status: "not_eligible"});
+    assert.equal(count(f.db, "call_credit_events"), 0);
+    assert.equal(f.posts(), 0);
+    const baseRequests = f.requests.length;
+    for (const secret of [undefined, "", "0".repeat(64), "A".repeat(64), "owner@example.invalid",
+      binding + "," + binding, " " + binding, binding + ",", Array.from({length: 33}, (_, i) => (i + 1).toString(16).padStart(64, "0")).join(",")]) {
+      const env = {...f.env, PLAY_LICENSE_TEST_ENABLED: "1", PLAY_LICENSE_TEST_ACCOUNT_BINDINGS: secret};
+      assert.equal(configuredPlayLicenseTestBindings(env), null);
+      assert.equal((await f.call({method: "GET", env})).status, 503);
+      assert.equal((await f.call({env})).status, 503);
+    }
+    assert.equal((await f.call({env: {...f.env, PLAY_LICENSE_TEST_ENABLED: "true"}})).status, 503);
+    assert.equal(f.requests.length, baseRequests, "invalid enabled policy does not contact Google");
+    for (const field of ["licenseTest", "testPurchaseContext", "purchaseEnvironment", "accountBinding"])
+      assert.equal((await f.call({body: JSON.stringify({purchaseToken: TOKEN, policyVersion: VERSION,
+        [field]: field === "testPurchaseContext" ? {fopType: "TEST"} : "license_test"})})).status, 400);
+    assert.equal(count(f.db, "call_credit_events"), 0);
+    const maximum = Array.from({length: 32}, (_, i) => (i + 1).toString(16).padStart(64, "0")).join(",");
+    assert.equal(configuredPlayLicenseTestBindings({PLAY_LICENSE_TEST_ENABLED: "1",
+      PLAY_LICENSE_TEST_ACCOUNT_BINDINGS: maximum}).size, 32);
+  } finally { f.db.close(); }
+});
+
+test("an allowlisted licensed test receipt grants and consumes once with immutable environment and refund history", async () => {
+  const f = await fixture();
+  try {
+    f.env.PLAY_LICENSE_TEST_ENABLED = "1";
+    f.env.PLAY_LICENSE_TEST_ACCOUNT_BINDINGS = await jodloPlayAccountBinding(OWNER);
+    for (const marker of [null, {}, {fopType: "TEST_PURCHASE"}, {fopType: "TEST", extra: true}]) {
+      f.receipt.testPurchaseContext = marker;
+      assert.deepEqual(await f.data(), {status: "not_eligible"});
+    }
+    f.receipt.testPurchaseContext = {fopType: "TEST"};
+    assert.deepEqual(await f.data(), {status: "settled", productId: SKU, minutes: 5});
+    assert.equal(journal(f.db).purchase_environment, "license_test");
+    assert.throws(() => f.db.exec("UPDATE play_consume_outbox SET purchase_environment='production'"),
+      /PLAY_PURCHASE_ENVIRONMENT_IMMUTABLE/);
+    const before = f.requests.length;
+    f.env.PLAY_LICENSE_TEST_ENABLED = "0";
+    delete f.env.PLAY_LICENSE_TEST_ACCOUNT_BINDINGS;
+    assert.deepEqual(await f.data(), {status: "settled", productId: SKU, minutes: 5});
+    assert.equal(f.requests.length, before, "historical replay grants nothing after QA mode is disabled");
+    assert.equal(f.posts(), 1);
+    assert.equal(count(f.db, "call_credit_events"), 1);
+    await recordTrustedPlayRevocation(f.adapter, {sourceKeyHash: await jodloPlayPurchaseFingerprint(TOKEN),
+      reason: "voided_purchase", recordedAtMs: f.now()});
+    assert.deepEqual(await f.data(), {status: "manual_review"});
+    const review = f.db.prepare("SELECT o.purchase_environment,r.state FROM play_refund_reviews AS r " +
+      "JOIN play_consume_outbox AS o ON o.source_key_hash=r.source_key_hash").get();
+    assert.deepEqual({...review}, {purchase_environment: "license_test", state: "open"});
+    assert.equal(count(f.db, "call_credit_events"), 1);
+  } finally { f.db.close(); }
+});
+
+test("ambiguous consume recovery cannot switch the original test or production environment", async () => {
+  for (const environment of ["production", "license_test"]) {
+    const f = await fixture();
+    try {
+      f.env.PLAY_LICENSE_TEST_ENABLED = "1";
+      f.env.PLAY_LICENSE_TEST_ACCOUNT_BINDINGS = await jodloPlayAccountBinding(OWNER);
+      if (environment === "license_test") f.receipt.testPurchaseContext = {fopType: "TEST"};
+      f.postMode = "throw";
+      assert.deepEqual(await f.data(), {status: "pending_reconciliation"});
+      f.consumed();
+      if (environment === "production") f.receipt.testPurchaseContext = {fopType: "TEST"};
+      else delete f.receipt.testPurchaseContext;
+      assert.deepEqual(await f.data(), {status: "pending_reconciliation"});
+      assert.equal(journal(f.db).status, "unknown");
+      assert.equal(journal(f.db).purchase_environment, environment);
+      if (environment === "production") delete f.receipt.testPurchaseContext;
+      else f.receipt.testPurchaseContext = {fopType: "TEST"};
+      f.env.PLAY_LICENSE_TEST_ENABLED = "0";
+      delete f.env.PLAY_LICENSE_TEST_ACCOUNT_BINDINGS;
+      assert.deepEqual(await f.data(), {status: "settled", productId: SKU, minutes: 5});
+      assert.equal(f.posts(), 1, "recovery remains GET-only after the uncertain consume");
+      assert.equal(count(f.db, "call_credit_events"), 1);
+    } finally { f.db.close(); }
+  }
+});
+
+test("a definitely-unsent journal cannot be reinterpreted under another receipt environment", async () => {
+  for (const environment of ["production", "license_test"]) {
+    const f = await fixture();
+    try {
+      f.env.PLAY_LICENSE_TEST_ENABLED = "1";
+      f.env.PLAY_LICENSE_TEST_ACCOUNT_BINDINGS = await jodloPlayAccountBinding(OWNER);
+      if (environment === "license_test") f.receipt.testPurchaseContext = {fopType: "TEST"};
+      f.authHook = async n => n === 3 ? null : "synthetic-oauth";
+      assert.deepEqual(await f.data(), {status: "pending_reconciliation"});
+      assert.equal(journal(f.db).status, "ready");
+      f.authHook = async () => "synthetic-oauth";
+      if (environment === "production") f.receipt.testPurchaseContext = {fopType: "TEST"};
+      else delete f.receipt.testPurchaseContext;
+      assert.deepEqual(await f.data(), {status: "manual_review"});
+      assert.equal(f.posts(), 0);
+      assert.equal(journal(f.db).purchase_environment, environment);
+      assert.equal(count(f.db, "call_credit_events"), 1);
+    } finally { f.db.close(); }
+  }
 });
 
 test("simultaneous settlements race through one SQLite grant and one consume lease", async () => {

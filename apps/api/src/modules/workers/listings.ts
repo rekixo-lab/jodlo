@@ -3,6 +3,7 @@ import { validOpaqueId, validCategoryId } from "../shared/identifiers.ts";
 import { parseServiceDetails, type ServiceDetails } from "./service-details.ts";
 import { validServiceCity, type ServiceCity } from "./service-area.ts";
 import { projectVisibleListing } from "../discovery/public-listing.ts";
+import { activeSessionWriteFence } from "../identity/sessions.ts";
 
 export type PublicListing = Readonly<{ id: string; categoryId: string }>;
 
@@ -229,15 +230,16 @@ export async function exactVersionedOwnListing(
     publicationStatus:row.publicationStatus,revision:row.revision};
 }
 
-/** Every mutation below is scoped to one PRIMARY KEY listing ID and
- * authenticated owner. The new 0011 AFTER UPDATE trigger updates the same
- * row's revision once. SQLite changes() (Node adapter) reports the ONE
- * direct update, while local Cloudflare D1 meta.changes may report TWO
- * including the trigger. Accept ONLY these two exact counts, never "any
- * positive count" and never a zero-row conflict as success.
+/** RETURNING identifies the single directly changed row. Revision and call
+ * revocation triggers can change additional rows; D1's aggregate meta.changes
+ * must never turn a successful owner write into an apparent conflict.
  */
-const changedExactlyOneOwnerListing=(count:number):boolean =>
-  Number.isSafeInteger(count)&&(count===1||count===2);
+async function changeExactlyOneOwnerListing(
+  db: D1Database, query: string, values: (string | number)[], id: string,
+): Promise<boolean> {
+  const {results} = await db.prepare(query + " RETURNING id").bind(...values).all<{id: string}>();
+  return results.length === 1 && results[0]?.id === id;
+}
 
 export const UNPUBLISH_LISTING_QUERY =
   "UPDATE worker_listings SET status='unpublished' WHERE id=? AND worker_account_id=? " +
@@ -245,11 +247,14 @@ export const UNPUBLISH_LISTING_QUERY =
   "WHERE id=worker_listings.worker_account_id AND status='active')";
 
 /** Atomic database UPSERT; duplicate retries use the SAME listing ID. */
-export async function publishListing(db:D1Database,actor:string,categoryId:string):
+export async function publishListing(db:D1Database,actor:string,categoryId:string,tokenHash?:string):
   Promise<PublicListing|null> {
   if(!validOpaqueId(actor)||!validCategoryId(categoryId)) return null;
-  await db.prepare(PUBLISH_LISTING_QUERY).bind(crypto.randomUUID(),categoryId,actor).run();
-  const {results}=await db.prepare(OWN_LISTING_QUERY).bind(actor,categoryId)
+  const fence=activeSessionWriteFence(actor,tokenHash);
+  const query=PUBLISH_LISTING_QUERY.replace("ON CONFLICT",fence.sql+"ON CONFLICT");
+  await db.prepare(query).bind(crypto.randomUUID(),categoryId,actor,...fence.values).run();
+  const read=OWN_LISTING_QUERY.replace(" LIMIT 1",fence.sql+" LIMIT 1");
+  const {results}=await db.prepare(read).bind(actor,categoryId,...fence.values)
     .all<{id:string;categoryId:string;status:string;moderation:string;active:number}>();
   const row=results[0];
   if(!row||row.status!=='published'||row.moderation!=='allowed'||row.active!==1)return null;
@@ -258,14 +263,15 @@ export async function publishListing(db:D1Database,actor:string,categoryId:strin
 
 /** A reviewed new Service must never resume an existing paused Service. */
 export async function createOwnListing(
-  db: D1Database, actor: string, categoryId: string,
+  db: D1Database, actor: string, categoryId: string, tokenHash?: string,
 ): Promise<PublicListing | null> {
   if (!validOpaqueId(actor) || !validCategoryId(categoryId)) return null;
   const id = crypto.randomUUID();
-  const {meta} = await db.prepare(
-    INSERT_ELIGIBLE_LISTING + "ON CONFLICT(worker_account_id,category_id) DO NOTHING",
-  ).bind(id, categoryId, actor).run();
-  return meta.changes === 1 ? {id, categoryId} : null;
+  const fence = activeSessionWriteFence(actor, tokenHash);
+  const changed = await changeExactlyOneOwnerListing(db,
+    INSERT_ELIGIBLE_LISTING + fence.sql + "ON CONFLICT(worker_account_id,category_id) DO NOTHING",
+    [id, categoryId, actor, ...fence.values], id);
+  return changed ? {id, categoryId} : null;
 }
 
 type OwnListingDbRow = {id:string;categoryId:string;visible:number};
@@ -541,32 +547,39 @@ export const RESUME_OWN_LISTING_QUERY =
   "WHERE c.id=wl.category_id AND c.is_active=1)";
 
 export async function resumeOwnListing(
-  db:D1Database,actor:string,id:string,expectedCategoryId:string,
+  db:D1Database,actor:string,id:string,expectedCategoryId:string,tokenHash?:string,
 ):Promise<PublicListing|null> {
   if(!validOpaqueId(actor)||!validOpaqueId(id)||
       !validCategoryId(expectedCategoryId))return null;
-  const {meta}=await db.prepare(RESUME_OWN_LISTING_QUERY)
-    .bind(id,actor,expectedCategoryId).run();
-  if(!changedExactlyOneOwnerListing(meta.changes))return null;
+  const fence=activeSessionWriteFence(actor,tokenHash);
+  const changed=await changeExactlyOneOwnerListing(db,RESUME_OWN_LISTING_QUERY+fence.sql,
+    [id,actor,expectedCategoryId,...fence.values],id);
+  if(!changed)return null;
   return Object.freeze({id,categoryId:expectedCategoryId});
 }
 
-export async function unpublishListing(db:D1Database,actor:string,id:string):Promise<boolean> {
+export async function unpublishListing(db:D1Database,actor:string,id:string,tokenHash?:string):Promise<boolean> {
   if(!validOpaqueId(actor)||!validOpaqueId(id))return false;
-  const {meta}=await db.prepare(UNPUBLISH_LISTING_QUERY).bind(id,actor).run();
-  return changedExactlyOneOwnerListing(meta.changes);
+  const fence=activeSessionWriteFence(actor,tokenHash);
+  return changeExactlyOneOwnerListing(db,UNPUBLISH_LISTING_QUERY+fence.sql,
+    [id,actor,...fence.values],id);
 }
 
 /** The migration 0011 revision fences edits and publication changes alike. */
 export async function changeOwnListingPublication(
   db: D1Database, actor: string, id: string, expectedCategoryId: string,
-  expectedRevision: number, action: "pause" | "resume",
+  expectedRevision: number, action: "pause" | "resume", tokenHash?: string,
 ): Promise<PublicListing | null> {
+  if (!validOpaqueId(actor) || !validOpaqueId(id) || !validCategoryId(expectedCategoryId) ||
+      !Number.isSafeInteger(expectedRevision) || expectedRevision < 0 ||
+      expectedRevision >= 2147483647 || (action !== "pause" && action !== "resume")) return null;
   const query = action === "resume"
     ? RESUME_OWN_LISTING_QUERY + " AND wl.revision=?"
     : UNPUBLISH_LISTING_QUERY + " AND category_id=? AND revision=?";
-  const {meta} = await db.prepare(query).bind(id, actor, expectedCategoryId, expectedRevision).run();
-  return changedExactlyOneOwnerListing(meta.changes) ? {id, categoryId: expectedCategoryId} : null;
+  const fence = activeSessionWriteFence(actor, tokenHash);
+  const changed = await changeExactlyOneOwnerListing(db, query + fence.sql,
+    [id, actor, expectedCategoryId, expectedRevision, ...fence.values], id);
+  return changed ? {id, categoryId: expectedCategoryId} : null;
 }
 
 /** Owner-scoped compare-and-swap of an existing Category-only service.
@@ -604,17 +617,18 @@ export const EDIT_OWN_CATEGORY_VERSIONED_QUERY =
 
 export async function editOwnListingCategoryVersioned(
   db:D1Database,actor:string,listingId:string,
-  expectedCategoryId:string,nextCategoryId:string,expectedRevision:number,
+  expectedCategoryId:string,nextCategoryId:string,expectedRevision:number,tokenHash?:string,
 ):Promise<{id:string;categoryId:string;revision:number}|null> {
   if(!validOpaqueId(actor)||!validOpaqueId(listingId)||
     !validCategoryId(expectedCategoryId)||!validCategoryId(nextCategoryId)||
     expectedCategoryId===nextCategoryId||
     !Number.isSafeInteger(expectedRevision)||expectedRevision<0||
     expectedRevision>=2147483647)return null;
-  const {meta}=await db.prepare(EDIT_OWN_CATEGORY_VERSIONED_QUERY)
-    .bind(nextCategoryId,listingId,actor,expectedCategoryId,
-      nextCategoryId,expectedRevision,nextCategoryId).run();
-  if(!changedExactlyOneOwnerListing(meta.changes))return null;
+  const fence=activeSessionWriteFence(actor,tokenHash);
+  const changed=await changeExactlyOneOwnerListing(db,EDIT_OWN_CATEGORY_VERSIONED_QUERY+fence.sql,
+    [nextCategoryId,listingId,actor,expectedCategoryId,
+      nextCategoryId,expectedRevision,nextCategoryId,...fence.values],listingId);
+  if(!changed)return null;
   // The declared migration trigger increments once for the Category change.
   // A subsequent cross-device write may advance it again; this response is
   // ONLY the version of our successful update, not a fresh current read.
@@ -624,13 +638,14 @@ export async function editOwnListingCategoryVersioned(
 
 export async function editOwnListingCategory(
   db: D1Database, actor: string, listingId: string,
-  expectedCategoryId: string, nextCategoryId: string,
+  expectedCategoryId: string, nextCategoryId: string, tokenHash?: string,
 ): Promise<PublicListing | null> {
   if(!validOpaqueId(actor)||!validOpaqueId(listingId)||
       !validCategoryId(expectedCategoryId)||!validCategoryId(nextCategoryId)||
       expectedCategoryId===nextCategoryId) return null;
-  const {meta}=await db.prepare(EDIT_OWN_CATEGORY_QUERY)
-    .bind(nextCategoryId,listingId,actor,expectedCategoryId,nextCategoryId,nextCategoryId).run();
-  if(!changedExactlyOneOwnerListing(meta.changes)) return null;
+  const fence=activeSessionWriteFence(actor,tokenHash);
+  const changed=await changeExactlyOneOwnerListing(db,EDIT_OWN_CATEGORY_QUERY+fence.sql,
+    [nextCategoryId,listingId,actor,expectedCategoryId,nextCategoryId,nextCategoryId,...fence.values],listingId);
+  if(!changed) return null;
   return Object.freeze({id:listingId,categoryId:nextCategoryId});
 }

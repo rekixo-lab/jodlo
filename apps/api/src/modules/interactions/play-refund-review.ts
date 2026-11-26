@@ -1,5 +1,6 @@
 import type { D1Database, Env } from "../../data/d1.ts";
 import { sessionHash, validSessionToken } from "../identity/sessions.ts";
+import type { PlayPurchaseEnvironment } from "./play-license-test-policy.ts";
 
 export const JODLO_PLAY_REFUND_POLICY_VERSION = "jodlo-play-refund-hold-v1";
 export type PlayRefundPolicy = Readonly<{version: string; approvalSha256: string}>;
@@ -111,6 +112,7 @@ export async function listReviewedPlayRefundCases(
   db: D1Database, policy: PlayRefundPolicy, after: string | null = null,
 ): Promise<{cases: ReadonlyArray<{
   caseId: string; accountId: string; seconds: number; reason: string; openedAtMs: number;
+  purchaseEnvironment: PlayPurchaseEnvironment;
   accountHeldSeconds: number; accountUncoveredSeconds: number;
 }>; nextCursor: string | null} | null> {
   if (!validPolicy(policy) || (after !== null && !digest(after)) ||
@@ -119,14 +121,16 @@ export async function listReviewedPlayRefundCases(
   const available = "MAX(0,COALESCE(b.available_seconds,0)-COALESCE((SELECT SUM(u.reserved_seconds) " +
     "FROM call_usage_sessions AS u WHERE u.caller_account_id=r.account_id AND u.state='active'),0))";
   const {results} = await db.prepare("SELECT r.source_key_hash AS caseId,r.account_id AS accountId," +
-    "r.seconds,r.reason,r.opened_at_ms AS openedAtMs," +
+    "r.seconds,r.reason,r.opened_at_ms AS openedAtMs,o.purchase_environment AS purchaseEnvironment," +
     "MIN(" + demand + "," + available + ") AS accountHeldSeconds," +
     "MAX(0," + demand + "-" + available + ") AS accountUncoveredSeconds " +
-    "FROM play_refund_reviews AS r LEFT JOIN call_credit_balances AS b ON b.account_id=r.account_id " +
+    "FROM play_refund_reviews AS r JOIN play_consume_outbox AS o ON o.source_key_hash=r.source_key_hash " +
+    "LEFT JOIN call_credit_balances AS b ON b.account_id=r.account_id " +
     "WHERE r.state='open' AND r.policy_version=? AND r.approval_hash=? " +
     "AND (? IS NULL OR r.source_key_hash>?) ORDER BY r.source_key_hash LIMIT 26")
     .bind(policy.version, policy.approvalSha256, after, after).all<{
       caseId: string; accountId: string; seconds: number; reason: string; openedAtMs: number;
+      purchaseEnvironment: PlayPurchaseEnvironment;
       accountHeldSeconds: number; accountUncoveredSeconds: number;
     }>();
   const cases = results.slice(0, 25);

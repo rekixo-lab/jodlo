@@ -11,8 +11,8 @@ enum class CustomerViewPhase {
 
 enum class CustomerViewAction {
     START_BROWSE, START_SEARCH, RETRY_BROWSE, RETRY_SEARCH,
-    NEXT_BROWSE, NEXT_SEARCH, SELECT_CATEGORY,
-    LOAD_LISTINGS, RETRY_LISTINGS, BACK,
+    NEXT_BROWSE, NEXT_SEARCH, NEXT_CURSOR_SEARCH, SELECT_CATEGORY,
+    LOAD_LISTINGS, RETRY_LISTINGS, NEXT_LISTINGS, BACK,
 }
 
 data class CustomerViewState(
@@ -96,28 +96,42 @@ object HeadlessCustomerPresentation {
                 // Fail closed if handed a forged/inconsistent snapshot. The
                 // live scope/typed repository already validate this boundary.
                 val choices = isSearch && page.needsChoice
+                val cursorSearch = isSearch && page.searchCursorMode
+                val maxPages = when {
+                    !isSearch -> 20
+                    cursorSearch -> 1_000
+                    page.pageSize in 1..25 -> 100 / page.pageSize + 1
+                    else -> 0
+                }
                 val matchesIntent = if (isSearch)
                     search != null && page.query == search.query &&
                         page.language == search.language &&
                         page.availableOnly == search.availableOnly &&
-                        page.pageSize == search.pageSize
+                        page.pageSize == search.pageSize &&
+                        page.searchCursorMode == search.cursorMode
                 else browse != null && page.language == browse.language &&
                     page.availableOnly == browse.availableOnly &&
                     page.pageSize == browse.pageSize
                 val options = if (choices) page.choices else page.categories
-                val valid = matchesIntent &&
+                val valid = matchesIntent && page.pageSize in 1..25 &&
                     options.map { it.id }.distinct().size == options.size &&
                     (!choices || (page.categories.isEmpty() &&
                         page.nextOffset == null && page.choices.isNotEmpty())) &&
                     (choices || page.choices.isEmpty()) &&
-                    page.pageCount in 1..20
+                    (!cursorSearch || (!choices && page.nextOffset == null)) &&
+                    (!isSearch || cursorSearch || page.nextCursor == null) &&
+                    page.pageCount in 1..maxPages
                 if (!valid) view(CustomerViewPhase.REFRESH_REQUIRED)
                 else {
-                    val next = if (isSearch && !choices && page.nextOffset != null &&
-                        page.nextOffset in 0..100) CustomerViewAction.NEXT_SEARCH
-                    else if (!isSearch && page.nextCursor != null && page.pageCount < 20)
-                        CustomerViewAction.NEXT_BROWSE
-                    else null
+                    val next = when {
+                        cursorSearch && page.nextCursor != null && page.pageCount < 1_000 ->
+                            CustomerViewAction.NEXT_CURSOR_SEARCH
+                        isSearch && !cursorSearch && !choices && page.nextOffset != null &&
+                            page.nextOffset in 0..100 -> CustomerViewAction.NEXT_SEARCH
+                        !isSearch && page.nextCursor != null && page.pageCount < 20 ->
+                            CustomerViewAction.NEXT_BROWSE
+                        else -> null
+                    }
                     val commands = back + (if (options.isNotEmpty())
                         setOf(CustomerViewAction.SELECT_CATEGORY) else emptySet()) +
                         (if (next != null) setOf(next) else emptySet())
@@ -188,12 +202,26 @@ object HeadlessCustomerPresentation {
                     failure = selected.kind)
             is CustomerSelectionState.Ready -> {
                 val rows = selected.listings
-                if (rows.size > 25 ||
+                val pageSize = selected.pageSize
+                val validPages = if (pageSize == null) {
+                    selected.pageCount == 1 && selected.nextCursor == null && rows.size <= 25
+                } else {
+                    pageSize in 1..25 && selected.pageCount in 1..20 &&
+                        rows.size <= pageSize * selected.pageCount &&
+                        (selected.pageCount == 1 || rows.size > pageSize * (selected.pageCount - 1)) &&
+                        (selected.nextCursor == null ||
+                            (rows.size == pageSize * selected.pageCount &&
+                                rows.lastOrNull()?.id == selected.nextCursor))
+                }
+                if (!validPages ||
                     rows.any { it.categoryId != category.id } ||
                     rows.map { it.id }.distinct().size != rows.size
                 ) view(CustomerViewPhase.REFRESH_REQUIRED)
                 else if (rows.isEmpty()) view(CustomerViewPhase.EMPTY)
-                else view(CustomerViewPhase.LISTINGS, rows = rows)
+                else view(CustomerViewPhase.LISTINGS,
+                    actions = if (selected.nextCursor != null && selected.pageCount < 20)
+                        back + CustomerViewAction.NEXT_LISTINGS else back,
+                    rows = rows)
             }
             else -> error("Handled above")
         }

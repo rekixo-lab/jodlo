@@ -5,6 +5,7 @@ import {
   PLAY_PREFLIGHT_TIMEOUT_MS,
 } from "./google-play-purchase-preflight.ts";
 import type { PlayPreflightDeps } from "./google-play-purchase-preflight.ts";
+import type { PlayPurchaseEnvironment } from "./play-license-test-policy.ts";
 
 /** Google's Voided Purchases API covers recent revocations only. Do NOT
  * mistake a clean scan for a complete historical purchase/refund ledger.
@@ -13,7 +14,7 @@ export const PLAY_VOIDED_SAFE_WINDOW_MS = 29 * 24 * 60 * 60 * 1000;
 const MAX_JSON_BYTES = 128 * 1024;
 
 type ScreenedResult =
-  | Readonly<{kind: "screened_candidate"; productId: string; seconds: number; sourceKeyHash: string; purchasedAtMs: number}>
+  | Readonly<{kind: "screened_candidate"; productId: string; seconds: number; sourceKeyHash: string; purchasedAtMs: number; purchaseEnvironment: PlayPurchaseEnvironment}>
   | Readonly<{kind: "not_eligible" | "unavailable" | "unconfigured"}>;
 
 /** Returns a NON-PRIVILEGED candidate only after BOTH a Google V2 read and
@@ -41,7 +42,7 @@ export async function inspectJodloPlayPurchaseWithVoids(
   if (outcome !== "clear") return {kind: "unavailable"};
   return {kind: "screened_candidate", productId: initial.productId,
     seconds: initial.seconds, sourceKeyHash: initial.sourceKeyHash,
-    purchasedAtMs: initial.purchasedAtMs};
+    purchasedAtMs: initial.purchasedAtMs, purchaseEnvironment: initial.purchaseEnvironment};
 }
 
 /** Shared read-only void scan for initial screening and explicit recovery.

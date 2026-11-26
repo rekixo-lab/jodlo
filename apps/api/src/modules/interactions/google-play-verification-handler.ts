@@ -5,6 +5,7 @@ import {jodloPlayMinuteProductMap} from "./play-minute-packs.ts";
 import {inspectJodloPlayPurchaseWithVoids} from "./google-play-voided-preflight.ts";
 import {createPlayAndroidPublisherAccessTokenSource} from "./google-play-androidpublisher-oauth.ts";
 import {hasEmptyBody, readPlayPurchaseTokenBody} from "../../http/body.ts";
+import {configuredPlayLicenseTestBindings} from "./play-license-test-policy.ts";
 
 const HEADERS: Record<string,string> = {
   "Content-Type":"application/json; charset=utf-8",
@@ -21,7 +22,7 @@ const failure=(status:number,code:string)=>reply(status,false,{
 
 /**
  * A complete, read-only owner-bound proof transport:
- * GET  -- returns a hashed JODLO account binding for future Play billing flows.
+ * GET  -- returns a hashed JODLO account binding for Play billing flows.
  * POST -- checks a single transient purchase token against the server's
  * signed-in JODLO account, Google's ProductPurchaseV2 and a complete
  * bounded recent Voided Purchases scan.
@@ -56,7 +57,8 @@ export async function handleConfiguredJodloPlayVerification(
     return failure(401,"UNAUTHORIZED");
   // A single flag cannot bypass product setup, D1 identity, Google credentials
   // or abuse protection. Development Workers stay unconfigured by default.
-  if(env.PLAY_CATALOG_ENABLED!=="1"||!env.DB||!env.PLAY_VERIFICATION_LIMITER||
+  const licenseTestAccountBindings=configuredPlayLicenseTestBindings(env);
+  if(licenseTestAccountBindings===null||env.PLAY_CATALOG_ENABLED!=="1"||!env.DB||!env.PLAY_VERIFICATION_LIMITER||
      !env.PLAY_SERVICE_ACCOUNT_EMAIL||!env.PLAY_SERVICE_ACCOUNT_PRIVATE_KEY)
     return failure(503,"SERVICE_UNAVAILABLE");
 
@@ -96,6 +98,7 @@ export async function handleConfiguredJodloPlayVerification(
       });
     const screened=await inspectJodloPlayPurchaseWithVoids(owner,purchaseToken,{
       approvedProducts:jodloPlayMinuteProductMap(),
+      licenseTestAccountBindings,
       accessToken,
       request:testOnly?.playRequest,
       now:testOnly?.now,

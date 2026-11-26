@@ -29,7 +29,7 @@ test("Nearby Search is an explicit approved-category lookup and city+trade selec
 test("City and language changes invalidate page/search generations and current detail evidence", () => {
   assert.match(feed,/LaunchedEffect\(repository, city\) \{\s*leaveDetail\(\)\s*clearCategorySearch\(\)/);
   assert.match(feed,/fun clearCategorySearch\(\) \{\s*categorySearchRevision\+\+/);
-  assert.match(feed,/if \(categorySearchRevision != generation \|\| language != lang \|\|\s*selected != null\)/);
+  assert.match(feed,/if \(categorySearchRevision != generation\) return@launch\s*categorySearchBusy = false\s*if \(language != lang \|\| selected != null\) return@launch/);
   assert.match(feed,/fun changeScope\(nextLanguage: Language, nextCategory: String\?\) \{[\s\S]*?clearCategorySearch\(\)/);
   assert.match(feed,/if \(current != revision \|\| language != lang \|\| categoryFilter != filter\)/);
   assert.match(feed,/repository\.reviewedServiceDetail\(row\.id, row\.categoryId, lang, city\)/);
@@ -41,7 +41,8 @@ test("Customer city trade Browse is an explicit no-query public-only page and ne
     "../apps/api/src/modules/catalog/catalog.ts",import.meta.url),"utf8");
   assert.match(feed,/fun loadCityCategories\(after: String\? = null\)/);
   assert.match(feed,/repository\.cityBrowse\(lang, selectedCity, limit = 20, after = after\)/);
-  assert.match(feed,/generation != cityBrowseRevision \|\| city != selectedCity/);
+  assert.match(feed,/if \(generation != cityBrowseRevision\) return@launch\s*cityBrowseBusy = false/);
+  assert.match(feed,/if \(city != selectedCity \|\| language != lang \|\| selected != null\) return@launch/);
   assert.match(feed,/resetCityBrowse\(\)/);
   assert.match(feed,/R\.string\.nearby_browse_city_categories/);
   assert.match(feed,/R\.string\.nearby_city_no_categories/);

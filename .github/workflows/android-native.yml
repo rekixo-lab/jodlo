@@ -192,8 +192,9 @@ jobs:
         if: matrix.java-version == '21'
         run: |
           CONFIG=apps/android/app/google-services.json
+          COMBINED_BUNDLE=apps/android/app/build/outputs/bundle/release/app-release.aab
           test ! -e "$CONFIG"
-          trap 'rm -f "$CONFIG"' EXIT
+          trap 'rm -f "$CONFIG" "$COMBINED_BUNDLE"' EXIT
           cat > "$CONFIG" <<'JSON'
           {
             "project_info": {
@@ -212,6 +213,22 @@ jobs:
           JSON
           gradle -p apps/android -PincludeAndroidApp=true -PjodloEnableAgora=true -PjodloEnableFcm=true :app:assembleDebug --no-daemon
           test -s apps/android/app/build/outputs/apk/debug/app-debug.apk
+          # Exercise provider source sets together in release build and packaging.
+          # These public fixture values are never used to sign in or call a
+          # provider, and the resulting unsigned bundle is deleted in this step.
+          gradle -p apps/android -PincludeAndroidApp=true \
+            -PjodloEnableAgora=true -PjodloEnableFcm=true \
+            -PjodloEnablePlayBilling=true -PjodloEnablePlayCheckout=true \
+            -PjodloEnablePlayRestore=true -PjodloPlayPolicyVersion=jodlo-play-minutes-v1 \
+            -PjodloReleaseCandidate=true \
+            -PjodloApiOrigin=https://api.jodlo.rekixo.com \
+            -PjodloGoogleWebClientId=123456789012-jodlo-ci-only.apps.googleusercontent.com \
+            -PjodloReleaseVersionName=1.0.0 -PjodloReleaseVersionCode=2 \
+            :app:bundleRelease --no-daemon --no-build-cache
+          test -s "$COMBINED_BUNDLE"
+          python3 scripts/android-release-evidence.py --inspect "$COMBINED_BUNDLE"
+          rm -f "$COMBINED_BUNDLE"
+          test ! -e "$COMBINED_BUNDLE"
       - name: Save temporary debug APK for physical-device testing (main only)
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && matrix.java-version == '17'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

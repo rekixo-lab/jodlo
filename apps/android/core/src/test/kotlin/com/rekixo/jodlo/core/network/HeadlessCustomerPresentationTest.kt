@@ -52,7 +52,7 @@ private class DenyDisplayWorker : WorkerRepository {
     override fun unpublish(session: String, listingId: String): ApiOutcome<Boolean> =
         error("No publication mutation")
 }
-private fun presentationScope(catalog: DisplayCatalog, clock: AtomicLong=AtomicLong()) =
+private fun presentationScope(catalog: CatalogRepository, clock: AtomicLong=AtomicLong()) =
     HeadlessCatalogPaginationScope(
         catalog, InMemorySessionCoordinator(DenyDisplayWorker(),
             RequestSender {error("No authentication or external transport")}, {clock.get()}),
@@ -221,6 +221,77 @@ private fun paginationHintsOnlyWhenAllowedAndRefreshDropsRows() {
     check(scope.presentation().categories==listOf(DISPLAY_CARPENTER))
 }
 
+/** Real scope journeys, not manually forged Ready states: presentation must
+ * preserve the existing cursor and paged-listing capabilities past page one. */
+private fun cursorAndListingPagesRemainReachable() {
+    val requests = mutableListOf<String>()
+    fun category(index: Int) = PublicCategory("trade_$index", "trade_$index", "Trade $index")
+    val catalog = object : CatalogRepository, CatalogSearchCursorRepository, PublicListingPageRepository {
+        override fun browse(language: Language, availableOnly: Boolean, limit: Int, after: String?) =
+            ApiOutcome.Ok(CatalogBrowse(language, listOf(DISPLAY_CARPENTER), null))
+        override fun search(query: String, language: Language, availableOnly: Boolean,
+                            includeChoices: Boolean, limit: Int, offset: Int): ApiOutcome<CatalogSearch> {
+            requests += "offset:$offset"
+            return ApiOutcome.Ok(CatalogSearch(language, query, listOf(category(offset)),
+                if (offset < 100) offset + 1 else null, false, emptyList()))
+        }
+        override fun searchCursor(query: String, language: Language, availableOnly: Boolean,
+                                  limit: Int, after: String?): ApiOutcome<CatalogSearchCursorPage> {
+            val index = after?.substringBefore(':')?.toInt()?.plus(1) ?: 0
+            requests += "cursor:$index"
+            val row = category(index)
+            return ApiOutcome.Ok(CatalogSearchCursorPage(language, query, listOf(row),
+                if (index < 21) "$index:${row.id}" else null))
+        }
+        override fun listings(categoryId: String): ApiOutcome<List<PublicListing>> =
+            error("Paged listing navigation cannot fall back to an unpaged GET")
+        override fun pageListings(categoryId: String, limit: Int, after: String?): ApiOutcome<PublicListingPage> {
+            val previous = after?.substringAfter('_')?.toInt() ?: 0
+            requests += "listings:$previous"
+            val rows = (previous + 1..previous + limit).map {
+                PublicListing("listing_" + it.toString().padStart(5, '0'), categoryId)
+            }
+            return ApiOutcome.Ok(PublicListingPage(rows, if (previous == 0) rows.last().id else null))
+        }
+    }
+    val scope = presentationScope(catalog)
+    check(scope.startCursorSearch("trades", Language.EN, pageSize = 1) == PageCompletion.APPLIED)
+    repeat(22) { page ->
+        val view = scope.presentation()
+        check(view.phase == CustomerViewPhase.CATEGORIES && view.pageCount == page + 1)
+        check(view.categories.size == page + 1)
+        check(CustomerViewAction.NEXT_SEARCH !in view.actions)
+        if (page < 21) {
+            check(CustomerViewAction.NEXT_CURSOR_SEARCH in view.actions)
+            check(scope.nextCursorSearch() == PageCompletion.APPLIED)
+        } else check(CustomerViewAction.NEXT_CURSOR_SEARCH !in view.actions)
+    }
+    check(requests.size == 22) // Rendering never prefetches or replays a GET.
+    // Legacy offset searches can legitimately have 101 one-row pages.
+    check(scope.startSearch("trades", Language.EN, pageSize = 1) == PageCompletion.APPLIED)
+    repeat(101) { page ->
+        val view = scope.presentation()
+        check(view.phase == CustomerViewPhase.CATEGORIES && view.pageCount == page + 1)
+        check(CustomerViewAction.NEXT_CURSOR_SEARCH !in view.actions)
+        if (page < 100) {
+            check(CustomerViewAction.NEXT_SEARCH in view.actions)
+            check(scope.nextSearch() == PageCompletion.APPLIED)
+        } else check(CustomerViewAction.NEXT_SEARCH !in view.actions)
+    }
+    check(scope.startBrowse(Language.EN) == PageCompletion.APPLIED)
+    check(scope.selectCategory(CustomerCategorySource.BROWSE, DISPLAY_CARPENTER.id) == PageCompletion.APPLIED)
+    check(scope.startSelectedListingPages(25) == PageCompletion.APPLIED)
+    val first = scope.presentation()
+    check(first.phase == CustomerViewPhase.LISTINGS && first.listings.size == 25)
+    check(CustomerViewAction.NEXT_LISTINGS in first.actions)
+    check(scope.nextSelectedListingPage() == PageCompletion.APPLIED)
+    val second = scope.presentation()
+    check(second.phase == CustomerViewPhase.LISTINGS && second.listings.size == 50)
+    check(CustomerViewAction.NEXT_LISTINGS !in second.actions)
+    check(scope.nextSelectedListingPage() == PageCompletion.BLOCKED)
+    check(requests.count { it.startsWith("listings:") } == 2)
+}
+
 private fun closedAndInconsistentSnapshotsFailClosed() {
     val catalog=DisplayCatalog()
     val scope=presentationScope(catalog)
@@ -356,6 +427,7 @@ fun main() {
     ambiguityIsChoiceNotAnAutomaticListing()
     listingErrorAndEmptyAreDistinctWithoutPolling()
     paginationHintsOnlyWhenAllowedAndRefreshDropsRows()
+    cursorAndListingPagesRemainReachable()
     closedAndInconsistentSnapshotsFailClosed()
     println("JODLO Customer presentation: closed/idle/loading/empty/choices/errors/actions and stale privacy fail-close OK")
 }

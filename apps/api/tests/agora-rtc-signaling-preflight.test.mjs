@@ -91,7 +91,7 @@ test("one D1 statement verifies BOTH revocable caller/worker sessions and curren
     assert.equal(Object.isFrozen(facts),true);
     assert.match(READ_TWO_SESSION_BOUND_CALL_TARGET_QUERY,/worker_session\.account_id=worker\.id/);
     assert.match(READ_TWO_SESSION_BOUND_CALL_TARGET_QUERY,/worker_session\.token_hash=\?/);
-    assert.match(READ_TWO_SESSION_BOUND_CALL_TARGET_QUERY,/worker_session\.expires_at>\?/);
+    assert.match(READ_TWO_SESSION_BOUND_CALL_TARGET_QUERY,/worker_session\.expires_at>MAX\(\?,unixepoch\(\)\)/);
     assert.match(READ_TWO_SESSION_BOUND_CALL_TARGET_QUERY,/requester\.status='active'/);
     assert.equal((READ_TWO_SESSION_BOUND_CALL_TARGET_QUERY.match(/\?/g)||[]).length,5);
     assert.equal(READ_TWO_SESSION_BOUND_CALL_TARGET_QUERY.includes("phone"),false);

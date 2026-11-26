@@ -66,8 +66,9 @@ async function productVoided(
  * Require an authenticated Google Developer API lookup for the exact token,
  * package and SKU (cancellation) or one-time void record (refund).
  *
- * Purchase notifications are intentionally NOT acknowledged or credited:
- * a separate user-authenticated entitlement coordinator is still required.
+ * Purchase notifications do not change financial state here: the ingress
+ * acknowledges those envelopes, and the owner-authenticated settlement
+ * coordinator separately verifies the receipt before any grant.
  * No provider POST, no fund transfer, no balance debit, no token persistence.
  */
 export async function reconcileAuthenticatedJodloPlayRevocation(

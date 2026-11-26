@@ -23,7 +23,7 @@ export async function registerOwnCallDevice(
       DELETE FROM private_call_devices WHERE registration_token=? AND session_hash IN (
         SELECT former.token_hash FROM auth_sessions AS former
         JOIN auth_sessions AS current ON current.account_id=former.account_id
-          AND current.token_hash=? AND current.expires_at>?
+          AND current.token_hash=? AND current.expires_at>MAX(?,unixepoch())
         JOIN accounts AS owner ON owner.id=current.account_id AND owner.status='active'
         JOIN worker_agora_call_preferences AS consent
           ON consent.account_id=owner.id AND consent.calls_enabled=1
@@ -35,7 +35,7 @@ export async function registerOwnCallDevice(
       SELECT s.token_hash, ?, ? FROM auth_sessions AS s
       JOIN accounts AS a ON a.id=s.account_id AND a.status='active'
       JOIN worker_agora_call_preferences AS p ON p.account_id=a.id AND p.calls_enabled=1
-      WHERE s.token_hash=? AND s.expires_at>?
+      WHERE s.token_hash=? AND s.expires_at>MAX(?,unixepoch())
         AND NOT EXISTS (
           SELECT 1 FROM private_call_devices WHERE registration_token=? AND session_hash<>s.token_hash
         )
@@ -45,7 +45,7 @@ export async function registerOwnCallDevice(
   ]);
   const {results} = await db.prepare(`
     SELECT 1 AS registered FROM private_call_devices AS d
-    JOIN auth_sessions AS s ON s.token_hash=d.session_hash AND s.expires_at>?
+    JOIN auth_sessions AS s ON s.token_hash=d.session_hash AND s.expires_at>MAX(?,unixepoch())
     JOIN accounts AS a ON a.id=s.account_id AND a.status='active'
     JOIN worker_agora_call_preferences AS p ON p.account_id=a.id AND p.calls_enabled=1
     WHERE d.session_hash=? AND d.registration_token=?
@@ -71,7 +71,7 @@ export async function hasOwnCallDevice(
     JOIN accounts AS a ON a.id=s.account_id AND a.status='active'
     JOIN worker_agora_call_preferences AS p ON p.account_id=a.id AND p.calls_enabled=1
     JOIN private_call_devices AS d ON d.session_hash=s.token_hash
-    WHERE s.token_hash=? AND s.expires_at>?
+    WHERE s.token_hash=? AND s.expires_at>MAX(?,unixepoch())
     LIMIT 1
   `).bind(hash, now).all<{registered:number}>();
   return results.length === 1 && results[0]?.registered === 1;
@@ -88,7 +88,7 @@ export async function purgeExpiredCallDevices(db: D1Database, now: number): Prom
     DELETE FROM private_call_devices WHERE session_hash IN (
       SELECT s.token_hash FROM auth_sessions AS s
       JOIN private_call_devices AS d ON d.session_hash=s.token_hash
-      WHERE s.expires_at<=? ORDER BY s.expires_at LIMIT 1000
+      WHERE s.expires_at<=MAX(?,unixepoch()) ORDER BY s.expires_at LIMIT 1000
     )
   `).bind(now).run();
 }
@@ -100,7 +100,7 @@ export async function readRegisteredCallDestination(db: D1Database, accountId: s
     JOIN auth_sessions AS s ON s.token_hash=d.session_hash
     JOIN accounts AS a ON a.id=s.account_id AND a.status='active'
     JOIN worker_agora_call_preferences AS p ON p.account_id=a.id AND p.calls_enabled=1
-    WHERE s.account_id=? AND s.expires_at>?
+    WHERE s.account_id=? AND s.expires_at>MAX(?,unixepoch())
     ORDER BY d.registered_at DESC,d.session_hash LIMIT 1
   `).bind(accountId, Math.floor(Date.now() / 1000))
     .all<{accountId:string;registrationToken:string}>();

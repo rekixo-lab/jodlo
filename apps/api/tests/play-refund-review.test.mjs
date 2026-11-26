@@ -73,9 +73,26 @@ test("confirmed revocation reserves unspent seconds atomically, without a debit,
     const queue = await listReviewedPlayRefundCases(f.adapter, POLICY);
     assert.equal(queue.cases.length, 1);
     assert.deepEqual(queue.cases[0], {caseId: HASH, accountId: OWNER, seconds: 300,
-      reason: "voided_purchase", openedAtMs: f.now + 1,
+      reason: "voided_purchase", openedAtMs: f.now + 1, purchaseEnvironment: "production",
       accountHeldSeconds: 300, accountUncoveredSeconds: 0});
     assert.equal(queue.nextCursor, null);
+  } finally { f.db.close(); }
+});
+
+test("operator refund review retains the original licensed test environment after its admission setting is removed", async () => {
+  const f = await fixture();
+  try {
+    f.authority = {...f.authority, purchaseEnvironment: "license_test"};
+    await registerPlayRefundPolicy(f.adapter, POLICY, f.now);
+    assert.equal(await f.grant(), "applied");
+    await f.fence();
+    const queue = await listReviewedPlayRefundCases(f.adapter, POLICY);
+    assert.equal(queue.cases.length, 1);
+    assert.equal(queue.cases[0].purchaseEnvironment, "license_test");
+    assert.equal(await releaseReviewedPlayRefundHold(f.adapter, {sourceKeyHash: HASH, policy: POLICY,
+      resolutionEvidenceHash: "c".repeat(64), resolvedAtMs: f.now + 5}), "applied");
+    assert.equal(f.db.prepare("SELECT purchase_environment FROM play_consume_outbox").get().purchase_environment, "license_test");
+    assert.equal(count(f.db, "call_credit_events"), 1);
   } finally { f.db.close(); }
 });
 

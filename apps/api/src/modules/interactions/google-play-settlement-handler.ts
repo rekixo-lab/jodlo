@@ -8,6 +8,7 @@ import { inspectJodloPlayPurchaseWithVoids, inspectJodloPlayRecentVoids,
   PLAY_VOIDED_SAFE_WINDOW_MS } from "./google-play-voided-preflight.ts";
 import { jodloPlayMinuteProductMap } from "./play-minute-packs.ts";
 import { JODLO_PLAY_SETTLEMENT_POLICY_VERSION } from "./play-settlement-policy.ts";
+import { configuredPlayLicenseTestBindings, type PlayPurchaseEnvironment } from "./play-license-test-policy.ts";
 import { configuredPlayRefundPolicy, canUsePlayRefundPolicy, registerPlayRefundPolicy,
   hasOwnOpenRefundReview } from "./play-refund-review.ts";
 import { recordTrustedPlayRevocation } from "./google-play-rtdn-fences.ts";
@@ -28,6 +29,7 @@ type SettlementRow = {
   status: "ready" | "sending" | "unknown" | "consumed" | "void_hold";
   attemptId: string | null; deadlineMs: number | null;
   policyVersion: string | null; approvalSha256: string | null; purchasedAtMs: number | null;
+  purchaseEnvironment: PlayPurchaseEnvironment;
 };
 
 /** The token hash is never enough to choose an owner. Every journal read is
@@ -38,7 +40,8 @@ async function readSettlement(
   const {results} = await db.prepare(
     "SELECT o.product_id AS productId,o.seconds,o.status,o.attempt_id AS attemptId," +
     "o.attempt_deadline_ms AS deadlineMs,o.settlement_policy_version AS policyVersion," +
-    "o.settlement_approval_hash AS approvalSha256,o.verified_purchased_at_ms AS purchasedAtMs " +
+    "o.settlement_approval_hash AS approvalSha256,o.verified_purchased_at_ms AS purchasedAtMs," +
+    "o.purchase_environment AS purchaseEnvironment " +
     "FROM play_consume_outbox AS o JOIN accounts AS a ON a.id=o.account_id AND a.status='active' " +
     "JOIN auth_sessions AS s ON s.account_id=a.id AND s.token_hash=? AND s.expires_at>unixepoch() " +
     "WHERE o.source_key_hash=? AND o.account_id=?",
@@ -47,7 +50,8 @@ async function readSettlement(
   if (!row) return null;
   if (!Number.isSafeInteger(row.seconds) || row.seconds < 60 || row.seconds > 30000 ||
       jodloPlayMinuteProductMap().get(row.productId) !== row.seconds / 60 ||
-      !["ready", "sending", "unknown", "consumed", "void_hold"].includes(row.status))
+      !["ready", "sending", "unknown", "consumed", "void_hold"].includes(row.status) ||
+      !["production", "license_test"].includes(row.purchaseEnvironment))
     throw Error("Invalid settlement journal");
   return row;
 }
@@ -59,6 +63,7 @@ async function readSettlement(
  */
 export function playSettlementConfigured(env: Env): boolean {
   return env.PLAY_SETTLEMENT_ENABLED === "1" &&
+    configuredPlayLicenseTestBindings(env) !== null &&
     env.PLAY_SETTLEMENT_POLICY_VERSION === JODLO_PLAY_SETTLEMENT_POLICY_VERSION &&
     /^[a-f0-9]{64}$/.test(env.PLAY_SETTLEMENT_APPROVAL_SHA256 ?? "") &&
     env.PLAY_SETTLEMENT_APPROVAL_SHA256 !== "0".repeat(64) &&
@@ -120,9 +125,9 @@ export async function handleConfiguredJodloPlaySettlement(
     if (!(await env.PLAY_SETTLEMENT_LIMITER!.limit({key: "play-settle-" + bearerHash.slice(0, 32)})).success)
       return failure(429, "RATE_LIMITED", {"Retry-After": "60"});
     if (!await stillOwner()) return failure(401, "UNAUTHORIZED");
-    // Missing 0028 must block checkout capability BEFORE a customer pays.
+    // Missing settlement/environment migrations block capability BEFORE checkout.
     await db.prepare("SELECT settlement_policy_version,settlement_approval_hash," +
-      "verified_purchased_at_ms FROM play_consume_outbox LIMIT 0").all();
+      "verified_purchased_at_ms,purchase_environment FROM play_consume_outbox LIMIT 0").all();
     const refundPolicy = configuredPlayRefundPolicy(env)!;
     if (!await canUsePlayRefundPolicy(db, refundPolicy)) return failure(503, "SERVICE_UNAVAILABLE");
     if (await hasOwnOpenRefundReview(db, accountId, bearerHash)) {
@@ -146,6 +151,7 @@ export async function handleConfiguredJodloPlaySettlement(
     if (!tokenHash) return failure(400, "INVALID_QUERY");
     const provider = {
       approvedProducts: jodloPlayMinuteProductMap(),
+      licenseTestAccountBindings: configuredPlayLicenseTestBindings(env)!,
       accessToken: testOnly?.accessToken ?? productionAccessToken,
       request: testOnly?.playRequest, now, timeoutMs: testOnly?.timeoutMs,
     };
@@ -217,12 +223,13 @@ export async function handleConfiguredJodloPlaySettlement(
       return reply(fresh, "not_eligible");
     }
     if (row && (row.productId !== screened.productId || row.seconds !== screened.seconds ||
-        row.purchasedAtMs !== screened.purchasedAtMs)) return reply(null, "manual_review");
+        row.purchasedAtMs !== screened.purchasedAtMs || row.purchaseEnvironment !== screened.purchaseEnvironment))
+      return reply(null, "manual_review");
     const staged = await stageTrustedPlayConsumable(db, {
       accountId, sourceKeyHash: tokenHash, productId: screened.productId,
       seconds: screened.seconds, createdAtMs: now(),
     }, provider.approvedProducts, {sessionHash: bearerHash, policyVersion,
-      approvalSha256, purchasedAtMs: screened.purchasedAtMs});
+      approvalSha256, purchasedAtMs: screened.purchasedAtMs, purchaseEnvironment: screened.purchaseEnvironment});
     if (!await stillOwner()) return failure(401, "UNAUTHORIZED");
     if (staged === "void_hold") return reply(null, "manual_review");
     if (staged === "denied") return reply(null, "not_eligible");

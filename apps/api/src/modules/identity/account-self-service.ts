@@ -109,8 +109,9 @@ function exportQuery(version: number): string {
       exportCollection("minuteActivity",["kind","seconds","occurredAtMs"],
         "SELECT kind,seconds,created_at_ms AS occurredAtMs FROM call_credit_events " +
         "WHERE account_id=overview.accountId ORDER BY created_at_ms,id"),
-      exportCollection("purchaseStatus",["productId","seconds","status","updatedAtMs"],
-        "SELECT product_id AS productId,seconds,status,updated_at_ms AS updatedAtMs FROM play_consume_outbox " +
+      exportCollection("purchaseStatus",["productId","seconds","status","updatedAtMs",...(version >= 5 ? ["environment"] : [])],
+        "SELECT product_id AS productId,seconds,status,updated_at_ms AS updatedAtMs" +
+        (version >= 5 ? ",purchase_environment AS environment" : "") + " FROM play_consume_outbox " +
         "WHERE account_id=overview.accountId ORDER BY created_at_ms,source_key_hash"),
       exportCollection("callUsage",["startedAtMs","endedAtMs","status","reservedSeconds","chargedSeconds"],
         "SELECT authorized_from_ms AS startedAtMs,ended_at_ms AS endedAtMs,state AS status," +
@@ -121,6 +122,10 @@ function exportQuery(version: number): string {
         "r.resolved_at_ms AS resolvedAtMs FROM play_refund_reviews r JOIN play_consume_outbox p ON p.source_key_hash=r.source_key_hash "+
         "WHERE r.account_id=overview.accountId ORDER BY r.opened_at_ms,r.source_key_hash"),
     ] : []),
+    ...(version >= 5 ? [exportCollection("callHistory",
+      ["id","direction","outcome","endedAt","connectedSeconds"],
+      "SELECT id,direction,outcome,ended_at AS endedAt,connected_seconds AS connectedSeconds " +
+      "FROM call_history WHERE account_id=overview.accountId ORDER BY ended_at DESC,id DESC")] : []),
     exportCollection("callPreferences", ["callsEnabled", "revision"],
       "SELECT calls_enabled AS callsEnabled,revision FROM worker_agora_call_preferences WHERE account_id=overview.accountId"),
     exportCollection("availabilityPreferences", ["acceptingCalls", "revision"],
@@ -141,7 +146,7 @@ function exportQuery(version: number): string {
 type ExportSnapshot = OverviewRow & Record<
   "identity" | "services" | "callPreferences" | "availabilityPreferences" |
   "blocksMade" | "abuseCounters" | "sessions" | "serviceDetails" | "servicePhotos" | "serviceReports" | "serviceAppeals" |
-  "minuteBalance" | "minuteActivity" | "purchaseStatus" | "callUsage" | "refundReviews", string
+  "minuteBalance" | "minuteActivity" | "purchaseStatus" | "callUsage" | "refundReviews" | "callHistory", string
 >;
 
 function decodeExportCollection(encoded: string): unknown[] {
@@ -156,7 +161,7 @@ function decodeExportCollection(encoded: string): unknown[] {
 export async function exportOwnAccountData(
   db: D1Database, bearer: string, version = 1,
 ): Promise<Record<string, unknown> | null> {
-  if (!validSessionToken(bearer)||![1,2,3,4].includes(version)) return null;
+  if (!validSessionToken(bearer)||![1,2,3,4,5].includes(version)) return null;
   const {results} = await db.prepare(exportQuery(version))
     .bind(await sessionHash(bearer), Math.floor(Date.now() / 1000)).all<ExportSnapshot>();
   const row = results[0];
@@ -179,6 +184,7 @@ export async function exportOwnAccountData(
       callUsage:decodeExportCollection(row.callUsage),
       refundReviews:decodeExportCollection(row.refundReviews),
     } : {}),
+    ...(version >= 5 ? {callHistory:decodeExportCollection(row.callHistory)} : {}),
     callPreferences: decodeExportCollection(row.callPreferences),
     availabilityPreferences: decodeExportCollection(row.availabilityPreferences),
     blocksMade: decodeExportCollection(row.blocksMade),

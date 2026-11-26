@@ -3,15 +3,13 @@
  */
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
-import {dirname,resolve} from "node:path";
+import {resolve} from "node:path";
 import {fileURLToPath} from "node:url";
 import {loadPinnedHumanReviewActionQueue,emptyHumanReviewActionPacketSet} from "./catalog-human-review-progress.mjs";
 import {selectNextHumanReviewActions} from "./catalog-review-next-actions.mjs";
 import {loadPinnedFullCategoryServiceEvidence} from "./catalog-service-evidence-packets.mjs";
 import {buildCategoryReviewDossier,renderCategoryReviewDossierMarkdown} from "./catalog-review-dossier.mjs";
 
-export const REVIEW_SHEET_PATH = "docs/reference/JODLO_FIRST_FIVE_FULL_SERVICE_REVIEW_2026-11-04.md";
-const ROOT=resolve(dirname(fileURLToPath(import.meta.url)),"..");
 const PIN="31303a2af70cdb64186b974194d2cb1a0b068bfdd79a8ac03f5532174f4c3375";
 const EXPECTED=[
   ["ac-technician",10],
@@ -61,13 +59,18 @@ export function assertPublishedFirstFiveSheet(published,expected){
 
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   const mode=process.argv[2]??"--check";
-  if(process.argv.length>3||!["--check","--emit","--summary"].includes(mode))
-    throw Error("Usage: node scripts/catalog-first-five-handoff.mjs [--check|--emit|--summary]");
+  const worksheet=process.argv[3];
+  if(process.argv.length>4||!["--check","--emit","--summary"].includes(mode)||
+      worksheet!==undefined&&(mode!=="--check"||worksheet.startsWith("--")))
+    throw Error("Usage: node scripts/catalog-first-five-handoff.mjs [--check [WORKSHEET]|--emit|--summary]");
   const expected=renderPinnedFirstFiveSheet();
   if(mode==="--check"){
-    const published=readFileSync(resolve(ROOT,REVIEW_SHEET_PATH),"utf8");
-    assertPublishedFirstFiveSheet(published,expected);
-    console.log("First 5 Categories/48 complete original Services match pinned reviewer sheet; 0 approvals/SQL.");
+    // README is the sole persistent note. Reconstruct the reviewer worksheet
+    // from the immutable archive instead of requiring a deleted docs snapshot.
+    // A supplied external worksheet can still be checked byte-for-byte.
+    if(worksheet!==undefined)assertPublishedFirstFiveSheet(readFileSync(resolve(worksheet),"utf8"),expected);
+    console.log("First 5 Categories/48 complete original Services verified from pinned source"+
+      (worksheet===undefined?"":" and supplied worksheet")+"; 0 approvals/SQL.");
   }else if(mode==="--summary"){
     console.log("Unapproved historical source: 5 Categories, 48 Services, 15 review work-items; ZERO verified human approvals, SQL or activations.");
   }else{
