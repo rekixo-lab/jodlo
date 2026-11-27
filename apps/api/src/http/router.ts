@@ -1,3 +1,4 @@
+import { sharedServicePage } from "./shared-service-page.ts";
 import { readOwnWorkerAvailability, setOwnWorkerAvailability } from "../modules/interactions/agora-private-safety-state.ts";
 import { handleConfiguredJodloPlayRtdn } from "../modules/interactions/google-play-pubsub-handler.ts";
 import { handleConfiguredJodloPlayVerification } from "../modules/interactions/google-play-verification-handler.ts";
@@ -84,6 +85,21 @@ export async function handleRequest(
   verifyGoogle: typeof verifyGoogleIdToken = verifyGoogleIdToken,
 ): Promise<Response> {
   const url = new URL(request.url);
+  if (url.pathname === "/service") {
+    const methodError = getOnly(request);
+    if (methodError) return methodError;
+    const id = url.searchParams.get("id");
+    const lang = url.searchParams.get("lang");
+    if (!validOpaqueId(id) || (lang !== "hi" && lang !== "en") || url.searchParams.size !== 2)
+      return sharedServicePage("hi", null, 400);
+    if (!env.DB) return sharedServicePage(lang, null, 503);
+    try {
+      const detail = await publicApprovedServiceDetail(env.DB, id, lang, undefined, true, {includePublishedCity: true});
+      return sharedServicePage(lang, detail, detail ? 200 : 404);
+    } catch {
+      return sharedServicePage(lang, null, 503);
+    }
+  }
   if (url.pathname === "/api/v1/play/rtdn" && env.PLAY_RTDN_ENABLED === "1") {
     // Default OFF. Only Google-signed Pub/Sub push plus a second live
     // AndroidPublisher check can fence a purchase; this route never grants.

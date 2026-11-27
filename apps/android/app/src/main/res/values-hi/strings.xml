@@ -13,7 +13,7 @@
     <string name="back_action">श्रेणियों पर लौटें</string>
     <string name="request_failed">जानकारी नहीं मिली। कोई बदलाव नहीं किया गया।</string>
     <string name="retry_action">फिर से देखें</string>
-    <string name="empty_catalog">अभी कोई स्वीकृत सेवा श्रेणी उपलब्ध नहीं है।</string>
+    <string name="empty_catalog">अभी कोई मिलती-जुलती सार्वजनिक सेवा पोस्ट नहीं मिली।</string>
     <string name="empty_listings">इस श्रेणी में कोई सार्वजनिक सेवा सूची नहीं है।</string>
     <string name="public_listing">सार्वजनिक सेवा सूची</string>
     <string name="listing_reference">संदर्भ: %1$s</string>
@@ -91,7 +91,6 @@
     <string name="demo_enable">बिना इंटरनेट नमूना सेवाएँ देखें (केवल परीक्षण)</string>
     <string name="demo_disable">नमूना बंद करें</string>
     <string name="demo_readonly_notice">केवल नमूना डेटा • ये वास्तविक वर्कर या स्वीकृत लाइव श्रेणियाँ नहीं हैं। यहाँ नेटवर्क अनुरोध, कॉल, प्रवेश या प्रकाशन नहीं होते।</string>
-    <string name="filter_published_services">केवल प्रकाशित सेवाओं वाली श्रेणियाँ</string>
     <string name="back_to_listings">सेवा सूचियों पर लौटें</string>
     <string name="listing_detail_heading">वर्तमान सार्वजनिक सेवा सूची</string>
     <string name="listing_no_longer_public">यह सेवा सूची अब सार्वजनिक नहीं है। श्रेणी पर लौटकर सूची ताज़ा करें।</string>
@@ -312,7 +311,7 @@
     <string name="home_saved_action">मेरी सहेजी सेवाएँ</string>
     <string name="home_worker_action">वर्कर के रूप में सेवा दें</string>
     <string name="home_category_heading">स्वीकृत काम की श्रेणियाँ</string>
-    <string name="home_category_notice">केवल स्वीकृत सक्रिय श्रेणियाँ दिखती हैं। किसी श्रेणी का दिखना वर्कर के ऑनलाइन, सत्यापित या कॉल के लिए तैयार होने का प्रमाण नहीं है।</string>
+    <string name="home_category_notice">जिस श्रेणी में सार्वजनिक सेवा पोस्ट है, वही यहाँ दिखती है।</string>
     <string name="home_open_category">इस श्रेणी की वर्तमान सार्वजनिक सूचियाँ खोलें</string>
     <string name="home_refresh">स्वीकृत श्रेणियाँ ताज़ा करें</string>
     <string name="home_no_live_api">वास्तविक श्रेणियों के लिए कॉन्फ़िगर किया गया JODLO HTTPS API चाहिए। Debug बिल्ड में Customer स्क्रीन पर अलग ऑफ़लाइन नमूना मिल सकता है।</string>
@@ -341,14 +340,14 @@
     <!-- Optional reviewed Group -> Family -> Category navigation, no seed or PII. -->
     <string name="home_hierarchy_action">स्वीकृत समूह → परिवार → श्रेणियाँ देखें</string>
     <string name="hierarchy_heading">समूह और परिवार से सेवा खोजें</string>
-    <string name="hierarchy_notice">केवल अलग से स्वीकृत समूह, परिवार और सक्रिय श्रेणी की मैपिंग दिखती है। इससे वर्कर की उपलब्धता, पहचान सत्यापन या संपर्क की अनुमति सिद्ध नहीं होती। आप सभी स्वीकृत श्रेणियाँ अलग से भी देख सकते हैं।</string>
+    <string name="hierarchy_notice">सार्वजनिक सेवा पोस्ट वाले समूह और श्रेणियाँ देखें।</string>
     <string name="hierarchy_back">एक स्तर पीछे / होम</string>
-    <string name="hierarchy_flat_browse">सभी स्वीकृत श्रेणियाँ देखें और खोजें</string>
+    <string name="hierarchy_flat_browse">पोस्ट वाली श्रेणियाँ देखें</string>
     <string name="hierarchy_refresh">वर्तमान स्वीकृत स्तर ताज़ा करें</string>
     <string name="hierarchy_groups">स्वीकृत समूह</string>
     <string name="hierarchy_families">स्वीकृत परिवार</string>
     <string name="hierarchy_categories">स्वीकृत श्रेणियाँ</string>
-    <string name="hierarchy_empty">इस स्तर पर अभी कोई स्वीकृत मैपिंग नहीं है। सामान्य श्रेणी सूची उपलब्ध है।</string>
+    <string name="hierarchy_empty">यहाँ अभी कोई सार्वजनिक सेवा पोस्ट नहीं मिली।</string>
     <string name="hierarchy_unavailable">इस API संस्करण में स्वीकृत समूह/परिवार सूची अभी उपलब्ध नहीं है। सामान्य श्रेणियाँ देखें; कोई डेटा नहीं बदला।</string>
     <string name="hierarchy_open_next">अगला स्वीकृत स्तर खोलें</string>
 
@@ -629,4 +628,5 @@
     <string name="play_restore_qa_pending_settlement">Google Play की प्रारंभिक जाँच पूरी है, लेकिन भुगतान निपटान लंबित है। मिनट नहीं जोड़े गए।</string>
     <string name="navigation_manage_service">सेवा प्रबंधन</string>
     <string name="navigation_service_photo">सेवा की तस्वीर</string>
+    <string name="share_public_service">सेवा का लिंक शेयर करें</string>
 </resources>
