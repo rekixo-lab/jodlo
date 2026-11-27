@@ -1,5 +1,6 @@
 package com.rekixo.jodlo
 
+import android.content.Intent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
@@ -1088,6 +1089,14 @@ internal fun WorkerDashboard(
                                                 // private draft/owner fields from appearing here.
                                                 publicPreview.checkedCard?.let { card ->
                                                     SafeServiceCard(card)
+                                                    if (BuildConfig.API_ORIGIN == "https://api.jodlo.rekixo.com") {
+                                                        JodloTextAction(onClick = {
+                                                            val link = "${BuildConfig.API_ORIGIN}/service?id=${card.listing.id}&lang=${categoryLanguage.code}"
+                                                            val send = Intent(Intent.ACTION_SEND).setType("text/plain")
+                                                                .putExtra(Intent.EXTRA_TEXT, link)
+                                                            activity.startActivity(Intent.createChooser(send, null))
+                                                        }) { Text(stringResource(R.string.share_public_service)) }
+                                                    }
                                                     SafePublicProfileFacts(card.profile, card.city)
                                                     // Rechecking the same Service resets old bitmap
                                                     // state: photo revision may have been revoked.

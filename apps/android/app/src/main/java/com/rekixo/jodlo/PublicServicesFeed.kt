@@ -62,6 +62,7 @@ internal fun PublicServicesFeed(
     onCall: ((PublicListing, Language, NearbyPilotCity?) -> Unit)? = null,
     city: NearbyPilotCity? = null,
     onBackToCityPicker: (() -> Unit)? = null,
+    initialCategory: PublicCategory? = null,
 ) {
     val scope = rememberCoroutineScope()
     val appLanguage = LocalJodloLanguage.current
@@ -200,7 +201,7 @@ internal fun PublicServicesFeed(
             // The eventual exact Listing GET still rechecks current eligibility.
             val result = withContext(Dispatchers.IO) {
                 try {
-                    if (city == null) repository.searchCursor(query, lang, limit = 20, after = after)
+                    if (city == null) repository.searchCursor(query, lang, availableOnly = true, limit = 20, after = after)
                     else repository.citySearchCursor(query, lang, city, limit = 20, after = after)
                 }
                 catch (cancelled: kotlin.coroutines.cancellation.CancellationException) {
@@ -288,10 +289,7 @@ internal fun PublicServicesFeed(
                     listings = if (after == null) rows else listings + rows
                     nextCursor = page.nextCursor
                     categoryNames = categoryNames + result.value.categoryNames
-                    if (filter == null) {
-                        filterNames = (filterNames + result.value.categoryNames).entries
-                            .take(24).associate { it.key to it.value }
-                    }
+                    filterNames = categoryNames.entries.take(24).associate { it.key to it.value }
                     busy = false
                 }
             }
@@ -347,7 +345,7 @@ internal fun PublicServicesFeed(
         listings = emptyList()
         categoryNames = emptyMap()
         nextCursor = null
-        categoryFilter = null
+        categoryFilter = initialCategory?.id
         filterNames = emptyMap()
         loadPage()
     }
@@ -509,7 +507,7 @@ internal fun PublicServicesFeed(
                 }
             }
             if (categorySearchBusy) item { CircularProgressIndicator() }
-            if (filterNames.isNotEmpty()) item {
+            if (filterNames.isNotEmpty() || categoryFilter != null) item {
                 Text(stringResource(R.string.feed_quick_filters),
                     style = MaterialTheme.typography.titleSmall)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(JodloSizes.SmallGap)) {
@@ -525,7 +523,7 @@ internal fun PublicServicesFeed(
                 }
             }
             item {
-                JodloTextAction(onClick = onBrowseCategories) {
+                JodloTextAction(onClick = { if (city == null) onBrowseCategories() else loadCityCategories() }) {
                     Text(stringResource(R.string.home_browse_action))
                 }
             }

@@ -54,7 +54,6 @@ internal fun CustomerHierarchy(
     val scope = rememberCoroutineScope()
     val appLanguage = LocalJodloLanguage.current
     var language by remember { mutableStateOf(appLanguage) }
-    var availableOnly by remember { mutableStateOf(false) }
     var level by remember { mutableStateOf(HierarchyLevel.GROUPS) }
     var group by remember { mutableStateOf<HierarchyItem?>(null) }
     var family by remember { mutableStateOf<HierarchyItem?>(null) }
@@ -78,7 +77,6 @@ internal fun CustomerHierarchy(
         val requestedLevel = level
         val requestedParent = parentId
         val requestedLanguage = language
-        val requestedFilter = availableOnly
         busy = true
         if (after == null) {
             rows = emptyList()
@@ -90,7 +88,7 @@ internal fun CustomerHierarchy(
             val reply = withContext(Dispatchers.IO) {
                 try {
                     client.hierarchy(requestedLevel, requestedParent,
-                        requestedLanguage, requestedFilter, HIERARCHY_PAGE_SIZE, after)
+                        requestedLanguage, availableOnly = true, limit = HIERARCHY_PAGE_SIZE, after = after)
                 } catch (cancelled: kotlin.coroutines.cancellation.CancellationException) {
                     throw cancelled
                 } catch (_: Exception) {
@@ -98,8 +96,7 @@ internal fun CustomerHierarchy(
                 }
             }
             if (revision != callGeneration || requestedLevel != level ||
-                requestedParent != parentId || requestedLanguage != language ||
-                requestedFilter != availableOnly) return@launch
+                requestedParent != parentId || requestedLanguage != language) return@launch
             busy = false
             when (reply) {
                 is ApiOutcome.Failed -> {
@@ -128,7 +125,7 @@ internal fun CustomerHierarchy(
         }
     }
 
-    LaunchedEffect(repository, level, parentId, language, availableOnly) {
+    LaunchedEffect(repository, level, parentId, language) {
         // Every parent or language/filter change invalidates a previous page
         // and every in-flight result. Nothing is cached or stored on device.
         revision++
@@ -201,12 +198,6 @@ internal fun CustomerHierarchy(
             }
         }
         item {
-            JodloChip(selected = availableOnly,
-                onClick = {
-                    availableOnly = !availableOnly
-                    group = null; family = null; level = HierarchyLevel.GROUPS
-                },
-                label = { Text(stringResource(R.string.filter_published_services)) })
             JodloTextAction(onClick = { loadPage() }, enabled = !busy && repository != null) {
                 Text(stringResource(R.string.hierarchy_refresh))
             }

@@ -1,5 +1,7 @@
 हम JODLO इसलिए बना रहे हैं ताकि यह Finworkar ऐप से बेहतर हो।
 
+25 नवंबर 2026 को मालिक ने पुष्टि की कि उन्होंने Finworkar को Google Play Store से हटा दिया है। सक्रिय ऐप JODLO है। ग्राहक और Worker का कोई फीचर बनाते समय पुराने ऐप का वही सफर देखकर तय करें कि JODLO में कौन-सा कदम आसान या तेज होगा। खोज, प्रोफ़ाइल और कॉल जैसे मुख्य कामों को धीमे नेटवर्क पर भी जाँचें। JODLO की वेबसाइट, उसकी होस्टिंग और ऐप का अपना बैकएंड Cloudflare पर रखने का लक्ष्य है।
+
 ## वर्तमान implementation और अंतिम launch handoff — 25 नवंबर 2026
 
 यह section मौजूदा source का सार है। नीचे के तारीख वाले पुराने sections उस समय की स्थिति बताते हैं; checkout, settlement, usage और export के बारे में उनके पुराने “बाकी” वाक्य अब इस section से पढ़ें। हमारा लक्ष्य वही पूरा Customer → Worker → Call → Minutes → Support/Privacy सफर है। किसी feature का code/build पूरा होना और उसका वास्तविक provider/device acceptance अलग प्रमाण हैं।
@@ -140,6 +142,7 @@ Android native workflow JDK 17/21 पर Kotlin core तथा default/configure
 - **Cloudflare:** JODLO का अपना API, डेटाबेस, मीडिया और संभव backend सिस्टम Cloudflare Workers, D1 और जरूरत पर R2 में बनाएँ। Google Play, Android, Google Sign-In, FCM और RTC जैसी बाहरी प्रदाताओं की सेवाएँ अलग रहेंगी; उन्हें Cloudflare होने का गलत दावा न करें।
 - **पेमेंट:** ऐप के डिजिटल समय/क्रेडिट, फीचर और सदस्यता के लिए **Google Play Billing** प्राथमिक है। **Google Pay** यदि Play checkout में उपलब्ध हो तभी भुगतान विकल्प होगा; यह Play Billing से अलग तकनीक है। वास्तविक ऑफलाइन/भौतिक सेवा के ग्राहक-Worker भुगतान की अलग नीति है। सुरक्षित Cloudflare backend से Google purchase सत्यापन और D1 में सुरक्षित, एक-बार credit के बिना पैसों का फीचर चालू न करें। Finworkar का Razorpay या उसका wallet/data कॉपी न करें।
 - **Reuse, कोई बेकार duplication नहीं:** Existing JODLO components और Finworkar के काम के पीछे की सही reusable logic/idea को देख कर पुनः इस्तेमाल करें। Validation, SQL, DTO, API contract, UI, text, assets और tests में एक जैसे काम के लिए साझा implementation रखें; duplicated code हटाएँ। अलग सुरक्षा शर्तों को गलती से एक न करें। पुराने Finworkar के लाइव सिस्टम और ग्राहक डेटा को न छुएँ।
+- **कैटलॉग का पूरा दायरा (27 नवंबर 2026):** बिलासपुर और रायपुर दोनों में सभी कामों की श्रेणियाँ रखनी हैं। पोस्ट बनाते समय कामगार पूरा स्वीकृत कैटलॉग खोज सके, खाली श्रेणी में भी पहली पोस्ट कर सके। ग्राहक की खोज, सुझाव, समूह और श्रेणी सूची में केवल वर्तमान सार्वजनिक पोस्ट वाली श्रेणियाँ दिखें। शहर चुना हो तो उसी शहर की पोस्ट गिनें। अंतिम सार्वजनिक पोस्ट हट जाने पर श्रेणी ग्राहक की अगली खोज से हटे और कामगार के लिए उपलब्ध रहे। ऐतिहासिक 889 श्रेणियों और 7,267 सेवाओं का पूरा हिसाब रखें। किसी नए या अनुपस्थित काम की माँग भी पायलट में समीक्षा के लिए दर्ज करें।
 - **मुख्य Product Journey:** ग्राहक आसानी से सेवा/Worker खोजे, सच और उपयोगी जानकारी देखे, सुरक्षित संपर्क/कॉल करे; Worker अपनी सेवाएँ और उपलब्धता सँभाले। नकली Worker/सेवा, गलत verified badge, फर्जी भुगतान या गलत live-claim नहीं।
 - **गुणवत्ता:** पूरा काम पहले, छोटे दिखावटी परीक्षण नहीं। Source tests, Android APK compile, release protections, privacy और rollback की जाँच करें। Production deploy, real payment, ईमेल या Finworkar में बदलाव बिना अलग सत्यापन न करें।
 
@@ -276,3 +279,26 @@ Google की वर्तमान **31 अगस्त 2026** policy के �
 JODLO के तीन **read-only private API flows** `GET /api/v1/me/overview`, `GET /api/v1/me/data-export?version=1|2|3` और default-OFF `GET /api/v1/me/play-overview` के लिए एक ही canonical `readWithSameActiveSession` guard जोड़ा गया है। पहले owner/session D1 से जाँची जाती है, फिर उसी owner-bound indexed SELECT/JSON export को पढ़ा जाता है, और **response लौटने से पहले उसी bearer की उसी active account से दोबारा जाँच** होती है। बीच में दूसरे फोन से logout/logout-all, account disable, token expiry, या किसी bug से token की owner-rebinding होने पर result generic noncacheable `401 UNAUTHORIZED` होता है; final D1 verification fail होने पर `503 SERVICE_UNAVAILABLE`। पुराने account की details, Google identity, report/contact data, minute balance/ledger, canceled/void holds या service information नहीं लौटती। Existing `sessions.ts` validation/hash re-use, नया duplicate authentication stack नहीं; no token storage, no write, no checkout/credit/consume/public account endpoint.
 
 `apps/api/tests/private-account-session-read-races.test.mjs` में **5 private response types × चार synthetic state races** (revoke, disable, expire, changed owner), final D1 verification outage और दोनों अलग accounts के intact/read-only success paths जाँचे जाते हैं। यह टेस्ट केवल local SQLite/D1 पर है; signed-in real-device privacy QA और production provider acceptance अभी अलग हैं। अंतिम recheck concurrent logout के हर nanosecond के लिए transaction-level atomic promise **नहीं** है। User का JODLO-vs-FinWorkar quality, Cloudflare-only app backend, canonical reuse और owner-last Google Play prices वाला निर्देश पहले जैसा ही है; कोई FinWorkar write, real payment, email या production deployment नहीं।
+
+## बिलासपुर और रायपुर में बिना विज्ञापन के दो हफ्ते का पायलट
+
+दोनों शहर पायलट में हैं। हर शहर में परिचित समूह या दुकान से शुरुआत करें। वहाँ जिस भी काम की माँग आए, उसे दर्ज करें। इच्छुक कामगारों से उनका कार्यक्षेत्र और समय पूछें। समूह में साझा करने से पहले संचालक की सहमति लें। किसी ग्राहक की माँग आने पर ही संबंधित सेवा का जवाब दें।
+
+संदेश का मसौदा — “आपने [काम] के लिए पूछा था। [शहर] में इस सेवा का विवरण यहाँ देख सकते हैं। [प्रकाशित सेवा का लिंक]। समय तय करने में मदद चाहिए तो इसी बातचीत में बताइए।”
+
+हर दिन स्रोत के हिसाब से गिनें। एक ही ग्राहक की उसी माँग को दो बार न गिनें। परिणाम की पुष्टि बाकी हो तो उसे खुला रखें।
+
+| तारीख | शहर, माँगा गया काम और स्रोत (समूह/दुकान) | नई पूछताछ | कामगार से बात हुई | काम तय हुआ | पुष्टि बाकी | कहाँ अटके |
+|---|---|---:|---:|---:|---:|---|
+| | | | | | | |
+
+दो हफ्ते बाद देखें कि किस स्रोत से अलग-अलग ग्राहक आए और कितनों का काम तय हुआ। पूछताछ कम हो तो दूसरा स्थानीय स्रोत आज़माएँ। बात न हो रही हो तो कामगार की उपलब्धता और संपर्क का रास्ता जाँचें। बात होने के बाद काम न बने तो ग्राहक से कारण पूछें।
+
+**शेयर लिंक का स्थानीय कार्यान्वयन।** Worker की सेवा के प्रबंधन में ग्राहक वाला सार्वजनिक पूर्वावलोकन जाँचें, फिर “सेवा का लिंक शेयर करें” चुनें। Android का शेयर मेन्यू खुलता है। यह बटन JODLO के अपने API origin वाले बिल्ड में दिखता है। प्राप्तकर्ता का ब्राउज़र उसी API की /service स्क्रीन खोलता है। हर बार प्रकाशित श्रेणी, साझा किया गया शहर और समीक्षा के बाद स्वीकृत विवरण वर्तमान डेटाबेस से पढ़े जाते हैं। समय की पुष्टि मूल बातचीत में होती है। पायलट में लिंक बाँटने से पहले इसी संस्करण की तैनाती और दो फोन पर जाँच बाकी है।
+
+## पायलट का सत्यापित रिकॉर्ड — 27 नवंबर 2026
+
+- Cloudflare के JODLO डेटाबेस में 889 सक्रिय श्रेणियाँ मिलीं। पुराने कैटलॉग की हर श्रेणी का मिलान हुआ, जिसमें `farmer-helper-मजदूर` का स्थानीय समकक्ष `farm-worker` है। उस समय एक श्रेणी में सार्वजनिक पोस्ट थी और उस पोस्ट पर शहर दर्ज नहीं था। बिलासपुर और रायपुर की शहर-विशिष्ट सार्वजनिक खोज दोनों खाली थीं। 7,267 सेवाओं के नामों की स्थानीय समीक्षा और उनका लाइव प्रकाशन अलग काम हैं।
+- मालिक की अनुमति पर D1 माइग्रेशन 0024–0027 लागू हुए। उसके बाद पूरे लाइव निर्यात को अलग स्थानीय SQLite में बहाल किया। सभी 27 माइग्रेशन और 889 सक्रिय श्रेणियाँ मिलीं। डेटाबेस की अखंडता जाँच पास हुई और विदेशी कुंजियों की कोई त्रुटि नहीं मिली।
+- पायलट Worker संस्करण 9 पर मौजूदा प्रदाता सेटिंग्स के साथ ग्राहक के साझा सेवा लिंक को हिन्दी और अंग्रेज़ी में जाँचा। पायलट सहायता वेबसाइट https://jodlo-pilot.pages.dev पर प्रकाशित हुई। नया कोड लगाते समय Cloudflare पर सक्रिय संस्करण और D1 स्कीमा फिर जाँचें।
+- Samsung Android 13 पर पायलट APK स्थापित हुआ। अतिथि के रूप में सेवा श्रेणी खुली। दो ADB कनेक्शन एक ही फोन के थे। कॉल जाँच की स्क्रिप्ट अब दोनों फोन की अलग भौतिक पहचान जाँचती है।

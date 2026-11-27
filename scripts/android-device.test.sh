@@ -45,6 +45,10 @@ if [[ "$1" == devices ]]; then
   exit 0
 fi
 printf 'adb %s\n' "$*" >> "$MOCK_CALLS"
+if [[ "$*" == *" shell getprop ro.serialno" ]]; then
+  printf '%s\r\n' "${MOCK_HARDWARE_ID-$2}"
+  exit 0
+fi
 if [[ "$*" == *" install -r "* ]]; then
   if [[ "${MOCK_INSTALL_FAIL:-0}" == 1 || "$*" == *"-s ${MOCK_INSTALL_FAIL_DEVICE:-__NO_DEVICE__} install -r "* ]]; then
     printf 'Failure [INSTALL_FAILED_USER_RESTRICTED]\n'
@@ -65,7 +69,7 @@ reset() {
   rm -f "$apk"
   MOCK_DEVICES=""
   export MOCK_DEVICES
-  unset ANDROID_SERIAL MOCK_BUILD_FAIL MOCK_NO_APK MOCK_INSTALL_FAIL MOCK_INSTALL_FAIL_DEVICE JODLO_JDK17_HOME JODLO_JDK_HOME JODLO_GOOGLE_WEB_CLIENT_ID
+  unset MOCK_HARDWARE_ID ANDROID_SERIAL MOCK_BUILD_FAIL MOCK_NO_APK MOCK_INSTALL_FAIL MOCK_INSTALL_FAIL_DEVICE JODLO_JDK17_HOME JODLO_JDK_HOME JODLO_GOOGLE_WEB_CLIENT_ID
   rm -f "$tmp/repo/apps/android/app/google-services.json"
   export JAVA_HOME="$tmp/jdk17"
 }
@@ -252,6 +256,18 @@ mock_fcm
 bad call-qa --customer D1 --worker D1
 lacks gradle
 echo '✓ QA requires two distinct phones'
+
+for identity in same-phone unknown ''; do
+  reset
+  MOCK_DEVICES=$'D1\tdevice\nD2\tdevice'
+  export JODLO_GOOGLE_WEB_CLIENT_ID='1234567890-publicqa.apps.googleusercontent.com'
+  export MOCK_HARDWARE_ID="$identity"
+  mock_fcm
+  bad call-qa --customer D1 --worker D2
+  lacks gradle
+  lacks ' install -r '
+done
+echo '✓ aliased or unidentifiable physical QA phones cannot build or install'
 
 reset
 MOCK_DEVICES=$'D1\tdevice\nD2\tunauthorized'

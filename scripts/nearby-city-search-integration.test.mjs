@@ -15,7 +15,7 @@ const routes = readFileSync(new URL(
 test("Nearby Search is an explicit approved-category lookup and city+trade selection, never owner search", () => {
   assert.match(feed,/JodloSearchField\(/);
   assert.match(feed,/onClick = \{ searchCategories\(\) \}/);
-  assert.match(feed,/if \(city == null\) repository\.searchCursor\(query, lang, limit = 20, after = after\)/);
+  assert.match(feed,/if \(city == null\) repository\.searchCursor\(query, lang, availableOnly = true, limit = 20, after = after\)/);
   assert.match(feed,/else repository\.citySearchCursor\(query, lang, city, limit = 20, after = after\)/);
   assert.match(repo,/JodloRoutes\.searchCursor\(query, language, availableOnly = true,/);
   assert.match(routes,/if \(city != null\) p \+= "city=\$\{city\.wire\}"/);
@@ -62,4 +62,20 @@ test("Customer city trade Browse is an explicit no-query public-only page and ne
       "nearby_city_categories_failed"])assert.match(xml,new RegExp('name="'+key+'"'));
   }
   assert.doesNotMatch(feed,/requestLocation|LocationManager|ACCESS_FINE_LOCATION/);
+});
+
+test("customer discovery requires published posts while a worker can find an empty category", () => {
+  const screen = name => readFileSync(new URL(
+    "../apps/android/app/src/main/java/com/rekixo/jodlo/" + name + ".kt", import.meta.url
+  ), "utf8");
+  const home = screen("CustomerHome");
+  assert.match(home, /client\.cityBrowse\(chosenLanguage, chosenCity/);
+  assert.match(home, /client\.browse\(chosenLanguage, availableOnly = true/);
+  const discovery = screen("MainActivity");
+  for (const call of discovery.matchAll(/client\.(?:browse|search|searchCursor)\(([^)]*)\)/g))
+    assert.match(call[1], /availableOnly = true/);
+  assert.match(screen("CustomerHierarchy"), /client\.hierarchy\([^)]*availableOnly = true/);
+  const worker = screen("WorkerDashboard");
+  assert.match(worker, /catalog\.browse\(language, limit = 20, after = after\)/);
+  assert.match(worker, /catalog\.searchCursor\(\s*query!!, language, limit = 20, after = after\)/);
 });

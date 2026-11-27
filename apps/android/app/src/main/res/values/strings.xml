@@ -13,7 +13,7 @@
     <string name="back_action">Back to categories</string>
     <string name="request_failed">Could not load the requested page. No changes were made.</string>
     <string name="retry_action">Retry browsing</string>
-    <string name="empty_catalog">No approved categories are available.</string>
+    <string name="empty_catalog">No matching public service posts yet.</string>
     <string name="empty_listings">No public listings are available for this category.</string>
     <string name="public_listing">Public service listing</string>
     <string name="listing_reference">Reference: %1$s</string>
@@ -91,7 +91,6 @@
     <string name="demo_enable">Explore offline sample services (debug only)</string>
     <string name="demo_disable">Close offline sample</string>
     <string name="demo_readonly_notice">SAMPLE DATA ONLY • Not real workers or approved live Categories. This preview makes no network requests and cannot call, sign in or publish.</string>
-    <string name="filter_published_services">Only categories with published services</string>
     <string name="back_to_listings">Back to service listings</string>
     <string name="listing_detail_heading">Current public listing</string>
     <string name="listing_no_longer_public">This listing is no longer public. Return to the category and refresh.</string>
@@ -312,7 +311,7 @@
     <string name="home_saved_action">My saved services</string>
     <string name="home_worker_action">Offer a service as a Worker</string>
     <string name="home_category_heading">Approved work categories</string>
-    <string name="home_category_notice">Only active approved categories are shown. A category does not mean a Worker is online, verified or ready to take a call.</string>
+    <string name="home_category_notice">Categories appear when they have a public service post.</string>
     <string name="home_open_category">Open current public listings for this category</string>
     <string name="home_refresh">Refresh approved categories</string>
     <string name="home_no_live_api">A configured JODLO HTTPS API is required for live categories. The Customer screen can offer a separate offline developer sample in a debug build.</string>
@@ -341,14 +340,14 @@
     <!-- Optional reviewed Group -> Family -> Category navigation, no seed or PII. -->
     <string name="home_hierarchy_action">Browse approved Groups → Families → Categories</string>
     <string name="hierarchy_heading">Find work by Group and Family</string>
-    <string name="hierarchy_notice">Only separately approved Group, Family and active Category mappings appear. This is not Worker availability, verification or contact permission. You can always browse all approved Categories instead.</string>
+    <string name="hierarchy_notice">Browse groups and categories with public service posts.</string>
     <string name="hierarchy_back">Back one level / Home</string>
-    <string name="hierarchy_flat_browse">Browse and search all approved Categories</string>
+    <string name="hierarchy_flat_browse">Browse categories with posts</string>
     <string name="hierarchy_refresh">Refresh current approved level</string>
     <string name="hierarchy_groups">Approved Groups</string>
     <string name="hierarchy_families">Approved Families</string>
     <string name="hierarchy_categories">Approved Categories</string>
-    <string name="hierarchy_empty">No approved mapping at this level yet. All Categories remain available through regular Browse.</string>
+    <string name="hierarchy_empty">No public service posts found at this level.</string>
     <string name="hierarchy_unavailable">This API version does not provide approved hierarchy yet. Use Browse Categories; no data was changed.</string>
     <string name="hierarchy_open_next">Open the next approved level</string>
 
@@ -629,6 +628,7 @@
     <string name="play_restore_qa_pending_settlement">Google Play screening completed; settlement is still pending. No minutes were added.</string>
     <string name="navigation_manage_service">Manage service</string>
     <string name="navigation_service_photo">Service photo</string>
+    <string name="share_public_service">Share service link</string>
     <string name="play_overview_reservation_notice">An active call may reserve some minutes temporarily. Unused reserved time becomes available after the call is checked.</string>
     <string name="play_purchase_title">Get call minutes</string>
     <string name="play_purchase_intro">Choose a call-time pack. Google Play shows the price and handles payment; your JODLO account updates after verification.</string>

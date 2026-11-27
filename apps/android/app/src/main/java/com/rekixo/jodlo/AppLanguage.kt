@@ -1,6 +1,7 @@
 package com.rekixo.jodlo
 
 import android.content.Context
+import android.view.ContextThemeWrapper
 import android.content.res.Configuration
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -53,7 +54,8 @@ internal fun JodloLanguage(
     val localized = remember(context, systemConfiguration, language) {
         val override = Configuration(systemConfiguration)
         override.setLocale(Locale.forLanguageTag(if (language == Language.HI) "hi" else "en"))
-        context.createConfigurationContext(override)
+        // Keep the host Activity in the context chain for result and back launchers.
+        ContextThemeWrapper(context, 0).apply { applyOverrideConfiguration(override) }
     }
     CompositionLocalProvider(
         LocalContext provides localized,

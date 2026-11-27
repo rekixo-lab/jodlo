@@ -32,10 +32,10 @@ const expiresAt = Math.floor(Date.now() / 1000) + 3600;
 let dev;
 let logs = "";
 
-async function runWrangler(args) {
+async function runWrangler(args, timeout = 60_000) {
   // Always use the installed repo Wrangler (no npx, network, --remote, or deploy).
   const { stdout, stderr } = await exec(process.execPath, [wrangler, ...args], {
-    cwd: root, timeout: 60_000, maxBuffer: 1024 * 1024,
+    cwd: root, timeout, maxBuffer: 1024 * 1024,
     env: { ...process.env, CI: "true", WRANGLER_SEND_METRICS: "false" },
   });
   if (process.env.JODLO_LOCAL_SMOKE_VERBOSE === "1") {
@@ -105,7 +105,7 @@ INSERT INTO auth_sessions(token_hash,account_id,expires_at) VALUES
 `, "utf8");
 
   const local = ["--config", config, "--local", "--persist-to", dataDir];
-  await runWrangler(["d1", "migrations", "apply", "jodlo_catalog_local", ...local]);
+  await runWrangler(["d1", "migrations", "apply", "jodlo_catalog_local", ...local], 180_000);
   await runWrangler(["d1", "execute", "jodlo_catalog_local", ...local, "--file", fixture]);
 
   dev = spawn(process.execPath, [wrangler, "dev", "--config", config,

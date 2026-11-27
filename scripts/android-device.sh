@@ -211,6 +211,18 @@ JODLO_FCM_PREFLIGHT
   then
     die "FCM config lacks JODLO Android app/project/key or contains CI example values"
   fi
+  # Wireless discovery and an IP connection can both point to the same phone.
+  phone_ids=()
+  for device in "${chosen_devices[@]}"; do
+    hardware_id="$("$adb_bin" -s "$device" shell getprop ro.serialno)" ||
+      die "Could not identify the selected QA phone"
+    hardware_id="${hardware_id%$'\r'}"
+    [[ -n "$hardware_id" && "$hardware_id" != unknown ]] ||
+      die "Physical phone identity unavailable for two-phone QA"
+    phone_ids+=("$hardware_id")
+  done
+  [[ "${phone_ids[0]}" != "${phone_ids[1]}" ]] ||
+    die "Both ADB connections point to the same phone. Connect a second physical phone."
   gradle_qa_args=(
     -PjodloApiOrigin=https://api.jodlo.rekixo.com
     "-PjodloGoogleWebClientId=$web_id"

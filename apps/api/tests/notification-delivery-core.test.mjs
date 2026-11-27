@@ -307,7 +307,8 @@ test("FCM test timeout cannot exceed the production limit or be non-finite",()=>
 });
 
 
-test("OAuth shared refresh unblocks after stalled network and ignores late old token",async()=>{
+test("OAuth shared refresh unblocks after stalled network and ignores late old token",async(t)=>{
+  t.mock.timers.enable({apis:["setTimeout","Date"],now:Date.now()});
   // Synthetic local RSA key: never a real Firebase identity or provider send.
   const {privateKey} = generateKeyPairSync("rsa",{modulusLength:2048});
   const account={
@@ -315,22 +316,24 @@ test("OAuth shared refresh unblocks after stalled network and ignores late old t
     privateKey:privateKey.export({format:"pem",type:"pkcs8"}).toString(),
   };
   let resolveFirst;
+  const firstRequest = Promise.withResolvers();
   let sends=0;
   const request=async(url,init)=>{
     sends++;
     assert.equal(url,"https://oauth2.googleapis.com/token");
     assert.equal(init.method,"POST");
     assert.ok(init.signal);
-    if(sends===1)return new Promise(resolve=>{resolveFirst=resolve;});
+    if(sends===1)return new Promise(resolve=>{resolveFirst=resolve;firstRequest.resolve();});
     return new Response(JSON.stringify({
       access_token:"synthetic-current-token",token_type:"Bearer",expires_in:3600,
     }),{status:200});
   };
   const source=createFcmAccessTokenSource(account,request,250);
-  const begun=performance.now();
-  const results=await Promise.all([source(),source(),source()]);
+  const pending=Promise.all([source(),source(),source()]);
+  await firstRequest.promise;
+  t.mock.timers.tick(250);
+  const results=await pending;
   assert.deepEqual(results,[null,null,null],"all simultaneous callers share bounded first OAuth attempt");
-  assert.ok(performance.now()-begun<2200);
   assert.equal(sends,1,"single-flight refresh must not create extra OAuth requests");
 
   assert.equal(await source(),"synthetic-current-token","a later caller can refresh after a hang");

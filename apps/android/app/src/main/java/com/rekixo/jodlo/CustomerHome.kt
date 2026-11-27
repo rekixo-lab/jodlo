@@ -64,8 +64,7 @@ internal fun CustomerHome(
     val scope = rememberCoroutineScope()
     val appLanguage = LocalJodloLanguage.current
     val language = appLanguage
-    var publishedOnly by remember { mutableStateOf(false) }
-    var page by remember { mutableStateOf(HomeCategorySnapshot.empty(language, publishedOnly)) }
+    var page by remember { mutableStateOf(HomeCategorySnapshot.empty(language, true)) }
     var busy by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(false) }
     var nextFailed by remember { mutableStateOf(false) }
@@ -76,17 +75,17 @@ internal fun CustomerHome(
         if (busy || (after != null && after != page.nextCursor)) return
         val currentRevision = ++revision
         val chosenLanguage = language
-        val chosenFilter = publishedOnly
         busy = true
         if (after == null) {
-            page = HomeCategorySnapshot.empty(chosenLanguage, chosenFilter)
+            page = HomeCategorySnapshot.empty(chosenLanguage, true)
             failed = false
         }
         nextFailed = false
         scope.launch {
             val reply = withContext(Dispatchers.IO) {
                 try {
-                    client.browse(chosenLanguage, availableOnly = chosenFilter,
+                    if (chosenCity != null) client.cityBrowse(chosenLanguage, chosenCity, HOME_PAGE_SIZE, after)
+                    else client.browse(chosenLanguage, availableOnly = true,
                         limit = HOME_PAGE_SIZE, after = after)
                 } catch (cancelled: kotlin.coroutines.cancellation.CancellationException) {
                     throw cancelled
@@ -102,13 +101,13 @@ internal fun CustomerHome(
                 }
                 is ApiOutcome.Ok -> {
                     val next = page.withVerifiedPage(
-                        chosenLanguage, chosenFilter, after, reply.value.categories,
+                        chosenLanguage, true, after, reply.value.categories,
                         reply.value.nextCursor, HOME_PAGE_SIZE,
                     )
                     if (next == null) {
                         // A stale/overlapping server cursor is not a usable
                         // Category snapshot. Do not keep mislabelled tiles.
-                        page = HomeCategorySnapshot.empty(chosenLanguage, chosenFilter)
+                        page = HomeCategorySnapshot.empty(chosenLanguage, true)
                         failed = true
                     } else {
                         page = next
@@ -120,10 +119,10 @@ internal fun CustomerHome(
 
     // Every tab opening and filter/language change replaces old public
     // references; results from an earlier request cannot repaint this view.
-    LaunchedEffect(repository, language, publishedOnly) {
+    LaunchedEffect(repository, language, chosenCity) {
         revision++
         busy = false
-        page = HomeCategorySnapshot.empty(language, publishedOnly)
+        page = HomeCategorySnapshot.empty(language, true)
         failed = false
         nextFailed = false
         if (repository != null) fetchPage()
@@ -190,7 +189,7 @@ internal fun CustomerHome(
                     for (category in row) {
                         JodloCard(
                             onClick = {
-                                val selected = page.select(language, publishedOnly, category)
+                                val selected = page.select(language, true, category)
                                 if (!busy && selected != null) openCategory(selected, language)
                             },
                             modifier = Modifier.weight(1f),
@@ -225,11 +224,6 @@ internal fun CustomerHome(
                 Text(stringResource(R.string.home_no_live_api),
                     style = MaterialTheme.typography.bodyMedium)
             }
-        }
-        if (repository != null) item {
-            JodloChip(selected = publishedOnly,
-                onClick = { publishedOnly = !publishedOnly },
-                label = { Text(stringResource(R.string.filter_published_services)) })
         }
         item {
             JodloTextAction(onClick = openHelp, modifier = Modifier.fillMaxWidth()) {

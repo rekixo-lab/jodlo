@@ -471,11 +471,12 @@ private fun JodloApp(
                     repository = catalog,
                     openCategory = { category, language ->
                         homeCategory = HomeCategorySelection(category, language)
-                        section = "customer"
+                        section = if (discoveryCity == null) "customer" else "city-feed"
                     },
-                    openBrowse = { homeCategory = null; section = "customer" },
-                    openHierarchy = { section = "hierarchy" },
+                    openBrowse = { homeCategory = null; section = if (discoveryCity == null) "customer" else "city-feed" },
+                    openHierarchy = { homeCategory = null; section = if (discoveryCity == null) "hierarchy" else "city-feed" },
                     openServices = {
+                        homeCategory = null
                         if (catalog != null) section = if (discoveryCity != null) "city-feed" else "feed"
                     },
                     openNearby = { section = "nearby" },
@@ -488,7 +489,7 @@ private fun JodloApp(
                         discoveryCity = null
                         section = if (catalog != null) "feed" else "customer"
                     },
-                    onSearchCity = { discoveryCity = it; section = "city-feed" },
+                    onSearchCity = { homeCategory = null; discoveryCity = it; section = "city-feed" },
                     canSearch = catalog != null,
                     onHome = { section = "home" },
                     selectedCity = discoveryCity,
@@ -532,6 +533,7 @@ private fun JodloApp(
                         catalog, savedServices, ::toggleSaved, hiddenServices, ::hideService,
                         onBrowseCategories = { homeCategory = null; section = "customer" },
                         contactSession = session, onCall = onCall, city = city,
+                        initialCategory = homeCategory?.category,
                         onBackToCityPicker = { section = "nearby" },
                     ) else ManualNearbyDiscovery(
                         onBrowseAll = { section = "customer" },
@@ -641,7 +643,6 @@ private fun GuestDiscovery(
     }
     // Published listing existence is NOT online presence, busy status or
     // permission to initiate an Agora call.
-    var publishedOnly by rememberSaveable { mutableStateOf(false) }
     var searchText by rememberSaveable { mutableStateOf("") }
     var submittedQuery by remember { mutableStateOf("") }
     var feedMode by remember { mutableStateOf(FeedMode.BROWSE) }
@@ -712,7 +713,7 @@ private fun GuestDiscovery(
         invalidQuery = false
         scope.launch {
             val outcome = publicRead {
-                client.browse(requestedLanguage, availableOnly = publishedOnly,
+                client.browse(requestedLanguage, availableOnly = true,
                     limit = PUBLIC_PAGE_SIZE)
             }
             if (requestRevision != revision) return@launch
@@ -755,7 +756,7 @@ private fun GuestDiscovery(
         scope.launch {
             // Preserve the server's first-page ambiguity/choice contract.
             val probe = publicRead {
-                client.search(query, requestedLanguage, availableOnly = publishedOnly,
+                client.search(query, requestedLanguage, availableOnly = true,
                     includeChoices = true, limit = PUBLIC_PAGE_SIZE)
             }
             if (requestRevision != revision) return@launch
@@ -780,7 +781,7 @@ private fun GuestDiscovery(
                         // explicitly to the existing exhaustive cursor mode,
                         // restarting from page one without mixing the two DTOs.
                         val cursorPage = publicRead {
-                            client.searchCursor(query, requestedLanguage, availableOnly = publishedOnly,
+                            client.searchCursor(query, requestedLanguage, availableOnly = true,
                                 limit = PUBLIC_PAGE_SIZE)
                         }
                         if (requestRevision != revision) return@launch
@@ -813,7 +814,7 @@ private fun GuestDiscovery(
                 when (mode) {
                     FeedMode.BROWSE -> when (
                         val page = client.browse(
-                            requestedLanguage, availableOnly = publishedOnly,
+                            requestedLanguage, availableOnly = true,
                             limit = PUBLIC_PAGE_SIZE, after = after
                         )
                     ) {
@@ -824,7 +825,7 @@ private fun GuestDiscovery(
                     }
                     FeedMode.SEARCH -> when (
                         val page = client.searchCursor(
-                            requestedQuery, requestedLanguage, availableOnly = publishedOnly,
+                            requestedQuery, requestedLanguage, availableOnly = true,
                             limit = PUBLIC_PAGE_SIZE, after = after
                         )
                     ) {
@@ -944,7 +945,7 @@ private fun GuestDiscovery(
      * no canceled result is allowed to update the current visible hints.
      * Search/selection stay explicit and use the unchanged server contract.
      */
-    LaunchedEffect(repository, language, publishedOnly, searchText,
+    LaunchedEffect(repository, language, searchText,
         hintsEnabled, hintsDismissed, selected) {
         val client = repository
         val normalized = CustomerLiveSuggestions.normalizedQuery(searchText)
@@ -958,10 +959,9 @@ private fun GuestDiscovery(
             hintsDismissed || selected != null) return@LaunchedEffect
         delay(CustomerLiveSuggestions.DEBOUNCE_MILLIS)
         val requestedLanguage = language
-        val requestedPublishedOnly = publishedOnly
         val outcome = publicRead {
             client.search(normalized, requestedLanguage,
-                availableOnly = requestedPublishedOnly, includeChoices = true,
+                availableOnly = true, includeChoices = true,
                 limit = CustomerLiveSuggestions.MAX_RESULTS)
         }
         hints = CustomerLiveSuggestions.project(normalized, requestedLanguage, outcome)
@@ -977,7 +977,7 @@ private fun GuestDiscovery(
 
     // Language and injected API-origin changes invalidate all existing public
     // data. A stale asynchronous response can never cross that boundary.
-    LaunchedEffect(language, repository, publishedOnly) {
+    LaunchedEffect(language, repository) {
         requestRevision++
         loading = false
         selected = null
@@ -1029,15 +1029,6 @@ private fun GuestDiscovery(
                         selected = language == Language.EN,
                         onClick = { language = Language.EN },
                         label = { Text(stringResource(R.string.language_english)) },
-                    )
-                }
-            }
-            if (repository != null && selected == null) {
-                item {
-                    JodloChip(
-                        selected = publishedOnly,
-                        onClick = { publishedOnly = !publishedOnly },
-                        label = { Text(stringResource(R.string.filter_published_services)) },
                     )
                 }
             }

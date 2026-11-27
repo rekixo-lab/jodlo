@@ -40,7 +40,7 @@ function setup() {
     return {status:result.status, body:await result.json(),
       cacheControl:result.headers.get("Cache-Control")};
   }
-  return {db,request};
+  return {db,request,dbAdapter:adapter};
 }
 
 const browse = "/api/v1/catalog?lang=hi&availableOnly=1&limit=20";
@@ -237,4 +237,39 @@ test("approved Service detail query is strictly opt-in and never accepts arbitra
       new Request(origin+uri+"&view=service&lang=hi"),{});
     assert.equal(missing.status,503,"no production DB cannot disclose metadata");
   }finally{f.db.close();}
+});
+
+test("shared service link shows only current public facts and survives withdrawal safely", async () => {
+  const f = setup();
+  try {
+    await f.request("/api/v1/me/worker-profile", "POST", ownerToken);
+    const created = await f.request("/api/v1/me/listings", "POST", ownerToken, {categoryId: category});
+    const id = created.body.data.listing.id;
+    const link = origin + "/service?id=" + id + "&lang=hi";
+    const open = (url = link) => worker.fetch(new Request(url), {DB: f.dbAdapter});
+    f.db.prepare("UPDATE worker_listings SET service_city='raipur' WHERE id=?").run(id);
+    f.db.prepare("INSERT INTO worker_service_details(listing_id,category_id,display_name,description,review_status,revision) VALUES(?,?,?,?,?,1)")
+      .run(id, category, "Local Plumber", "Sink and pipe repairs", "pending");
+    const page = await open();
+    assert.equal(page.status, 200);
+    assert.equal(page.headers.get("cache-control"), "no-store");
+    assert.match(page.headers.get("content-type"), /text\/html/);
+    const html = await page.text();
+    assert.match(html, /प्लंबिंग/);
+    assert.match(html, /रायपुर/);
+    assert.ok(!html.includes(owner));
+    assert.doesNotMatch(html, /Local Plumber/);
+    f.db.prepare("UPDATE worker_service_details SET review_status='approved' WHERE listing_id=?").run(id);
+    const english = await open(link.replace("lang=hi", "lang=en"));
+    const enHtml = await english.text();
+    assert.match(enHtml, /Raipur/);
+    assert.match(enHtml, /Local Plumber/);
+    assert.match(enHtml, /Sink and pipe repairs/);
+    assert.equal((await open(link + "&id=" + id)).status, 400);
+    assert.equal((await worker.fetch(new Request(link), {})).status, 503);
+    f.db.prepare("UPDATE worker_listings SET status='unpublished' WHERE id=?").run(id);
+    const gone = await open();
+    assert.equal(gone.status, 404);
+    assert.doesNotMatch(await gone.text(), /प्लंबिंग|रायपुर/);
+  } finally { f.db.close(); }
 });

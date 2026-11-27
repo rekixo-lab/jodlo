@@ -68,7 +68,7 @@ export const PUBLIC_LISTING_DETAIL_QUERY = publicWhere("wl.id=?") + " LIMIT 1";
  */
 const PUBLIC_APPROVED_SERVICE_DETAIL_SELECT =
   "SELECT wl.id,wl.category_id AS categoryId,wl.worker_account_id AS workerId," +
-  " c.id AS approvedCategoryId,c.slug AS categorySlug," +
+  " wl.service_city AS serviceCity,c.id AS approvedCategoryId,c.slug AS categorySlug," +
   " CASE WHEN ?='hi' THEN COALESCE(NULLIF(c.name_hi,''),c.name_en)" +
   " ELSE c.name_en END AS categoryName " +
   PUBLIC_LISTING_FROM + "WHERE wl.id=? AND " + PUBLIC_LISTING_ELIGIBILITY;
@@ -394,6 +394,7 @@ export type PublicApprovedServiceDetail = Readonly<{
  */
 export async function publicApprovedServiceDetail(
   db:D1Database,id:string,language:"en"|"hi",city?: ServiceCity,includeProfile=false,
+  options: {includePublishedCity?: boolean} = {},
 ):Promise<PublicApprovedServiceDetail|null> {
   if (!validOpaqueId(id) || (language !== "en" && language !== "hi") ||
       (city !== undefined && !validServiceCity(city))) return null;
@@ -409,7 +410,7 @@ export async function publicApprovedServiceDetail(
     : service;
   const {results}=await db.prepare(query)
     .bind(language,id,...(city === undefined ? [] : [city])).all<PublicListingDbRow&{
-      approvedCategoryId:string;categorySlug:string;categoryName:string;hasPhoto?:number;
+      approvedCategoryId:string;categorySlug:string;categoryName:string;hasPhoto?:number;serviceCity?:ServiceCity;
     } & Partial<ServiceDetails>>();
   const row=results[0];
   if(!row||row.categoryId!==row.approvedCategoryId||
@@ -417,13 +418,14 @@ export async function publicApprovedServiceDetail(
       !validPublicCategoryName(row.categoryName))return null;
   const listing=publicListingProjections([row])[0];
   if(!listing)return null;
+  const publishedCity = city ?? (options.includePublishedCity && validServiceCity(row.serviceCity) ? row.serviceCity : undefined);
   return Object.freeze({
     language,
     listing,
     category:Object.freeze({
       id:listing.categoryId,slug:row.categorySlug,name:row.categoryName,
     }),
-    ...(city === undefined ? {} : {city}),
+    ...(publishedCity ? {city: publishedCity} : {}),
     ...(includeProfile ? {profile:parseServiceDetails(row),hasPhoto:row.hasPhoto === 1} : {}),
   });
 }
