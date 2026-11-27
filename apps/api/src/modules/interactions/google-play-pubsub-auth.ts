@@ -1,7 +1,8 @@
 import { createRemoteJWKSet, jwtVerify, errors, type JWTVerifyGetKey } from "jose";
 import {
-  decodeUntrustedJodloRtdnHint,
+  decodeUntrustedJodloRtdnEvent,
   type PlayRtdnHint,
+  type PlayPendingRefundHint,
 } from "./google-play-rtdn-fences.ts";
 import { jodloPlayPurchaseFingerprint } from "./google-play-purchase-preflight.ts";
 
@@ -26,8 +27,14 @@ export type AuthenticatedPlayPush = Readonly<{
   /** Ephemeral, in-memory purchase token. Never log, persist or return it. */
   purchaseToken: string;
 }>;
+export type AuthenticatedPendingPlayRefundPush = Readonly<{
+  kind: "authenticated_pending_refund_review";
+  hint: PlayPendingRefundHint;
+}>;
 export type PlayPushAuthentication =
   | AuthenticatedPlayPush
+  | AuthenticatedPendingPlayRefundPush
+  | Readonly<{kind: "authenticated_noop"; event: "test"}>
   | Readonly<{kind: "rejected" | "unavailable"}>;
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -140,8 +147,10 @@ export async function authenticateJodloPlayPubSubPush(
     const envelope = record(await boundedBody(request));
     if (!envelope || envelope.subscription !== policy.subscription)
       return {kind: "rejected"};
-    const hint = await decodeUntrustedJodloRtdnHint(envelope, nowMs);
+    const hint = await decodeUntrustedJodloRtdnEvent(envelope, nowMs);
     if (!hint) return {kind: "rejected"};
+    if (hint.kind === "test_hint") return {kind: "authenticated_noop", event: "test"};
+    if (hint.kind === "pending_refund_review_hint") return {kind: "authenticated_pending_refund_review", hint};
     const message = record(envelope.message);
     if (!message || typeof message.data !== "string") return {kind: "rejected"};
     const encoded = atob(message.data);
@@ -159,6 +168,7 @@ export async function authenticateJodloPlayPubSubPush(
   } catch (error) {
     // Expected signature/claim/JWT failures and malformed bodies fail closed;
     // temporary JWKS network errors remain retryable, never accepted.
+    if (error instanceof errors.JWKSTimeout) return {kind: "unavailable"};
     if (error instanceof errors.JOSEError || error instanceof SyntaxError ||
         error instanceof TypeError || error instanceof RangeError ||
         error instanceof DOMException || error instanceof Error &&

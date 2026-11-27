@@ -39,22 +39,24 @@ export async function readBodyChunkUntil(
 export async function hasEmptyBody(request: Request): Promise<boolean> {
   if (request.body === null) return true;
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  let complete = false;
   try {
     reader = request.body.getReader();
     let emptyChunks = 0;
     const deadline = Date.now() + BODY_READ_DEADLINE_MS;
     while (true) {
       const { done, value } = await readBodyChunkUntil(reader, deadline);
-      if (done) return true;
+      if (done) { complete = true; return true; }
       if (!value || value.byteLength > 0 || ++emptyChunks > MAX_EMPTY_CHUNKS) {
         return false;
       }
     }
   } catch {
-    // Never await hostile cancel() implementations; returning the error is bounded.
-    if (reader) void reader.cancel().catch(() => {});
     return false;
   } finally {
+    // Rejecting a nonempty or unproductive stream must stop its producer too.
+    // Never await an untrusted cancel() implementation.
+    if (reader && !complete) void reader.cancel().catch(() => {});
     reader?.releaseLock();
   }
 }
@@ -94,15 +96,21 @@ const SERVICE_DETAILS_JSON =
 const ONE_STRING_FIELD_JSON =
   /^\s*\{\s*"(?:[^"\\\x00-\x1f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"\s*:\s*"(?:[^"\\\x00-\x1f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"\s*\}\s*$/;
 
+/** Both wire orders are accepted; duplicates, aliases, nested values and
+ * client-selected owners/SKUs/amounts are rejected before JSON.parse. */
+const PLAY_SETTLEMENT_JSON =
+  /^\s*\{\s*(?:"purchaseToken"\s*:\s*"[A-Za-z0-9._~+/=-]{20,4096}"\s*,\s*"policyVersion"\s*:\s*"[A-Za-z0-9._-]{1,64}"|"policyVersion"\s*:\s*"[A-Za-z0-9._-]{1,64}"\s*,\s*"purchaseToken"\s*:\s*"[A-Za-z0-9._~+/=-]{20,4096}")\s*\}\s*$/;
+
 /** Bounded JSON parser reused by both authentication and service publication.
  * Rejects streaming overflow regardless of Content-Length. No logging payloads.
  * A malicious/unproductive source cannot accumulate unlimited empty chunks.
  */
 async function readBoundedObject(request: Request, maxBytes: number,
-  format: "single" | "edit-category" | "edit-versioned" | "resume-own" | "publication-revision" | "account-erasure" | "service-details" = "single"):
+  format: "single" | "edit-category" | "edit-versioned" | "resume-own" | "publication-revision" | "account-erasure" | "service-details" | "play-settlement" = "single"):
   Promise<Record<string, unknown> | null> {
   const type = request.headers.get("Content-Type") ?? "";
-  if (!/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(type)) return null;
+  if (!/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(type) ||
+      request.headers.has("Content-Encoding")) return null;
   const declared = request.headers.get("Content-Length");
   if (declared !== null && (!/^\d+$/.test(declared) || Number(declared) > maxBytes)) return null;
   if (!request.body) return null;
@@ -111,12 +119,13 @@ async function readBoundedObject(request: Request, maxBytes: number,
   const chunks: Uint8Array[] = [];
   let size = 0;
   let emptyChunks = 0;
+  let complete = false;
   const deadline = Date.now() + BODY_READ_DEADLINE_MS;
   try {
     reader = request.body.getReader();
     while (true) {
       const { done, value } = await readBodyChunkUntil(reader, deadline);
-      if (done) break;
+      if (done) { complete = true; break; }
       if (!value) return null;
       if (value.byteLength === 0) {
         if (++emptyChunks > MAX_EMPTY_CHUNKS) return null;
@@ -124,8 +133,6 @@ async function readBoundedObject(request: Request, maxBytes: number,
       }
       size += value.byteLength;
       if (size > maxBytes) {
-        // A hostile stream's cancel() promise can hang; do not wait for it.
-        void reader.cancel().catch(() => {});
         return null;
       }
       chunks.push(value);
@@ -134,7 +141,9 @@ async function readBoundedObject(request: Request, maxBytes: number,
     let pos = 0;
     for (const c of chunks) { joined.set(c, pos); pos += c.byteLength; }
     const source = new TextDecoder("utf-8", { fatal: true }).decode(joined);
-    if (!(format === "single"
+    if (!(format === "play-settlement"
+      ? PLAY_SETTLEMENT_JSON.test(source)
+      : format === "single"
       ? ONE_STRING_FIELD_JSON.test(source)
       : format === "edit-category"
         ? EDIT_CATEGORY_JSON.test(source)
@@ -151,9 +160,9 @@ async function readBoundedObject(request: Request, maxBytes: number,
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
     return parsed as Record<string, unknown>;
   } catch {
-    if (reader) void reader.cancel().catch(() => {});
     return null;
   } finally {
+    if (reader && !complete) void reader.cancel().catch(() => {});
     reader?.releaseLock();
   }
 }
@@ -171,6 +180,15 @@ export async function readPlayPurchaseTokenBody(request: Request): Promise<strin
   if (!obj || Object.keys(obj).length !== 1 ||
       !validJodloPlayPurchaseToken(obj.purchaseToken)) return null;
   return obj.purchaseToken;
+}
+
+export async function readPlaySettlementBody(request: Request): Promise<
+  {purchaseToken: string; policyVersion: string} | null
+> {
+  const obj = await readBoundedObject(request, 4608, "play-settlement");
+  return obj && validJodloPlayPurchaseToken(obj.purchaseToken) &&
+    typeof obj.policyVersion === "string"
+    ? {purchaseToken: obj.purchaseToken, policyVersion: obj.policyVersion} : null;
 }
 
 export async function readGoogleLoginBody(request: Request): Promise<string | null> {

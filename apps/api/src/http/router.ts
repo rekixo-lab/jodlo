@@ -2,8 +2,11 @@ import { sharedServicePage } from "./shared-service-page.ts";
 import { readOwnWorkerAvailability, setOwnWorkerAvailability } from "../modules/interactions/agora-private-safety-state.ts";
 import { handleConfiguredJodloPlayRtdn } from "../modules/interactions/google-play-pubsub-handler.ts";
 import { handleConfiguredJodloPlayVerification } from "../modules/interactions/google-play-verification-handler.ts";
+import {handleConfiguredJodloPlaySettlement} from "../modules/interactions/google-play-settlement-handler.ts";
+import {handleAgoraUsageWebhook,callUsageConfigured} from "../modules/interactions/agora-usage-webhook.ts";
+import {closeCallUsage} from "../modules/interactions/verified-call-usage.ts";
 import { priceIndependentPlayCatalog } from "../modules/interactions/play-minute-packs.ts";
-import { readOwnCallCreditSnapshot } from "../modules/interactions/private-call-credits.ts";
+import { readOwnCallCreditSnapshot,readOwnCallCreditBalance } from "../modules/interactions/private-call-credits.ts";
 import { issueOwnAgoraAudioGrant } from "../modules/interactions/private-agora-media.ts";
 import { validIdempotencyKey } from "../modules/shared/identifiers.ts";
 import { ownPrivateCallSignal, validCallAction } from "../modules/interactions/private-call-signaling.ts";
@@ -16,7 +19,10 @@ import type { Env } from "../data/d1.ts";
 import { validOpaqueId } from "../modules/shared/identifiers.ts";
 import { browsePublicCategories, parseCatalogBrowse, parseCatalogSearch, searchPublicCategories, parsePublicCategoryLabels, resolveApprovedCategoryLabels } from "../modules/catalog/catalog.ts";
 import { healthData } from "../modules/system/health.ts";
+import {handleOperations} from "../modules/system/operations.ts";
+import {equalOperatorSecret} from "../modules/shared/secret-auth.ts";
 import { parseHierarchy, readApprovedHierarchy } from "../modules/catalog/hierarchy.ts";
+import {parseApprovedServices,readApprovedServices} from "../modules/catalog/approved-services.ts";
 import { clearServicePhoto, ownServicePhoto, pendingServicePhotos, publicServicePhoto, reviewServicePhoto, servicePhotoForReview, submitServicePhoto, validServicePhoto } from "../modules/workers/service-photos.ts";
 import { clearOwnServiceDetails, parseServiceDetails, pendingServiceDetails, readOwnServiceDetails, reviewServiceDetails, submitOwnServiceDetails } from "../modules/workers/service-details.ts";
 import { appealServiceCase, decideServiceCase, ownReportStatus, ownServiceAppealCase, reportService, serviceCaseEvidence, serviceCaseQueue, validAppealReason, validCaseDecision, validReportReason } from "../modules/moderation/service-cases.ts";
@@ -29,7 +35,7 @@ import { prepareAccountErasure, eraseOwnD1Account } from "../modules/identity/ac
 import { ownAccountOverview, exportOwnAccountData } from "../modules/identity/account-self-service.ts";
 import { validGoogleClientId, verifyGoogleIdToken } from "../modules/identity/google.ts";
 import { resolveGoogleAccount } from "../modules/identity/google-accounts.ts";
-import { issueSession, makeSessionVerifier, readWithSameActiveSession, validSessionToken, revokeAllSessions, revokeSession, SESSION_TTL_SECONDS } from "../modules/identity/sessions.ts";
+import { issueSession, makeSessionVerifier, readWithSameActiveSession, sessionHash, validSessionToken, revokeAllSessions, revokeSession, SESSION_TTL_SECONDS } from "../modules/identity/sessions.ts";
 import { readCallDeviceBody, hasEmptyBody, readGoogleLoginBody, readServiceListingBody, readCategoryEditBody, readVersionedCategoryEditBody, readResumeOwnListingBody, readPublicationRevisionBody, readAccountErasureBody, readServiceCityBody, readServiceDetailsBody, readServicePhotoBody, readServiceCaseReason } from "./body.ts";
 import { validCategoryId } from "../modules/shared/identifiers.ts";
 import { publishListing, myListings, pageMyListings, pageManagedOwnListings, exactManagedOwnListing, exactManagedOwnListingByCategory, exactVersionedOwnListing, parseOwnListingsPage, publicListings, pagePublicListings, publicListingDetail, publicApprovedServiceDetail, pageAllPublicListings, unpublishListing, editOwnListingCategory, editOwnListingCategoryVersioned, resumeOwnListing, changeOwnListingPublication, createOwnListing } from "../modules/workers/listings.ts";
@@ -66,15 +72,28 @@ function bearerToken(request: Request): string | null {
 
 /** Moderation key is a separate server-only credential, never a JODLO bearer. */
 function authorizedServiceModerator(token: string | null, key: string | undefined): boolean {
-  if (!key || !/^[a-f0-9]{64}$/.test(key) || !token || !/^[a-f0-9]{64}$/.test(token)) return false;
-  let difference = 0;
-  for (let i = 0; i < key.length; i++) difference |= key.charCodeAt(i) ^ token.charCodeAt(i);
-  return difference === 0;
+  return equalOperatorSecret(token,key);
 }
 
 function getOnly(request: Request): Response | null {
   if (request.method === "GET") return null;
   return json({ ok: false, error: { code: "METHOD_NOT_ALLOWED", message: "Method not allowed" } }, 405, { Allow: "GET" });
+}
+
+/** Protect private replies after asynchronous reads; preserve disabled routes. */
+function privateReadNeedsFinalSession(path: string, env: Env): boolean {
+  if (path === "/api/v1/me/worker-profile" || path === "/api/v1/me/listings") return !env.AUTH;
+  if (["/api/v1/me/service-photo", "/api/v1/me/service-details", "/api/v1/me/service-area",
+    "/api/v1/me/call-preference"].includes(path)) return true;
+  if (path === "/api/v1/me/call" || path === "/api/v1/me/call-availability")
+    return env.CALL_SIGNALING_ENABLED === "1";
+  if (path === "/api/v1/me/call-device") return env.CALL_DEVICES_ENABLED === "1";
+  if (path === "/api/v1/me/call-history") return env.CALL_HISTORY_ENABLED === "1";
+  if (path === "/api/v1/me/contact-block" || path === "/api/v1/me/contact-blocks")
+    return env.CONTACT_BLOCKS_ENABLED === "1";
+  if (path === "/api/v1/me/service-report" || path === "/api/v1/me/service-appeal")
+    return /^[a-f0-9]{64}$/.test(env.SERVICE_MODERATION_KEY ?? "");
+  return false;
 }
 
 /** Production uses the fixed Google-JWKS verifier; injectable only through direct
@@ -83,6 +102,24 @@ function getOnly(request: Request): Response | null {
 export async function handleRequest(
   request: Request, env: Env = {},
   verifyGoogle: typeof verifyGoogleIdToken = verifyGoogleIdToken,
+): Promise<Response> {
+  try {
+    const token = bearerToken(request);
+    if (request.method === "GET" && env.DB && validSessionToken(token) &&
+        privateReadNeedsFinalSession(new URL(request.url).pathname, env)) {
+      const response = await readWithSameActiveSession(env.DB, token,
+        () => routeRequest(request, env, verifyGoogle));
+      return response ?? json({ok:false,error:{code:"UNAUTHORIZED",message:"Authentication required"}},401);
+    }
+    return await routeRequest(request, env, verifyGoogle);
+  } catch {
+    // Never expose failed final-session checks, database errors or partial data.
+    return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Request unavailable"}},503);
+  }
+}
+
+async function routeRequest(
+  request: Request, env: Env, verifyGoogle: typeof verifyGoogleIdToken,
 ): Promise<Response> {
   const url = new URL(request.url);
   if (url.pathname === "/service") {
@@ -99,6 +136,15 @@ export async function handleRequest(
     } catch {
       return sharedServicePage(lang, null, 503);
     }
+  }
+  if(env.OPERATIONS_ENABLED === "1" && (url.pathname === "/api/v1/operations/readiness" ||
+    url.pathname === "/api/v1/operations/refund-reviews" ||
+    url.pathname === "/api/v1/operations/pending-refund-reviews"))return handleOperations(request,env);
+  if(url.pathname === "/api/v1/agora/usage" && env.CALL_USAGE_ENABLED === "1"){
+    return handleAgoraUsageWebhook(request,env);
+  }
+  if(url.pathname === "/api/v1/me/play-settle" && env.PLAY_SETTLEMENT_ENABLED === "1"){
+    return handleConfiguredJodloPlaySettlement(request,env);
   }
   if (url.pathname === "/api/v1/play/rtdn" && env.PLAY_RTDN_ENABLED === "1") {
     // Default OFF. Only Google-signed Pub/Sub push plus a second live
@@ -183,6 +229,14 @@ export async function handleRequest(
       return json({ok:false,error:{
         code:"SERVICE_UNAVAILABLE",message:"Catalog unavailable"}},503);
     }
+  }
+  if(url.pathname === "/api/v1/catalog/services"){
+    const methodError=getOnly(request);if(methodError)return methodError;
+    const options=parseApprovedServices(url.searchParams);
+    if(!options||!(await hasEmptyBody(request)))return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid service catalog query"}},400);
+    if(!env.DB)return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Catalog unavailable"}},503);
+    try{return json({ok:true,data:await readApprovedServices(env.DB,options)});}
+    catch{return json({ok:false,error:{code:"SERVICE_UNAVAILABLE",message:"Catalog unavailable"}},503);}
   }
   if (url.pathname === "/api/v1/catalog/search") {
     const methodError = getOnly(request);
@@ -319,7 +373,9 @@ export async function handleRequest(
     }
     try {
       if (!env.DB || !env.AGORA_APP_CERTIFICATE) throw new Error("Missing media setup");
-      const grant = await issueOwnAgoraAudioGrant(env.DB, bearer, id, env.AGORA_APP_CERTIFICATE);
+      if(env.CALL_USAGE_ENABLED==="1"&&!callUsageConfigured(env))throw new Error("Missing usage setup");
+      const grant = await issueOwnAgoraAudioGrant(env.DB, bearer, id, env.AGORA_APP_CERTIFICATE,
+        Date.now(),env.CALL_USAGE_ENABLED==="1"?{approvalHash:env.CALL_USAGE_APPROVAL_SHA256!}:undefined);
       if (grant) return json({ok:true,data:grant});
       return json({ok:false,error:{code:"NOT_FOUND",message:"Call unavailable"}},404);
     } catch {
@@ -350,6 +406,12 @@ export async function handleRequest(
       const db = env.DB;
       if (!db) throw new Error("Missing call storage");
       if (starting && validIdempotencyKey(attemptKey)) {
+        if(env.CALL_USAGE_ENABLED==="1"){
+          if(!callUsageConfigured(env))throw new Error("Missing usage setup");
+          const balance=await readOwnCallCreditBalance(db,bearer);
+          if(!balance)return json({ok:false,error:{code:"UNAUTHORIZED",message:"Authentication required"}},401);
+          if(balance.availableSeconds<1)return json({ok:false,error:{code:"FORBIDDEN",message:"Call minutes unavailable"}},403);
+        }
         const {FCM_PROJECT_ID:projectId, FCM_SERVICE_ACCOUNT_EMAIL:email,
           FCM_SERVICE_ACCOUNT_PRIVATE_KEY:privateKey} = env;
         if (!projectId || !email || !privateKey || env.CALL_DEVICES_ENABLED !== "1") {
@@ -370,6 +432,8 @@ export async function handleRequest(
         }
       } else {
         const signal = await ownPrivateCallSignal(db, bearer, id, validCallAction(action) ? action : undefined);
+        if(signal&&env.CALL_USAGE_ENABLED==="1"&&["ended","cancelled","declined","missed"].includes(signal.phase))
+          await closeCallUsage(db,id);
         if (signal) return json({ok:true,data:signal});
       }
       return json({ok:false,error:{code:"NOT_FOUND",message:"Call unavailable"}},404);
@@ -570,7 +634,7 @@ export async function handleRequest(
     if (methodError) return methodError;
     const requestedVersion = url.searchParams.get("version");
     const version = url.pathname.endsWith("/data-export") && url.searchParams.size === 1 &&
-      (requestedVersion === "2" || requestedVersion === "3") ? Number(requestedVersion) : 1;
+      (requestedVersion === "2" || requestedVersion === "3" || requestedVersion === "4" || requestedVersion === "5") ? Number(requestedVersion) : 1;
     if ((url.search && version === 1) || !(await hasEmptyBody(request))) {
       return json({ ok: false, error: { code: "INVALID_QUERY", message: "Unexpected input" } }, 400);
     }
@@ -948,7 +1012,7 @@ export async function handleRequest(
         return json({ ok: false, error: { code: "UNAUTHORIZED", message: "Authentication required" } }, 401);
       }
       const profile = request.method === "POST"
-        ? await optInAsWorker(env.DB, actor.accountId)
+        ? await optInAsWorker(env.DB, actor.accountId, env.AUTH ? undefined : await sessionHash(token))
         : await ownWorkerDraft(env.DB, actor.accountId);
       if (!profile) {
         return request.method === "POST"
@@ -1072,6 +1136,10 @@ export async function handleRequest(
       if(!actor||!validOpaqueId(actor.accountId)) {
         return json({ok:false,error:{code:"UNAUTHORIZED",message:"Authentication required"}},401);
       }
+      // Retain the trusted test-only AUTH seam. Real HTTP writes must bind
+      // their SAME bearer to the actor in the atomic SQL mutation, including
+      // when logout/expiry overtakes a pending request body or database call.
+      const writeSessionHash = request.method === "GET" || env.AUTH ? undefined : await sessionHash(token);
       if(request.method==="GET") {
         // Optional EXACT owner read for editing stale-device status and
         // deliberate uncertain-write observation. Never fall through to
@@ -1138,7 +1206,7 @@ export async function handleRequest(
             return json({ok:false,error:{
               code:"INVALID_QUERY",message:"Invalid resume input"}},400);
           const listing=await resumeOwnListing(env.DB,actor.accountId,
-            input.listingId,input.expectedCategoryId);
+            input.listingId,input.expectedCategoryId,writeSessionHash);
           if(!listing)return json({ok:false,error:{
             code:"CONFLICT",message:"Listing changed or unavailable"}},409);
           return json({ok:true,data:{listing}});
@@ -1147,8 +1215,8 @@ export async function handleRequest(
         if(!validCategoryId(categoryId))
           return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid listing input"}},400);
         const listing = create
-          ? await createOwnListing(env.DB, actor.accountId, categoryId)
-          : await publishListing(env.DB, actor.accountId, categoryId);
+          ? await createOwnListing(env.DB, actor.accountId, categoryId, writeSessionHash)
+          : await publishListing(env.DB, actor.accountId, categoryId, writeSessionHash);
         if (!listing) {
           if (create) return json({ok:false,error:{
             code:"CONFLICT",message:"Service already exists or is unavailable"}},409);
@@ -1167,7 +1235,7 @@ export async function handleRequest(
               code:"INVALID_QUERY",message:"Invalid publication change"}},400);
           const listing = await changeOwnListingPublication(
             env.DB, actor.accountId, input.listingId, input.expectedCategoryId,
-            input.expectedRevision, publication);
+            input.expectedRevision, publication, writeSessionHash);
           if (!listing) return json({ok:false,error:{
             code:"CONFLICT",message:"Listing changed or unavailable"}},409);
           return json({ok:true,data:{listing}});
@@ -1195,7 +1263,7 @@ export async function handleRequest(
           const changed=await editOwnListingCategoryVersioned(
             env.DB,actor.accountId,edit.listingId,
             edit.expectedCategoryId,edit.nextCategoryId,
-            edit.expectedRevision);
+            edit.expectedRevision,writeSessionHash);
           if(!changed)return json({ok:false,error:{
             code:"CONFLICT",message:"Listing changed or unavailable"}},409);
           return json({ok:true,data:{listing:changed}});
@@ -1210,7 +1278,7 @@ export async function handleRequest(
         }
         const listing=await editOwnListingCategory(
           env.DB,actor.accountId,edit.listingId,
-          edit.expectedCategoryId,edit.nextCategoryId);
+          edit.expectedCategoryId,edit.nextCategoryId,writeSessionHash);
         if(!listing) return json({ok:false,error:{
           code:"CONFLICT",message:"Listing changed or unavailable"}},409);
         return json({ok:true,data:{listing}});
@@ -1220,7 +1288,7 @@ export async function handleRequest(
           !validOpaqueId(url.searchParams.get("id"))) {
         return json({ok:false,error:{code:"INVALID_QUERY",message:"Invalid listing ID"}},400);
       }
-      const changed=await unpublishListing(env.DB,actor.accountId,url.searchParams.get("id")!);
+      const changed=await unpublishListing(env.DB,actor.accountId,url.searchParams.get("id")!,writeSessionHash);
       if(!changed)return json({ok:false,error:{code:"NOT_FOUND",message:"Listing not found"}},404);
       return json({ok:true,data:{unpublished:true}});
     } catch {

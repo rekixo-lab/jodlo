@@ -132,3 +132,20 @@ test("normal complete requests remain accepted after adding a body deadline", as
   assert.equal(await readGoogleLoginBody(
     streamingRequest([bytes('{"idToken":"synthetic"}')])), "synthetic");
 });
+
+test('rejected nonempty and unproductive bodies cancel producers without awaiting cancellation',async()=>{
+  for(const [read,chunks] of [[hasEmptyBody,[bytes('unexpected')]],[hasEmptyBody,Array.from({length:9},empty)],[readServiceListingBody,Array.from({length:9},empty)]]){
+    let cancelled=0,position=0;
+    const stream=new ReadableStream({pull(controller){if(position<chunks.length)controller.enqueue(chunks[position++]);},cancel(){cancelled++;return new Promise(()=>{});}},{highWaterMark:0});
+    const request=new Request(origin,{method:'POST',headers:{'Content-Type':'application/json'},body:stream,duplex:'half'});
+    assert.equal(await read(request),read===hasEmptyBody?false:null);
+    assert.equal(cancelled,1,'abandoned producer must be cancelled exactly once');
+    assert.equal(request.body.locked,false);
+  }
+});
+test('JSON parsers reject unsupported content encoding before interpreting bytes',async()=>{
+  for(const encoding of ['gzip','br','identity']){
+    const request=new Request(origin,{method:'POST',headers:{'Content-Type':'application/json','Content-Encoding':encoding},body:'{"categoryId":"repair"}'});
+    assert.equal(await readServiceListingBody(request),null);
+  }
+});

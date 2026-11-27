@@ -4,11 +4,17 @@ on:
     paths:
       - 'apps/android/**'
       - '.github/workflows/android-native.yml'
+      - 'scripts/android-release-evidence.py'
+      - 'scripts/android-release-evidence.test.mjs'
+      - 'scripts/android-release-candidate-gate.test.mjs'
   push:
     branches: [main]
     paths:
       - 'apps/android/**'
       - '.github/workflows/android-native.yml'
+      - 'scripts/android-release-evidence.py'
+      - 'scripts/android-release-evidence.test.mjs'
+      - 'scripts/android-release-candidate-gate.test.mjs'
   workflow_dispatch:
 permissions:
   contents: read
@@ -18,7 +24,7 @@ concurrency:
 jobs:
   build-android:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
@@ -29,6 +35,8 @@ jobs:
           persist-credentials: false
       - name: Verify approved flat UI rules
         run: node scripts/verify-approved-flat-ui.mjs
+      - name: Verify unsigned bundle evidence checks with synthetic fixtures
+        run: python3 scripts/android-release-evidence.py --self-test
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
         with:
           distribution: temurin
@@ -113,7 +121,28 @@ jobs:
             -PjodloApiOrigin=https://api.jodlo.example \
             -PjodloGoogleWebClientId=123456789012-ci-restore-only.apps.googleusercontent.com \
             :app:compileDebugKotlin --no-daemon
-      - name: Reject restored purchase UI in release candidates even with credentials
+      - name: Compile configured checkout and recovery UI with synthetic public settings
+        if: matrix.java-version == '21'
+        run: |
+          gradle -p apps/android -PincludeAndroidApp=true \
+            -PjodloEnablePlayBilling=true -PjodloEnablePlayCheckout=true \
+            -PjodloEnablePlayRestore=true -PjodloPlayPolicyVersion=jodlo-play-minutes-v1 \
+            -PjodloApiOrigin=https://api.jodlo.example \
+            -PjodloGoogleWebClientId=123456789012-ci-checkout-only.apps.googleusercontent.com \
+            :app:compileDebugKotlin --no-daemon
+      - name: Reject checkout without explicit settlement policy
+        if: matrix.java-version == '21'
+        run: |
+          if gradle -p apps/android -PincludeAndroidApp=true \
+            -PjodloEnablePlayBilling=true -PjodloEnablePlayCheckout=true \
+            -PjodloApiOrigin=https://api.jodlo.example \
+            -PjodloGoogleWebClientId=123456789012-ci-checkout-only.apps.googleusercontent.com \
+            :app:help --no-daemon > "$RUNNER_TEMP/jodlo-checkout-missing-policy.txt" 2>&1; then
+            echo "Unsafe: checkout configuration accepted without a policy version"
+            exit 1
+          fi
+          grep -q 'Checkout requires configured Play Billing, API, Google identity and explicit settlement policy' "$RUNNER_TEMP/jodlo-checkout-missing-policy.txt"
+      - name: Reject restored purchase UI in release candidates without the checkout policy
         if: matrix.java-version == '21'
         run: |
           if gradle -p apps/android -PincludeAndroidApp=true \
@@ -125,32 +154,47 @@ jobs:
             echo "Unsafe: Play restore UI enabled in release candidate"
             exit 1
           fi
-          grep -q 'Manual Play restore is only available in an explicitly configured debug-only Billing build' "$RUNNER_TEMP/jodlo-restore-unsafe-release.txt"
+          grep -q 'Play recovery needs configured Billing; a release candidate also needs the explicit checkout policy' "$RUNNER_TEMP/jodlo-restore-unsafe-release.txt"
       - name: Compile disposable unsigned API 36 release AAB with synthetic config (never upload)
         if: matrix.java-version == '21'
         run: |
           # Offline build proof only. Synthetic Web OAuth and release values are
           # not operational credentials; do NOT sign, publish or upload this AAB.
-          gradle -p apps/android \
-            -PincludeAndroidApp=true \
-            -PjodloReleaseCandidate=true \
-            -PjodloApiOrigin=https://api.jodlo.rekixo.com \
-            -PjodloGoogleWebClientId=123456789012-jodlo-ci-only.apps.googleusercontent.com \
-            -PjodloReleaseVersionName=1.0.0 \
-            -PjodloReleaseVersionCode=2 \
-            :app:bundleRelease --no-daemon
           BUNDLE=apps/android/app/build/outputs/bundle/release/app-release.aab
+          FIRST_BUNDLE="$RUNNER_TEMP/jodlo-unsigned-release-first.aab"
+          trap 'rm -f "$BUNDLE" "$FIRST_BUNDLE"' EXIT
+          BUNDLE_ARGS=(
+            -PincludeAndroidApp=true
+            -PjodloReleaseCandidate=true
+            -PjodloApiOrigin=https://api.jodlo.rekixo.com
+            -PjodloGoogleWebClientId=123456789012-jodlo-ci-only.apps.googleusercontent.com
+            -PjodloReleaseVersionName=1.0.0
+            -PjodloReleaseVersionCode=2
+            -PjodloEnablePlayBilling=true
+            -PjodloEnablePlayCheckout=true
+            -PjodloEnablePlayRestore=true
+            -PjodloPlayPolicyVersion=jodlo-play-minutes-v1
+          )
+          gradle -p apps/android "${BUNDLE_ARGS[@]}" :app:bundleRelease --no-daemon --no-build-cache
           test -s "$BUNDLE"
           unzip -Z -1 "$BUNDLE" | grep -Fxq 'base/manifest/AndroidManifest.xml'
+          python3 scripts/android-release-evidence.py --inspect "$BUNDLE"
+          cp "$BUNDLE" "$FIRST_BUNDLE"
+          # Recompile inputs rather than trusting Gradle's cached task status.
+          # Compare uncompressed member hashes; report ZIP-byte differences honestly.
+          gradle -p apps/android "${BUNDLE_ARGS[@]}" :app:bundleRelease --no-daemon --no-build-cache --rerun-tasks
+          python3 scripts/android-release-evidence.py --compare "$FIRST_BUNDLE" "$BUNDLE"
           # Refuse to hand a synthetic release AAB to later steps/artifacts.
           rm -f "$BUNDLE"
+          rm -f "$FIRST_BUNDLE"
           test ! -e "$BUNDLE"
       - name: Compile FCM and Agora together using synthetic CI-only Firebase configuration
         if: matrix.java-version == '21'
         run: |
           CONFIG=apps/android/app/google-services.json
+          COMBINED_BUNDLE=apps/android/app/build/outputs/bundle/release/app-release.aab
           test ! -e "$CONFIG"
-          trap 'rm -f "$CONFIG"' EXIT
+          trap 'rm -f "$CONFIG" "$COMBINED_BUNDLE"' EXIT
           cat > "$CONFIG" <<'JSON'
           {
             "project_info": {
@@ -169,6 +213,22 @@ jobs:
           JSON
           gradle -p apps/android -PincludeAndroidApp=true -PjodloEnableAgora=true -PjodloEnableFcm=true :app:assembleDebug --no-daemon
           test -s apps/android/app/build/outputs/apk/debug/app-debug.apk
+          # Exercise provider source sets together in release build and packaging.
+          # These public fixture values are never used to sign in or call a
+          # provider, and the resulting unsigned bundle is deleted in this step.
+          gradle -p apps/android -PincludeAndroidApp=true \
+            -PjodloEnableAgora=true -PjodloEnableFcm=true \
+            -PjodloEnablePlayBilling=true -PjodloEnablePlayCheckout=true \
+            -PjodloEnablePlayRestore=true -PjodloPlayPolicyVersion=jodlo-play-minutes-v1 \
+            -PjodloReleaseCandidate=true \
+            -PjodloApiOrigin=https://api.jodlo.rekixo.com \
+            -PjodloGoogleWebClientId=123456789012-jodlo-ci-only.apps.googleusercontent.com \
+            -PjodloReleaseVersionName=1.0.0 -PjodloReleaseVersionCode=2 \
+            :app:bundleRelease --no-daemon --no-build-cache
+          test -s "$COMBINED_BUNDLE"
+          python3 scripts/android-release-evidence.py --inspect "$COMBINED_BUNDLE"
+          rm -f "$COMBINED_BUNDLE"
+          test ! -e "$COMBINED_BUNDLE"
       - name: Save temporary debug APK for physical-device testing (main only)
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && matrix.java-version == '17'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

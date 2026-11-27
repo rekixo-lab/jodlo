@@ -107,7 +107,7 @@ test("SQL is parameterized; wildcard, quote and SQL comment characters are liter
       assert.deepEqual((await response.json()).data.categories, [], q);
     }
     const queryPlan = db.prepare("EXPLAIN QUERY PLAN " + SEARCH_PUBLIC_CATEGORIES_QUERY)
-      .all("en", "plumb", "plumb", "plumb", 21, 0);
+      .all("en", "plumb", "plumb", "plumb", "plumb", "plumb", 21, 0);
     assert.ok(queryPlan.some(r => String(r.detail).includes("idx_categories_active_sort")), JSON.stringify(queryPlan));
     assert.equal(db.prepare("SELECT COUNT(*) AS n FROM categories").get().n, 5);
   } finally { db.close(); }

@@ -101,7 +101,8 @@ test("logout paths issue exactly one conditional DELETE each, not a separate pre
     const sqls=[];
     const traced={...adapter,prepare(query){sqls.push(query);return adapter.prepare(query);}};
     assert.equal(await revokeSession(traced,first),true);
-    assert.deepEqual(sqls,[REVOKE_SESSION_QUERY]);
+    // Trigger effects cannot replace proof that this exact session was deleted.
+    assert.deepEqual(sqls,[REVOKE_SESSION_QUERY+" RETURNING token_hash"]);
     sqls.length=0;
     assert.equal(await revokeAllSessions(traced,second),true);
     assert.deepEqual(sqls,[REVOKE_ALL_SESSIONS_QUERY]);

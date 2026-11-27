@@ -23,6 +23,11 @@ export interface RateLimitBinding {
 }
 
 export interface Env {
+  /** Operator-only readiness/case workflow. Never bundled into Android. */
+  OPERATIONS_ENABLED?: string;
+  OPERATIONS_KEY?: string;
+  OPERATIONS_LIMITER?: RateLimitBinding;
+  BUILD_COMMIT_SHA?: string;
   /** Unset until account-erasure release. Server secret, 32 random bytes as hex. */
   ACCOUNT_ERASURE_RELEASE_KEY?: string;
   CONTACT_BLOCKS_ENABLED?: string;
@@ -31,6 +36,12 @@ export interface Env {
   CALL_SIGNALING_ENABLED?: string;
   CALL_MEDIA_VERIFICATION_ENABLED?: string;
   AGORA_APP_CERTIFICATE?: string;
+  /** Default OFF: operator-reviewed, provider-authenticated RTC usage policy. */
+  CALL_USAGE_ENABLED?: string;
+  CALL_USAGE_POLICY_VERSION?: string;
+  CALL_USAGE_APPROVAL_SHA256?: string;
+  AGORA_NOTIFICATIONS_SECRET?: string;
+  CALL_USAGE_LIMITER?: RateLimitBinding;
   FCM_PROJECT_ID?: string;
   FCM_SERVICE_ACCOUNT_EMAIL?: string;
   FCM_SERVICE_ACCOUNT_PRIVATE_KEY?: string;
@@ -43,6 +54,18 @@ export interface Env {
   /** OFF until backend/Play owner setup; read-only, rate-limited verification. */
   PLAY_VERIFICATION_ENABLED?: string;
   PLAY_VERIFICATION_LIMITER?: RateLimitBinding;
+  /** Explicitly configured purchase settlement; no automatic release activation. */
+  PLAY_SETTLEMENT_ENABLED?: string;
+  PLAY_SETTLEMENT_POLICY_VERSION?: string;
+  PLAY_SETTLEMENT_APPROVAL_SHA256?: string;
+  PLAY_SETTLEMENT_LIMITER?: RateLimitBinding;
+  /** Default OFF: Google license-test cards are limited to exact operator-approved
+   * obfuscated JODLO account bindings. The allowlist is a server-only secret. */
+  PLAY_LICENSE_TEST_ENABLED?: string;
+  PLAY_LICENSE_TEST_ACCOUNT_BINDINGS?: string;
+  PLAY_REFUND_HOLDS_ENABLED?: string;
+  PLAY_REFUND_POLICY_VERSION?: string;
+  PLAY_REFUND_APPROVAL_SHA256?: string;
   PLAY_RTDN_ENABLED?: string;
   PLAY_RTDN_AUDIENCE?: string;
   PLAY_RTDN_PUSH_EMAIL?: string;

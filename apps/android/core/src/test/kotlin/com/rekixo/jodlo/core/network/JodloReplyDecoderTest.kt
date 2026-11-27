@@ -248,6 +248,91 @@ fun main() {
     val serviceExport = cityExport.replace("\"schemaVersion\":2", "\"schemaVersion\":3")
         .replace("\"services\":[]", "\"services\":[],\"serviceDetails\":[],\"servicePhotos\":[],\"serviceReports\":[],\"serviceAppeals\":[]")
     check(JodloReplyDecoder.accountDataExport(TransportReply(200, envelope(serviceExport))) is ApiOutcome.Ok)
+    val financialFields = """
+        "minuteBalance":[{"availableSeconds":900,"reservedSeconds":300,"revision":2}],
+        "minuteActivity":[{"kind":"purchase_grant","seconds":1200,"occurredAtMs":1800000000000}],
+        "purchaseStatus":[{"productId":"jodlo.minutes20","seconds":1200,"status":"consumed","updatedAtMs":1800000000100}],
+        "callUsage":[{"startedAtMs":1800000000200,"endedAtMs":null,"status":"active","reservedSeconds":300,"chargedSeconds":0}],
+        "refundReviews":[{"productId":"jodlo.minutes20","seconds":1200,"reason":"voided_purchase","status":"open","openedAtMs":1800000000300,"resolvedAtMs":null}],
+    """.trimIndent()
+    val financialExport = serviceExport.replace("\"schemaVersion\":3", "\"schemaVersion\":4")
+        .replace("\"limitations\":", financialFields + "\"limitations\":")
+    val financialResult = JodloReplyDecoder.accountDataExport(TransportReply(200, envelope(financialExport)))
+    check(financialResult is ApiOutcome.Ok && financialResult.value.json.contains("\"refundReviews\""))
+    check(JodloRoutes.accountDataExport("z".repeat(43),4).resource == "/api/v1/me/data-export?version=4")
+    // Environment belongs only to the explicit v5 personal export. Production
+    // purchases and dedicated license-test receipts must remain distinguishable;
+    // v1-v4 and settlement responses retain their existing exact contracts.
+    val environmentExport = financialExport.replace("\"schemaVersion\":4", "\"schemaVersion\":5")
+        .replace("\"status\":\"consumed\"", "\"status\":\"consumed\",\"environment\":\"production\"")
+        .replace("\"limitations\":", "\"callHistory\":[],\"limitations\":")
+    for (environment in listOf("production", "license_test")) {
+        val reply = JodloReplyDecoder.accountDataExport(TransportReply(200,
+            envelope(environmentExport.replace("\"environment\":\"production\"",
+                "\"environment\":\"$environment\""))))
+        check(reply is ApiOutcome.Ok && reply.value.json.contains("\"environment\":\"$environment\""))
+    }
+    check(JodloRoutes.accountDataExport("z".repeat(43),5).resource == "/api/v1/me/data-export?version=5")
+    for (invalid in listOf(
+        environmentExport.replace("\"environment\":\"production\"", "\"environment\":\"sandbox\""),
+        environmentExport.replace("\"environment\":\"production\"", "\"environment\":null"),
+        environmentExport.replace(",\"environment\":\"production\"", ""),
+        environmentExport.replace("\"callHistory\":[],", ""),
+        environmentExport.replace("\"schemaVersion\":5", "\"schemaVersion\":4"),
+    )) rejects(envelope(invalid), parse = JodloReplyDecoder::accountDataExport)
+    val historyRow = """{"id":"history_0001","direction":"outgoing","outcome":"ended","endedAt":1800000000,"connectedSeconds":42}"""
+    fun historyExport(rows: String) = environmentExport.replace("\"callHistory\":[]", "\"callHistory\":[$rows]")
+    val withHistory = JodloReplyDecoder.accountDataExport(TransportReply(200, envelope(historyExport(historyRow))))
+    check(withHistory is ApiOutcome.Ok && withHistory.value.json.contains("\"connectedSeconds\":42"))
+    // All history outcomes and both directions use the existing API semantics.
+    for (outcome in listOf("ended", "declined", "busy", "cancelled", "missed", "failed")) {
+        val row = historyRow.replace("\"ended\"", "\"$outcome\"")
+            .replace("\"outgoing\"", "\"incoming\"").replace("\"connectedSeconds\":42", "\"connectedSeconds\":0")
+        check(JodloReplyDecoder.accountDataExport(TransportReply(200, envelope(historyExport(row)))) is ApiOutcome.Ok)
+    }
+    // Export can carry more than one 25-row UI page without inheriting that cap.
+    val manyHistoryRows = (1..26).joinToString(",") { historyRow.replace("history_0001", "history_" + it.toString().padStart(4, '0')) }
+    check(JodloReplyDecoder.accountDataExport(TransportReply(200, envelope(historyExport(manyHistoryRows)))) is ApiOutcome.Ok)
+    for (invalidRow in listOf(
+        historyRow.replace("\"history_0001\"", "\"short\""),
+        historyRow.replace("\"outgoing\"", "\"both\""),
+        historyRow.replace("\"ended\"", "\"accepted\""),
+        historyRow.replace("\"ended\"", "\"missed\""),
+        historyRow.replace("1800000000", "0"),
+        historyRow.replace("1800000000", "253402300800"),
+        historyRow.replace("1800000000", "\"1800000000\""),
+        historyRow.replace("\"connectedSeconds\":42", "\"connectedSeconds\":-1"),
+        historyRow.replace("\"connectedSeconds\":42", "\"connectedSeconds\":1.5"),
+        historyRow.replace("\"connectedSeconds\":42", "\"connectedSeconds\":2147483648"),
+        historyRow.replace("\"connectedSeconds\":42", "\"connectedSeconds\":null"),
+        historyRow.replace("\"connectedSeconds\":42", "\"connectedSeconds\":42,\"peerAccountId\":\"private\""),
+    )) rejects(envelope(historyExport(invalidRow)), parse = JodloReplyDecoder::accountDataExport)
+    rejects(envelope(historyExport("$historyRow,$historyRow")), parse = JodloReplyDecoder::accountDataExport)
+    for (legacy in listOf(ownExportData, cityExport, serviceExport, financialExport)) {
+        rejects(envelope(legacy.replace("\"limitations\":", "\"callHistory\":[],\"limitations\":")),
+            parse = JodloReplyDecoder::accountDataExport)
+    }
+    // The new collection shares the existing whole-export byte limit.
+    val largeHistory = (1..580).joinToString(",") { historyRow.replace("history_0001", "history_" + it.toString().padStart(4, '0')) }
+    check(historyExport(largeHistory).toByteArray(Charsets.UTF_8).size in 60_001..65_000)
+    rejects(envelope(historyExport(largeHistory)), parse = JodloReplyDecoder::accountDataExport)
+    for (invalid in listOf(
+        financialExport.replace("\"schemaVersion\":4", "\"schemaVersion\":5"),
+        financialExport.replace("\"availableSeconds\":900", "\"availableSeconds\":-1"),
+        financialExport.replace("\"reservedSeconds\":300", "\"reservedSeconds\":\"300\""),
+        financialExport.replace("\"revision\":2", "\"revision\":2,\"purchaseToken\":\"private\""),
+        financialExport.replace("\"kind\":\"purchase_grant\"", "\"kind\":\"fabricated_refund\""),
+        financialExport.replace("\"productId\":\"jodlo.minutes20\"", "\"productId\":\"jodlo.minutes50\""),
+        financialExport.replace("\"status\":\"consumed\"", "\"status\":\"fake_status\""),
+        financialExport.replace("\"startedAtMs\":1800000000200", "\"startedAtMs\":0"),
+        financialExport.replace("\"chargedSeconds\":0", "\"chargedSeconds\":-1"),
+        financialExport.replace("\"chargedSeconds\":0", "\"chargedSeconds\":301"),
+        financialExport.replace("\"chargedSeconds\":0", "\"chargedSeconds\":1"),
+        financialExport.replace("\"endedAtMs\":null", "\"endedAtMs\":1800000000000"),
+        financialExport.replace("\"status\":\"open\"", "\"status\":\"released\""),
+        financialExport.replace("\"reason\":\"voided_purchase\"", "\"reason\":\"guessed_refund\""),
+        financialExport.replace("\"resolvedAtMs\":null", "\"resolvedAtMs\":null,\"peerAccountId\":\"private\""),
+    )) rejects(envelope(invalid),parse=JodloReplyDecoder::accountDataExport)
     for (badExport in listOf(
         ownExportData.replace("\"schemaVersion\":1", "\"schemaVersion\":4"),
         cityExport.replace("\"schemaVersion\":2", "\"schemaVersion\":3"),

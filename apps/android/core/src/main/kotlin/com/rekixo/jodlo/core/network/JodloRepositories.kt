@@ -173,7 +173,16 @@ class RemoteCatalogRepository(private val sender: RequestSender) :
     CatalogRepository, PublicListingPageRepository, CatalogSearchCursorRepository,
     PublicListingDetailRepository, PublicApprovedServiceDetailRepository,
     ApprovedCategoryNamesRepository, AllPublicListingFeedRepository,
-    ApprovedHierarchyRepository {
+    ApprovedHierarchyRepository, ApprovedServiceSuggestionsRepository {
+    override fun serviceSuggestions(categoryId: String, language: Language, limit: Int,
+        after: String?): ApiOutcome<ApprovedServiceSuggestions> =
+        performOnce(JodloRoutes.catalogServiceSuggestions(categoryId, language, limit, after),
+            sender::send, JodloReplyDecoder::serviceSuggestions).validated { page ->
+                page.categoryId == categoryId && page.language == language && page.items.size <= limit &&
+                    (after == null || page.items.all { it.id > after }) &&
+                    (page.nextCursor == null || page.items.size == limit)
+            }
+
     override fun hierarchy(
         level: HierarchyLevel, parentId: String?, language: Language,
         availableOnly: Boolean, limit: Int, after: String?,

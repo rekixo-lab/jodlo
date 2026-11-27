@@ -112,5 +112,43 @@ test("CI compiles disposable unsigned API36 release AAB with no publication path
   assert.match(section, /unzip -Z -1 "\$BUNDLE"/);
   assert.match(section, /rm -f "\$BUNDLE"/);
   assert.match(section, /test ! -e "\$BUNDLE"/);
+  assert.match(section, /-PjodloEnablePlayCheckout=true/);
+  assert.match(section, /-PjodloPlayPolicyVersion=jodlo-play-minutes-v1/);
+  assert.match(section, /--no-build-cache --rerun-tasks/);
+  assert.match(section, /android-release-evidence\.py --compare "\$FIRST_BUNDLE" "\$BUNDLE"/);
+  assert.match(section, /trap 'rm -f "\$BUNDLE" "\$FIRST_BUNDLE"' EXIT/);
   assert.doesNotMatch(section, /actions\/upload-artifact|fastlane|gradle.*:app:publish|wrangler deploy/);
+});
+
+test("CI compiles configured checkout/recovery and refuses missing policy without contacting providers",()=>{
+  const ci=read(".github/workflows/android-native.yml");
+  const start=ci.indexOf("      - name: Compile configured checkout and recovery UI with synthetic public settings");
+  const end=ci.indexOf("      - name: Compile disposable unsigned API 36 release AAB",start);
+  assert.ok(start>0&&end>start);
+  const section=ci.slice(start,end);
+  assert.match(section,/-PjodloEnablePlayBilling=true -PjodloEnablePlayCheckout=true/);
+  assert.match(section,/-PjodloEnablePlayRestore=true -PjodloPlayPolicyVersion=jodlo-play-minutes-v1/);
+  assert.match(section,/:app:compileDebugKotlin --no-daemon/);
+  assert.match(section,/Reject checkout without explicit settlement policy/);
+  assert.match(section,/Reject restored purchase UI in release candidates without the checkout policy/);
+  assert.doesNotMatch(section,/\$\{\{\s*secrets\.|adb |:app:publish|wrangler deploy/);
+});
+
+test("CI continuously compiles the combined Agora, FCM and Play release without retaining a synthetic bundle",()=>{
+  const ci=read(".github/workflows/android-native.yml");
+  const start=ci.indexOf("      - name: Compile FCM and Agora together using synthetic CI-only Firebase configuration");
+  const end=ci.indexOf("      - name: Save temporary debug APK",start);
+  assert.ok(start>0&&end>start);
+  const section=ci.slice(start,end);
+  assert.match(section,/test ! -e "\$CONFIG"/);
+  assert.match(section,/jodlo-ci-synthetic-not-real/);
+  assert.match(section,/-PjodloEnableAgora=true -PjodloEnableFcm=true/);
+  assert.match(section,/-PjodloEnablePlayBilling=true -PjodloEnablePlayCheckout=true/);
+  assert.match(section,/-PjodloEnablePlayRestore=true -PjodloPlayPolicyVersion=jodlo-play-minutes-v1/);
+  assert.match(section,/-PjodloReleaseCandidate=true/);
+  assert.match(section,/:app:bundleRelease --no-daemon --no-build-cache/);
+  assert.match(section,/android-release-evidence\.py --inspect "\$COMBINED_BUNDLE"/);
+  assert.match(section,/trap 'rm -f "\$CONFIG" "\$COMBINED_BUNDLE"' EXIT/);
+  assert.match(section,/test ! -e "\$COMBINED_BUNDLE"/);
+  assert.doesNotMatch(section,/\$\{\{\s*secrets\.|upload-artifact|adb |:app:publish|wrangler deploy/);
 });

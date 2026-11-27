@@ -1,6 +1,7 @@
 import { withinPlayDeadline, readPlayBoundedJson } from "./play-provider-bounds.ts";
 import { scanJodloPlayVoidedPurchases } from "./play-voided-purchase-scan.ts";
 import type { D1Database } from "../../data/d1.ts";
+import { registerPlayRefundPolicy, type PlayRefundPolicy } from "./play-refund-review.ts";
 import {
   type AuthenticatedPlayPush,
 } from "./google-play-pubsub-auth.ts";
@@ -24,6 +25,7 @@ type Provider = Readonly<{
   request?: typeof fetch;
   timeoutMs?: number;
   now?: () => number;
+  refundPolicy?: PlayRefundPolicy;
 }>;
 
 function obj(value: unknown): Record<string, unknown> | null {
@@ -64,8 +66,9 @@ async function productVoided(
  * Require an authenticated Google Developer API lookup for the exact token,
  * package and SKU (cancellation) or one-time void record (refund).
  *
- * Purchase notifications are intentionally NOT acknowledged or credited:
- * a separate user-authenticated entitlement coordinator is still required.
+ * Purchase notifications do not change financial state here: the ingress
+ * acknowledges those envelopes, and the owner-authenticated settlement
+ * coordinator separately verifies the receipt before any grant.
  * No provider POST, no fund transfer, no balance debit, no token persistence.
  */
 export async function reconcileAuthenticatedJodloPlayRevocation(
@@ -114,6 +117,8 @@ export async function reconcileAuthenticatedJodloPlayRevocation(
       ? await productCanceled(push, get)
       : await productVoided(push, nowMs, get);
     if (!confirmed || remaining() <= 0) return "retry";
+    if (provider.refundPolicy && !await registerPlayRefundPolicy(db, provider.refundPolicy, now()))
+      return "retry";
     // This is the only D1 write in this chain. An OIDC signature is only
     // transport authentication; provider read is the financial proof.
     const answer = await withinPlayDeadline(() => recordTrustedPlayRevocation(db, {

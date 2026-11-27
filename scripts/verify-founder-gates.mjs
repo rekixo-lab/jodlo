@@ -20,6 +20,14 @@ const CALL_DEVICE_MIGRATION = "0021_private_call_devices.sql";
 const CREDIT_LEDGER_MIGRATION = "0024_private_call_credit_ledger.sql";
 const PLAY_CONSUME_MIGRATION = "0025_play_consumable_outbox.sql";
 const PLAY_REVOCATION_MIGRATION = "0026_play_revocation_fences.sql";
+const completionSchemas=[
+  {migration:"0029_verified_call_usage.sql",tables:["call_usage_sessions","call_usage_intervals"],route:"/api/v1/agora/usage"},
+  {migration:"0030_reviewed_catalog_imports.sql",tables:["catalog_import_batches","catalog_import_entries","catalog_services"],route:"/api/v1/catalog/services"},
+  {migration:"0031_play_refund_review_holds.sql",tables:["play_refund_policy","play_refund_reviews"],route:"/api/v1/operations/refund-reviews"},
+  {migration:"0034_play_pending_refund_reviews.sql",tables:["play_pending_refund_reviews"],route:"/api/v1/operations/pending-refund-reviews"},
+];
+const completionRoutes=new Set(["/api/v1/me/play-settle","/api/v1/agora/usage","/api/v1/catalog/services",
+  "/api/v1/operations/readiness","/api/v1/operations/refund-reviews","/api/v1/operations/pending-refund-reviews"]);
 const allowedRoutes = new Set([
   "/api/v1/health", "/api/v1/catalog", "/api/v1/catalog/search",
   // Only signed Google Pub/Sub RTDN with approved OAuth and rate-limit bindings.
@@ -31,6 +39,11 @@ const allowedRoutes = new Set([
   "/api/v1/me/play-overview",
   // Scoped owner-only, rate-limited and OFF-by-default receipt screening.
   "/api/v1/me/play-verify",
+  // 2026-11-25 user-authorized implementation; activation still requires
+  // explicit server configuration and reviewed payment/RTC policy evidence.
+  "/api/v1/me/play-settle", "/api/v1/agora/usage",
+  "/api/v1/catalog/services",
+  "/api/v1/operations/readiness", "/api/v1/operations/refund-reviews", "/api/v1/operations/pending-refund-reviews",
   // Only approved, default-OFF taxonomy hierarchy; no public Worker or GPS.
   "/api/v1/catalog/hierarchy",
   "/api/v1/auth/google", "/api/v1/auth/logout", "/api/v1/auth/logout-all",
@@ -52,6 +65,9 @@ const allowedTables = new Set([
   "call_history",
   // Local-only private entitlement accounting; no purchase, wallet or payment route.
   "call_credit_balances", "call_credit_events",
+  "call_usage_sessions", "call_usage_intervals",
+  "catalog_import_batches", "catalog_import_entries", "catalog_services",
+  "play_refund_policy", "play_refund_reviews", "play_pending_refund_reviews",
   "play_consume_outbox", "play_revocation_fences",
   "call_attempt_windows",
   "private_call_invitations",
@@ -92,6 +108,10 @@ const AGORA_SAFETY_SCHEMA = Object.freeze({
 const RECEIPT_FIELDS = [
   "event_id", "state", "claim_token", "lease_until_ms", "completed_at_ms",
 ];
+const PENDING_REFUND_FIELDS=["case_id","source_key_hash","account_id","account_binding","order_hash",
+  "purchase_environment","provider_message_id","event_time_ms","response_deadline_ms","received_at_ms",
+  "policy_version","approval_hash","state","refund_preference","sample_content_provided","decision_evidence_hash",
+  "decision_at_ms","submission_started_at_ms","submission_finished_at_ms","reviewed_at_ms","resolution_evidence_hash"];
 async function required(root, path, errors) {
   try { return await readFile(join(root, path), "utf8"); }
   catch { errors.push("Missing required source: " + path); return null; }
@@ -126,6 +146,13 @@ export async function auditFounderGates(root = rootDefault) {
     if (routes.includes(route) && !router.includes(`env.${flag} === "1"`))
       errors.push("Private call route requires a default-OFF release gate: " + route);
   }
+  for(const [route,flag] of [["/api/v1/me/play-settle","PLAY_SETTLEMENT_ENABLED"],
+    ["/api/v1/agora/usage","CALL_USAGE_ENABLED"],
+    ["/api/v1/operations/readiness","OPERATIONS_ENABLED"],["/api/v1/operations/refund-reviews","OPERATIONS_ENABLED"],
+    ["/api/v1/operations/pending-refund-reviews","OPERATIONS_ENABLED"]]){
+    if(routes.includes(route)&&!router.includes(`env.${flag} === "1"`))
+      errors.push("Configured settlement/usage route requires default-OFF gate: "+route);
+  }
   // Legacy founder fixtures intentionally model a pre-billing router. RTDN
   // is OPTIONAL in those fixtures, but if it exists it MUST remain default OFF.
   if (routes.includes("/api/v1/play/rtdn") &&
@@ -149,7 +176,7 @@ export async function auditFounderGates(root = rootDefault) {
        !router.includes('overviewDb,bearer,()=>readOwnCallCreditSnapshot(overviewDb,bearer)')))
     errors.push("Private Play overview must stay default OFF and session-owned");
   for(const route of allowedRoutes)
-    if(route!=="/api/v1/play/rtdn" && route!=="/api/v1/me/play-packs" && route!=="/api/v1/me/play-verify" && route!=="/api/v1/me/play-overview" &&
+    if(!completionRoutes.has(route) && route!=="/api/v1/play/rtdn" && route!=="/api/v1/me/play-packs" && route!=="/api/v1/me/play-verify" && route!=="/api/v1/me/play-overview" &&
        route!=="/api/v1/catalog/hierarchy" && route!=="/api/v1/me/account-erasure" &&
        route!=="/api/v1/me/contact-block" && route!=="/api/v1/me/contact-blocks" &&
        route!=="/api/v1/me/call-preference" && route!=="/api/v1/me/call-history" &&
@@ -187,6 +214,14 @@ export async function auditFounderGates(root = rootDefault) {
       const table=match[1].toLowerCase();
       tables.push(table);
       if(!allowedTables.has(table)) errors.push("Unapproved D1 table: "+table+" ("+name+")");
+      if(["call_usage_sessions","call_usage_intervals"].includes(table)&&name!=="0029_verified_call_usage.sql")
+        errors.push("Provider usage tables require their scoped migration");
+      if(["catalog_import_batches","catalog_import_entries","catalog_services"].includes(table)&&name!=="0030_reviewed_catalog_imports.sql")
+        errors.push("Approved catalog import tables require their scoped migration");
+      if(["play_refund_policy","play_refund_reviews"].includes(table)&&name!=="0031_play_refund_review_holds.sql")
+        errors.push("Refund review holds require their scoped migration");
+      if(table==="play_pending_refund_reviews"&&name!=="0034_play_pending_refund_reviews.sql")
+        errors.push("Pending Play refund reviews require their scoped migration");
       if((table==="call_credit_balances" || table==="call_credit_events") &&
           name!==CREDIT_LEDGER_MIGRATION)
         errors.push("Private call credit tables require the scoped migration");
@@ -231,6 +266,22 @@ export async function auditFounderGates(root = rootDefault) {
       if(/\b(?:purchase_token|payment_receipt|raw_token|card_number|bank_account|email|phone|address)\b/i.test(content))
         errors.push("Private credit ledger must not store raw provider credentials or identity");
     }
+    if(name==="0034_play_pending_refund_reviews.sql"){
+      const definition=content.match(/CREATE\s+TABLE\s+play_pending_refund_reviews\s*\(([\s\S]*?)\)\s*;/i);
+      const fields=definition===null?[]:[...definition[1].matchAll(
+        /(?:^|[,(])\s*([a-z][a-z0-9_]*)\s+(?:TEXT|INTEGER|REAL|BLOB)\b/gim)].map(match=>match[1].toLowerCase());
+      if(fields.join(",")!==PENDING_REFUND_FIELDS.join(",")||
+         !/CREATE\s+TRIGGER\s+bind_pending_play_refund_review\s+BEFORE\s+INSERT/i.test(content)||
+         !/CREATE\s+TRIGGER\s+immutable_pending_play_refund_review\s+BEFORE\s+UPDATE/i.test(content)||
+         !/response_deadline_ms\s*=\s*event_time_ms\s*\+\s*86400000/i.test(content)||
+         !/REFERENCES\s+play_consume_outbox\s*\(\s*source_key_hash\s*\)\s+ON\s+DELETE\s+CASCADE/i.test(content)||
+         !/REFERENCES\s+accounts\s*\(\s*id\s*\)\s+ON\s+DELETE\s+CASCADE/i.test(content))
+        errors.push("Pending Play refund migration must keep its exact bounded fields, owner binding, original deadline and immutable submission fence");
+      if(/\b(?:pending_refund_token|purchase_token|raw_token|order_id|email|phone|card_number|bank_account)\b/i.test(content))
+        errors.push("Pending Play refund migration must not store raw provider tokens, orders or payment/contact data");
+    }
+    if(/\b(?:ALTER|DROP)\s+TABLE\s+play_pending_refund_reviews\b/i.test(content))
+      errors.push("Unauthorized pending Play refund journal schema mutation: "+name);
     if(name===PLAY_REVOCATION_MIGRATION) {
       // Only globally unique opaque SHA256 tombstones. Out-of-order revocation
       // must abort future grants and freeze previously issued consume claims.
@@ -339,12 +390,21 @@ export async function auditFounderGates(root = rootDefault) {
   // Existing founder test fixtures intentionally model pre-billing schemas.
   // Credit tables are optional as a PAIR, not mandatory in old migrations.
   const optionalCreditTables=["call_credit_balances","call_credit_events","play_consume_outbox","play_revocation_fences"];
+  const completionTables=completionSchemas.flatMap(x=>x.tables);
   for(const table of allowedTables)
     if(table!=="call_history" && table!=="call_attempt_windows" && table!=="private_call_invitations" &&
        table!=="private_call_dispatch_slots" && table!=="private_call_devices" &&
-       !optionalCreditTables.includes(table) &&
+       !optionalCreditTables.includes(table) && !completionTables.includes(table) &&
        !hierarchyTables.includes(table) && !tables.includes(table))
       errors.push("Expected D1 table missing: "+table);
+  for(const schema of completionSchemas){
+    const exists=migrations.includes(schema.migration);
+    if(exists!==routes.includes(schema.route)||schema.tables.some(table=>tables.includes(table)!==exists))
+      errors.push("Completion module requires its full scoped schema and route: "+schema.migration);
+  }
+  if(migrations.includes("0034_play_pending_refund_reviews.sql")&&
+      (!migrations.includes("0031_play_refund_review_holds.sql")||!migrations.includes("0032_play_purchase_environment.sql")))
+    errors.push("Pending Play refund reviews require the reviewed policy and immutable purchase-environment migrations");
   const hasCreditLedger=migrations.includes(CREDIT_LEDGER_MIGRATION);
   for(const table of ["call_credit_balances","call_credit_events"])
     if(hasCreditLedger !== tables.includes(table))

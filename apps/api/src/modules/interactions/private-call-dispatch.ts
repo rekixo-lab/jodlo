@@ -21,21 +21,25 @@ const CLAIM_DISPATCH = `
 INSERT INTO private_call_dispatch_slots(receiver_account_id,invitation_id,expires_at_ms,caller_session_hash)
 SELECT i.receiver_account_id,i.id,i.ring_deadline_ms,s.token_hash
 FROM private_call_invitations AS i
-JOIN auth_sessions AS s ON s.account_id=i.caller_account_id AND s.token_hash=? AND s.expires_at>?
+JOIN auth_sessions AS s ON s.account_id=i.caller_account_id AND s.token_hash=? AND s.expires_at>MAX(?,unixepoch())
 JOIN accounts AS caller ON caller.id=i.caller_account_id AND caller.status='active'
 ${CURRENT_RING_ELIGIBILITY_JOINS}
-WHERE i.id=? AND i.receiver_account_id=? AND i.created_at_ms<=? AND i.ring_deadline_ms>?
+WHERE i.id=? AND i.receiver_account_id=? AND i.created_at_ms<=? AND i.ring_deadline_ms>MAX(?,unixepoch()*1000)
   AND i.phase='ringing' AND ${CURRENT_RING_ELIGIBILITY}
   AND NOT EXISTS (
     SELECT 1 FROM private_call_invitations AS active
-    WHERE active.phase='accepted' AND active.expires_at_ms>?
+    WHERE active.phase='accepted' AND active.expires_at_ms>MAX(?,unixepoch()*1000)
       AND (active.caller_account_id IN (i.caller_account_id,i.receiver_account_id)
         OR active.receiver_account_id IN (i.caller_account_id,i.receiver_account_id))
   )
 ON CONFLICT(receiver_account_id) DO UPDATE SET
   invitation_id=excluded.invitation_id, expires_at_ms=excluded.expires_at_ms,
   caller_session_hash=excluded.caller_session_hash
-WHERE private_call_dispatch_slots.expires_at_ms<=?
+WHERE private_call_dispatch_slots.expires_at_ms<=MAX(?,unixepoch()*1000) OR EXISTS (
+  SELECT 1 FROM private_call_invitations AS terminal
+  WHERE terminal.id=private_call_dispatch_slots.invitation_id
+    AND terminal.phase IN ('declined','cancelled','ended')
+)
 RETURNING invitation_id AS invitationId,expires_at_ms AS ringDeadlineMs
 `;
 
@@ -43,7 +47,9 @@ type DispatchSlot = Readonly<{invitationId: string; ringDeadlineMs: number}>;
 
 /** Internal claim. reachableReceiverId must come from an authenticated provider
  * presence check. Neither the request body nor the availability preference is
- * a source of reachability. The claim reserves an unsent slot only.
+ * a source of reachability. The claim reserves an unsent slot only. A confirmed
+ * terminal invitation may yield its receiver slot immediately; a ringing,
+ * accepted or uncertain-delivery attempt cannot be replaced before expiry.
  */
 export async function claimPrivateCallDispatch(
   db: D1Database, callerBearer: string, invitationId: string,

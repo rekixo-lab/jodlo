@@ -2,6 +2,7 @@ import type { D1Database } from "../../data/d1.ts";
 import { sessionHash, validSessionToken } from "../identity/sessions.ts";
 import { validOpaqueId } from "../shared/identifiers.ts";
 import {jodloPlayMinuteProductMap} from "./play-minute-packs.ts";
+import {refundReviewDemandSql} from "./play-refund-review.ts";
 
 /** No client or public API may call the TRUSTED MUTATION in this module.
  * The separate owner-bound D1 read may be used by a default-off, strictly
@@ -110,29 +111,32 @@ export async function readOwnCallCreditSnapshot(
   const ownerSessionHash=await sessionHash(bearer);
   const expiresAfter=Math.floor(nowMs/1000);
   const {results} = await db.prepare(
-    "SELECT COALESCE(b.available_seconds,0) AS availableSeconds, " +
-    "COALESCE(b.revision,0) AS revision, " +
+    "SELECT max(0,COALESCE(b.available_seconds,0)-COALESCE((" +
+    "SELECT SUM(u.reserved_seconds) FROM call_usage_sessions AS u " +
+    "WHERE u.caller_account_id=a.id AND u.state='active'),0)-" +
+    refundReviewDemandSql("a.id")+") AS availableSeconds, " +
+    "COALESCE(b.revision,0) AS revision,a.id AS ownerId, " +
     "e.kind AS eventKind,e.seconds AS eventSeconds,e.created_at_ms AS occurredAtMs " +
     "FROM auth_sessions AS s " +
     "JOIN accounts AS a ON a.id=s.account_id AND a.status='active' " +
     "LEFT JOIN call_credit_balances AS b ON b.account_id=a.id " +
     "LEFT JOIN call_credit_events AS e ON e.account_id=a.id " +
-    "WHERE s.token_hash=? AND s.expires_at>? " +
+    "WHERE s.token_hash=? AND s.expires_at>MAX(?,unixepoch()) " +
     "ORDER BY e.created_at_ms DESC,e.id DESC LIMIT ?",
   ).bind(ownerSessionHash,expiresAfter,MAX_ACTIVITY_ROWS+1)
     .all<{
-      availableSeconds:number; revision:number;
+      availableSeconds:number; revision:number; ownerId:string;
       eventKind:string|null; eventSeconds:number|null; occurredAtMs:number|null;
     }>();
   if (results.length === 0) return null;
-  const {availableSeconds,revision}=results[0];
+  const {availableSeconds,revision,ownerId}=results[0];
   if (!Number.isSafeInteger(availableSeconds) || availableSeconds < 0 ||
       availableSeconds > MAX_LEDGER_SECONDS ||
       !Number.isSafeInteger(revision) || revision < 0 ||
-      revision > MAX_LEDGER_SECONDS) throw new Error("Invalid private credit snapshot");
+      revision > MAX_LEDGER_SECONDS || !validOpaqueId(ownerId)) throw new Error("Invalid private credit snapshot");
   const entries: OwnCallCreditActivity[] = [];
   for (const row of results) {
-    if (row.availableSeconds !== availableSeconds || row.revision !== revision)
+    if (row.availableSeconds !== availableSeconds || row.revision !== revision || row.ownerId !== ownerId)
       throw new Error("Inconsistent private ledger snapshot");
     if (row.eventKind === null && row.eventSeconds === null &&
         row.occurredAtMs === null) {
@@ -168,24 +172,29 @@ export async function readOwnCallCreditSnapshot(
   // sessions fail closed). No token hash, order ID, price or account ID leaves.
   const {results: holdRows}=await db.prepare(
     "SELECT o.product_id AS productId,o.seconds AS seconds, " +
-    "o.updated_at_ms AS recordedAtMs,f.reason AS reason " +
+    "o.updated_at_ms AS recordedAtMs,f.reason AS reason,COALESCE(b.revision,0) AS revision " +
     "FROM auth_sessions AS s " +
     "JOIN accounts AS a ON a.id=s.account_id AND a.status='active' " +
+    "LEFT JOIN call_credit_balances AS b ON b.account_id=a.id " +
     "LEFT JOIN play_consume_outbox AS o ON o.account_id=a.id " +
     "AND o.status='void_hold' " +
     "LEFT JOIN play_revocation_fences AS f " +
     "ON f.source_key_hash=o.source_key_hash " +
-    "WHERE s.token_hash=? AND s.expires_at>? " +
+    "WHERE s.token_hash=? AND s.expires_at>MAX(?,unixepoch()) AND a.id=? " +
     "ORDER BY o.updated_at_ms DESC,o.source_key_hash DESC LIMIT ?",
-  ).bind(ownerSessionHash,expiresAfter,MAX_PLAY_HOLD_ROWS+1).all<{
+  ).bind(ownerSessionHash,expiresAfter,ownerId,MAX_PLAY_HOLD_ROWS+1).all<{
     productId:string|null;seconds:number|null;
-    recordedAtMs:number|null;reason:string|null;
+    recordedAtMs:number|null;reason:string|null;revision:number;
   }>();
   if (holdRows.length===0)
     return null; // Token revoked or account disabled between both reads.
   const canonicalPacks=jodloPlayMinuteProductMap();
   const holds:OwnPlayRevocationHold[]=[];
   for(const row of holdRows){
+    // Refund holds, usage reservations and balance changes all advance this
+    // revision. Do not combine a pre-refund spendable balance with a newer
+    // hold/history read; the owner can retry for a coherent current snapshot.
+    if(row.revision!==revision)throw new Error("Concurrent private credit change");
     if(row.productId===null && row.seconds===null &&
        row.recordedAtMs===null && row.reason===null){
       if(holdRows.length!==1) throw new Error("Invalid empty Play hold row");

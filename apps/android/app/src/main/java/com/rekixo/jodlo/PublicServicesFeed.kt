@@ -138,9 +138,12 @@ internal fun PublicServicesFeed(
             }
             // A stale city, language, selected Detail or generation can never
             // restore a former city's Categories after navigation.
-            if (generation != cityBrowseRevision || city != selectedCity ||
-                language != lang || selected != null) return@launch
+            if (generation != cityBrowseRevision) return@launch
             cityBrowseBusy = false
+            // A service card can be opened while this independent Category
+            // read is running. Discard its result there, but release its busy
+            // state so Back does not leave city browsing disabled forever.
+            if (city != selectedCity || language != lang || selected != null) return@launch
             when (result) {
                 is ApiOutcome.Failed -> cityBrowseFailed = true
                 is ApiOutcome.Ok -> {
@@ -207,9 +210,9 @@ internal fun PublicServicesFeed(
                     ApiOutcome.Failed(FailureKind.BAD_RESPONSE, false)
                 }
             }
-            if (categorySearchRevision != generation || language != lang ||
-                selected != null) return@launch
+            if (categorySearchRevision != generation) return@launch
             categorySearchBusy = false
+            if (language != lang || selected != null) return@launch
             when (result) {
                 is ApiOutcome.Failed -> categorySearchFailed = true
                 is ApiOutcome.Ok -> {

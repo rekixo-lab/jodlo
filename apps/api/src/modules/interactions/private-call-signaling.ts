@@ -4,18 +4,18 @@ import { validOpaqueId } from "../shared/identifiers.ts";
 import { CURRENT_RING_ELIGIBILITY, CURRENT_RING_ELIGIBILITY_JOINS } from "./private-call-dispatch.ts";
 
 const PARTICIPANT = `
-  JOIN auth_sessions AS s ON s.token_hash=?1 AND s.expires_at>?2
+  JOIN auth_sessions AS s ON s.token_hash=?1 AND s.expires_at>MAX(?2,unixepoch())
     AND s.account_id IN (i.caller_account_id,i.receiver_account_id)
   JOIN accounts AS actor ON actor.id=s.account_id AND actor.status='active'
-  WHERE i.id=?3 AND i.expires_at_ms>?4
+  WHERE i.id=?3 AND i.expires_at_ms>MAX(?4,unixepoch()*1000)
 `;
 
 const CURRENT_RING = `
-  i.ring_deadline_ms>?4 AND EXISTS (
+  i.ring_deadline_ms>MAX(?4,unixepoch()*1000) AND EXISTS (
     SELECT 1 FROM accounts AS caller
-    JOIN private_call_dispatch_slots AS slot ON slot.invitation_id=i.id AND slot.expires_at_ms>?4
+    JOIN private_call_dispatch_slots AS slot ON slot.invitation_id=i.id AND slot.expires_at_ms>MAX(?4,unixepoch()*1000)
     JOIN auth_sessions AS calling_session ON calling_session.token_hash=slot.caller_session_hash
-      AND calling_session.account_id=caller.id AND calling_session.expires_at>?2
+      AND calling_session.account_id=caller.id AND calling_session.expires_at>MAX(?2,unixepoch())
     ${CURRENT_RING_ELIGIBILITY_JOINS}
     WHERE caller.id=i.caller_account_id AND caller.status='active' AND ${CURRENT_RING_ELIGIBILITY}
   )
@@ -24,7 +24,7 @@ const CURRENT_RING = `
 const PARTICIPANTS_FREE = `
   NOT EXISTS (
     SELECT 1 FROM private_call_invitations AS other
-    WHERE other.id<>i.id AND other.phase='accepted' AND other.expires_at_ms>?4
+    WHERE other.id<>i.id AND other.phase='accepted' AND other.expires_at_ms>MAX(?4,unixepoch()*1000)
       AND (other.caller_account_id IN (i.caller_account_id,i.receiver_account_id)
         OR other.receiver_account_id IN (i.caller_account_id,i.receiver_account_id))
   )
@@ -48,7 +48,7 @@ export async function ownPrivateCallSignal(
   const params = [await sessionHash(bearer), Math.floor(now / 1000), invitationId, now] as const;
   if (action === "ack") {
     const result = await db.prepare(`
-      UPDATE private_call_invitations SET received_at_ms=COALESCE(received_at_ms,?4)
+      UPDATE private_call_invitations SET received_at_ms=COALESCE(received_at_ms,MAX(?4,unixepoch()*1000))
       WHERE id IN (
         SELECT i.id FROM private_call_invitations AS i ${PARTICIPANT}
           AND i.phase='ringing' AND i.created_at_ms<=?4 AND s.account_id=i.receiver_account_id
@@ -61,7 +61,7 @@ export async function ownPrivateCallSignal(
     const result = await db.prepare(`
       UPDATE private_call_invitations SET phase=?5,
         accepted_session_hash=CASE WHEN ?5='accepted' THEN ?1 ELSE NULL END,
-        terminal_at_ms=CASE WHEN ?5='accepted' THEN NULL ELSE max(?4,created_at_ms) END,
+        terminal_at_ms=CASE WHEN ?5='accepted' THEN NULL ELSE max(?4,created_at_ms,unixepoch()*1000) END,
         history_outcome=CASE WHEN ?5='accepted' THEN NULL ELSE ?5 END
       WHERE id IN (
         SELECT i.id FROM private_call_invitations AS i ${PARTICIPANT}
@@ -84,7 +84,7 @@ export async function ownPrivateCallSignal(
   const { results } = await db.prepare(`
     SELECT CASE WHEN s.account_id=i.caller_account_id THEN 'caller' ELSE 'receiver' END AS role,
       CASE WHEN i.phase<>'ringing' THEN i.phase
-           WHEN i.ring_deadline_ms<=?4 THEN 'missed'
+           WHEN i.ring_deadline_ms<=MAX(?4,unixepoch()*1000) THEN 'missed'
            WHEN ${CURRENT_RING} THEN 'ringing'
            ELSE 'pending' END AS phase,
       i.ring_deadline_ms AS ringDeadlineMs

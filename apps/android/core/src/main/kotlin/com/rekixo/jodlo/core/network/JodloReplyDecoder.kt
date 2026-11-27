@@ -372,6 +372,33 @@ object JodloReplyDecoder {
             HierarchyPage(language, level, parent, items, cursor)
         }
 
+    fun serviceSuggestions(reply: TransportReply): ApiOutcome<ApprovedServiceSuggestions> =
+        decode(reply) { data ->
+            data.keysOnly(setOf("categoryId", "language", "items", "nextCursor"))
+            val category = data.required("categoryId").str()
+            if (!categoryId.matches(category)) bad()
+            val language = when (data.required("language").str()) {
+                "hi" -> Language.HI
+                "en" -> Language.EN
+                else -> bad()
+            }
+            val rows = data.required("items").arr()
+            if (rows.size > 25) bad()
+            val items = rows.map { item ->
+                val row = item.obj()
+                row.keysOnly(setOf("id", "name"))
+                val id = row.required("id").str()
+                val name = row.required("name").str()
+                if (!validApprovedServiceId(id) || name.isBlank() ||
+                    name.codePointCount(0, name.length) > 120 || name.any { Character.isISOControl(it) }) bad()
+                ApprovedServiceSuggestion(id, name)
+            }
+            if (items.zipWithNext().any { (a,b) -> a.id >= b.id }) bad()
+            val next = data.optionalString("nextCursor")
+            if (next != null && (!validApprovedServiceId(next) || next != items.lastOrNull()?.id)) bad()
+            ApprovedServiceSuggestions(category, language, items, next)
+        }
+
     /** Strict owner-bound identity; a hash is not checkout authorization. */
     fun playAccountBinding(reply: TransportReply): ApiOutcome<PlayAccountBinding> =
         decode(reply) { data ->
@@ -397,6 +424,42 @@ object JodloReplyDecoder {
                     val minutes=data.required("minutes").number()
                     if (minutes !in 1..500 || id != "jodlo.minutes" + minutes) bad()
                     PlayReceiptScreening.ScreenedPendingSettlement(id,minutes)
+                }
+                else -> bad()
+            }
+        }
+
+    fun playSettlementCapability(reply: TransportReply): ApiOutcome<PlaySettlementCapability> =
+        decode(reply) { data ->
+            data.keysOnly(setOf("accountBinding", "policyVersion", "settlementEnabled"))
+            val binding = data.required("accountBinding").str()
+            val policy = data.required("policyVersion").str()
+            if (!validJodloPlayAccountBinding(binding) || policy != PLAY_MINUTE_POLICY_VERSION ||
+                !data.required("settlementEnabled").bool()) bad()
+            PlaySettlementCapability(binding, policy)
+        }
+
+    fun playPurchaseSettlement(reply: TransportReply): ApiOutcome<PlayPurchaseSettlement> =
+        decode(reply) { data ->
+            when (data.required("status").str()) {
+                "settled" -> {
+                    data.keysOnly(setOf("status", "productId", "minutes"))
+                    val id = data.required("productId").str()
+                    val minutes = data.required("minutes").number()
+                    if (minutes !in 1..500 || id != "jodlo.minutes" + minutes) bad()
+                    PlayPurchaseSettlement.Settled(id, minutes)
+                }
+                "pending_reconciliation" -> {
+                    data.keysOnly(setOf("status"))
+                    PlayPurchaseSettlement.PendingReconciliation
+                }
+                "not_eligible" -> {
+                    data.keysOnly(setOf("status"))
+                    PlayPurchaseSettlement.NotEligible
+                }
+                "manual_review" -> {
+                    data.keysOnly(setOf("status"))
+                    PlayPurchaseSettlement.ManualReview
                 }
                 else -> bad()
             }
@@ -874,28 +937,30 @@ object JodloReplyDecoder {
         CallInvitation(id, callDeadline(data))
     }
 
+    /** The history page and v5 owner export share one exact row contract. */
+    private fun callHistoryEntry(row: JsonObject): CallHistoryEntry {
+        row.keysOnly(setOf("id", "direction", "outcome", "endedAt", "connectedSeconds"))
+        val id = row.required("id").str()
+        val direction = row.required("direction").str()
+        val outcome = CallHistoryOutcome.entries.firstOrNull {
+            it.wire == row.required("outcome").str()
+        } ?: bad()
+        val endedAt = (row.required("endedAt") as? JsonPrimitive)?.takeUnless { it.isString }
+            ?.content?.toLongOrNull() ?: bad()
+        val duration = row.required("connectedSeconds").number()
+        if (!Regex("[A-Za-z0-9_-]{8,128}").matches(id) ||
+            direction !in setOf("incoming", "outgoing") || endedAt !in 1..253402300799L ||
+            duration < 0 || (outcome != CallHistoryOutcome.ENDED && duration != 0)
+        ) bad()
+        return CallHistoryEntry(id, direction == "incoming", outcome, endedAt)
+    }
+
     fun callHistory(reply: TransportReply): ApiOutcome<CallHistoryPage> = decode(reply) { data ->
         data.keysOnly(setOf("items", "nextCursor"))
         val items = data.required("items") as? JsonArray ?: bad()
         if (items.size > 25) bad()
-        val ids = mutableSetOf<String>()
-        val entries = items.map { item ->
-            val row = item as? JsonObject ?: bad()
-            row.keysOnly(setOf("id", "direction", "outcome", "endedAt", "connectedSeconds"))
-            val id = row.required("id").str()
-            val direction = row.required("direction").str()
-            val outcome = CallHistoryOutcome.entries.firstOrNull {
-                it.wire == row.required("outcome").str()
-            } ?: bad()
-            val endedAt = (row.required("endedAt") as? JsonPrimitive)?.takeUnless { it.isString }
-                ?.content?.toLongOrNull() ?: bad()
-            val duration = row.required("connectedSeconds").number()
-            if (!Regex("[A-Za-z0-9_-]{8,128}").matches(id) || !ids.add(id) ||
-                direction !in setOf("incoming", "outgoing") || endedAt !in 1..253402300799L ||
-                duration < 0 || (outcome != CallHistoryOutcome.ENDED && duration != 0)
-            ) bad()
-            CallHistoryEntry(id, direction == "incoming", outcome, endedAt)
-        }
+        val entries = items.map { callHistoryEntry(it.obj()) }
+        if (entries.map { it.id }.toSet().size != entries.size) bad()
         val cursor = data.optionalString("nextCursor")
         if (cursor != null && (entries.size != 25 || cursor != entries.last().id)) bad()
         CallHistoryPage(entries, cursor)
@@ -970,13 +1035,15 @@ object JodloReplyDecoder {
     fun accountDataExport(reply: TransportReply): ApiOutcome<OwnAccountDataExport> =
         decode(reply) { data ->
             val version = data.required("schemaVersion").number()
-            if (version !in 1..3) bad()
+            if (version !in 1..5) bad()
             data.keysOnly(setOf(
                 "schemaVersion", "account", "identity", "services",
                 "callPreferences", "availabilityPreferences", "blocksMade",
                 "abuseCounters", "sessions", "limitations",
-            ) + if (version == 3) setOf("serviceDetails") else emptySet(),
-                if (version == 3) setOf("servicePhotos", "serviceReports", "serviceAppeals") else emptySet())
+            ) + (if (version >= 3) setOf("serviceDetails") else emptySet()) +
+                (if (version >= 4) setOf("minuteBalance", "minuteActivity", "purchaseStatus", "callUsage", "refundReviews")
+                    else emptySet()) + (if (version >= 5) setOf("callHistory") else emptySet()),
+                if (version >= 3) setOf("servicePhotos", "serviceReports", "serviceAppeals") else emptySet())
             val account = data.required("account").obj()
             account.keysOnly(setOf(
                 "accountId", "createdAt", "workerEnabled", "workerSince",
@@ -1020,32 +1087,90 @@ object JodloReplyDecoder {
                     row.required("moderationStatus").str() !in setOf("allowed", "hidden")) bad()
                 safeText(row.required("createdAt"), 10, 48)
             }
-            if (version == 3) rows("serviceDetails", 1000) { row ->
+            if (version >= 3) rows("serviceDetails", 1000) { row ->
                 if (!opaqueId.matches(row.required("listingId").str()) ||
                     !categoryId.matches(row.required("categoryId").str()) ||
                     row.required("status").str() !in setOf("pending", "approved", "rejected")) bad()
                 positiveRevision(row.required("revision"))
                 serviceProfile(JsonObject(row - setOf("listingId", "categoryId", "status", "revision")))
             }
-            if (version == 3 && "servicePhotos" in data) rows("servicePhotos", 1000) { row ->
+            if (version >= 3 && "servicePhotos" in data) rows("servicePhotos", 1000) { row ->
                 row.keysOnly(setOf("listingId", "status", "revision"))
                 if (!opaqueId.matches(row.required("listingId").str()) ||
                     row.required("status").str() !in setOf("pending", "approved", "rejected")) bad()
                 positiveRevision(row.required("revision"))
             }
-            if (version == 3 && "serviceReports" in data) rows("serviceReports", 1000) { row ->
+            if (version >= 3 && "serviceReports" in data) rows("serviceReports", 1000) { row ->
                 row.keysOnly(setOf("listingId", "reason", "receivedAt"))
                 if (!opaqueId.matches(row.required("listingId").str()) ||
                     ServiceReportReason.entries.none { it.wire == row.required("reason").str() } ||
                     row.required("receivedAt").longValue() < 0L) bad()
             }
-            if (version == 3 && "serviceAppeals" in data) rows("serviceAppeals", 1000) { row ->
+            if (version >= 3 && "serviceAppeals" in data) rows("serviceAppeals", 1000) { row ->
                 row.keysOnly(setOf("listingId", "reason", "status", "appealReason"))
                 val appeal = row.optionalString("appealReason")
                 if (!opaqueId.matches(row.required("listingId").str()) ||
                     ServiceReportReason.entries.none { it.wire == row.required("reason").str() } ||
                     ServiceCaseStatus.entries.none { it.wire == row.required("status").str() } ||
                     appeal != null && ServiceAppealReason.entries.none { it.wire == appeal }) bad()
+            }
+            if (version >= 4) {
+                fun seconds(element: JsonElement, allowZero: Boolean = false): Int =
+                    element.number().also { if (it < (if (allowZero) 0 else 1)) bad() }
+                fun timestamp(element: JsonElement): Long =
+                    element.longValue().also { if (it !in 1..9_999_999_999_999_999L) bad() }
+                fun product(row: JsonObject) {
+                    val value = seconds(row.required("seconds"))
+                    if (value % 60 != 0 || value > 30_000 ||
+                        row.required("productId").str() != "jodlo.minutes" + value / 60) bad()
+                }
+                rows("minuteBalance", 1) { row ->
+                    row.keysOnly(setOf("availableSeconds", "reservedSeconds", "revision"))
+                    seconds(row.required("availableSeconds"), true)
+                    seconds(row.required("reservedSeconds"), true)
+                    if (row.required("revision").number() < 0) bad()
+                }
+                rows("minuteActivity", 1000) { row ->
+                    row.keysOnly(setOf("kind", "seconds", "occurredAtMs"))
+                    if (row.required("kind").str() !in setOf("purchase_grant", "verified_usage")) bad()
+                    seconds(row.required("seconds"))
+                    timestamp(row.required("occurredAtMs"))
+                }
+                rows("purchaseStatus", 1000) { row ->
+                    row.keysOnly(setOf("productId", "seconds", "status", "updatedAtMs") +
+                        if (version >= 5) setOf("environment") else emptySet())
+                    product(row)
+                    if (version >= 5 && row.required("environment").str() !in
+                        setOf("production", "license_test")) bad()
+                    if (row.required("status").str() !in setOf("ready", "sending", "unknown", "consumed", "void_hold")) bad()
+                    timestamp(row.required("updatedAtMs"))
+                }
+                rows("callUsage", 1000) { row ->
+                    row.keysOnly(setOf("startedAtMs", "endedAtMs", "status", "reservedSeconds", "chargedSeconds"))
+                    val start = timestamp(row.required("startedAtMs"))
+                    val end = row.required("endedAtMs").takeUnless { it == JsonNull }?.let(::timestamp)
+                    val status = row.required("status").str()
+                    if (status !in setOf("active", "settled") || end != null && end < start) bad()
+                    val reserved = seconds(row.required("reservedSeconds"), true)
+                    val charged = seconds(row.required("chargedSeconds"), true)
+                    if (charged > reserved || status == "active" && charged != 0) bad()
+                }
+                rows("refundReviews", 1000) { row ->
+                    row.keysOnly(setOf("productId", "seconds", "reason", "status", "openedAtMs", "resolvedAtMs"))
+                    product(row)
+                    if (row.required("reason").str() !in setOf("one_time_canceled", "voided_purchase")) bad()
+                    val status = row.required("status").str()
+                    val opened = timestamp(row.required("openedAtMs"))
+                    val resolved = row.required("resolvedAtMs").takeUnless { it == JsonNull }?.let(::timestamp)
+                    if (status !in setOf("open", "released") || resolved != null && resolved < opened ||
+                        (status == "released") != (resolved != null)) bad()
+                }
+            }
+            if (version >= 5) {
+                val historyIds = mutableSetOf<String>()
+                rows("callHistory", 1000) { row ->
+                    if (!historyIds.add(callHistoryEntry(row).id)) bad()
+                }
             }
             rows("callPreferences", 1) { row ->
                 row.keysOnly(setOf("callsEnabled", "revision"))

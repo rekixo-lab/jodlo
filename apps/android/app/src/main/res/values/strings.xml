@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">JODLO</string>
-    <string name="discovery_subtitle">Explore approved services. No location or account information is collected in guest mode.</string>
+    <string name="discovery_subtitle">Browse approved work categories without signing in or sharing GPS.</string>
     <string name="language_hindi">हिन्दी</string>
     <string name="language_english">English</string>
     <string name="no_api_origin">Live catalog is not connected. An approved HTTPS API origin must be configured at build time.</string>
@@ -81,8 +81,8 @@
     <string name="worker_recheck_not_proof">Current visibility is not proof that the prior write committed.</string>
     <string name="worker_acknowledge_uncertainty">Acknowledge uncertain result</string>
     <string name="worker_review_acknowledged">Uncertainty acknowledged, not resolved. Recheck server state before a new action.</string>
-    <string name="worker_dev_notice">Worker Google sign-in requires a configured JODLO API and Google client. Internet voice calls, location discovery and payments are not yet available.</string>
-    <string name="worker_configured_notice">Google sign-in is verified by the JODLO API. Internet voice calls, location discovery and payments are not yet available.</string>
+    <string name="worker_dev_notice">Sign-in is unavailable in this build. You can still browse services and manage Saved.</string>
+    <string name="worker_configured_notice">Use the same Google account to manage your services. Review each change before confirming; publication does not verify identity.</string>
     <string name="customer_more_categories">Load more categories</string>
     <string name="customer_more_listings">Load more public listings</string>
     <string name="customer_page_failed">Next page could not be verified. Earlier rows remain visible; use Refresh if listings have changed.</string>
@@ -147,8 +147,8 @@
     <string name="guided_post_step">Create a service · Step 2: Review</string>
     <string name="guided_post_before_review">Step 1 complete: you selected an approved service category. Check it before making your listing public.</string>
     <string name="guided_post_review">Review selected service</string>
-    <string name="guided_post_review_notice">Confirm that this is the work you offer. Publishing uses your shared Worker account and only the approved Category. No location, price, experience or photos are collected in this version.</string>
-    <string name="guided_post_public_data">Customers currently see the Category and a Listing reference only. Publication is not identity verification or permission to start calls.</string>
+    <string name="guided_post_review_notice">Confirm that this is the work you offer. This step publishes your selected Category. After publishing, you can choose a service city and submit optional details and a photo for review.</string>
+    <string name="guided_post_public_data">A new service shows its Category and reference. Optional service details and photos appear only after review. Publication is not identity verification or permission to start calls.</string>
     <string name="guided_post_back">Go back</string>
     <string name="guided_unpublish_review">Review service removal</string>
     <string name="guided_unpublish_warning">Unpublishing removes this service from public discovery. Confirm only if you want to stop showing this listing. This does not delete your account.</string>
@@ -161,7 +161,7 @@
     <string name="worker_editor_scope_intro">Only a currently approved Category can be saved. Check the exact scope before you continue.</string>
     <string name="worker_editor_review_scope">Review Category-only disclosure</string>
     <string name="worker_editor_scope_public">Public when eligible: the approved Category and an opaque Service reference. A publish or edit may be rejected or later hidden by the server; it is not Worker verification, online status or calling permission.</string>
-    <string name="worker_editor_scope_locked">Not collected or editable in this version: Worker name, work description, experience, rate, location or service area, photos, phone, verification or contact. These need separate approval, consent and moderation; this review does not grant them.</string>
+    <string name="worker_editor_scope_locked">This step changes only the service Category. Manage the display name, description, experience, rate, city and photo in their separate service controls. It does not verify credentials or grant calling permission.</string>
     <string name="worker_edit_category">Edit my service category</string>
     <string name="worker_edit_heading">Edit existing service · choose a new category</string>
     <string name="worker_edit_existing_category">Current category: %1$s</string>
@@ -216,7 +216,7 @@
     <string name="category_label_lookup_limited">For safety, this lookup resolves up to 50 different Categories at a time. Other IDs remain visible.</string>
     <string name="tab_feed">Services</string>
     <string name="feed_heading">Public services across categories</string>
-    <string name="feed_privacy_notice">Only currently published, eligible public service references are shown. No location, account, phone number, verified identity or calling availability is requested. Open one service to check its current public status before saving.</string>
+    <string name="feed_privacy_notice">Browse currently published, eligible public services without sign-in or GPS. A city filter sends only the city you chose. Open a service to check its current public details; publication does not verify identity or calling availability.</string>
     <string name="feed_quick_filters">Quick filters from this feed</string>
     <string name="feed_all_categories">All categories</string>
     <string name="feed_refresh">Refresh public services</string>
@@ -251,13 +251,13 @@
     <string name="help_saved_detail">Bookmarks are stored only on this device, not synced to your account. Open Saved to check public status, remove individual references or clear them. You can also Hide an unwanted Service locally and later restore it in Hidden; this is not a server block or report. Clearing Saved does not erase account or provider records.</string>
     <string name="help_open_saved">Manage or clear Saved services</string>
     <string name="help_account_heading">My account data and sessions</string>
-    <string name="help_account_detail">After Google sign-in, Account can export current JODLO database records to a document location you choose and sign out on all devices. Exports may include private identity details; choosing cloud storage can upload the file. An export does not cover external providers or backups.</string>
+    <string name="help_account_detail">After Google sign-in, Account can export current JODLO database records to a document location you choose, sign out on all devices and review account deletion. Exports may include private identity details; choosing cloud storage can upload the file. An export does not cover external providers or backups.</string>
     <string name="help_open_account">Open Account controls</string>
     <string name="help_worker_heading">Worker listing controls</string>
-    <string name="help_worker_detail">Worker mode uses the same account. Workers can inspect their owned services and explicitly pause or edit an approved Category. Publishing is not identity verification. Real in-app voice calls and Nearby Worker matching are not available.</string>
+    <string name="help_worker_detail">Worker mode uses the same account. Workers can publish or pause their services, edit the Category, submit details and a photo for review, choose a service city and manage call preferences. Publishing is not identity verification. City results use the chosen service city, not GPS or distance. Voice calls, when available, require current service eligibility and consent.</string>
     <string name="help_open_worker">Open Worker controls</string>
     <string name="help_rights_heading">Deletion, reporting and support</string>
-    <string name="help_rights_detail">Full account deletion, backup/provider erasure, abuse reports, appeals and a verified staffed support contact have not yet been implemented or approved. Export and sign-out do NOT delete account data. No deletion request is submitted by opening this screen.</string>
+    <string name="help_rights_detail">Open Account to review deletion of your active JODLO account, services and sessions. A fresh sign-in and explicit confirmation are required. Backups, external provider records and files on this phone are outside that deletion. Signed-in users can report a service from its safety controls; Workers can review moderation and appeal from their service controls. Export and sign-out do not delete account data. Opening Help submits no deletion request or report.</string>
     <string name="help_policy_pending">Legal Privacy Policy, Terms, data-retention windows and support contact still require review before public release. Do not treat this help page as those legal documents.</string>
     <string name="help_back_home">Back to Home</string>
     <string name="hidden_tab">Hidden</string>
@@ -595,7 +595,7 @@
     <string name="play_overview_readonly_notice">This is a read-only account preview, not a payment receipt or an offer to buy.</string>
     <string name="play_overview_refresh">Check current minute balance and available pack sizes</string>
     <string name="play_overview_loading">Checking your current account…</string>
-    <string name="play_overview_balance">Call time in account ledger: %1$d min %2$d sec</string>
+    <string name="play_overview_balance">Available call time: %1$d min %2$d sec</string>
     <string name="play_overview_balance_notice">This balance is shown only after a fresh account check. It does not prove a Google Play purchase.</string>
     <string name="play_overview_packs_title">Proposed minute packs (not for sale yet)</string>
     <string name="play_overview_pack">%1$d minutes</string>
@@ -629,4 +629,38 @@
     <string name="navigation_manage_service">Manage service</string>
     <string name="navigation_service_photo">Service photo</string>
     <string name="share_public_service">Share service link</string>
+    <string name="play_overview_reservation_notice">An active call may reserve some minutes temporarily. Unused reserved time becomes available after the call is checked.</string>
+    <string name="play_purchase_title">Get call minutes</string>
+    <string name="play_purchase_intro">Choose a call-time pack. Google Play shows the price and handles payment; your JODLO account updates after verification.</string>
+    <string name="play_purchase_google_price">Google Play price: %1$s</string>
+    <string name="play_purchase_price_unavailable">Check current Google Play prices to continue. An unavailable pack cannot be purchased.</string>
+    <string name="play_purchase_refresh_prices">Check Google Play prices</string>
+    <string name="play_purchase_continue">Continue with Google Play</string>
+    <string name="play_purchase_recover">Check previous purchase for this pack</string>
+    <string name="play_purchase_ready">Choose a pack. You can check a previous purchase without starting a new checkout.</string>
+    <string name="play_purchase_loading">Loading current Google Play prices…</string>
+    <string name="play_purchase_checking">Checking your account and Google Play…</string>
+    <string name="play_purchase_opened">Complete or close the Google Play checkout. If the result is missing, check the previous purchase.</string>
+    <string name="play_purchase_pending">Payment is pending in Google Play. Wait for payment to complete, then check this purchase. Do not buy again to retry.</string>
+    <string name="play_purchase_canceled">Google Play checkout was canceled. You can choose a pack again.</string>
+    <string name="play_purchase_price_changed">Google Play changed the price. Review the new displayed price before continuing.</string>
+    <string name="play_purchase_unavailable">This check could not finish. Check your connection. If checkout already opened, check the previous purchase before buying again.</string>
+    <string name="play_purchase_account_changed">Your account changed or signed out. Sign in again and check the purchase from the account that bought it.</string>
+    <string name="play_purchase_recovery_available">The purchase status changed. Check the previous purchase to update this account.</string>
+    <string name="play_purchase_no_purchase">No recoverable purchase for this pack was found for this account. Pending payments may finish later. Refresh your call-time balance before buying again.</string>
+    <string name="play_purchase_manual_review">This purchase needs individual review. Keep your Google Play receipt and contact JODLO support. Do not buy again to retry.</string>
+    <string name="play_purchase_settling">Verifying this purchase and updating your account…</string>
+    <string name="play_purchase_settled">Purchase confirmed. Your current call-time balance is being refreshed below.</string>
+    <string name="play_purchase_reconciling">The purchase is still being reconciled. Some minutes may already appear in your balance. Check the previous purchase later; do not buy again to retry.</string>
+    <string name="play_purchase_not_eligible">This purchase could not be confirmed for this account. Check the Google Play account used to buy it and contact support if needed.</string>
+    <string name="play_purchase_uncertain">The purchase result could not be confirmed. Your balance is being refreshed. Check the previous purchase before starting another checkout.</string>
+    <string name="call_admission_help">This call could not start. The service may be unavailable, or your available call time may be too low.</string>
+    <string name="call_open_minute_account">Check account and call minutes</string>
+    <string name="worker_service_examples_load">Show service examples for this category</string>
+    <string name="worker_service_examples_loading">Loading reviewed service examples…</string>
+    <string name="worker_service_examples_unavailable">Examples are unavailable right now. You can still write your service description.</string>
+    <string name="worker_service_examples_scope">Tap work you actually offer to add it to your description. These are category examples; review your description before submitting.</string>
+    <string name="worker_service_examples_empty">No reviewed examples are available for this category yet. Describe your own service above.</string>
+    <string name="worker_service_examples_more">More service examples</string>
+    <string name="play_account_overview_intro">See your available call time, recent activity and minute packs.</string>
 </resources>

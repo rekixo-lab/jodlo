@@ -10,7 +10,7 @@
  * Actual "wrangler deploy --config <domain file>" attaches the public host
  * and is an intentional OPERATOR RELEASE, not what this script does.
  */
-import { readFile, open } from "node:fs/promises";
+import { readFile, open, rename } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { generatedPath as privateConfigPath, verifyProductionConfig } from "./prepare-production-wrangler.mjs";
@@ -50,6 +50,14 @@ export function buildDomainConfig(privateConfig) {
   return config;
 }
 
+/** Explicit local refresh after configuring operations; never change account
+ * or D1 identity while refreshing an existing release config. */
+export function refreshDomainConfig(existing,privateConfig){
+  const old=verifyDomainConfig(existing),next=verifyProductionConfig(privateConfig);
+  if(old.accountId!==next.accountId||old.databaseId!==next.databaseId)throw Error("Domain refresh cannot change production account or database");
+  return buildDomainConfig(privateConfig);
+}
+
 async function readJson(path) {
   return JSON.parse(await readFile(path, "utf8"));
 }
@@ -65,26 +73,34 @@ async function main(mode) {
       await file.close();
     }
     process.stdout.write("Exact JODLO Custom Domain config generated locally. No DNS/Worker deployment.\n");
+  } else if (mode === "--refresh") {
+    const config=refreshDomainConfig(await readJson(publicConfigPath),await readJson(privateConfigPath));
+    const next=publicConfigPath+".next",file=await open(next,"wx",0o600);
+    try{await file.writeFile(JSON.stringify(config,null,2)+"\n","utf8");}finally{await file.close();}
+    await rename(next,publicConfigPath);
+    process.stdout.write("Exact-host release config refreshed LOCALLY from the same owner account/D1. No DNS or provider action.\n");
   } else if (mode === "--check") {
     const config = await readJson(publicConfigPath);
     const actual = verifyDomainConfig(config);
     const privateConfig = await readJson(privateConfigPath);
     const expected = verifyProductionConfig(privateConfig);
+    const {routes,...domainPrivate}=config;
     if (actual.accountId !== expected.accountId ||
         actual.databaseId !== expected.databaseId ||
         JSON.stringify(config.ratelimits) !== JSON.stringify(privateConfig.ratelimits) ||
-        config.compatibility_date !== privateConfig.compatibility_date) {
+        config.compatibility_date !== privateConfig.compatibility_date ||
+        JSON.stringify(domainPrivate)!==JSON.stringify(privateConfig)) {
       throw new Error("Domain config drift from real owner production account/D1/rate-limit bindings");
     }
     process.stdout.write("Exact custom API hostname and real production bindings locally verified (NOT deployed).\n");
   } else {
-    throw new Error("Use --write (generate new file) or --check (verify existing file)");
+    throw new Error("Use --write, --refresh (same account/D1) or --check");
   }
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   main(process.argv[2]).catch(err => {
-    process.stderr.write("JODLO API domain preflight: " + err.message + "\n");
+    process.stderr.write("JODLO API domain preflight: " + (err instanceof SyntaxError?"Invalid local JSON configuration":err.message) + "\n");
     process.exitCode = 1;
   });
 }

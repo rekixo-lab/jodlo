@@ -1,18 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {readFileSync} from "node:fs";
+import {mkdtempSync,writeFileSync,rmSync} from "node:fs";
+import {tmpdir} from "node:os";
 import {spawnSync} from "node:child_process";
-import {resolve,dirname} from "node:path";
+import {resolve,dirname,join} from "node:path";
 import {fileURLToPath} from "node:url";
-import {REVIEW_SHEET_PATH,renderPinnedFirstFiveSheet,
+import {renderPinnedFirstFiveSheet,
   assertPublishedFirstFiveSheet} from "./catalog-first-five-handoff.mjs";
 
 const ROOT=resolve(dirname(fileURLToPath(import.meta.url)),"..");
 
-test("published first-five source-only reviewer worksheet matches complete pinned data",()=>{
-  const expected=renderPinnedFirstFiveSheet();
-  const published=readFileSync(resolve(ROOT,REVIEW_SHEET_PATH),"utf8");
-  assert.equal(assertPublishedFirstFiveSheet(published,expected),true);
+test("on-demand first-five reviewer worksheet includes the complete pinned source without obsolete notes",()=>{
+  const published=renderPinnedFirstFiveSheet();
   assert.match(published,/UNAPPROVED \/ REVIEW ONLY/u);
   assert.match(published,/Qualified signoffs: 0; founder approvals: 0; production activations: 0; SQL generated: 0/u);
   assert.match(published,/This page: 5 Categories \/ 48 complete original Services/u);
@@ -47,4 +46,17 @@ test("first-five CLI is read-only and does not accept deploy, SQL or approval op
       cwd:ROOT,encoding:"utf8",timeout:90000});
     assert.notEqual(bad.status,0,option);
   }
+});
+
+test("explicit external worksheet checking rejects changed or forged review text",()=>{
+  const dir=mkdtempSync(join(tmpdir(),"jodlo-first-five-"));
+  try{
+    const path=join(dir,"worksheet.md"),expected=renderPinnedFirstFiveSheet();
+    writeFileSync(path,expected);
+    const check=()=>spawnSync(process.execPath,[resolve(ROOT,"scripts/catalog-first-five-handoff.mjs"),"--check",path],{
+      cwd:ROOT,encoding:"utf8",timeout:90000,maxBuffer:20_000_000});
+    assert.equal(check().status,0);
+    writeFileSync(path,expected.replace("UNAPPROVED / REVIEW ONLY","APPROVED"));
+    assert.notEqual(check().status,0);
+  }finally{rmSync(dir,{recursive:true,force:true});}
 });

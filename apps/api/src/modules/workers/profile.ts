@@ -1,4 +1,5 @@
 import type { D1Database } from "../../data/d1.ts";
+import { activeSessionWriteFence } from "../identity/sessions.ts";
 
 export type WorkerDraft = { status: "draft" };
 
@@ -18,15 +19,21 @@ export const OWN_DRAFT_QUERY =
 export async function ownWorkerDraft(
   db: D1Database,
   accountId: string,
+  tokenHash?: string,
 ): Promise<WorkerDraft | null> {
-  const { results } = await db.prepare(OWN_DRAFT_QUERY).bind(accountId).all<WorkerDraft>();
+  const fence = activeSessionWriteFence(accountId, tokenHash);
+  const query = OWN_DRAFT_QUERY.replace(" LIMIT 1", fence.sql + " LIMIT 1");
+  const { results } = await db.prepare(query).bind(accountId, ...fence.values).all<WorkerDraft>();
   return results[0] ?? null;
 }
 
 export async function optInAsWorker(
   db: D1Database,
   accountId: string,
+  tokenHash?: string,
 ): Promise<WorkerDraft | null> {
-  await db.prepare(OPT_IN_QUERY).bind(accountId).run();
-  return ownWorkerDraft(db, accountId);
+  const fence = activeSessionWriteFence(accountId, tokenHash);
+  const query = OPT_IN_QUERY.replace("ON CONFLICT", fence.sql + "ON CONFLICT");
+  await db.prepare(query).bind(accountId, ...fence.values).run();
+  return ownWorkerDraft(db, accountId, tokenHash);
 }

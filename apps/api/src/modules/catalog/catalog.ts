@@ -4,6 +4,7 @@ import { PUBLIC_LISTING_ELIGIBILITY } from "../workers/listings.ts";
 import { validServiceCity, type ServiceCity } from "../workers/service-area.ts";
 import { validCategoryId } from "../shared/identifiers.ts";
 import { ambiguousWorkCategoryIds, resolveConservativeWorkIntent } from "./intent-aliases.ts";
+import { APPROVED_SERVICE_HIERARCHY_SQL } from "./approved-services.ts";
 
 export type CatalogLanguage = "en" | "hi";
 export type PublicCategory = { id: string; slug: string; name: string };
@@ -270,9 +271,14 @@ export function parseCatalogSearch(params: URLSearchParams): CatalogSearchOption
  * locality, verification labels, exact GPS or seed content. All terms are bound.
  * instr() makes SQL LIKE % and _ literal, preventing wildcard amplification.
  */
-const MATCH_PUBLIC_CATEGORY_TERM =
-  "(instr(lower(name_en), lower(?)) > 0 " +
-  "OR instr(name_hi, ?) > 0 OR instr(slug, lower(?)) > 0)";
+function matchPublicCategoryTerm(alias:"categories"|"anchor"="categories"):string {
+  // A reviewed service name is a scoped search term for its Category. It is
+  // never copied from the historical archive or treated as Worker supply.
+  return "(instr(lower("+alias+".name_en),lower(?))>0 OR instr("+alias+".name_hi,?)>0 OR instr("+alias+".slug,lower(?))>0 " +
+    "OR EXISTS(SELECT 1 FROM catalog_services s WHERE s.category_id="+alias+".id AND s.is_active=1 AND "+
+    APPROVED_SERVICE_HIERARCHY_SQL+" AND (instr(lower(s.name_en),lower(?))>0 OR instr(s.name_hi,?)>0)))";
+}
+const MATCH_PUBLIC_CATEGORY_TERM=matchPublicCategoryTerm();
 
 /** One SQL statement must both validate a continuation anchor and fetch the
  * next public Category page. The earlier separate anchor SELECT permitted a
@@ -298,7 +304,7 @@ function currentAnchorSql(availableOnly:boolean,termCount:number,
   return "EXISTS (SELECT 1 FROM categories AS anchor " +
     "WHERE anchor.id=? AND anchor.sort_order=? AND anchor.is_active=1" +
     (termCount ? " AND " +
-      Array(termCount).fill(MATCH_PUBLIC_CATEGORY_TERM).join(" AND ") : "") +
+      Array(termCount).fill(matchPublicCategoryTerm("anchor")).join(" AND ") : "") +
     (availableOnly ? " AND " + eligibility : "") + ")";
 }
 const PUBLIC_CATEGORY_SORT_PAGE = " ORDER BY sort_order ASC, id ASC LIMIT ? OFFSET ?";
@@ -329,25 +335,43 @@ function searchCursorQuery(termCount:number,availableOnly:boolean,hasCursor:bool
     " ORDER BY sort_order ASC, id ASC LIMIT ?";
 }
 
-/** An active curated alias must not silently mask a DIFFERENT active literal
- * match anywhere in the full catalog, including beyond the current page.
- * Query is one bounded existence check; every term and ID is bound.
+// Existing aliases predate remapped import IDs. A reviewed canonical slug
+// preserves their meaning after import without copying legacy IDs into the
+// public ID namespace. Slugs are unique and covered by the import approval.
+// A legacy ID and a newly remapped slug can both exist; callers must treat
+// that collision as a choice, never silently pick whichever sorts first.
+const CURATED_ALIAS_MATCH="(id=? OR (id GLOB 'jodlo_c_*' AND slug=?))";
+
+/** Curated alias, competing literal terms, availability and cursor must all
+ * use one database snapshot. Separate preflight/fallback reads previously
+ * returned a cached alias even after another read observed it inactive.
  */
-function searchCursorAliasConflictQuery(termCount:number,availableOnly:boolean,
-                                        city:ServiceCity|null=null):string {
-  return "SELECT 1 AS conflict FROM categories WHERE is_active = 1 AND "+
-    Array(termCount).fill(MATCH_PUBLIC_CATEGORY_TERM).join(" AND ")+
-    (availableOnly?" AND "+cityEligibleCategoryExists("categories",city):"")+
-    " AND id <> ? LIMIT 1";
+function curatedCursorQuery(termCount:number,availableOnly:boolean,hasCursor:boolean,
+                            city:ServiceCity|null):string {
+  const fields="id,slug,name_en,name_hi,sort_order";
+  const eligible=availableOnly?" AND "+cityEligibleCategoryExists("categories",city):"";
+  return "WITH alias_candidates AS (SELECT "+fields+" FROM categories WHERE is_active=1 AND "+
+    CURATED_ALIAS_MATCH+eligible+" LIMIT 2), "+
+    "literal_categories AS (SELECT "+fields+" FROM categories WHERE is_active=1 AND "+
+    Array(termCount).fill(MATCH_PUBLIC_CATEGORY_TERM).join(" AND ")+eligible+"), "+
+    "selected_categories AS (SELECT * FROM literal_categories WHERE "+
+    "(SELECT count(*) FROM alias_candidates)<=1 AND NOT EXISTS ("+
+    "SELECT 1 FROM alias_candidates a JOIN literal_categories l ON a.id<>l.id) "+
+    "UNION ALL SELECT * FROM alias_candidates WHERE (SELECT count(*) FROM alias_candidates)=1 "+
+    "AND NOT EXISTS (SELECT 1 FROM literal_categories)) "+
+    PUBLIC_PAGE_FIELDS+"FROM selected_categories "+
+    (hasCursor?"WHERE EXISTS (SELECT 1 FROM selected_categories anchor WHERE anchor.id=? AND anchor.sort_order=?) "+
+      "AND (sort_order>? OR (sort_order=? AND id>?)) ":"")+
+    "ORDER BY sort_order ASC,id ASC LIMIT ?";
 }
 
 /** Alias resolution may only return an already active, backend-approved
  * category; optional listing availability uses the same public eligibility.
  */
 function curatedAliasQuery(availableOnly: boolean,city:ServiceCity|null=null): string {
-  return PUBLIC_CATEGORY_FIELDS + "FROM categories WHERE is_active = 1 AND id = ? " +
+  return PUBLIC_CATEGORY_FIELDS + "FROM categories WHERE is_active = 1 AND "+CURATED_ALIAS_MATCH+" " +
     (availableOnly ? "AND " + cityEligibleCategoryExists("categories",city) + " " : "") +
-    "ORDER BY sort_order ASC, id ASC LIMIT ? OFFSET ?";
+    "ORDER BY sort_order ASC, id ASC LIMIT 2";
 }
 
 /** Bound to 2..10 current curated trade IDs, no private fields or matching
@@ -357,10 +381,11 @@ function ambiguousChoicesQuery(count: number, availableOnly: boolean): string {
   if (!Number.isInteger(count) || count < 2 || count > 10)
     throw new Error("Unexpected curated trade choice count");
   return PUBLIC_CATEGORY_FIELDS +
-    "FROM categories WHERE categories.is_active = 1 AND categories.id IN (" +
-    Array(count).fill("?").join(",") + ") " +
+    "FROM categories WHERE categories.is_active = 1 AND (categories.id IN (" +
+    Array(count).fill("?").join(",") + ") OR (categories.id GLOB 'jodlo_c_*' AND categories.slug IN ("+
+    Array(count).fill("?").join(",")+"))) " +
     (availableOnly ? "AND " + ELIGIBLE_LISTING_EXISTS + " " : "") +
-    "ORDER BY categories.sort_order ASC, categories.id ASC LIMIT 10";
+    "ORDER BY categories.sort_order ASC, categories.id ASC LIMIT 11";
 }
 
 export async function searchPublicCategories(
@@ -381,42 +406,25 @@ export async function searchPublicCategories(
     // Search, not a change to legacy offset pagination or choice confirmation.
     if(alias.kind==="ambiguous")return {categories:[],nextCursor:null};
     const terms=intent??[opts.query];
-    const values=terms.flatMap(term=>[term,term,term]);
-    // For continuation, the page SQL rechecks this source Category and all
-    // search/availability terms atomically with the page itself.
-    // Cursor mode cannot emit the legacy includeChoices response. When the
-    // approved curated alias itself is active/available, a competing literal
-    // Category match must not be presented as the user's intended trade.
-    // Check the entire matching set, not merely the first 25 cursor rows.
-    // Explicit confirmation remains available through legacy includeChoices.
-    let activeAlias:PublicCategory[]=[];
+    const values=terms.flatMap(term=>[term,term,term,term,term]);
+    let sql:string,args:(string|number)[];
     if(alias.kind==="unique"){
-      const {results:aliasRows}=await db.prepare(curatedAliasQuery(opts.availableOnly,city))
-        .bind(opts.language,alias.categoryId,...(city===null?[]:[city]),1,0).all<PublicCategory>();
-      activeAlias=aliasRows.map(({id,slug,name})=>({id,slug,name}));
-      if(activeAlias.length){
-        const {results:conflicts}=await db.prepare(
-          searchCursorAliasConflictQuery(terms.length,opts.availableOnly,city),
-        ).bind(...values,...(city===null?[]:[city]),alias.categoryId).all<{conflict:number}>();
-        if(conflicts.length)return {categories:[],nextCursor:null};
+      sql=curatedCursorQuery(terms.length,opts.availableOnly,opts.after!==null,city);
+      args=[alias.categoryId,alias.categoryId,...(city===null?[]:[city]),...values,
+        ...(city===null?[]:[city]),opts.language];
+      if(opts.after)args.push(opts.after.id,opts.after.sortOrder,opts.after.sortOrder,opts.after.sortOrder,opts.after.id);
+    }else{
+      sql=searchCursorQuery(terms.length,opts.availableOnly,opts.after!==null,city);
+      args=[opts.language,...values];
+      if(city!==null)args.push(city);
+      if(opts.after){
+        args.push(opts.after.id,opts.after.sortOrder,...values);
+        if(city!==null)args.push(city);
+        args.push(opts.after.sortOrder,opts.after.sortOrder,opts.after.id);
       }
     }
-    const args:(string|number)[]=[opts.language,...values];
-    if(city!==null) args.push(city);
-    if(opts.after) {
-      args.push(opts.after.id,opts.after.sortOrder,...values);
-      if(city!==null) args.push(city);
-      args.push(opts.after.sortOrder,opts.after.sortOrder,opts.after.id);
-    }
     args.push(opts.limit+1);
-    const {results}=await db.prepare(searchCursorQuery(
-      terms.length,opts.availableOnly,opts.after!==null,city,
-    )).bind(...args).all<PublicCategory&{sortOrder:number}>();
-    if(results.length===0&&alias.kind==="unique"&&opts.after===null){
-      // A curated suggestion can only return the active, eligibility-checked
-      // Category itself, and never repeats on cursor continuation.
-      return {categories:activeAlias,nextCursor:null};
-    }
+    const {results}=await db.prepare(sql).bind(...args).all<PublicCategory&{sortOrder:number}>();
     const selected=results.slice(0,opts.limit);
     const last=selected[selected.length-1];
     return {
@@ -432,24 +440,30 @@ export async function searchPublicCategories(
     const ids=ambiguousWorkCategoryIds(opts.query);
     if (ids.length < 2) return { categories: [], nextOffset: null };
     const { results: choices }=await db.prepare(ambiguousChoicesQuery(ids.length,opts.availableOnly))
-      .bind(opts.language,...ids).all<PublicCategory>();
+      .bind(opts.language,...ids,...ids).all<PublicCategory>();
     return { categories: [], nextOffset: null, needsChoice: true,
-      choices: choices.map(({id,slug,name})=>({id,slug,name})) };
+      choices: choices.length>10?[]:choices.map(({id,slug,name})=>({id,slug,name})) };
   }
   const terms = intent ?? [opts.query];
-  const values = terms.flatMap(term => [term, term, term]);
+  const values = terms.flatMap(term => [term, term, term, term, term]);
   const sql = terms.length === 1
     ? (opts.availableOnly ? SEARCH_AVAILABLE_PUBLIC_CATEGORIES_QUERY : SEARCH_PUBLIC_CATEGORIES_QUERY)
     : searchQuery(terms.length, opts.availableOnly);
   const { results } = await db.prepare(sql)
     .bind(opts.language, ...values, opts.limit + 1, opts.offset)
     .all<PublicCategory>();
+  let mappedAlias:PublicCategory[]=[];
+  if(opts.includeChoices&&alias.kind==="unique"&&results.length){
+    const {results:rows}=await db.prepare(curatedAliasQuery(opts.availableOnly))
+      .bind(opts.language,alias.categoryId,alias.categoryId).all<PublicCategory>();
+    mappedAlias=rows;
+  }
   // A curated phrase can conflict with the *literal* name of a different
   // active trade. Opt-in clients must not treat that incidental text match as
   // the user's intended profession. Show a bounded explicit choice instead.
   // The default response stays backward compatible for existing clients.
   if (opts.includeChoices && alias.kind === "unique" &&
-      results.some(row => row.id !== alias.categoryId)) {
+      (mappedAlias.length>1||results.some(row => row.id !== alias.categoryId && !(row.id.startsWith("jodlo_c_")&&row.slug===alias.categoryId)))) {
     // Never make up a complete result set from a truncated query page.
     // Fetch at most 11 text matches (independent of client's search limit).
     const { results: literal } = await db.prepare(sql)
@@ -457,21 +471,22 @@ export async function searchPublicCategories(
     if (literal.length > 9) {
       return { categories: [], nextOffset: null, needsChoice: true, choices: [] };
     }
-    const { results: mapped } = await db.prepare(curatedAliasQuery(opts.availableOnly))
-      .bind(opts.language, alias.categoryId, 1, 0).all<PublicCategory>();
     const candidates = new Map<string, PublicCategory>();
-    for (const row of [...literal, ...mapped])
+    for (const row of [...literal, ...mappedAlias])
       candidates.set(row.id, {id:row.id,slug:row.slug,name:row.name});
     // Stable response for deterministic user confirmation.
     return { categories: [], nextOffset: null, needsChoice: true,
-      choices: [...candidates.values()].sort((a,b)=>a.id.localeCompare(b.id)) };
+      choices: candidates.size>10?[]:[...candidates.values()].sort((a,b)=>a.id.localeCompare(b.id)) };
   }
   // Preserve the pre-existing name/grammar search and its pagination.
   // Only on an actual miss try one conservative category-specific alias.
   if (results.length === 0 && alias.kind === "unique") {
+    if(opts.offset>0)return {categories:[],nextOffset:null};
     const { results: alternate } = await db.prepare(curatedAliasQuery(opts.availableOnly))
-      .bind(opts.language, alias.categoryId, opts.limit + 1, opts.offset)
+      .bind(opts.language, alias.categoryId, alias.categoryId)
       .all<PublicCategory>();
+    if(alternate.length>1)return {categories:[],nextOffset:null,
+      ...(opts.includeChoices?{needsChoice:true,choices:alternate.map(({id,slug,name})=>({id,slug,name}))}:{})};
     const suggested = alternate.slice(0, opts.limit)
       .map(({ id, slug, name }) => ({ id, slug, name }));
     return { categories: suggested, nextOffset: null };

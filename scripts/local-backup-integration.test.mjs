@@ -40,8 +40,12 @@ test("Storage Access Framework is user-driven, strict UTF8 and bounded before pa
   assert.match(ui, /pendingExport = LocalPublicServiceBackup\(saved, hidden\)/);
   assert.match(ui, /snapshot\.saved != saved \|\| snapshot\.hidden != hidden/);
   assert.match(file, /openInputStream\(uri\)/);
-  assert.match(file, /out\.size\(\) \+ count > LocalPublicServiceBackup\.MAX_BYTES/);
-  assert.match(file, /CodingErrorAction\.REPORT/g);
+  assert.match(file, /readBoundedUtf8Text\(input, LocalPublicServiceBackup\.MAX_BYTES\)/);
+  const reader=read("apps/android/core/src/main/kotlin/com/rekixo/jodlo/core/network/JodloApiCore.kt");
+  assert.match(reader, /size > maxBytes - n/);
+  assert.match(reader, /CodingErrorAction\.REPORT/g);
+  assert.match(reader, /\+\+emptyReads > MAX_EMPTY_REPLY_READS/);
+  assert.match(reader, /elapsed >= REPLY_READ_BUDGET_NANOS/);
   assert.match(file, /openOutputStream\(uri, "wt"\)/);
   // Comments may document forbidden APIs; check executable Kotlin only.
   const executableFile = file.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "");

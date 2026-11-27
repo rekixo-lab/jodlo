@@ -115,6 +115,13 @@ has 'adb -s D1 shell am start -n com.rekixo.jodlo/.MainActivity'
 echo '✓ Java 21 alone builds, installs and launches safely'
 
 reset
+export JODLO_JDK_HOME="$tmp/jdk21"
+export JODLO_JDK17_HOME="$tmp/jdk17"
+ok build
+has "java-home $tmp/jdk21"
+echo '✓ current JDK override takes precedence over a lingering legacy JDK17 setting'
+
+reset
 export JAVA_HOME="$tmp/jdk21"
 ok build
 has "java-home $tmp/jdk21"

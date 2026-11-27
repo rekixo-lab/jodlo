@@ -13,8 +13,8 @@ import com.android.billingclient.api.ProductDetails
 import com.android.billingclient.api.Purchase
 
 /**
- * Debug-only Play Billing 9.1 checkout preparation. The default Android APK,
- * all release-candidate variants and the app UI never activate this class.
+ * Explicitly configured Play Billing 9.1 checkout preparation. Default builds
+ * leave it disabled; configured candidates also require live server readiness.
  *
  * The only payment UI this can launch is Google's own BillingFlow. There is
  * no locally invented amount, offline fallback, credit, acknowledgement,
@@ -53,6 +53,7 @@ internal class JodloPlayCheckoutController(
         val productId: String,
         val binding: String,
         val displayedGooglePrice: String,
+        val ownerIsCurrent: () -> Boolean,
         val notify: (Event) -> Unit,
     ) {
         var launchStarted: Boolean = false
@@ -74,7 +75,14 @@ internal class JodloPlayCheckoutController(
 
     @Synchronized
     private fun current(attempt: Attempt): Boolean =
-        !sessionInvalidated && active === attempt
+        !sessionInvalidated && active === attempt && attempt.ownerIsCurrent()
+
+    /** Retire an uncertain foreground attempt before an explicit receipt
+     * recovery. A late ProductDetails callback cannot open a second sheet. */
+    @Synchronized
+    fun retireUncertainAttempt() {
+        active = null
+    }
 
     private fun emit(attempt: Attempt, result: Event, finish: Boolean = true) {
         val notify = synchronized(this) {
@@ -92,6 +100,7 @@ internal class JodloPlayCheckoutController(
         productId: String,
         displayedGooglePrice: String,
         currentServerBinding: String,
+        ownerIsCurrent: () -> Boolean,
         onEvent: (Event) -> Unit,
     ) {
         if (!BuildConfig.PLAY_CHECKOUT_ENABLED) {
@@ -100,14 +109,14 @@ internal class JodloPlayCheckoutController(
         }
         if (Looper.myLooper() != Looper.getMainLooper() ||
             activity.isFinishing || activity.isDestroyed ||
-            !billing.isReady || productId !in approved ||
+            !billing.isReady || productId !in approved || !ownerIsCurrent() ||
             !validJodloPlayAccountBinding(currentServerBinding) ||
             !validGoogleFormattedPrice(displayedGooglePrice)
         ) {
             onEvent(Event.Unavailable)
             return
         }
-        val attempt = Attempt(productId,currentServerBinding,displayedGooglePrice,onEvent)
+        val attempt = Attempt(productId,currentServerBinding,displayedGooglePrice,ownerIsCurrent,onEvent)
         val reserved = synchronized(this) {
             if (active != null || sessionInvalidated) false else {
                 active = attempt
@@ -123,7 +132,10 @@ internal class JodloPlayCheckoutController(
         // stale ProductDetails object nor a previously cached offer is reused.
         try {
             queryFreshProducts { response ->
-                if (!current(attempt)) return@queryFreshProducts
+                if (!current(attempt)) {
+                    emit(attempt, Event.RestoreManually)
+                    return@queryFreshProducts
+                }
                 val products = when (response) {
                     is JodloPlayBillingReadOnlyClient.ReadResult.Available ->
                         response.items
@@ -154,15 +166,18 @@ internal class JodloPlayCheckoutController(
                     // may launch at most one Google BillingFlow for this tap.
                     val firstLaunch = synchronized(this) {
                         if (sessionInvalidated || active !== attempt ||
-                            attempt.launchStarted) false
+                            attempt.launchStarted || !attempt.ownerIsCurrent()) false
                         else {
                             attempt.launchStarted = true
                             true
                         }
                     }
-                    if (!firstLaunch) return@runOnUiThread
+                    if (!firstLaunch) {
+                        if (!attempt.ownerIsCurrent()) emit(attempt, Event.RestoreManually)
+                        return@runOnUiThread
+                    }
                     if (!BuildConfig.PLAY_CHECKOUT_ENABLED || !billing.isReady ||
-                        activity.isFinishing || activity.isDestroyed
+                        activity.isFinishing || activity.isDestroyed || !attempt.ownerIsCurrent()
                     ) {
                         emit(attempt,Event.Unavailable)
                         return@runOnUiThread
@@ -202,6 +217,10 @@ internal class JodloPlayCheckoutController(
      */
     fun onPurchaseUpdated(result: BillingResult, purchases: List<Purchase>?) {
         val attempt = synchronized(this) { active } ?: return
+        if (!attempt.ownerIsCurrent()) {
+            emit(attempt, Event.RestoreManually)
+            return
+        }
         when (result.responseCode) {
             BillingClient.BillingResponseCode.USER_CANCELED ->
                 emit(attempt,Event.Canceled)

@@ -399,7 +399,7 @@ test("caller-only SQL does not ask for or compare a worker bearer",async()=>{
   const f=await fixture();
   try{
     assert.match(READ_CALLER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY,/session\.token_hash=\?/);
-    assert.match(READ_CALLER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY,/session\.expires_at>\?/);
+    assert.match(READ_CALLER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY,/session\.expires_at>MAX\(\?,unixepoch\(\)\)/);
     assert.match(READ_CALLER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY,/worker\.id<>requester\.id|requester\.id<>worker\.id/);
     assert.match(READ_CALLER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY,/pref\.account_id=worker\.id/);
     assert.match(READ_CALLER_SESSION_BOUND_AGORA_OPT_IN_TARGET_QUERY,/pref\.calls_enabled=1/);

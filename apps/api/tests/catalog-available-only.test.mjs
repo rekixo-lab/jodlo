@@ -95,7 +95,7 @@ test("many valid worker listings yield one available category; no contact, badge
     const plan=f.db.prepare("EXPLAIN QUERY PLAN "+AVAILABLE_PUBLIC_CATEGORIES_QUERY).all("en");
     assert.ok(plan.some(x=>String(x.detail).includes("idx_worker_listings_public")),JSON.stringify(plan));
     const searchPlan=f.db.prepare("EXPLAIN QUERY PLAN "+SEARCH_AVAILABLE_PUBLIC_CATEGORIES_QUERY)
-      .all("en","plumb","plumb","plumb",21,0);
+      .all("en","plumb","plumb","plumb","plumb","plumb",21,0);
     assert.ok(searchPlan.some(x=>String(x.detail).includes("idx_worker_listings_public")),JSON.stringify(searchPlan));
   } finally { f.db.close(); }
 });

@@ -4,7 +4,7 @@ import { jodloPlayPurchaseFingerprint, JODLO_PLAY_PACKAGE } from "./google-play-
 /**
  * This parser accepts UNTRUSTED Pub/Sub push JSON and returns NON-AUTHORITATIVE
  * hints. It NEVER authenticates the Pub/Sub publisher, writes D1, grants
- * minutes or triggers a consume. Future RTDN HTTP ingestion MUST verify the
+ * minutes or triggers a consume. RTDN HTTP ingestion MUST verify the
  * Google-signed OIDC JWT, exact audience + service-account identity, and an
  * approved subscription before interpreting a hint as trusted evidence.
  */
@@ -13,6 +13,26 @@ export type PlayRtdnHint = Readonly<{
   sourceKeyHash: string;
   eventTimeMs: number;
   productId: string | null;
+}>;
+export const PLAY_PENDING_REFUND_RESPONSE_MS = 24 * 60 * 60 * 1000;
+export type PlayPendingRefundHint = Readonly<{
+  kind: "pending_refund_review_hint";
+  caseId: string;
+  /** Ephemeral provider lookup input. Never persist or return the raw order. */
+  orderId: string;
+  /** Kept only in this authenticated request's memory for an explicitly
+   * queued operator recommendation. Never persist, log or expose over HTTP. */
+  pendingRefundToken: string;
+  /** Google marks this hint optional; a fresh order/receipt must still prove
+   * the owner from the existing grant when it is absent. */
+  accountBinding: string | null;
+  providerMessageId: string;
+  eventTimeMs: number;
+  responseDeadlineMs: number;
+}>;
+export type PlayRtdnEvent = PlayRtdnHint | PlayPendingRefundHint | Readonly<{
+  kind: "test_hint";
+  eventTimeMs: number;
 }>;
 
 const MAX_PUBSUB_DATA_BASE64 = 8192;
@@ -47,9 +67,9 @@ function validBase64(value: unknown): value is string {
  * a syntactically valid RTDN body is not a verified refund or cancellation.
  * Purchase hints also NEVER grant credit.
  */
-export async function decodeUntrustedJodloRtdnHint(
+export async function decodeUntrustedJodloRtdnEvent(
   envelope: unknown, nowMs: number,
-): Promise<PlayRtdnHint | null> {
+): Promise<PlayRtdnEvent | null> {
   if (!Number.isSafeInteger(nowMs) || nowMs <= 0) return null;
   const wrapper = obj(envelope);
   const message = obj(wrapper?.message);
@@ -78,6 +98,25 @@ export async function decodeUntrustedJodloRtdnHint(
       data.testNotification,
     ].filter(value => value !== undefined);
     if (categories.length !== 1) return null;
+    const test = obj(data.testNotification);
+    if (test && test.version === "1.0" && Object.keys(test).length === 1)
+      return {kind: "test_hint", eventTimeMs};
+    const pending = obj(data.pendingRefundReviewNotification);
+    if (pending && pending.version === "1.0" && pending.refundReason === 7 &&
+        typeof pending.pendingRefundToken === "string" && /^[!-~]{1,4096}$/.test(pending.pendingRefundToken) &&
+        typeof pending.orderId === "string" && /^GPA\.[A-Za-z0-9.\-]{8,120}$/.test(pending.orderId) &&
+        (pending.obfuscatedAccountId === undefined ||
+          typeof pending.obfuscatedAccountId === "string" && /^[a-f0-9]{64}$/.test(pending.obfuscatedAccountId) &&
+          pending.obfuscatedAccountId !== "0".repeat(64))) {
+      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(
+        "jodlo-play-pending-refund-v1:" + JODLO_PLAY_PACKAGE + ":" + pending.pendingRefundToken));
+      const caseId = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
+      return {kind: "pending_refund_review_hint", caseId, orderId: pending.orderId,
+        pendingRefundToken: pending.pendingRefundToken,
+        accountBinding: typeof pending.obfuscatedAccountId === "string" ? pending.obfuscatedAccountId : null,
+        providerMessageId: message.messageId,
+        eventTimeMs, responseDeadlineMs: eventTimeMs + PLAY_PENDING_REFUND_RESPONSE_MS};
+    }
 
     let kind: PlayRtdnHint["kind"];
     let token: unknown;
@@ -103,6 +142,15 @@ export async function decodeUntrustedJodloRtdnHint(
   }
 }
 
+/** Purchase-only seam for callers that cannot handle a Console connectivity
+ * probe. Neither this parser nor the event parser authenticates a publisher. */
+export async function decodeUntrustedJodloRtdnHint(
+  envelope: unknown, nowMs: number,
+): Promise<PlayRtdnHint | null> {
+  const event = await decodeUntrustedJodloRtdnEvent(envelope, nowMs);
+  return event?.kind === "test_hint" || event?.kind === "pending_refund_review_hint" ? null : event;
+}
+
 export type TrustedPlayRevocation = Readonly<{
   sourceKeyHash: string;
   reason: "one_time_canceled" | "voided_purchase";
@@ -119,20 +167,30 @@ export type TrustedPlayRevocation = Readonly<{
  */
 export async function recordTrustedPlayRevocation(
   db: D1Database, notification: TrustedPlayRevocation,
+  ownerSession?: Readonly<{accountId: string; sessionHash: string}>,
 ): Promise<"applied" | "replay" | "denied"> {
   if (!notification || typeof notification.sourceKeyHash !== "string" ||
       !/^[0-9a-f]{64}$/.test(notification.sourceKeyHash) ||
       (notification.reason !== "one_time_canceled" &&
        notification.reason !== "voided_purchase") ||
       !Number.isSafeInteger(notification.recordedAtMs) ||
-      notification.recordedAtMs <= 0)
+      notification.recordedAtMs <= 0 || (ownerSession !== undefined &&
+        (!/^[A-Za-z0-9_-]{8,128}$/.test(ownerSession.accountId) ||
+         !/^[a-f0-9]{64}$/.test(ownerSession.sessionHash))))
     return "denied";
   const { results } = await db.prepare(
     "INSERT INTO play_revocation_fences(source_key_hash,reason,recorded_at_ms) " +
-    "VALUES (?,?,?) ON CONFLICT(source_key_hash) DO NOTHING RETURNING source_key_hash",
-  ).bind(notification.sourceKeyHash,notification.reason,notification.recordedAtMs)
+    (ownerSession ? "SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM play_consume_outbox AS o " +
+      "JOIN accounts AS a ON a.id=o.account_id AND a.status='active' " +
+      "JOIN auth_sessions AS s ON s.account_id=a.id AND s.token_hash=? AND s.expires_at>unixepoch() " +
+      "WHERE o.account_id=? AND o.source_key_hash=?) " : "VALUES (?,?,?) ") +
+    "ON CONFLICT(source_key_hash) DO NOTHING RETURNING source_key_hash",
+  ).bind(notification.sourceKeyHash,notification.reason,notification.recordedAtMs,
+    ...(ownerSession ? [ownerSession.sessionHash, ownerSession.accountId, notification.sourceKeyHash] : []))
     .all<{source_key_hash:string}>();
-  return results.length === 1 ? "applied" : "replay";
+  if (results.length === 1) return "applied";
+  if (ownerSession && !await isPlayPurchaseRevoked(db, notification.sourceKeyHash)) return "denied";
+  return "replay";
 }
 
 /** Private operational visibility only, not a public HTTP route. Even a

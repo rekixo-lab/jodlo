@@ -1,5 +1,6 @@
 package com.rekixo.jodlo
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -150,6 +151,8 @@ internal fun CustomerHierarchy(
             }
         }
     }
+
+    BackHandler(onBack = ::goBack)
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),

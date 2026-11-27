@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">JODLO</string>
-    <string name="discovery_subtitle">स्वीकृत सेवाएँ देखें। अतिथि मोड में स्थान या खाते की जानकारी एकत्र नहीं होती।</string>
+    <string name="discovery_subtitle">साइन-इन या GPS साझा किए बिना स्वीकृत काम की श्रेणियाँ देखें।</string>
     <string name="language_hindi">हिन्दी</string>
     <string name="language_english">English</string>
     <string name="no_api_origin">लाइव सेवा सूची अभी जुड़ी नहीं है। बिल्ड में स्वीकृत सुरक्षित एपीआई पता जोड़ना आवश्यक है।</string>
@@ -81,8 +81,8 @@
     <string name="worker_recheck_not_proof">वर्तमान दृश्यता पिछले बदलाव की पुष्टि नहीं है।</string>
     <string name="worker_acknowledge_uncertainty">अनिश्चित परिणाम समझकर स्वीकारें</string>
     <string name="worker_review_acknowledged">अनिश्चितता स्वीकार की गई, हल नहीं हुई। नई कार्रवाई से पहले सर्वर स्थिति जाँचें।</string>
-    <string name="worker_dev_notice">इस बिल्ड में वर्कर Google प्रवेश के लिए JODLO API और Google सेटिंग आवश्यक हैं। इंटरनेट वॉइस कॉल, स्थान-आधारित खोज और भुगतान अभी उपलब्ध नहीं हैं।</string>
-    <string name="worker_configured_notice">Google प्रवेश JODLO API से सत्यापित होता है। इंटरनेट वॉइस कॉल, स्थान-आधारित खोज और भुगतान अभी उपलब्ध नहीं हैं।</string>
+    <string name="worker_dev_notice">इस बिल्ड में साइन-इन उपलब्ध नहीं है। आप सेवाएँ देख सकते हैं और Saved का उपयोग कर सकते हैं।</string>
+    <string name="worker_configured_notice">अपनी सेवाएँ संभालने के लिए उसी Google खाते का उपयोग करें। पुष्टि से पहले हर बदलाव देखें; प्रकाशन पहचान का सत्यापन नहीं करता।</string>
     <string name="customer_more_categories">और श्रेणियाँ देखें</string>
     <string name="customer_more_listings">और सार्वजनिक सेवा सूचियाँ देखें</string>
     <string name="customer_page_failed">अगले पृष्ठ की पुष्टि नहीं हुई। पहले की सूची दिख रही है; जानकारी बदली हो तो फिर से ताज़ा करें।</string>
@@ -147,8 +147,8 @@
     <string name="guided_post_step">सेवा बनाएँ · चरण 2: समीक्षा</string>
     <string name="guided_post_before_review">चरण 1 पूरा: आपने स्वीकृत सेवा श्रेणी चुनी है। सार्वजनिक करने से पहले जाँचें।</string>
     <string name="guided_post_review">चुनी हुई सेवा की समीक्षा करें</string>
-    <string name="guided_post_review_notice">पुष्टि करें कि आप यही काम करते हैं। प्रकाशन आपके उसी वर्कर खाते से होगा और केवल स्वीकृत श्रेणी भेजेगा। इस संस्करण में क्षेत्र, रेट, अनुभव या तस्वीर नहीं ली जाती।</string>
-    <string name="guided_post_public_data">ग्राहक को अभी केवल सेवा श्रेणी और सूची का संदर्भ दिखता है। प्रकाशन पहचान सत्यापन या कॉल की अनुमति नहीं है।</string>
+    <string name="guided_post_review_notice">पुष्टि करें कि आप यही काम करते हैं। इस चरण में आपकी चुनी श्रेणी प्रकाशित होगी। उसके बाद सेवा का शहर चुन सकते हैं और वैकल्पिक विवरण तथा फोटो समीक्षा के लिए भेज सकते हैं।</string>
+    <string name="guided_post_public_data">नई सेवा में उसकी श्रेणी और पहचान दिखती है। वैकल्पिक विवरण और फोटो समीक्षा के बाद ही दिखते हैं। प्रकाशन पहचान का सत्यापन या कॉल शुरू करने की अनुमति नहीं है।</string>
     <string name="guided_post_back">वापस जाएँ</string>
     <string name="guided_unpublish_review">सेवा हटाने से पहले जाँचें</string>
     <string name="guided_unpublish_warning">अप्रकाशित करने पर यह सेवा ग्राहक की सार्वजनिक खोज से हट जाएगी। यदि यही चाहते हैं तभी पुष्टि करें। इससे आपका खाता नहीं मिटेगा।</string>
@@ -161,7 +161,7 @@
     <string name="worker_editor_scope_intro">केवल अभी स्वीकृत श्रेणी सेव की जा सकती है। आगे बढ़ने से पहले जानकारी की सीमा जाँचें।</string>
     <string name="worker_editor_review_scope">केवल श्रेणी की सार्वजनिक जानकारी देखें</string>
     <string name="worker_editor_scope_public">योग्य होने पर ग्राहकों को स्वीकृत श्रेणी और सेवा की तकनीकी पहचान दिखेगी। सर्वर बदलाव अस्वीकार कर सकता है या बाद में छिपा सकता है। यह Worker सत्यापन, ऑनलाइन होने या कॉल की अनुमति का प्रमाण नहीं है।</string>
-    <string name="worker_editor_scope_locked">इस संस्करण में नहीं लिया या बदला जाता: Worker का नाम, काम का विवरण, अनुभव, दर, स्थान या सेवा क्षेत्र, फोटो, फोन, सत्यापन और संपर्क। इसके लिए अलग अनुमति, सहमति और मॉडरेशन चाहिए; यहाँ की समीक्षा इन्हें अनुमति नहीं देती।</string>
+    <string name="worker_editor_scope_locked">इस चरण में केवल सेवा की श्रेणी बदलती है। सार्वजनिक नाम, विवरण, अनुभव, दर, शहर और फोटो सेवा के अलग नियंत्रणों से बदलें। इससे योग्यता सत्यापित नहीं होती और कॉल की अनुमति नहीं मिलती।</string>
     <string name="worker_edit_category">मेरी सेवा की श्रेणी बदलें</string>
     <string name="worker_edit_heading">मौजूदा सेवा बदलें · नई श्रेणी चुनें</string>
     <string name="worker_edit_existing_category">अभी की श्रेणी: %1$s</string>
@@ -216,7 +216,7 @@
     <string name="category_label_lookup_limited">सुरक्षा के लिए एक बार में अधिकतम 50 अलग श्रेणियों के नाम मिलेंगे। बाकी की तकनीकी पहचान दिखाई देगी।</string>
     <string name="tab_feed">सेवाएँ</string>
     <string name="feed_heading">सभी श्रेणियों की सार्वजनिक सेवाएँ</string>
-    <string name="feed_privacy_notice">केवल वर्तमान में प्रकाशित और पात्र सार्वजनिक सेवा संदर्भ दिखाए जाते हैं। स्थान, खाता, फ़ोन नंबर, सत्यापित पहचान या कॉल उपलब्धता नहीं माँगी जाती। सहेजने से पहले सेवा खोलकर उसकी वर्तमान सार्वजनिक स्थिति जाँचें।</string>
+    <string name="feed_privacy_notice">बिना साइन-इन या GPS के वर्तमान में प्रकाशित और पात्र सार्वजनिक सेवाएँ देखें। शहर का फ़िल्टर केवल आपका चुना हुआ शहर भेजता है। सेवा खोलकर उसके मौजूदा सार्वजनिक विवरण जाँचें; प्रकाशन पहचान या कॉल उपलब्धता का सत्यापन नहीं है।</string>
     <string name="feed_quick_filters">इस सूची से त्वरित फ़िल्टर</string>
     <string name="feed_all_categories">सभी श्रेणियाँ</string>
     <string name="feed_refresh">सार्वजनिक सेवाएँ ताज़ा करें</string>
@@ -251,13 +251,13 @@
     <string name="help_saved_detail">बुकमार्क केवल इस फोन पर रखे जाते हैं, खाते में सिंक नहीं होते। Saved में सार्वजनिक स्थिति जाँचें, पहचान हटाएँ या सब साफ करें। अवांछित Service इस फोन पर छिपाकर बाद में Hidden से फिर दिखा सकते हैं; यह सर्वर पर Block या शिकायत नहीं है। Saved हटाने से खाता या सेवा प्रदाता के रिकॉर्ड नहीं मिटते।</string>
     <string name="help_open_saved">Saved सेवाएँ देखें या साफ करें</string>
     <string name="help_account_heading">मेरा खाता डेटा और सत्र</string>
-    <string name="help_account_detail">Google साइन-इन के बाद Account से वर्तमान JODLO डेटाबेस रिकॉर्ड चुनी जगह पर एक्सपोर्ट कर सकते हैं और सभी उपकरणों पर साइन-आउट कर सकते हैं। एक्सपोर्ट में निजी पहचान हो सकती है; क्लाउड जगह चुनने पर फाइल अपलोड हो सकती है। बाहरी सेवा प्रदाता और बैकअप रिकॉर्ड इसमें शामिल नहीं हैं।</string>
+    <string name="help_account_detail">Google साइन-इन के बाद Account से वर्तमान JODLO डेटाबेस रिकॉर्ड चुनी जगह पर एक्सपोर्ट कर सकते हैं, सभी उपकरणों पर साइन-आउट कर सकते हैं और खाता मिटाने की समीक्षा कर सकते हैं। एक्सपोर्ट में निजी पहचान हो सकती है; क्लाउड जगह चुनने पर फाइल अपलोड हो सकती है। बाहरी सेवा प्रदाता और बैकअप रिकॉर्ड इसमें शामिल नहीं हैं।</string>
     <string name="help_open_account">Account नियंत्रण खोलें</string>
     <string name="help_worker_heading">Worker सेवा नियंत्रण</string>
-    <string name="help_worker_detail">Worker मोड में यही खाता इस्तेमाल होता है। Worker अपनी सेवाएँ जाँच, रोक या स्वीकृत श्रेणी बदल सकते हैं। प्रकाशित सेवा पहचान का सत्यापन नहीं है। वास्तविक इंटरनेट कॉल और आसपास के Worker का मिलान अभी उपलब्ध नहीं है।</string>
+    <string name="help_worker_detail">Worker मोड में यही खाता इस्तेमाल होता है। Worker अपनी सेवाएँ प्रकाशित या रोक सकते हैं, श्रेणी बदल सकते हैं, विवरण और फोटो समीक्षा के लिए भेज सकते हैं, सेवा का शहर चुन सकते हैं और कॉल की अनुमति बदल सकते हैं। प्रकाशित सेवा पहचान का सत्यापन नहीं है। शहर के परिणाम चुने हुए सेवा शहर पर आधारित हैं, GPS या दूरी पर नहीं। वॉइस कॉल उपलब्ध होने पर भी सेवा की वर्तमान पात्रता और सहमति आवश्यक हैं।</string>
     <string name="help_open_worker">Worker नियंत्रण खोलें</string>
     <string name="help_rights_heading">डेटा मिटाना, शिकायत और सहायता</string>
-    <string name="help_rights_detail">पूरा खाता मिटाना, बैकअप/सेवा प्रदाता के रिकॉर्ड मिटाना, दुरुपयोग की शिकायत, अपील और प्रमाणित मानव सहायता संपर्क अभी लागू या स्वीकृत नहीं हैं। एक्सपोर्ट और साइन-आउट से खाता डेटा नहीं मिटता। यह स्क्रीन खोलने से डेटा मिटाने का कोई अनुरोध नहीं जाता।</string>
+    <string name="help_rights_detail">अपना सक्रिय JODLO खाता, सेवाएँ और सत्र मिटाने की समीक्षा Account में करें। इसके लिए फिर से साइन-इन और स्पष्ट पुष्टि आवश्यक है। बैकअप, बाहरी सेवा प्रदाता के रिकॉर्ड और इस फोन की फाइलें इससे नहीं मिटतीं। साइन-इन किए उपयोगकर्ता सेवा के सुरक्षा नियंत्रणों से शिकायत भेज सकते हैं; Worker अपनी सेवा के नियंत्रणों से मॉडरेशन की स्थिति देख और अपील कर सकते हैं। एक्सपोर्ट और साइन-आउट से खाता डेटा नहीं मिटता। सहायता खोलने से खाता मिटाने का अनुरोध या शिकायत नहीं भेजी जाती।</string>
     <string name="help_policy_pending">सार्वजनिक रिलीज से पहले कानूनी गोपनीयता नीति, सेवा शर्तें, डेटा रखने की अवधि और सहायता संपर्क की समीक्षा आवश्यक है। इस सहायता पेज को कानूनी दस्तावेज न मानें।</string>
     <string name="help_back_home">होम पर लौटें</string>
     <string name="hidden_tab">छिपी सेवाएँ</string>
@@ -595,7 +595,7 @@
     <string name="play_overview_readonly_notice">यह केवल खाते की जानकारी का प्रीव्यू है, भुगतान की रसीद या खरीदने का ऑफर नहीं।</string>
     <string name="play_overview_refresh">मौजूदा मिनट-बैलेंस और पैक देखें</string>
     <string name="play_overview_loading">आपके खाते की जाँच हो रही है…</string>
-    <string name="play_overview_balance">खाते में कॉल समय: %1$d मिनट %2$d सेकंड</string>
+    <string name="play_overview_balance">उपलब्ध कॉल समय: %1$d मिनट %2$d सेकंड</string>
     <string name="play_overview_balance_notice">बैलेंस खाते की ताज़ा जाँच के बाद ही दिखता है। यह Google Play खरीद का प्रमाण नहीं है।</string>
     <string name="play_overview_packs_title">प्रस्तावित मिनट-पैक (खरीद अभी बंद)</string>
     <string name="play_overview_pack">%1$d मिनट</string>
@@ -629,4 +629,38 @@
     <string name="navigation_manage_service">सेवा प्रबंधन</string>
     <string name="navigation_service_photo">सेवा की तस्वीर</string>
     <string name="share_public_service">सेवा का लिंक शेयर करें</string>
+    <string name="play_overview_reservation_notice">चालू कॉल के लिए कुछ मिनट अस्थायी रूप से सुरक्षित रखे जा सकते हैं। कॉल की जाँच के बाद बचे हुए मिनट फिर उपलब्ध हो जाते हैं।</string>
+    <string name="play_purchase_title">कॉल के मिनट लें</string>
+    <string name="play_purchase_intro">कॉल के मिनटों का पैक चुनें। कीमत और भुगतान Google Play पर होता है। खरीद की पुष्टि के बाद आपका JODLO खाता अपडेट होता है।</string>
+    <string name="play_purchase_google_price">Google Play की कीमत: %1$s</string>
+    <string name="play_purchase_price_unavailable">आगे बढ़ने के लिए Google Play की वर्तमान कीमत देखें। अनुपलब्ध पैक खरीदा नहीं जा सकता।</string>
+    <string name="play_purchase_refresh_prices">Google Play की कीमत देखें</string>
+    <string name="play_purchase_continue">Google Play से आगे बढ़ें</string>
+    <string name="play_purchase_recover">इस पैक की पिछली खरीद जाँचें</string>
+    <string name="play_purchase_ready">एक पैक चुनें। नया भुगतान शुरू किए बिना पिछली खरीद जाँच सकते हैं।</string>
+    <string name="play_purchase_loading">Google Play की वर्तमान कीमतें आ रही हैं…</string>
+    <string name="play_purchase_checking">आपके खाते और Google Play की जाँच हो रही है…</string>
+    <string name="play_purchase_opened">Google Play पर भुगतान पूरा करें या बंद करें। नतीजा न मिले तो पिछली खरीद जाँचें।</string>
+    <string name="play_purchase_pending">Google Play पर भुगतान अभी लंबित है। भुगतान पूरा होने पर इस खरीद को जाँचें। दोबारा प्रयास के लिए नया पैक न खरीदें।</string>
+    <string name="play_purchase_canceled">Google Play का भुगतान रद्द कर दिया गया। आप फिर पैक चुन सकते हैं।</string>
+    <string name="play_purchase_price_changed">Google Play पर कीमत बदल गई है। आगे बढ़ने से पहले दिखाई गई नई कीमत देखें।</string>
+    <string name="play_purchase_unavailable">जाँच पूरी नहीं हुई। इंटरनेट कनेक्शन देखें। भुगतान की स्क्रीन खुल चुकी थी तो नया पैक लेने से पहले पिछली खरीद जाँचें।</string>
+    <string name="play_purchase_account_changed">खाता बदल गया या साइन आउट हो गया। जिस खाते से खरीदा था, उसमें साइन इन करके खरीद जाँचें।</string>
+    <string name="play_purchase_recovery_available">खरीद की स्थिति बदली है। इस खाते को अपडेट करने के लिए पिछली खरीद जाँचें।</string>
+    <string name="play_purchase_no_purchase">इस खाते के लिए इस पैक की कोई अधूरी खरीद नहीं मिली। लंबित भुगतान बाद में पूरा हो सकता है। नया पैक लेने से पहले मिनटों का बैलेंस फिर जाँचें।</string>
+    <string name="play_purchase_manual_review">इस खरीद की अलग जाँच जरूरी है। Google Play की रसीद सँभालकर JODLO सहायता से संपर्क करें। दोबारा प्रयास के लिए नया पैक न खरीदें।</string>
+    <string name="play_purchase_settling">खरीद की पुष्टि करके आपका खाता अपडेट हो रहा है…</string>
+    <string name="play_purchase_settled">खरीद की पुष्टि हो गई। नीचे आपके कॉल के मिनटों का वर्तमान बैलेंस फिर लाया जा रहा है।</string>
+    <string name="play_purchase_reconciling">खरीद का मिलान अभी चल रहा है। कुछ मिनट बैलेंस में पहले से दिख सकते हैं। बाद में पिछली खरीद जाँचें; दोबारा प्रयास के लिए नया पैक न खरीदें।</string>
+    <string name="play_purchase_not_eligible">इस खाते के लिए खरीद की पुष्टि नहीं हुई। खरीद वाला Google Play खाता जाँचें और जरूरत पर सहायता लें।</string>
+    <string name="play_purchase_uncertain">खरीद का नतीजा स्पष्ट नहीं मिला। आपका बैलेंस फिर जाँचा जा रहा है। नया भुगतान शुरू करने से पहले पिछली खरीद जाँचें।</string>
+    <string name="call_admission_help">कॉल शुरू नहीं हो सकी। सेवा अभी उपलब्ध नहीं हो सकती या आपके कॉल के मिनट कम हो सकते हैं।</string>
+    <string name="call_open_minute_account">खाता और कॉल के मिनट देखें</string>
+    <string name="worker_service_examples_load">इस श्रेणी के काम के उदाहरण देखें</string>
+    <string name="worker_service_examples_loading">जाँचे हुए काम के उदाहरण आ रहे हैं…</string>
+    <string name="worker_service_examples_unavailable">अभी उदाहरण उपलब्ध नहीं हैं। आप अपनी सेवा का विवरण खुद लिख सकते हैं।</string>
+    <string name="worker_service_examples_scope">जो काम आप करते हैं, उसे चुनकर विवरण में जोड़ें। ये श्रेणी के उदाहरण हैं; भेजने से पहले अपना विवरण जाँच लें।</string>
+    <string name="worker_service_examples_empty">इस श्रेणी के जाँचे हुए उदाहरण अभी नहीं हैं। ऊपर अपनी सेवा का विवरण लिखें।</string>
+    <string name="worker_service_examples_more">काम के और उदाहरण</string>
+    <string name="play_account_overview_intro">उपलब्ध कॉल समय, हाल की गतिविधि और मिनटों के पैक देखें।</string>
 </resources>

@@ -44,3 +44,5 @@ apps/api/wrangler.production.generated.jsonc.next
 
 # Founder-confirmed JODLO custom API domain: local real-ID release config
 apps/api/wrangler.production.domain.generated.jsonc
+apps/api/wrangler.production.domain.generated.jsonc.next
+.local-release/

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   SignJWT, createLocalJWKSet, exportJWK, exportPKCS8,
-  generateKeyPair, decodeJwt,
+  generateKeyPair, decodeJwt, errors,
 } from "jose";
 import {
   authenticateJodloPlayPubSubPush,
@@ -54,6 +54,7 @@ function body(kind="cancel",subscription=POLICY.subscription) {
   if(kind==="void")base.voidedPurchaseNotification={
     purchaseToken:TOKEN,productType:2,refundType:1,
   };
+  else if(kind==="test")base.testNotification={version:"1.0"};
   else base.oneTimeProductNotification={
     version:"1.0",sku:"jodlo.testpack5",
     notificationType:kind==="purchase"?1:2,purchaseToken:TOKEN,
@@ -113,6 +114,13 @@ test("Google-signed Pub/Sub push validates signature, exact audience/email, issu
     request("bad.jwt.signature"),POLICY,NOW,c.keys)).kind,"rejected");
   assert.equal((await authenticateJodloPlayPubSubPush(
     request(jwt,body("purchase")),POLICY,NOW,c.keys)).hint.kind,"purchase_hint");
+});
+
+test("a temporary Google signing-key timeout stays retryable instead of becoming a rejected notification",async()=>{
+  const c=await context();
+  const result=await authenticateJodloPlayPubSubPush(request(await signed(c)),POLICY,NOW,
+    async()=>{throw new errors.JWKSTimeout();});
+  assert.deepEqual(result,{kind:"unavailable"});
 });
 
 test("RTDN is 404 by default and never makes auth or provider calls without complete config",async()=>{
@@ -281,8 +289,8 @@ test("failed OAuth, mismatched Google purchase state, rate limits and purchase h
       "PURCHASED is NOT a cancellation proof");
     assert.equal(count(db,"play_revocation_fences"),0);
     assert.equal((await handleConfiguredJodloPlayRtdn(
-      request(jwt,body("purchase")),env,deps)).status,503,
-      "purchase hints are not silently acknowledged before entitlement exists");
+      request(jwt,body("purchase")),env,deps)).status,204,
+      "notification acknowledgement does not settle a purchase");
     assert.equal(count(db,"call_credit_events"),0);
     assert.equal((await handleConfiguredJodloPlayRtdn(
       request(jwt),{...env,PLAY_RTDN_LIMITER:{limit:async()=>({success:false})}},deps)
@@ -294,6 +302,52 @@ test("failed OAuth, mismatched Google purchase state, rate limits and purchase h
     assert.equal(count(db,"call_credit_events"),0);
     assert.ok(oauthCalls>0);
     assert.ok(playCalls>0);
+  }finally{db.close();}
+});
+
+test("signed Play Console probes and purchase hints acknowledge without grants, provider requests or refund quota",async()=>{
+  const c=await context();
+  const jwt=await signed(c);
+  const {db,adapter}=openLocalDatabase();
+  try{
+    let limits=0,oauth=0,provider=0;
+    const env={
+      DB:adapter,PLAY_RTDN_ENABLED:"1",
+      PLAY_RTDN_AUDIENCE:POLICY.audience,PLAY_RTDN_PUSH_EMAIL:POLICY.email,
+      PLAY_RTDN_SUBSCRIPTION:POLICY.subscription,
+      PLAY_SERVICE_ACCOUNT_EMAIL:"jodlo-androidpublisher@jodlo-2027.iam.gserviceaccount.com",
+      PLAY_SERVICE_ACCOUNT_PRIVATE_KEY:c.privateKey,
+      PLAY_RTDN_LIMITER:{limit:async()=>{limits++;return {success:false};}},
+    };
+    const deps={keys:c.keys,nowMs:NOW,
+      oauthRequest:async()=>{oauth++;throw Error("no OAuth for no-op");},
+      playRequest:async()=>{provider++;throw Error("no provider for no-op");}};
+    assert.deepEqual(await authenticateJodloPlayPubSubPush(
+      request(jwt,body("test")),POLICY,NOW,c.keys),{kind:"authenticated_noop",event:"test"});
+    for(const kind of ["test","purchase"]){
+      for(let attempt=0;attempt<2;attempt++)
+        assert.equal((await handleConfiguredJodloPlayRtdn(
+          request(jwt,body(kind)),env,deps)).status,204);
+      assert.equal((await handleConfiguredJodloPlayRtdn(
+        request("bad.jwt.signature",body(kind)),env,deps)).status,401);
+      assert.equal((await handleConfiguredJodloPlayRtdn(
+        request(jwt,body(kind,"projects/jodlo-2027/subscriptions/foreign-sub")),env,deps)).status,401);
+    }
+    for(const mutate of [
+      data=>{data.packageName="com.other.app";},
+      data=>{data.eventTimeMillis=String(NOW-8*24*60*60*1000);},
+      data=>{data.testNotification={version:"2.0"};},
+      data=>{data.testNotification={version:"1.0",purchaseToken:TOKEN};},
+      data=>{data.voidedPurchaseNotification={productType:2,refundType:1,purchaseToken:TOKEN};},
+    ]){
+      const payload=body("test");
+      const data=JSON.parse(Buffer.from(payload.message.data,"base64").toString());
+      mutate(data);payload.message.data=Buffer.from(JSON.stringify(data)).toString("base64");
+      assert.equal((await handleConfiguredJodloPlayRtdn(request(jwt,payload),env,deps)).status,401);
+    }
+    assert.equal(limits,0);assert.equal(oauth,0);assert.equal(provider,0);
+    for(const table of ["play_revocation_fences","call_credit_events","play_consume_outbox"])
+      assert.equal(count(db,table),0);
   }finally{db.close();}
 });
 

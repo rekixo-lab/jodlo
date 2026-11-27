@@ -1,11 +1,11 @@
 import { withinPlayDeadline, readPlayBoundedJson } from "./play-provider-bounds.ts";
 import { validOpaqueId } from "../shared/identifiers.ts";
+import { playPurchaseEnvironment, type PlayPurchaseEnvironment } from "./play-license-test-policy.ts";
 
-/** No JODLO Play SKUs, prices, billing launch or provider credentials are
- * authorized. This read-only, internal-only gate never mutates a ledger,
+/** This read-only, internal gate never mutates a ledger,
  * acknowledges or consumes a purchase, or grants an entitlement.
  *
- * A future trusted billing coordinator must add voided-purchase checks,
+ * The separately configured settlement coordinator must add voided-purchase checks,
  * account-bound entitlement recovery, consumption/ack handling and refunds
  * before any credit may reach recordTrustedCallCreditEvent().
  */
@@ -18,6 +18,8 @@ export type PlayPreflightDeps = Readonly<{
   /** Trusted JODLO Play Console product IDs and exact minute quantities.
    * No default products are configured: callers must supply a nonempty map. */
   approvedProducts: ReadonlyMap<string, number>;
+  /** Parsed server secret. An HTTP request must never choose these accounts. */
+  licenseTestAccountBindings?: ReadonlySet<string>;
   accessToken(): Promise<string | null>;
   request?: typeof fetch;
   timeoutMs?: number;
@@ -25,7 +27,7 @@ export type PlayPreflightDeps = Readonly<{
 }>;
 
 export type PlayPreflightResult =
-  | Readonly<{kind: "candidate"; productId: string; seconds: number; purchasedAtMs: number; sourceKeyHash: string}>
+  | Readonly<{kind: "candidate"; productId: string; seconds: number; purchasedAtMs: number; sourceKeyHash: string; purchaseEnvironment: PlayPurchaseEnvironment}>
   | Readonly<{kind: "not_eligible" | "unavailable" | "unconfigured"}>;
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -52,7 +54,7 @@ export async function jodloPlayPurchaseFingerprint(purchaseToken: string): Promi
   return hexSha256("jodlo-play-product-v2:" + JODLO_PLAY_PACKAGE + ":" + purchaseToken);
 }
 
-/** Stable, 64-character one-way account binding for a FUTURE signed-in
+/** Stable, 64-character one-way account binding for the signed-in
  * BillingFlowParams.setObfuscatedAccountId; do not send raw account IDs, email
  * or Google subject to Play. Never accept an arbitrary client-chosen binding.
  */
@@ -69,13 +71,16 @@ export async function jodloPlayAccountBinding(accountId: string): Promise<string
 export function validatePlayProductPurchaseV2(
   input: unknown, accountBinding: string,
   approvedProducts: ReadonlyMap<string, number>, nowMs: number,
-): {productId: string; seconds: number; purchasedAtMs: number} | null {
+  licenseTestAccountBindings?: ReadonlySet<string>,
+): {productId: string; seconds: number; purchasedAtMs: number; purchaseEnvironment: PlayPurchaseEnvironment} | null {
   const value = record(input);
+  const purchaseEnvironment = playPurchaseEnvironment(value?.testPurchaseContext);
   if (!value || !/^[0-9a-f]{64}$/.test(accountBinding) ||
       !Number.isSafeInteger(nowMs) || nowMs <= 0 ||
       value.kind !== "androidpublisher#productPurchaseV2" ||
       value.obfuscatedExternalAccountId !== accountBinding ||
-      value.testPurchaseContext !== undefined ||
+      !purchaseEnvironment || purchaseEnvironment === "license_test" &&
+        !licenseTestAccountBindings?.has(accountBinding) ||
       value.acknowledgementState !== "ACKNOWLEDGEMENT_STATE_PENDING" ||
       record(value.purchaseStateContext)?.purchaseState !== "PURCHASED" ||
       (value.orderId !== undefined && (typeof value.orderId !== "string" ||
@@ -99,7 +104,7 @@ export function validatePlayProductPurchaseV2(
   const minutes = approvedProducts.get(line.productId);
   if (!Number.isSafeInteger(minutes) || minutes! < 1 || minutes! > 500)
     return null;
-  return {productId: line.productId, seconds: minutes! * 60, purchasedAtMs: completedAt};
+  return {productId: line.productId, seconds: minutes! * 60, purchasedAtMs: completedAt, purchaseEnvironment};
 }
 
 function validProducts(products: ReadonlyMap<string, number>): boolean {
@@ -147,7 +152,7 @@ export async function inspectJodloPlayOneTimePurchase(
     const receipt = await readPlayBoundedJson(response, budget, MAX_RESPONSE_BYTES);
     if (budget() <= 0) return {kind: "unavailable"};
     const verified = validatePlayProductPurchaseV2(receipt, expected,
-      deps.approvedProducts, now());
+      deps.approvedProducts, now(), deps.licenseTestAccountBindings);
     if (!verified) return {kind: "not_eligible"};
     // The fingerprint is scoped to the canonical package AND token, NOT the
     // SKU, to prevent cross-SKU replay of the same Play purchase.

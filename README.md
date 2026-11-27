@@ -2,6 +2,140 @@
 
 25 नवंबर 2026 को मालिक ने पुष्टि की कि उन्होंने Finworkar को Google Play Store से हटा दिया है। सक्रिय ऐप JODLO है। ग्राहक और Worker का कोई फीचर बनाते समय पुराने ऐप का वही सफर देखकर तय करें कि JODLO में कौन-सा कदम आसान या तेज होगा। खोज, प्रोफ़ाइल और कॉल जैसे मुख्य कामों को धीमे नेटवर्क पर भी जाँचें। JODLO की वेबसाइट, उसकी होस्टिंग और ऐप का अपना बैकएंड Cloudflare पर रखने का लक्ष्य है।
 
+## वर्तमान implementation और अंतिम launch handoff — 25 नवंबर 2026
+
+यह section मौजूदा source का सार है। नीचे के तारीख वाले पुराने sections उस समय की स्थिति बताते हैं; checkout, settlement, usage और export के बारे में उनके पुराने “बाकी” वाक्य अब इस section से पढ़ें। हमारा लक्ष्य वही पूरा Customer → Worker → Call → Minutes → Support/Privacy सफर है। किसी feature का code/build पूरा होना और उसका वास्तविक provider/device acceptance अलग प्रमाण हैं।
+
+### अब जुड़े हुए app flows
+
+| भाग | मौजूदा implementation |
+| --- | --- |
+| Minute packs और checkout | Account में उसी एक BillingClient से Google का ताज़ा localized offer, user द्वारा pack selection, signed-in owner binding, Play purchase callback, pending/cancel/retry और private backend settlement। Default build में खरीद बंद; configured candidate में explicit policy के साथ उपलब्ध। |
+| Purchase settlement और recovery | `GET/POST /api/v1/me/play-settle` पर current session, approved SKU/policy, live ProductPurchaseV2 तथा void scan। D1 में एक credit/outbox, फिर Google consume; खोए response के बाद receipt recovery और GET reconciliation। Client balance या client-supplied minutes स्वीकार नहीं। |
+| Verified call minutes | Call accept/media grant पर balance reserve और signed Agora evidence का वास्तविक overlap। Hangup, original-session logout/expiry, account disable, consent/availability withdrawal, block और service/category removal call तथा billing को रोकते हैं। |
+| Refund review | Confirmed revocation पर reviewed balance hold; अलग pending chargeback inbox में original deadline, owner/provider verification और operator की explicit recommendation। किसी भी case को स्वतः bank refund नहीं माना जाता। |
+| Worker service names | Reviewed Hindi/English service labels Category search और Worker details suggestions में। Worker अपने वास्तविक काम की description चुनकर संपादित करता है; catalog नाम से कोई Worker या availability उत्पन्न नहीं होती। |
+| Account export | Version 5 में financial records के साथ अपनी call history और purchase का production/license_test environment। Versions 1–4 के पुराने contracts बने रहते हैं; provider secrets और दूसरे account का data बाहर नहीं आता। |
+| Operations और release | Schema/trigger/column/configuration readiness, private operator queues, reviewed refund evidence, production configuration, catalog reversal और combined Agora+FCM+Play unsigned release CI। Provider/device acceptance अलग प्रमाण है। |
+
+### विस्तृत code review में सुधरे हुए रास्ते
+
+Android के HTTP request budgets अब route और method के API contract से मिलते हैं: लंबी Play/Google receipts, FCM registration, account deletion, 42 KiB JPEG और Hindi description generic 256/512-byte limit में नहीं अटकते। Local backup और HTTP readers UTF-8, size, total deadline और no-progress bounds लागू करते हैं। Worker login/logout notifications को Account के समान संभालता है; stale preview/search completion loading state नहीं फँसाती। Search/listing continuation, hierarchy Back navigation और bilingual Help वर्तमान flows से मेल खाते हैं।
+
+Worker/listing mutations केवल शुरुआत की पहचान पर निर्भर नहीं हैं: उसी session का owner और database-time expiry atomic SQL write में फिर जाँचा जाता है। Private GET के बाद भी वही active owner होना जरूरी है। Session के स्वाभाविक रूप से expire होने, queued D1 work, logout, account disable/rebind और दूसरे device के बदलावों के regressions हैं। Mutation success सीधे `RETURNING` rows से आता है जहाँ revision/history/call triggers अतिरिक्त rows बदलते हैं; सफल logout/pause को गलत conflict नहीं बताया जाता।
+
+Reviewed catalog के remapped `jodlo_c_*` IDs पर Hindi/English phrase aliases और ambiguity choices काम करते हैं। Cursor search current eligibility, literal conflicts, city availability और continuation को एक SQL snapshot में देखता है। Import → stage → publish → search → reverse का वास्तविक generated-SQL regression है।
+
+`npm test` सभी `scripts/*.test.mjs` और API tests चलाता है। Deleted documents पर निर्भर दो orphan historical guards हटे हैं; current documentation/founder/release checks बने हैं। Release readiness अब founder audit errors सही पढ़ती है। Operator HTTP response streaming bounded है, policy publication symlinked source को reject करती है, और combined Agora+FCM+Play release build नियमित CI का हिस्सा है।
+
+### Billing और call accounting के लागू नियम
+
+Canonical packs `play-minute-packs.ts` में 5, 20, 50, 100, 300 और 500 minutes हैं। **वास्तविक कीमतें मालिक अंतिम Play Console upload/configuration पर भरेंगे।** Android कीमत Google ProductDetails से पढ़ता है। App स्वयं रुपये, entitlement या minute balance नहीं बनाता। Purchase token केवल सीमित request memory में रहता है; D1 में one-way source hash और owner-bound journal होता है। `/me/play-verify` पुराना read-only diagnostic है; `/me/play-settle` अलग configured mutating flow है।
+
+Checkout के लिए `PLAY_SETTLEMENT_ENABLED=1`, `jodlo-play-minutes-v1` की owner approval digest, catalog/account/verification/RTDN/refund prerequisites, dedicated limiter और Google credentials जरूरी हैं। Android candidate को matching `jodloPlayPolicyVersion` चाहिए। Provider timeout के बाद blind repeated consume नहीं होता; purchase recovery फिर provider status पढ़ती है। Settlement के बाद app authoritative account overview refresh करता है। Async Google response के बीच logout/account change हो जाए तो पुराने owner का checkout/result आगे नहीं जाता।
+
+Play license-test cards अलग, **default OFF** `PLAY_LICENSE_TEST_ENABLED=1` mode में केवल dedicated QA accounts के लिए स्वीकार होते हैं। `PLAY_LICENSE_TEST_ACCOUNT_BINDINGS` server secret में 1–32 unique, comma-separated, nonzero, 64-character lowercase hexadecimal JODLO account bindings रखें; whitespace/duplicates स्वीकार नहीं। यह public config, Android, email या raw Google subject की सूची नहीं है। Google का actual test marker और server allowlist दोनों जरूरी हैं; journal में environment immutable रहता है। Flag बंद करने पर नया test grant/consume बंद रहता है, पहले granted receipt का read/reconciliation फिर भी अपने recorded environment से होता है। Play Console license testers और वास्तविक closed-track card tests मालिक configure करेगा। Signed Console test notifications और PURCHASED hints बिना credit/consume बनाए acknowledge होते हैं।
+
+Usage की policy `agora-overlap-v1` और refund hold की policy `jodlo-play-refund-hold-v1` हैं। इनकी approval digests actual reviewed evidence से लें। Usage reservations available minutes को घटाती हैं; ledger debit बाद में verified overlap पर केवल एक बार होता है। Call जल्दी समाप्त होने पर unused reserved seconds तुरंत लौटते हैं और अगली call के लिए उपलब्ध होते हैं; संभावित इस्तेमाल का हिस्सा evidence आने तक reserved रहता है। `* * * * *` cron पहली terminal सीमा या authorized end के बाद दो मिनट की provider-evidence grace पर settle करता है। Normal intervals का union/intersection, server time bounds, semantic duplicates और contradictory evidence का guard लागू है। Missing/abnormal/conflicting evidence पर zero charge और reservation release इस conservative policy का भाग है; इसे provider QA तथा business review में स्वीकार करना बाकी है। Detailed call-usage evidence 30 दिनों बाद bounded cleanup में हटती है, journal/account export की retention अलग घोषित करनी होगी।
+
+वर्तमान call invitation की lifetime creation से अधिकतम पाँच मिनट है; 90-second ringing window इसी सीमा के भीतर है। उपलब्ध balance और original session expiry इसे और कम कर सकते हैं। इसे असीमित call duration न मानें; वास्तविक device/provider acceptance में इस सीमा की जाँच शामिल है।
+
+Refund hold कोई bank refund या debt नहीं है। Available seconds, already reserved call seconds और uncovered review amount अलग हैं। Operator केवल documented case review के बाद existing hold release कर सकता है; revoked purchase का fence या पुराना journal नहीं मिटा सकता। Account erasure owner-linked financial/export rows और media को cascade से हटाती है; unlinked revocation digest, provider-side records और backups की अंतिम retention privacy notice में घोषित करें।
+
+### Reviewed catalog को जोड़ना
+
+पुराने 889 Categories / 7,267 Services review reference हैं। नया importer human-reviewed, content-hash-bound manifest, remapped JODLO IDs और owner/Hindi-English/occupational evidence पढ़ता है। Reference archive को स्वतः public नहीं बनाता। पहले inactive stage, फिर explicit publish; reverse import-owned rows को deactivate करता है और shared parent/dependent batches की रक्षा करता है।
+
+```bash
+npm run catalog:import -- --template
+npm run catalog:import -- --scope-hash PATH_TO_REVIEWED_MANIFEST.json
+npm run catalog:import -- --dry-run PATH_TO_REVIEWED_MANIFEST.json --database PATH_TO_LOCAL_BACKUP.sqlite
+npm run catalog:import -- --sql stage PATH_TO_REVIEWED_MANIFEST.json
+npm run catalog:import -- --sql publish PATH_TO_REVIEWED_MANIFEST.json
+npm run catalog:import -- --sql reverse PATH_TO_REVIEWED_MANIFEST.json
+```
+
+ये commands template/hash/local rehearsal/SQL देते हैं। Operator actual review links सत्यापित करके D1 backup पर rehearsal और उसके बाद approved production SQL लागू करेगा। Public `/api/v1/catalog/services` bounded category/language pagination देता है; approval, active hierarchy और current cursor हर read पर जाँचते हैं।
+
+### Production configuration और owner operations
+
+Existing `production:config:write` से actual Cloudflare account/D1 और distinct login limiter IDs की private generated config बनाएँ। Operations template में अपने feature flags, public provider IDs, policy hashes, अलग rate-limit namespaces और retention/usage schedules भरें। Secret values template/GitHub/Android में न रखें; Cloudflare secret storage में install करें।
+
+```bash
+npm run production:operations:template
+npm run production:operations:configure -- PATH_TO_OWNER_SETTINGS.json
+npm run production:config:check
+npm run production:domain:write
+npm run production:domain:check
+npm run release:source-check
+npm run release:readiness -- --evidence-template
+```
+
+पहली setup में `production:domain:write` चलाएँ। बाद की settings बदलने पर `production:domain:refresh` उसी verified account/D1 की settings को `api.jodlo.rekixo.com` config में रखता है। Generated files gitignored हैं। Config validator feature dependencies, one-minute usage cron, history retention cron और invocation URL logging बंद होने को जाँचता है। यह command वास्तविक deploy नहीं करता।
+
+Operations endpoint के लिए अलग `OPERATIONS_KEY` server secret और dedicated limiter है। Workstation में उसी key को `JODLO_OPERATIONS_KEY` environment variable में सुरक्षित उपलब्ध कराएँ। Readiness exact deployed `BUILD_COMMIT_SHA`, tables/triggers/forward columns, enabled-feature dependencies, credential shapes और pending/overdue queues जाँचता है। `--check` incomplete schema या invalid enabled configuration पर nonzero exit देता है; OFF feature के secrets नहीं माँगता। Configuration/schema ready वास्तविक provider या phone QA का प्रमाण नहीं है। Actual Google/Agora acceptance का प्रमाण external test से आएगा।
+
+```bash
+npm run operations -- readiness --expected-sha EXACT_DEPLOYED_COMMIT --check
+npm run operations -- refund-list
+npm run operations -- refund-resolve --case CASE_DIGEST --evidence PATH_TO_CASE_REVIEW --apply
+```
+
+Refund resolve में operator's reviewed file का digest जाता है; file का private content upload नहीं होता। Missing/invalid credential shared operator quota नहीं खर्च करती, failed limiter/schema reads generic error देते हैं, और duplicate evidence सुरक्षित replay होती है।
+
+### Pending chargeback review का operator flow
+
+Signed pending-refund case को Google Orders और ProductPurchaseV2 से उसी existing owner, SKU, purchase time और purchase environment पर सत्यापित किया जाता है। D1 केवल hashes, metadata, original event से 24-hour deadline और evidence रखता है; raw pending/purchase token और order ID नहीं।
+
+Open case पर push retryable रहता है। Operator का explicit decision आने पर अगली authenticated redelivery transient token से Google `orders.reviewrefund` को एक attempt भेजती है। कोई automatic recommendation या pooled balance से invented consumption percentage नहीं बनता। Ambiguous response पर unknown state और कोई blind repeat POST नहीं; overdue unsent case expired होता है। Review submission का स्वीकार होना bank refund complete होना नहीं है।
+
+```bash
+npm run operations -- pending-refund-list
+npm run operations -- pending-refund-decide --case CASE_DIGEST --preference NEUTRAL --sample-content-provided true --evidence PATH_TO_CASE_REVIEW --apply
+npm run operations -- pending-refund-record --case CASE_DIGEST --evidence PATH_TO_EXTERNAL_REVIEW_RESULT --apply
+```
+
+`NEUTRAL` और `true` केवल syntax उदाहरण हैं; actual facts और reviewed decision भरें। `decide` अगली signed redelivery पर provider submission अधिकृत करता है। `record` अलग पूरा हुए external handling का evidence रखता है, Google को नहीं भेजता। Pub/Sub retry/retention और dead-letter policy कम-से-कम 24-hour review अवधि में redelivery बचाएँ; operator समय पर queue देखे। आधिकारिक contract: https://developer.android.com/google/play/billing/rtdn-reference और https://developers.google.com/android-publisher/api-ref/rest/v3/orders/reviewrefund ।
+
+### Public privacy, terms, deletion और support pages
+
+`policies:prepare` existing JODLO web shell, Hindi/English navigation, assets और security headers से चार final-content pages तैयार करता है। Blank template में वास्तविक operator/legal identity, address, working support/privacy/deletion email, support hours, retention/backup/provider exceptions, refund policy और enabled features भरें। Source commit तथा content hash पर owner/legal/bilingual review के बाद candidate बनता है।
+
+```bash
+npm run policies:prepare -- --template
+npm run policies:prepare -- --scope-hash PATH_TO_POLICY.json
+npm run policies:prepare -- --check PATH_TO_POLICY.json
+npm run policies:prepare -- --write PATH_TO_POLICY.json
+```
+
+Candidate `.local-release/website-<scope>/` में `privacy.html`, `terms.html`, `deletion.html`, `help.html` और static assets रखता है। Source clean/committed होना चाहिए; placeholder contacts, stale commit, missing review या changed artifacts जाँच में रुकते हैं। Default site विकास की वर्तमान सहायता दिखाता है। Final candidate को वास्तविक domain पर publish करके contacts/deletion process की जाँच अंतिम owner काम है। Readiness उसी candidate के file hashes भी जाँचता है।
+
+### Verification commands और CI
+
+```bash
+npm ci
+npm run check
+npm run db:migrate:local
+npm run db:build:local
+npm run test:workerd:local
+npm run build:api
+npm run release:source-check
+```
+
+`npm run check` सभी script/API tests, typecheck, dependency-lock, documentation, founder/design और archive-integrity gates चलाता है। इसमें settlement/consume recovery, explicit pending-refund recommendations, SQLite triggers, signed webhook/replay, database-clock expiry, 20 private feature read variants और सात account snapshots के session races, export v1–v5, catalog import/reversal और operations/config/evidence regressions शामिल हैं। `test:workerd:local` fresh disposable D1 में सभी numbered migrations और वास्तविक Workers HTTP runtime चलाता है।
+
+Android native workflow JDK 17/21 पर Kotlin core तथा default/configured APK compile, API36/min26 manifest checks, optional Agora/FCM/Billing, policy-gated recovery और unsigned candidate AAB जाँचता है। Repeated release payloads को `scripts/android-release-evidence.py` compare करता है; signing और Play validation का प्रमाण अलग है। Local toolchain setup repository में commit नहीं होता।
+
+### मालिक के लिए अंतिम manual work — एक जगह
+
+1. **Catalog और product decisions:** वास्तविक services का scoped qualified review; checkout, conservative call usage तथा refund/appeal policies की approval; business/legal identity, staffed support, retention और privacy/terms के final values। तैयार templates/tools इन inputs से काम पूरा करते हैं।
+2. **Cloudflare और providers:** अपने account/D1 IDs, Google OAuth, FCM, Agora notification secret, Android Publisher, Pub/Sub identities, distinct limiter bindings और actual secret installation; fresh backup/restore rehearsal; verified config के साथ deploy और exact source version/domain check।
+3. **असली device/payment acceptance:** दो authorized physical phones पर Customer/Worker calling, notification/background/denied permission/reconnect; closed Play track पर purchase, pending/cancel, app restart/restore, refund और ledger; Hindi/English accessibility तथा supported OEMs की जाँच।
+4. **Store/signing:** owner-controlled signing/upload key, final version, six real Play product IDs/prices, store description/screenshots, Data Safety/content rating/app access/deletion declarations और final upload।
+5. **Final launch:** deployed monitoring/queue/abuse/cost alerts, rollback rehearsal और exact tested commit पर owner acceptance। `release:readiness -- --evidence FILE --check` सभी 19 evidence groups और local config/source checks को एक साथ जाँचता है; recorded evidence के reviewer/provider claims की स्वतंत्र पुष्टि आवश्यक है।
+
+इन inputs के बिना real provider acceptance या public launch को complete दर्ज नहीं करेंगे। सारे implementation changes JODLO में हैं; Finworkar केवल read-only reference रहता है।
+
 ## JODLO के नए स्थायी निर्देश — 21 नवंबर 2026
 
 - **मुख्य लक्ष्य:** Finworkar का काम और कॉन्सेप्ट आधार है। JODLO को उससे अधिक आसान, भरोसेमंद, तेज और उपयोगी Customer/Worker ऐप बनाना है, केवल एक नया नाम नहीं।

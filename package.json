@@ -11,7 +11,7 @@
     "apps/api"
   ],
   "scripts": {
-    "test": "node --experimental-strip-types --test scripts/android-release-candidate-gate.test.mjs scripts/web-security-headers.test.mjs scripts/help-center.test.mjs scripts/worker-owner-private-ui.test.mjs scripts/hidden-service-integration.test.mjs scripts/nearby-city-search-integration.test.mjs scripts/local-backup-integration.test.mjs scripts/prepare-production-wrangler.test.mjs scripts/prepare-api-custom-domain.test.mjs apps/api/tests/*.test.mjs scripts/verify-design-guards.test.mjs scripts/verify-founder-gates.test.mjs scripts/verify-kotlin-suite-coverage.test.mjs scripts/verify-dependency-lock.test.mjs scripts/verify-npm-audit-policy.test.mjs",
+    "test": "node --experimental-strip-types --test scripts/*.test.mjs apps/api/tests/*.test.mjs",
     "typecheck": "tsc --noEmit -p apps/api/tsconfig.json",
     "check": "npm run audit:policy-check && npm run lock:check && npm run docs:check && npm run design:check && npm run founder:check && npm run reference:check && npm run test && npm run typecheck",
     "dev:api": "wrangler dev --config apps/api/wrangler.local.jsonc --local",
@@ -73,7 +73,16 @@
     "production:domain:check": "node scripts/prepare-api-custom-domain.mjs --check",
     "catalog:review-dossier": "node scripts/catalog-review-dossier.mjs",
     "catalog:first-five-handoff": "node scripts/catalog-first-five-handoff.mjs",
-    "android:call-qa": "bash scripts/android-device.sh call-qa"
+    "android:call-qa": "bash scripts/android-device.sh call-qa",
+    "catalog:import": "node scripts/approved-catalog-import.mjs",
+    "production:operations:template": "node scripts/prepare-production-wrangler.mjs --operations-template",
+    "production:operations:configure": "node scripts/prepare-production-wrangler.mjs --configure",
+    "production:domain:refresh": "node scripts/prepare-api-custom-domain.mjs --refresh",
+    "release:readiness": "node scripts/release-readiness.mjs",
+    "release:source-check": "node scripts/release-readiness.mjs --source-check",
+    "operations": "node scripts/operations-client.mjs",
+    "android:release:evidence": "python3 scripts/android-release-evidence.py",
+    "policies:prepare": "node scripts/prepare-public-policies.mjs"
   },
   "devDependencies": {
     "typescript": "~5.8.3",

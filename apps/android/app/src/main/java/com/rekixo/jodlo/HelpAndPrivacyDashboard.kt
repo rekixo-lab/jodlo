@@ -20,9 +20,9 @@ import com.rekixo.jodlo.ui.theme.JodloTextAction
 /**
  * Bilingual guest-accessible HELP and honest data-rights navigation.
  *
- * Describes actually implemented local Saved, account export and sign-out
- * journeys, never pretending an unapproved erasure workflow, legal privacy
- * policy, live support channel or RTC provider has been deployed.
+ * Describes implemented local Saved, account and service safety controls.
+ * It does not claim that legal policies, staffed support or optional call
+ * providers have completed their release configuration.
  * It performs NO network request or read of account data itself.
  */
 @Composable

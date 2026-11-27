@@ -100,7 +100,7 @@ test("worker own-session SQL reads only worker bearer hash, time, trusted caller
     assert.equal((query.match(/\?/g)||[]).length,4);
     assert.match(query,/participant_session\.account_id=worker\.id/);
     assert.match(query,/participant_session\.token_hash=\?/);
-    assert.match(query,/participant_session\.expires_at>\?/);
+    assert.match(query,/participant_session\.expires_at>MAX\(\?,unixepoch\(\)\)/);
     assert.match(query,/requester\.id=\?/);
     assert.match(query,/requester\.status='active'/);
     assert.match(query,/pref\.calls_enabled=1/);

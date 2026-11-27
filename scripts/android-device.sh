@@ -133,11 +133,13 @@ fi
 # Both :core and :app still compile Java 17 bytecode.
 # Respect the developer's already working JAVA_HOME; never change system Java.
 jdk_candidates=()
+legacy_jdk17_only=0
 if [[ -n "${JODLO_JDK_HOME:-}" ]]; then
   jdk_candidates+=("$JODLO_JDK_HOME")
 elif [[ -n "${JODLO_JDK17_HOME:-}" ]]; then
   # Historical explicit setting remains JDK17 only.
   jdk_candidates+=("$JODLO_JDK17_HOME")
+  legacy_jdk17_only=1
 else
   if [[ -n "${JAVA_HOME:-}" ]]; then jdk_candidates+=("$JAVA_HOME"); fi
   if command -v javac >/dev/null 2>&1; then
@@ -162,7 +164,7 @@ for candidate in "${jdk_candidates[@]}"; do
     "javac 21"|"javac 21."*) major=21 ;;
     *) continue ;;
   esac
-  if [[ -n "${JODLO_JDK17_HOME:-}" && "$major" != 17 ]]; then continue; fi
+  if (( legacy_jdk17_only == 1 )) && [[ "$major" != 17 ]]; then continue; fi
   jdk_home="$candidate"
   jdk_major="$major"
   break

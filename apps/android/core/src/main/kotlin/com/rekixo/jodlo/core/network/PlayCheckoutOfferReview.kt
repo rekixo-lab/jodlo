@@ -21,7 +21,7 @@ fun validGoogleFormattedPrice(value: String?): Boolean =
 
 /** Exact same SKU, exactly one offer, unchanged user-visible price, and an
  * opaque Play account binding issued by the server. Ready is ONLY permission
- * to ask Google to display checkout in an separately build-gated debug APK;
+ * to ask Google to display checkout in an explicitly configured APK;
  * not evidence of settlement, credit, acknowledgment or consumption. */
 fun reviewFreshGooglePlayOffer(
     approvedProducts: Set<String>,

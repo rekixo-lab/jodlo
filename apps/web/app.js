@@ -32,7 +32,8 @@ const routes = new Set(pagePanels.map(panel => panel.dataset.pagePanel));
 function showPage() {
   const fragment = window.location.hash.slice(1);
   if (fragment === "main") return;
-  const route = routes.has(fragment) ? fragment : "home";
+  const defaultPage = document.body.dataset.defaultPage;
+  const route = routes.has(fragment) ? fragment : routes.has(defaultPage) ? defaultPage : "home";
   for (const panel of pagePanels) panel.hidden = panel.dataset.pagePanel !== route;
   for (const link of pageLinks) {
     if (link.dataset.route === route) link.setAttribute("aria-current", "page");
